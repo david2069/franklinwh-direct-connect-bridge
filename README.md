@@ -12,7 +12,7 @@ It can be installed and run as follows:
 - Run standalone in Python virtual environment on platform that supports Python
 
 You interact with this integration via a number of interfaces via:
-- A web browser interface via rich customisable dynamic desktop, table mobile dashboards
+- a web browser interface via rich customisable dynamic desktop, tablet and mobile compatible dashboards
 - the built-in REST API
 - MQTT Home Assistant Entities
 
