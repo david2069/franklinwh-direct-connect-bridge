@@ -1,22 +1,25 @@
 # franklinwh-local-bridge
 
-This integration is designed as proof-of-concept demonstration on how to integrate to a FranklinWH aGate gateway via their Direct Connect local API.
+This integration is designed as proof-of-concept demonstration on how to integrate to a FranklinWH aGate gateway via the (undocumented/unofficial) FranklinWH Direct Connect local API.
 
-You can connect to your own FranklinWH Gateway or you can optionally simply add emulated (mock) gateway to try it
+It ia not intended for production use and there no guarantee it is compatible with your FranklinWH Gateway(s) or aPower(a) and/or connectivity - now or in the future. FranklinWH may block or even deprecate this interface at any time. It has been tested on a local area networks with my own FranklinWH single aGate X and aPower X.
+
+You can connect to your own FranklinWH Gateway and/or you can optionally simply add one or more emulated (mock) gateway(s). This allows you to see how the integration works before connecting your real Gateway.
 
 It can be installed and run as follows:
-- As Home Assistant Add-on
+- Under Home Assistant as an Application Add-on
 - Under Docker (or similar environments) in a container
-- Run standalone in virtual Python environment
+- Run standalone in Python virtual environment on platform that supports Python
 
-You interactively via a number of interfaces:
-- A built web browser interface via rich customisable dynamic desktop, table mobile dashboards
-- REST API
+You interact with this integration via a number of interfaces via:
+- A web browser interface via rich customisable dynamic desktop, table mobile dashboards
+- the built-in REST API
 - MQTT Home Assistant Entities
 
 These interfaces expose:
-- Discover FranklinWH Gateways
-- Emulate (or mock) a FrankinWH Gateway
+- Discover FranklinWH Gateways available
+- Support multiple gateways
+- Emulate (or mock) a single or multiple FrankinWH Gateway(s) (with one or more aPower batteries)
 - Gateway metrics
 - Gateway accessories
 - Gateway controls
@@ -32,10 +35,10 @@ These interfaces expose:
 - Force charge or dischange (with optional parameters) via Modbus TCP
 - Get metrics and controls not available by any of the local APIs (Cloud API)
 
-This integration requires the FranklinWH Direct Connect API library:
+This integration requires the unofficial FranklinWH Direct Connect API library:
 [`franklinwh-direct-connect-api`](https://github.com/david2069/franklinwh-direct-connect-api) 
 
-Modelled on [`energipays-bridge`](https://github.com/david2069/energipays-bridge): dual-target
+The integration has been modelled on [`energipays-bridge`](https://github.com/david2069/energipays-bridge): dual-target
 Dockerfile (slim standalone / alpine HA base), ingress web UI, `mqtt:want` broker
 auto-discovery, `read_only` by default.
 
