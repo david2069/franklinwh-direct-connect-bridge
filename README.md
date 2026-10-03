@@ -1,14 +1,39 @@
 # franklinwh-local-bridge
 
-A **Home Assistant add-on** (and standalone Docker service) that bridges the FranklinWH
-aGate **local (sendMqtt) API** to REST + MQTT, with a **cloud fallback** for the handful of
-settings the local API physically cannot write.
+This integration is designed as proof-of-concept demonstration on how to integrate to a FranklinWH aGate gateway via their Direct Connect local API.
 
-Two libraries: [`franklinwh-local-api`](https://github.com/david2069/franklinwh-local) for
-the local transport and `franklinwh-cloud` for the cloud one. Still **no
-`franklinwh-hybrid`** — where a capability has more than one possible transport, this repo
-picks between them itself in `providers.py` (see **Transports** below) rather than
-delegating to the hybrid fusion layer.
+You can connect to your own FranklinWH Gateway or you can optionally simply add emulated (mock) gateway to try it
+
+It can be installed and run as follows:
+- As Home Assistant Add-on
+- Under Docker (or similar environments) in a container
+- Run standalone in virtual Python environment
+
+You interactively via a number of interfaces:
+- A built web browser interface via rich customisable dynamic desktop, table mobile dashboards
+- REST API
+- MQTT Home Assistant Entities
+
+These interfaces expose:
+- Discover FranklinWH Gateways
+- Emulate (or mock) a FrankinWH Gateway
+- Gateway metrics
+- Gateway accessories
+- Gateway controls
+- Gateway local historical data
+- Automation Schedules - with large built-in rich functions
+- Built-in integration to Weather (Open Metro)
+- Optional: utility billing and tariff setup for informational tracking
+- Optional Home Assistant Entities access
+- Optional Home Assistant Notifications for events
+- Various charting options for historical and real-time monitoring
+- Optional: integration to Gateway via Modbus TCP and/or FranklinWH Cloud API in order to:
+- Set reserved state-of-charge (SoC) via Cloud API
+- Force charge or dischange (with optional parameters) via Modbus TCP
+- Get metrics and controls not available by any of the local APIs (Cloud API)
+
+This integration requires the FranklinWH Direct Connect API library:
+[`franklinwh-direct-connect-api`](https://github.com/david2069/franklinwh-direct-connect-api) 
 
 Modelled on [`energipays-bridge`](https://github.com/david2069/energipays-bridge): dual-target
 Dockerfile (slim standalone / alpine HA base), ingress web UI, `mqtt:want` broker
