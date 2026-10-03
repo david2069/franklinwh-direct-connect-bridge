@@ -1,0 +1,48 @@
+# Standalone run. Build the image first with `tools/build_image.sh` (bundles the
+# franklinwh-direct-connect-api wheel), then `docker compose up -d`.
+services:
+  franklinwh-local-bridge:
+    image: franklinwh-local-bridge:dev
+    container_name: franklinwh-local-bridge
+    ports:
+      - "8101:8101"
+    volumes:
+      - ./data:/data
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    environment:
+      - TZ=${TZ:-UTC}
+      - FWH_HOST=${FWH_HOST:-192.0.2.110}
+      - FWH_PORT=${FWH_PORT:-9000}
+      - POLL_INTERVAL=${POLL_INTERVAL:-30}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - READ_ONLY=${READ_ONLY:-true}
+      # Control writes (mode switch / off-grid) are OFF by default. Set ALLOW_WRITES=true
+      # to expose POST /api/mode + /api/offgrid and the dashboard control buttons.
+      - ALLOW_WRITES=${ALLOW_WRITES:-false}
+      # MQTT — the dedicated dev broker (fwh-dev-mosquitto, host port 1884)
+      - MQTT_ENABLED=${MQTT_ENABLED:-true}
+      - MQTT_HOST=${MQTT_HOST:-host.docker.internal}
+      - MQTT_PORT=${MQTT_PORT:-1884}
+      # Local time-series history (SQLite under the ./data volume) — served at
+      # /api/metrics and drawn on the Dashboard "Power History" chart.
+      - METRICS_ENABLED=${METRICS_ENABLED:-true}
+      # ~0.35 MB/day at a 30s poll, so a year is ~130 MB (more with the tiers
+      # column). Keeping a year locally is what lets the poller be the primary
+      # history rather than the gateway's ~105-day rolling record.
+      - METRICS_RETENTION_DAYS=${METRICS_RETENTION_DAYS:-365}
+      # Hybrid capability providers (HYBRID-CAPABILITIES) — fill the local hard walls by
+      # delegating to an installed sibling bridge's REST (or a library). Detection only in
+      # Phase 1; blank = not configured. See /api/providers.
+      - MODBUS_BRIDGE_URL=${MODBUS_BRIDGE_URL:-}
+      - FWHAI_URL=${FWHAI_URL:-}
+      - MODBUS_HOST=${MODBUS_HOST:-}
+      # Cloud provider (HYBRID Phase 3) — enables reserve-SoC writes (self/tou), which the
+      # local API silently discards. Blank = reserve stays read-only. Set your FranklinWH
+      # cloud login + gateway serial to enable the reserve editors on Control + Dashboard.
+      - FWH_CLOUD_EMAIL=${FWH_CLOUD_EMAIL:-}
+      - FWH_CLOUD_PASSWORD=${FWH_CLOUD_PASSWORD:-}
+      - FWH_CLOUD_GATEWAY=${FWH_CLOUD_GATEWAY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

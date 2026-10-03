@@ -1,0 +1,286 @@
+<div x-data="generatorTab" class="space-y-4">
+
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <h2 class="page-title">Generator</h2>
+      <p class="text-sm" style="color:var(--text-secondary)">
+        Generator module state, thresholds and charge windows
+        <span class="font-mono text-xs opacity-70" x-show="$store.app.showRawKeys">· 1901</span>
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <button class="btn btn-secondary btn-sm" @click="loadRaw()"
+              x-text="showRaw ? 'Hide raw' : 'Raw JSON'"></button>
+      <button class="btn btn-secondary btn-sm" @click="load()" :disabled="loading"
+              x-text="loading ? 'Reading…' : 'Refresh'">Refresh</button>
+    </div>
+  </div>
+
+  <div x-show="error" x-cloak class="rounded-lg px-3 py-2 text-sm"
+       style="background:rgba(239,68,68,.1);color:#fca5a5" x-text="error"></div>
+
+  <template x-if="data && !data.enabled">
+    <div class="card p-5">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="min-w-0">
+          <div class="text-sm font-semibold" style="color:var(--text-primary)"
+               x-text="data.configured ? 'Generator is disabled'
+                                       : 'No generator enabled or detected'"></div>
+          <p class="text-sm mt-1" style="color:var(--text-secondary)">
+            <template x-if="!data.configured">
+              <span>The gateway reports the generator block whether or not a module is
+                fitted — there is no model, rated power or run state here, so nothing
+                appears to be installed. The settings below are stored defaults and are
+                <strong>read-only</strong> while the feature is off.</span>
+            </template>
+            <template x-if="data.configured">
+              <span>Hardware is reported but the feature is switched off. Settings are
+                read-only until it is enabled.</span>
+            </template>
+          </p>
+        </div>
+        <button class="btn btn-primary btn-sm flex-shrink-0"
+                :disabled="busy || !canToggleFeature"
+                :title="canToggleFeature ? '' : 'Writes are disabled (ALLOW_WRITES=true)'"
+                @click="setEnabled(true)">Enable generator</button>
+      </div>
+    </div>
+  </template>
+
+  <template x-if="data && data.enabled && !data.configured">
+    <div class="card px-4 py-3 flex flex-wrap items-center justify-between gap-3"
+         style="background:rgba(245,158,11,.08)">
+      <div class="text-sm" style="color:#fbbf24">
+        Generator is <strong>enabled</strong> but no hardware is reported — settings will
+        save and nothing will act on them until a module is installed. The generator is
+        also only available off-grid: configuration applies on grid, running does not.
+      </div>
+      <button class="btn btn-secondary btn-sm" :disabled="busy || !canToggleFeature"
+              @click="setEnabled(false)">Disable</button>
+    </div>
+  </template>
+
+  <template x-if="data && data.enabled && data.configured">
+    <div class="flex justify-end">
+      <button class="btn btn-secondary btn-sm" :disabled="busy || !canToggleFeature"
+              @click="setEnabled(false)">Disable generator</button>
+    </div>
+  </template>
+
+  <template x-if="data">
+    <div class="grid gap-4" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">
+
+      <!-- state + mode -->
+      <div class="card overflow-hidden" :class="data.enabled ? '' : 'opacity-60'">
+        <div class="px-4 py-2 border-b text-xs uppercase tracking-wide"
+             style="border-color:var(--border);color:var(--text-secondary)">Status</div>
+        <div class="p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-sm" style="color:var(--text-secondary)">State</span>
+            <span class="text-sm font-semibold"
+                  :style="data.fault ? 'color:#fca5a5' : data.running ? 'color:#34d399'
+                                     : 'color:var(--text-primary)'"
+                  x-text="data.state_name"></span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-sm" style="color:var(--text-secondary)">Output</span>
+            <span class="text-sm font-mono" style="color:var(--text-primary)"
+                  x-text="fmt(data.power_w, 'W')"></span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-sm" style="color:var(--text-secondary)">Model</span>
+            <span class="text-sm" style="color:var(--text-primary)"
+                  x-text="data.model || '—'"></span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-sm" style="color:var(--text-secondary)">Rated</span>
+            <span class="text-sm font-mono" style="color:var(--text-primary)"
+                  x-text="fmt(data.rated_power_w, 'W')"></span>
+          </div>
+
+          <div class="pt-3 border-t" style="border-color:var(--border)">
+            <div class="text-sm mb-2" style="color:var(--text-secondary)">
+              Mode · <span style="color:var(--text-primary)" x-text="data.mode_name"></span>
+            </div>
+            <div class="flex gap-2">
+              <template x-for="m in ['auto', 'manual']" :key="m">
+                <button class="btn btn-sm flex-1"
+                        :class="data.mode_name.toLowerCase().startsWith(m) ? 'btn-primary' : 'btn-secondary'"
+                        :disabled="busy || !canWrite"
+                        :title="editBlockedReason()"
+                        @click="setMode(m)"
+                        x-text="m === 'auto' ? 'Auto' : 'Manual'"></button>
+              </template>
+            </div>
+            <p class="text-xs mt-2" style="color:var(--text-secondary)"
+               x-show="data.enabled">
+              This write has not been exercised on generator hardware — the read-back
+              is the only safety net.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- thresholds -->
+      <div class="card overflow-hidden" :class="data.enabled ? '' : 'opacity-60'">
+        <div class="px-4 py-2 border-b text-xs uppercase tracking-wide"
+             style="border-color:var(--border);color:var(--text-secondary)">
+          <span class="flex items-center justify-between">Start / stop
+            <button class="btn btn-secondary btn-sm normal-case" :disabled="!canWrite"
+                    :title="editBlockedReason()" @click="openSoc()">Edit</button></span></div>
+        <div class="p-4 space-y-2 text-sm">
+          <div class="flex justify-between"><span style="color:var(--text-secondary)">Start below SoC</span>
+            <span class="font-mono" style="color:var(--text-primary)" x-text="fmt(data.soc_start_pct, '%')"></span></div>
+          <div class="flex justify-between"><span style="color:var(--text-secondary)">Stop above SoC</span>
+            <span class="font-mono" style="color:var(--text-primary)" x-text="fmt(data.soc_stop_pct, '%')"></span></div>
+          <div class="flex justify-between"><span style="color:var(--text-secondary)">Start delay</span>
+            <span class="font-mono" style="color:var(--text-primary)"
+                  x-text="data.start_delay_s === null ? '—' : Math.round(data.start_delay_s / 60) + ' min'"></span></div>
+          <div class="flex justify-between"><span style="color:var(--text-secondary)">Optimal load point</span>
+            <span class="font-mono" style="color:var(--text-primary)" x-text="fmt(data.optimal_power_pct, '%')"></span></div>
+        </div>
+      </div>
+
+      <!-- maintenance exercise -->
+      <div class="card overflow-hidden" :class="data.enabled ? '' : 'opacity-60'">
+        <div class="px-4 py-2 border-b text-xs uppercase tracking-wide"
+             style="border-color:var(--border);color:var(--text-secondary)">
+          <span class="flex items-center justify-between">Maintenance run
+            <button class="btn btn-secondary btn-sm normal-case" :disabled="!canWrite"
+                    :title="editBlockedReason()" @click="openExercise()">Edit</button></span></div>
+        <div class="p-4 space-y-2 text-sm">
+          <div class="flex justify-between"><span style="color:var(--text-secondary)">Enabled</span>
+            <span style="color:var(--text-primary)" x-text="data.maintenance.enabled ? 'Yes' : 'No'"></span></div>
+          <div class="flex justify-between"><span style="color:var(--text-secondary)">Every</span>
+            <span class="font-mono" style="color:var(--text-primary)"
+                  x-text="data.maintenance.every_days === null ? '—' : data.maintenance.every_days + ' days'"></span></div>
+          <div class="flex justify-between"><span style="color:var(--text-secondary)">Starts</span>
+            <span class="font-mono" style="color:var(--text-primary)" x-text="data.maintenance.start || '—'"></span></div>
+          <div class="flex justify-between"><span style="color:var(--text-secondary)">Runs for</span>
+            <span class="font-mono" style="color:var(--text-primary)"
+                  x-text="data.maintenance.run_minutes === null ? '—' : data.maintenance.run_minutes + ' min'"></span></div>
+        </div>
+      </div>
+
+      <!-- charge windows: NOT claimed as generator config -->
+      <div class="card overflow-hidden">
+        <div class="px-4 py-2 border-b text-xs uppercase tracking-wide"
+             style="border-color:var(--border);color:var(--text-secondary)">Operating windows</div>
+        <div class="p-4 space-y-2 text-sm">
+          <template x-for="w in windows" :key="w.index">
+            <div class="flex items-center justify-between gap-2">
+              <span style="color:var(--text-secondary)" x-text="`Window ${w.index}`"></span>
+              <span class="flex items-center gap-2">
+                <span class="font-mono" :style="w.enabled ? 'color:#34d399' : 'color:var(--text-secondary)'"
+                      x-text="w.enabled ? `${w.start} – ${w.end}` : 'off'"></span>
+                <button class="btn btn-secondary btn-sm" :disabled="!canWrite"
+                        :title="editBlockedReason()" @click="openWindow(w)">Edit</button>
+              </span>
+            </div>
+          </template>
+          <p class="text-xs pt-2 border-t" style="border-color:var(--border);color:var(--text-secondary)">
+            FranklinWH documents up to 3 non-overlapping operating periods for the
+            generator, which is what these are. Writes here are hardware-verified: they
+            apply and read back. A stored window does not imply an active schedule —
+            window 1 is set on this system, which has no generator fitted.
+          </p>
+        </div>
+      </div>
+    </div>
+  </template>
+
+
+  <!-- config editors (1901 writes) -->
+  <div x-show="editWin || editEx || editSoc" x-cloak
+       class="fixed inset-0 z-50 flex items-center justify-center p-4"
+       style="background:rgba(0,0,0,.6)" @click.self="closeEdit()">
+    <div class="card w-full max-w-md p-5 space-y-4">
+
+      <template x-if="editWin">
+        <div class="space-y-3">
+          <h3 class="text-lg font-semibold" style="color:var(--text-primary)"
+              x-text="`Operating window ${editWin.index}`"></h3>
+          <label class="flex items-center gap-2 text-sm" style="color:var(--text-primary)">
+            <input type="checkbox" x-model="editWin.enabled"> Enabled
+          </label>
+          <div class="flex items-center gap-2 text-sm">
+            <span style="color:var(--text-secondary)">From</span>
+            <input type="time" class="form-control form-control-sm" x-model="editWin.start">
+            <span style="color:var(--text-secondary)">to</span>
+            <input type="time" class="form-control form-control-sm" x-model="editWin.end">
+          </div>
+          <p class="text-xs" style="color:var(--text-secondary)">
+            Windows must not overlap and need at least a minute between them — the
+            gateway does not check this.
+          </p>
+          <div class="flex justify-end gap-2">
+            <button class="btn btn-secondary btn-sm" @click="closeEdit()">Cancel</button>
+            <button class="btn btn-primary btn-sm" :disabled="busy" @click="saveWindow()"
+                    x-text="busy ? 'Saving…' : 'Save'"></button>
+          </div>
+        </div>
+      </template>
+
+      <template x-if="editEx">
+        <div class="space-y-3">
+          <h3 class="text-lg font-semibold" style="color:var(--text-primary)">Maintenance run</h3>
+          <label class="flex items-center gap-2 text-sm" style="color:var(--text-primary)">
+            <input type="checkbox" x-model="editEx.enabled"> Enabled
+          </label>
+          <div class="grid grid-cols-2 gap-3 text-sm">
+            <label style="color:var(--text-secondary)">Every (days)
+              <input type="number" min="1" max="365" class="form-control form-control-sm w-full"
+                     x-model.number="editEx.every_days"></label>
+            <label style="color:var(--text-secondary)">Run (minutes)
+              <input type="number" min="1" max="240" class="form-control form-control-sm w-full"
+                     x-model.number="editEx.minutes"></label>
+            <label style="color:var(--text-secondary)">Day of week
+              <select class="form-control form-control-sm w-full" x-model.number="editEx.day">
+                <template x-for="(d, i) in ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']" :key="i">
+                  <option :value="i" x-text="d"></option>
+                </template>
+              </select></label>
+            <label style="color:var(--text-secondary)">Start
+              <input type="time" class="form-control form-control-sm w-full" x-model="editEx.start"></label>
+          </div>
+          <div class="flex justify-end gap-2">
+            <button class="btn btn-secondary btn-sm" @click="closeEdit()">Cancel</button>
+            <button class="btn btn-primary btn-sm" :disabled="busy" @click="saveExercise()"
+                    x-text="busy ? 'Saving…' : 'Save'"></button>
+          </div>
+        </div>
+      </template>
+
+      <template x-if="editSoc">
+        <div class="space-y-3">
+          <h3 class="text-lg font-semibold" style="color:var(--text-primary)">Start / stop SoC</h3>
+          <div class="grid grid-cols-2 gap-3 text-sm">
+            <label style="color:var(--text-secondary)">Start below (%)
+              <input type="number" min="0" max="100" class="form-control form-control-sm w-full"
+                     x-model.number="editSoc.start_below"></label>
+            <label style="color:var(--text-secondary)">Stop above (%)
+              <input type="number" min="0" max="100" class="form-control form-control-sm w-full"
+                     x-model.number="editSoc.stop_above"></label>
+          </div>
+          <p class="text-xs" style="color:var(--text-secondary)">
+            FranklinWH: in off-grid mode with Schedule enabled, the generator starts at or
+            below the low limit and stops at the upper limit.
+          </p>
+          <div class="flex justify-end gap-2">
+            <button class="btn btn-secondary btn-sm" @click="closeEdit()">Cancel</button>
+            <button class="btn btn-primary btn-sm" :disabled="busy" @click="saveSoc()"
+                    x-text="busy ? 'Saving…' : 'Save'"></button>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <template x-if="showRaw && raw">
+    <pre class="card p-4 text-xs overflow-auto font-mono" style="max-height:420px"
+         x-text="rawJson"></pre>
+  </template>
+
+  <div x-show="!data && !loading && !error" class="card p-8 text-center text-sm"
+       style="color:var(--text-secondary)">No reading yet.</div>
+</div>

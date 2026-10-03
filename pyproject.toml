@@ -1,0 +1,47 @@
+# franklinwh-local-bridge — HA add-on + standalone REST/MQTT bridge for the
+# FranklinWH LOCAL API. Depends on the franklinwh-direct-connect-api library; NO hybrid.
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "franklinwh-local-bridge"
+version = "0.2.0"
+description = "Home Assistant add-on / REST + MQTT bridge for the FranklinWH aGate local (sendMqtt) API"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "david2069", email = "david.hona@gmail.com"}]
+
+dependencies = [
+    "franklinwh-direct-connect-api",          # the local API library (PyPI; editable in dev)
+    "franklinwh-modbus>=0.9",        # direct-Modbus WSet force control (Battery Control widget)
+    "fastapi>=0.111",
+    "uvicorn>=0.29",
+    "jinja2>=3.1",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "paho-mqtt>=2.0",
+    "croniter>=2.0",          # cron trigger type (lazy import; gated on availability)
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0", "httpx>=0.27"]
+# Cloud transport. Optional on purpose: without it the app runs local-only and every
+# cloud-backed capability reports available=false / "library not installed" (see
+# GET /api/providers). Declared here so `pip install -e ".[cloud]"` reproduces what
+# the Docker image builds from wheels/ — previously this dep was implicit and a dev
+# install silently lost reserve-SoC write.
+cloud = ["franklinwh-cloud>=0.4.9"]
+
+[project.scripts]
+franklinwh-local-bridge = "franklinwh_local_bridge.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+franklinwh_local_bridge = ["static/*", "templates/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

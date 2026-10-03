@@ -1,0 +1,67 @@
+<!-- ── Mobile bottom nav (phones/tablets < lg). The sidebar is hidden on mobile. ── -->
+<nav x-show="$store.app.narrow" x-cloak
+     class="fixed bottom-0 inset-x-0 z-50 backdrop-blur"
+     style="background:var(--surface-0);border-top:1px solid var(--border);padding-bottom: env(safe-area-inset-bottom)">
+  <!-- Dynamic row: as many tabs as fit the width (from $store.app.barTabs), rest under More.
+       No cap/centre — the buttons fill the width, and MORE of them appear as the bar widens. -->
+  <div class="flex items-stretch justify-around">
+    <template x-for="tab in $store.app.barTabs" :key="tab.key">
+      <button @click="$store.app.setActiveTab(tab.key)"
+              class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] transition"
+              :class="$store.app.activeTab === tab.key ? 'text-emerald-400' : 'text-slate-400'">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" x-html="tab.icon"></svg>
+        <span class="text-[10px]" x-text="tab.title"></span>
+      </button>
+    </template>
+    <!-- Terminal: pinned launcher for the global console drawer (also ` / Ctrl-`) -->
+    <button @click="$store.app.toggleTerminal()"
+            class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] transition"
+            :class="$store.app.terminalOpen ? 'text-emerald-400' : 'text-slate-400'">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="16" rx="2"/>
+        <path stroke-linecap="round" stroke-linejoin="round" d="M7 9l3 3-3 3M13 15h4"/>
+      </svg>
+      <span class="text-[10px]">Terminal</span>
+    </button>
+        <button x-show="$store.app.showMore" @click="$store.app.moreOpen = true"
+            class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] transition"
+            :class="$store.app.moreOpen ? 'text-emerald-400' : 'text-slate-400'">
+      <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+        <circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+      <span class="text-[10px]">More</span>
+    </button>
+  </div>
+</nav>
+
+<!-- More sheet: every remaining tab -->
+<div x-show="$store.app.moreOpen && $store.app.narrow" x-cloak class="fixed inset-0 z-[60]"
+     x-transition.opacity.duration.150ms @click="$store.app.moreOpen = false">
+  <div class="absolute inset-0 bg-black/50"></div>
+  <div class="absolute bottom-0 inset-x-0 rounded-t-2xl p-4"
+       style="background:var(--surface-0);border-top:1px solid var(--border);padding-bottom: calc(env(safe-area-inset-bottom) + 1rem)"
+       @click.stop x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="translate-y-full" x-transition:enter-end="translate-y-0">
+    <div class="w-10 h-1 rounded-full mx-auto mb-4" style="background:var(--text-faint)"></div>
+    <div class="grid grid-cols-3 gap-2">
+      <template x-for="tab in $store.app.overflowTabs" :key="tab.key">
+        <button @click="$store.app.setActiveTab(tab.key); $store.app.moreOpen = false"
+                class="flex items-center justify-center gap-2 text-center px-2 py-3 rounded-lg text-sm min-h-[48px] transition border"
+                :class="$store.app.activeTab === tab.key ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/30' : ''"
+                :style="$store.app.activeTab === tab.key ? '' : 'color:var(--text-secondary);background:var(--surface-1);border-color:var(--border)'">
+          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" x-html="tab.icon"></svg>
+          <span x-text="tab.title"></span>
+        </button>
+      </template>
+      <!-- Guide (docs): the sidebar has it, but the sidebar is hidden on mobile — so
+           surface it here too, else the docs are unreachable when the bottom nav is up. -->
+      <a href="guide/" target="_blank" rel="noopener" @click="$store.app.moreOpen = false"
+         class="flex items-center justify-center gap-2 text-center px-2 py-3 rounded-lg text-sm min-h-[48px] transition border"
+         style="color:var(--text-secondary);background:var(--surface-1);border-color:var(--border)">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.5A2.5 2.5 0 0114.5 4H20v14h-6a2 2 0 00-2 2M12 6.5A2.5 2.5 0 009.5 4H4v14h6a2 2 0 012 2M12 6.5V20"/>
+        </svg>
+        <span>Guide</span>
+      </a>
+    </div>
+  </div>
+</div>

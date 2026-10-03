@@ -1,0 +1,305 @@
+<div x-data="circuitsTab" class="space-y-4">
+
+  <!-- real-time auto-paused notice -->
+  <div x-show="liveCapped"
+       class="flex items-center justify-between gap-3 px-3 py-2 rounded text-sm"
+       style="background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.35);color:var(--text)">
+    <span>
+      Live monitoring paused after <span x-text="$store.app.liveCapMinutes('circuits')"></span> min to limit memory and device
+      polling (Settings → Real-time limits). The last data is kept.
+    </span>
+    <button class="btn btn-primary btn-sm shrink-0" @click="resumeLive()">Resume live</button>
+  </div>
+
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <h2 class="page-title">Smart Circuits</h2>
+      <p class="text-sm" style="color:var(--text-secondary)">
+        Monitor and control aGate auxiliary loads
+        <span class="font-mono text-xs opacity-70" x-show="$store.app.showRawKeys">· 1409/1411</span>
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <button class="btn btn-secondary btn-sm" @click="loadRaw()"
+              x-text="showRaw ? 'Hide raw' : 'Raw JSON'"></button>
+      <button class="btn btn-secondary btn-sm" @click="load()" :disabled="loading">
+        <span x-text="loading ? 'Reading…' : 'Refresh'">Refresh</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="flex items-center gap-1 border-b overflow-x-auto" style="border-color:var(--border)">
+    <button class="px-3 py-2 text-sm border-b-2 -mb-px"
+            :class="view === 'circuits' ? 'border-emerald-400 text-emerald-300' : 'border-transparent'"
+            :style="view === 'circuits' ? '' : 'color:var(--text-secondary)'"
+            @click="setView('circuits')">Circuits</button>
+    <button class="px-3 py-2 text-sm border-b-2 -mb-px"
+            :class="view === 'monitor' ? 'border-emerald-400 text-emerald-300' : 'border-transparent'"
+            :style="view === 'monitor' ? '' : 'color:var(--text-secondary)'"
+            @click="setView('monitor')">Monitoring</button>
+  </div>
+
+  <div x-show="error" x-cloak class="rounded-lg px-3 py-2 text-sm"
+       style="background:rgba(239,68,68,.1);color:#fca5a5" x-text="error"></div>
+
+  <div x-show="!$store.app.summary.writes_enabled" x-cloak
+       class="card flex items-center gap-3 px-4 py-3">
+    <svg class="w-5 h-5 flex-shrink-0 text-slate-500" fill="none" stroke="currentColor"
+         stroke-width="2" viewBox="0 0 24 24">
+      <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+    </svg>
+    <div>
+      <div class="text-sm font-semibold text-slate-300">Circuit writes are disabled (read-only)</div>
+      <div class="text-xs text-slate-500">Set <span class="font-mono">ALLOW_WRITES=true</span>
+        to switch circuits on and off.</div>
+    </div>
+  </div>
+
+  <!-- no enclosure installed at all -->
+  <template x-if="data && !data.installed && view === 'circuits'">
+    <div class="card p-8 text-center">
+      <div class="text-sm font-semibold" style="color:var(--text-primary)">
+        No smart circuits detected</div>
+      <p class="text-sm mt-1" style="color:var(--text-secondary)">
+        The gateway reports circuit blocks whether or not an enclosure is fitted, so this
+        reads as "none installed" rather than assuming circuits exist.
+        Pin the count with <span class="font-mono">SMART_CIRCUIT_COUNT</span> if that's wrong.
+      </p>
+    </div>
+  </template>
+
+  <template x-if="data && data.installed && view === 'circuits'">
+    <div class="space-y-4">
+      <div class="text-xs" style="color:var(--text-secondary)">
+        <span x-text="`${data.count} circuit(s)`"></span>
+        · <span x-text="data.source === 'setting' ? 'from setting'
+                        : data.source === 'model+detected' ? 'model + detected' : 'detected'"></span>
+        <template x-if="data.gateway && data.gateway.known">
+          <span> · <span x-text="data.gateway.model"></span>
+            <span x-text="`(${data.gateway.country})`"></span>
+            <span x-show="data.gateway.expected_circuits"
+                  x-text="`· model supports ${data.gateway.expected_circuits}`"></span>
+          </span>
+        </template>
+        <template x-if="data.gateway && !data.gateway.known && data.gateway.sy_hd_version">
+          <span> · unknown model
+            <span class="font-mono" x-text="`(SyHdVersion ${data.gateway.sy_hd_version})`"></span>
+          </span>
+        </template>
+        <span x-show="data.merge"> · merged</span>
+      </div>
+
+      <div class="grid gap-4" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">
+        <template x-for="c in present" :key="c.id">
+          <div class="card overflow-hidden">
+            <div class="flex items-center justify-between px-4 py-3 border-b"
+                 style="border-color:var(--border)">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="w-2 h-2 rounded-full flex-shrink-0"
+                      :style="`background:${c.on ? '#34d399' : 'var(--text-secondary)'}`"></span>
+                <span class="font-semibold truncate" style="color:var(--text-primary)"
+                      x-text="c.name"></span>
+              </div>
+              <span class="text-xs font-semibold px-2 py-0.5 rounded"
+                    :style="c.on ? 'background:rgba(52,211,153,.15);color:#34d399'
+                                 : 'background:var(--surface-2);color:var(--text-secondary)'"
+                    x-text="c.on ? 'ON' : 'OFF'"></span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 px-4 py-3">
+              <div>
+                <div class="text-xs uppercase tracking-wide" style="color:var(--text-secondary)">
+                  Current draw</div>
+                <div class="text-lg font-semibold" style="color:var(--text-primary)"
+                     x-text="fmtW(c.watts)"></div>
+              </div>
+              <div>
+                <div class="text-xs uppercase tracking-wide" style="color:var(--text-secondary)">
+                  Energy (lifetime)</div>
+                <div class="text-lg font-semibold" style="color:var(--text-primary)"
+                     x-text="fmtKwh(c.energy_lifetime_kwh)"></div>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between px-4 py-3 border-t"
+                 style="border-color:var(--border)">
+              <div class="min-w-0">
+                <div class="text-sm" style="color:var(--text-primary)">Circuit power</div>
+                <div class="text-xs truncate" style="color:var(--text-secondary)">
+                  <span x-show="schedWindows(c).length" x-text="(schedWindows(c).some(w => w.enabled) ? 'Schedule' : 'Schedule (off)') + ' ·'"></span>
+                  <span x-show="c.soc_cutoff.soc"
+                        x-text="`SoC cutoff ${c.soc_cutoff.soc}%${c.soc_cutoff.enabled ? '' : ' (off)'}`"></span>
+                  <span x-show="!schedWindows(c).length && !c.soc_cutoff.soc">Manual</span>
+                </div>
+              </div>
+              <button role="switch" :aria-checked="c.on ? 'true' : 'false'"
+                      class="relative w-11 h-6 rounded-full transition-colors flex-shrink-0"
+                      :disabled="busy[c.id] || !$store.app.summary.writes_enabled"
+                      :title="$store.app.summary.writes_enabled ? ''
+                              : 'Writes are disabled (ALLOW_WRITES=true)'"
+                      :style="[c.on ? 'background:#34d399' : 'background:var(--surface-2)',
+                               (busy[c.id] || !$store.app.summary.writes_enabled)
+                                 ? 'opacity:0.6;cursor:not-allowed' : 'cursor:pointer'].join(';')"
+                      @click="toggle(c)">
+                <span class="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all"
+                      :style="c.on ? 'left:1.375rem' : 'left:0.125rem'"></span>
+              </button>
+            </div>
+
+            <!-- schedule is gateway-side and read-only; shown even when disabled (view-only) -->
+            <template x-if="schedWindows(c).length">
+              <div class="px-4 py-2 border-t text-xs" style="border-color:var(--border);color:var(--text-secondary)">
+                <div class="text-[10px] uppercase tracking-wide mb-1" style="color:var(--text-faint)">Schedule <span class="normal-case">(daily)</span></div>
+                <template x-for="(w, i) in schedWindows(c)" :key="i">
+                  <div class="flex items-center gap-2">
+                    <span class="font-mono" style="color:var(--text-primary)" x-text="w.open + '–' + w.close"></span>
+                    <span class="chip" :class="w.enabled ? 'ok' : 'muted'" style="font-size:.55rem" x-text="w.enabled ? 'enabled' : 'disabled'"></span>
+                  </div>
+                </template>
+                <div class="mt-1 opacity-70">Runs on the aGate — continues if the bridge stops.</div>
+                <div class="mt-1 opacity-70">Read-only: the gateway accepts schedule writes over the
+                  local protocol and then ignores them (tested 2026-09-14). Change schedules in the
+                  FranklinWH app.</div>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <!-- never hidden: say why it's absent -->
+        <template x-for="c in absent" :key="c.id">
+          <div class="card p-4 opacity-60">
+            <div class="font-semibold text-sm" style="color:var(--text-secondary)"
+                 x-text="c.name"></div>
+            <div class="text-xs mt-1" style="color:var(--text-secondary)" x-text="reason(c)"></div>
+            <div class="text-xs mt-2 opacity-70" style="color:var(--text-secondary)">
+              Override with <span class="font-mono">SMART_CIRCUIT_COUNT</span>.
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- CarSW: reported separately, never folded into circuit 3 -->
+      <template x-if="data.carsw && (data.carsw.watts !== null || data.carsw.export_lifetime_kwh)">
+        <div class="card p-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-sm font-semibold" style="color:var(--text-primary)">CarSW channel</div>
+              <div class="text-xs" style="color:var(--text-secondary)">
+                Metered separately from the numbered circuits
+                <span x-show="!data.carsw.enabled">· disabled</span>
+              </div>
+            </div>
+            <div class="text-right text-sm" style="color:var(--text-primary)">
+              <div x-text="fmtW(data.carsw.watts)"></div>
+              <div class="text-xs" style="color:var(--text-secondary)"
+                   x-text="`${fmtKwh(data.carsw.export_lifetime_kwh)} out · ${fmtKwh(data.carsw.import_lifetime_kwh)} in`"></div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+  </template>
+
+  <!-- Monitoring: real-time 1411 metering -->
+  <div x-show="view === 'monitor'" x-cloak class="space-y-3">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <div class="text-sm" style="color:var(--text-secondary)">
+        Live metering
+        <span class="font-mono text-xs opacity-70" x-show="$store.app.showRawKeys">· 1411</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="btn btn-secondary btn-sm" @click="loadMeter()">Refresh</button>
+        <button class="btn btn-sm" :class="auto ? 'btn-primary' : 'btn-secondary'"
+                @click="toggleAuto()">
+          <span x-text="auto ? 'Auto ● on' : 'Auto ○ off'"></span>
+        </button>
+        <select class="form-control form-control-sm w-20" x-model.number="intervalS"
+                @change="if (auto) { stopAuto(); toggleAuto(); }">
+          <option :value="2">2s</option><option :value="5">5s</option>
+          <option :value="10">10s</option><option :value="30">30s</option>
+        </select>
+      </div>
+    </div>
+
+    <template x-if="meter">
+      <div class="grid gap-4" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
+        <template x-for="g in monitorGroups" :key="g.title">
+          <div class="card overflow-hidden">
+            <div class="px-4 py-2 border-b text-xs uppercase tracking-wide"
+                 style="border-color:var(--border);color:var(--text-secondary)"
+                 x-text="g.title"></div>
+            <div>
+              <template x-for="r in g.rows" :key="r[0]">
+                <div class="flex items-center justify-between px-4 py-2 text-sm border-b last:border-0"
+                     style="border-color:var(--border)">
+                  <span style="color:var(--text-secondary)" x-text="r[0]"></span>
+                  <span class="font-mono" style="color:var(--text-primary)">
+                    <span x-text="scaled(r[1], r[3])"></span>
+                    <span class="text-xs opacity-70" x-show="r[1] !== null" x-text="r[2]"></span>
+                  </span>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+    </template>
+
+    <p class="text-xs" style="color:var(--text-secondary)">
+      Energy figures are lifetime counters. The gateway group is shared across payloads
+      (identical keys appear in 1901), so those are not per-circuit readings.
+    </p>
+  </div>
+
+  <template x-if="showRaw && raw">
+    <pre class="card p-4 text-xs overflow-auto font-mono" style="max-height:420px"
+         x-text="rawJson"></pre>
+  </template>
+
+  <!-- schedule editor -->
+  <div x-show="edit" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+       style="background:rgba(0,0,0,.6)" @click.self="closeEditor()">
+    <div class="card w-full max-w-lg p-5 space-y-4" x-show="edit">
+      <div>
+        <h3 class="text-lg font-semibold" style="color:var(--text-primary)">
+          Schedule — <span x-text="edit && edit.name"></span></h3>
+        <p class="text-xs mt-1" style="color:var(--text-secondary)">
+          Two on/off windows, run by the aGate itself. Times are HH:MM; an end must be
+          after its start, and enabled windows may not overlap.
+        </p>
+      </div>
+
+      <template x-for="(w, i) in (edit ? edit.windows : [])" :key="i">
+        <div class="rounded-lg border p-3 space-y-2" style="border-color:var(--border)">
+          <label class="flex items-center gap-2 text-sm" style="color:var(--text-primary)">
+            <input type="checkbox" x-model="w.enabled">
+            <span x-text="`Window ${i + 1}`"></span>
+          </label>
+          <div class="flex items-center gap-2 text-sm">
+            <span style="color:var(--text-secondary)">On</span>
+            <input type="time" class="form-control form-control-sm" x-model="w.start">
+            <span style="color:var(--text-secondary)">Off</span>
+            <input type="time" class="form-control form-control-sm" x-model="w.end">
+          </div>
+        </div>
+      </template>
+
+      <div class="rounded-lg px-3 py-2 text-xs"
+           style="background:rgba(245,158,11,.1);color:#fbbf24">
+        The schedule write has not been exercised on hardware — the on/off write on the
+        same command is proven, but this one is not. It re-reads to verify, and the whole
+        block is echoed back so the other circuit's schedule is preserved. Try it on a
+        spare circuit first.
+      </div>
+
+      <div class="flex justify-end gap-2">
+        <button class="btn btn-secondary btn-sm" @click="closeEditor()">Cancel</button>
+        <button class="btn btn-primary btn-sm" :disabled="saving" @click="saveSchedule()"
+                x-text="saving ? 'Saving…' : 'Save schedule'"></button>
+      </div>
+    </div>
+  </div>
+
+  <div x-show="view === 'circuits' && !data && !loading && !error" class="card p-8 text-center text-sm"
+       style="color:var(--text-secondary)">No reading yet.</div>
+</div>

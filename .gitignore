@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual envs
+venv/
+.venv/
+env/
+
+# Runtime data / secrets
+/data/
+*.env
+.env
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# built lib wheels (copied in at image build)
+wheels/*.whl
+data-demo/
+
+# built docs (bundled at image build; keep the dir, ignore the build)
+docs_site/*
+!docs_site/.gitkeep
+tools/backup_dev_to_icloud.sh
+tools/com.david2069.dev-icloud-backup.plist

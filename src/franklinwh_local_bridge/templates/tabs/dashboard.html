@@ -1,0 +1,745 @@
+<!-- ── Dashboard Tab ──────────────────────────────────────── -->
+<div class="space-y-6">
+
+  <!-- real-time auto-paused notice -->
+  <div x-show="$store.app.dashCapped"
+       class="flex items-center justify-between gap-3 px-3 py-2 rounded text-sm"
+       style="background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.35);color:var(--text)">
+    <span>
+      Live dashboard paused after <span x-text="$store.app.liveCapMinutes('dashboard')"></span> min to limit memory and device
+      polling (Settings → Real-time limits). The last data is kept.
+    </span>
+    <button class="btn btn-primary btn-sm shrink-0" @click="$store.app.resumeDashboard()">Resume live</button>
+  </div>
+
+  <!-- Card customisation (show/hide; per browser). Based on the Modbus Bridge "Cards". -->
+  <div class="flex justify-end -mb-2">
+    <button @click="$store.app.dashCardsOpen = !$store.app.dashCardsOpen"
+            class="btn btn-secondary btn-sm inline-flex items-center gap-1.5"
+            :class="$store.app.dashCardsOpen ? 'btn-primary' : ''" title="Show / hide dashboard cards">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M7 12h10M10 18h4"/>
+      </svg>
+      Cards
+    </button>
+  </div>
+  <div x-show="$store.app.dashCardsOpen" x-transition.duration.200ms x-cloak class="card !p-3">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-[10px] uppercase text-slate-500 font-semibold tracking-wider">Cards — show &amp; reorder</span>
+      <button @click="$store.app.resetDashCards()"
+              class="text-[10px] text-slate-500 hover:text-cyan-400 transition" title="Reset to defaults">Reset Defaults</button>
+    </div>
+    <!-- Touch-friendly: toggle on the LEFT, reorder arrows on the RIGHT (label between
+         them) so the two controls can't be confused; every target padded to ~34px. -->
+    <div class="grid sm:grid-cols-2 gap-x-4 gap-y-0.5">
+      <template x-for="([key, label], i) in $store.app.dashOrderedList" :key="key">
+        <div class="flex items-center gap-3 text-[13px] py-1">
+          <button type="button" role="switch" :aria-checked="$store.app.dashCards[key]"
+                  @click="$store.app.toggleDashCard(key)"
+                  class="relative inline-flex h-5 w-9 items-center rounded-full transition shrink-0"
+                  :class="$store.app.dashCards[key] ? 'bg-emerald-500' : 'bg-slate-500/60'">
+            <span class="inline-block h-4 w-4 rounded-full bg-white shadow transition"
+                  :class="$store.app.dashCards[key] ? 'translate-x-4' : 'translate-x-0.5'"></span>
+          </button>
+          <span class="flex-1 truncate" x-text="label"
+                :class="$store.app.dashCards[key] ? '' : 'text-slate-500'"></span>
+          <div class="flex items-center gap-1 shrink-0">
+            <button class="p-1.5 rounded-md text-slate-400 hover:bg-slate-500/20 hover:text-slate-600 dark:hover:text-slate-200 disabled:opacity-25 disabled:hover:bg-transparent transition"
+                    :disabled="i === 0" @click="$store.app.moveDashCard(key, -1)" title="Move up" aria-label="Move up">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.25" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18 15l-6-6-6 6"/></svg>
+            </button>
+            <button class="p-1.5 rounded-md text-slate-400 hover:bg-slate-500/20 hover:text-slate-600 dark:hover:text-slate-200 disabled:opacity-25 disabled:hover:bg-transparent transition"
+                    :disabled="i === $store.app.dashOrderedList.length - 1" @click="$store.app.moveDashCard(key, 1)" title="Move down" aria-label="Move down">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.25" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
+            </button>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Top row: SoC ring + power-flow metrics -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+    <!-- Battery State of Charge -->
+    <div class="card" x-show="$store.app.dashCards.socRing" :style="$store.app.dashCardStyle('socRing')">
+      <div class="flex items-baseline justify-between gap-2 mb-3">
+        <span class="card-label">Battery State of Charge</span>
+        <span class="text-[11px]" style="color:var(--text-faint)" x-show="$store.app.gwModel"
+              x-text="$store.app.gwModel + ($store.app.gwModelCountry ? ' · ' + $store.app.gwModelCountry : '')"></span>
+      </div>
+      <div class="flex items-center gap-5">
+        <div class="soc-ring">
+          <svg viewBox="0 0 100 100">
+            <circle class="soc-ring-track" cx="50" cy="50" r="40"/>
+            <circle class="soc-ring-fill" cx="50" cy="50" r="40"
+                    :stroke="socColour($store.app.socPct)"
+                    :stroke-dashoffset="$store.app.ringOffset"/>
+            <!-- Reserve-SoC marker for the ACTIVE mode -->
+            <line x-show="$store.app.socReserveTick" x-cloak
+                  :x1="$store.app.socReserveTick && $store.app.socReserveTick.x1"
+                  :y1="$store.app.socReserveTick && $store.app.socReserveTick.y1"
+                  :x2="$store.app.socReserveTick && $store.app.socReserveTick.x2"
+                  :y2="$store.app.socReserveTick && $store.app.socReserveTick.y2"
+                  stroke="var(--warn,#f59e0b)" stroke-width="3" stroke-linecap="round">
+              <title x-text="$store.app.socReserveTick ? ('Reserve ' + $store.app.socReserveTick.pct + '% (' + $store.app.activeMode + ')') : ''"></title>
+            </line>
+          </svg>
+          <div class="soc-ring-text">
+            <span x-text="fmt.soc($store.app.socPct)"></span>
+            <span class="text-[10px] text-slate-500 font-medium">%</span>
+          </div>
+        </div>
+        <div class="flex-1 text-sm space-y-1">
+          <div class="flex justify-between gap-2">
+            <span class="text-slate-500">Mode
+              <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]"
+                    style="color:var(--text-faint)" x-text="$store.app.srcTag('name', 1301)"></span></span>
+            <span class="font-medium" x-text="$store.app.activeMode"></span>
+          </div>
+          <div class="flex justify-between gap-2">
+            <span class="text-slate-500">Battery
+              <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]"
+                    style="color:var(--text-faint)" x-text="$store.app.srcTag('p_fhp', 1301)"></span></span>
+            <span class="font-mono"
+                  :style="'color:' + powerColour($store.app.power.battery_w, 'battery')"
+                  x-text="$store.app.chargeState"></span>
+          </div>
+          <div class="flex justify-between gap-2">
+            <span class="text-slate-500">Run status
+              <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]"
+                    style="color:var(--text-faint)" x-text="$store.app.srcTag('run_status', 1301)"></span></span>
+            <span class="inline-flex items-center gap-1.5">
+              <!-- backend source of the dispatch: VPP=Cloud, FORCE=Modbus (guarded) -->
+              <span x-show="$store.app.isForced" x-cloak class="chip inline-flex items-center"
+                    style="font-size:.55rem;padding:0 6px"
+                    :class="$store.app.capState($store.app.isVpp ? 'cloud' : 'modbus').ok ? 'ok' : 'warn'"
+                    :title="$store.app.capState($store.app.isVpp ? 'cloud' : 'modbus').hint"
+                    x-text="$store.app.isVpp ? 'Cloud' : 'Modbus'"></span>
+              <span class="font-mono"
+                    :class="$store.app.isForced ? 'text-violet-300' : 'text-slate-400'"
+                    x-text="$store.app.runStatusLabel"></span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Power flow -->
+    <div class="card lg:col-span-2" x-show="$store.app.dashCards.powerFlow" :style="$store.app.dashCardStyle('powerFlow')">
+      <div class="card-label mb-3">Power Flow</div>
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <!-- Grid -->
+        <div class="text-center">
+          <div class="text-[0.7rem] uppercase tracking-wider text-slate-500 mb-1">Grid</div>
+          <div class="text-lg font-bold font-mono"
+               :style="'color:' + powerColour($store.app.power.grid_w, 'grid')"
+               x-text="$store.app.fmtPower($store.app.power.grid_w)"></div>
+          <div x-show="$store.app.showRawKeys" class="font-mono text-[9px] mt-0.5"
+               style="color:var(--text-faint)" x-text="$store.app.srcTag('p_uti', 1301)"></div>
+        </div>
+        <!-- Solar -->
+        <div class="text-center">
+          <div class="text-[0.7rem] uppercase tracking-wider text-slate-500 mb-1">Solar</div>
+          <div class="text-lg font-bold font-mono"
+               :style="'color:' + powerColour($store.app.power.solar_w, 'solar')"
+               x-text="$store.app.fmtPower($store.app.power.solar_w)"></div>
+          <div x-show="$store.app.showRawKeys" class="font-mono text-[9px] mt-0.5"
+               style="color:var(--text-faint)" x-text="$store.app.srcTag('p_sun', 1301)"></div>
+        </div>
+        <!-- Battery -->
+        <div class="text-center">
+          <div class="text-[0.7rem] uppercase tracking-wider text-slate-500 mb-1">Battery</div>
+          <div class="text-lg font-bold font-mono"
+               :style="'color:' + powerColour($store.app.power.battery_w, 'battery')"
+               x-text="$store.app.fmtPower($store.app.power.battery_w)"></div>
+          <div x-show="$store.app.showRawKeys" class="font-mono text-[9px] mt-0.5"
+               style="color:var(--text-faint)" x-text="$store.app.srcTag('p_fhp', 1301)"></div>
+        </div>
+        <!-- Load -->
+        <div class="text-center">
+          <div class="text-[0.7rem] uppercase tracking-wider text-slate-500 mb-1">Load</div>
+          <div class="text-lg font-bold font-mono text-slate-200"
+               x-text="$store.app.fmtPower($store.app.power.load_w)"></div>
+          <div x-show="$store.app.showRawKeys" class="font-mono text-[9px] mt-0.5"
+               style="color:var(--text-faint)" x-text="$store.app.srcTag('p_load', 1301)"></div>
+        </div>
+        <!-- Generator — only when a genset is installed/configured (else it's a permanent 0 W) -->
+        <div class="text-center" x-show="$store.app.generatorInstalled" x-cloak>
+          <div class="text-[0.7rem] uppercase tracking-wider text-slate-500 mb-1">Generator</div>
+          <div class="text-lg font-bold font-mono text-slate-200"
+               x-text="$store.app.fmtPower($store.app.power.generator_w)"></div>
+          <div x-show="$store.app.showRawKeys" class="font-mono text-[9px] mt-0.5"
+               style="color:var(--text-faint)" x-text="$store.app.srcTag('p_gen', 1301)"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Battery (real local fields only: run status, ambient temp, per-module SoC/power) -->
+    <div class="card lg:col-span-2" x-show="$store.app.dashCards.battery" :style="$store.app.dashCardStyle('battery')">
+      <div class="flex items-center justify-between mb-3">
+        <div class="card-label" style="margin-bottom:0">Battery</div>
+        <span class="chip"
+              :class="$store.app.battery.run_status === 1 ? 'ok' :
+                      $store.app.battery.run_status === 2 ? 'warn' : 'muted'"
+              x-text="$store.app.battery.run_status_desc || '--'"></span>
+      </div>
+      <div class="flex flex-wrap gap-x-8 gap-y-2 text-sm mb-3">
+        <div class="flex items-center gap-2">
+          <span class="text-slate-500">Ambient</span>
+          <span class="font-mono text-slate-200" x-text="$store.app.fmtTemp($store.app.battery.t_amb)"></span>
+          <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]"
+                style="color:var(--text-faint)" x-text="$store.app.srcTag('t_amb', 1301)"></span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-slate-500">Modules</span>
+          <span class="font-mono text-slate-200" x-text="$store.app.battery.count ?? '--'"></span>
+          <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]"
+                style="color:var(--text-faint)" x-text="$store.app.srcTag('fhpSn', 1301)"></span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-slate-500">Pack SoC</span>
+          <span class="font-mono text-slate-200" x-text="fmt.socPct($store.app.battery.soc)"></span>
+          <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]"
+                style="color:var(--text-faint)" x-text="$store.app.srcTag('fhpSoc', 1301)"></span>
+        </div>
+      </div>
+      <!-- Per-module rows (serial short + SoC% + power) -->
+      <div class="space-y-1" x-show="($store.app.battery.modules || []).length">
+        <template x-for="(m, i) in ($store.app.battery.modules || [])" :key="m.sn || i">
+          <div class="flex items-center justify-between text-xs px-2 py-1.5 rounded"
+               style="background:var(--surface-1)">
+            <span class="font-mono text-slate-400"
+                  x-text="'#' + (i + 1) + ' · ' + (m.sn ? String(m.sn).slice(-6) : '—')"></span>
+            <div class="flex items-center gap-4">
+              <span class="font-mono text-slate-200" x-text="fmt.socPct(m.soc)"></span>
+              <span class="font-mono text-slate-300" x-text="$store.app.fmtPowerKw(m.power_kw)"></span>
+            </div>
+          </div>
+        </template>
+      </div>
+      <div class="text-xs text-slate-500" x-show="!($store.app.battery.modules || []).length">
+        No per-module detail reported by this gateway.
+      </div>
+    </div>
+
+    <!-- Today's Energy (daily kWh from power_flow; local gives daily, not lifetime) -->
+    <div class="card" x-show="$store.app.dashCards.energyToday" :style="$store.app.dashCardStyle('energyToday')">
+      <div class="flex items-center justify-between mb-3">
+        <div class="card-label" style="margin-bottom:0">Energy</div>
+        <span class="chip muted">Today</span>
+      </div>
+      <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+        <div class="flex justify-between gap-2"><span class="text-slate-500">Solar
+          <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('kwh_sun', 1301)"></span></span>
+          <span class="font-mono text-slate-200" x-text="$store.app.fmtKwh($store.app.energyToday.solar)"></span></div>
+        <div class="flex justify-between gap-2"><span class="text-slate-500">Home
+          <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('kwh_load', 1301)"></span></span>
+          <span class="font-mono text-slate-200" x-text="$store.app.fmtKwh($store.app.energyToday.home)"></span></div>
+        <div class="flex justify-between gap-2"><span class="text-slate-500">Charged
+          <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('kwh_fhp_chg', 1301)"></span></span>
+          <span class="font-mono text-slate-200" x-text="$store.app.fmtKwh($store.app.energyToday.charged)"></span></div>
+        <div class="flex justify-between gap-2"><span class="text-slate-500">Discharged
+          <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('kwh_fhp_di', 1301)"></span></span>
+          <span class="font-mono text-slate-200" x-text="$store.app.fmtKwh($store.app.energyToday.discharged)"></span></div>
+        <div class="flex justify-between gap-2"><span class="text-slate-500">Grid in
+          <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('kwh_uti_in', 1301)"></span></span>
+          <span class="font-mono text-slate-200" x-text="$store.app.fmtKwh($store.app.energyToday.grid_in)"></span></div>
+        <div class="flex justify-between gap-2"><span class="text-slate-500">Grid out
+          <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('kwh_uti_out', 1301)"></span></span>
+          <span class="font-mono text-slate-200" x-text="$store.app.fmtKwh($store.app.energyToday.grid_out)"></span></div>
+      </div>
+      <div class="text-[0.65rem] text-slate-500 mt-3">kWh · resets daily</div>
+    </div>
+
+  <!-- Energy Flow (Sankey) — reconstructed from power samples, with a day picker -->
+  <div class="card lg:col-span-3" x-data="energyFlowCard()" x-init="init()" x-show="$store.app.dashCards.energyFlow" :style="$store.app.dashCardStyle('energyFlow')">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+      <div class="card-label" style="margin-bottom:0">Energy Flow</div>
+      <!-- Period presets — week/month/year are anchored on the chosen date. -->
+      <div class="flex items-center gap-1">
+        <template x-for="p in ['day','week','month','year']" :key="p">
+          <button class="btn btn-sm" :class="period === p ? 'btn-primary' : 'btn-secondary'"
+                  @click="setPeriod(p)" x-text="p.charAt(0).toUpperCase() + p.slice(1)"></button>
+        </template>
+      </div>
+    </div>
+    <div class="flex flex-wrap items-center gap-1.5 mb-3">
+      <button class="btn btn-secondary btn-sm" @click="shiftDay(-1)" :title="'Previous ' + period">‹</button>
+      <input type="date" class="form-control form-control-sm text-center flex-1 min-w-[8rem]"
+             x-model="day" :max="today" @change="load()">
+      <button class="btn btn-secondary btn-sm" @click="shiftDay(1)" :disabled="atToday()" :title="'Next ' + period">›</button>
+      <button class="btn btn-secondary btn-sm" @click="goToday()" :disabled="atToday()">Today</button>
+      <span class="chip muted text-center" x-show="period !== 'day'" x-text="spanLabel"></span>
+    </div>
+
+    <div class="fwh-sankey" x-ref="sankey" style="min-height:260px"></div>
+
+    <!-- Day node totals (x-if, not x-show: x-show still evaluates nodes.* when null) -->
+    <template x-if="nodes">
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-xs mt-3">
+      <div class="flex justify-between gap-2"><span style="color:var(--solar,#f59e0b)">Solar</span>
+        <span class="font-mono" style="color:var(--text-secondary)" x-text="kwh(nodes.solar)"></span></div>
+      <div class="flex justify-between gap-2"><span style="color:var(--accent,#22d3ee)">Home</span>
+        <span class="font-mono" style="color:var(--text-secondary)" x-text="kwh(nodes.home)"></span></div>
+      <div class="flex justify-between gap-2"><span style="color:var(--ok,#34d399)">Charged</span>
+        <span class="font-mono" style="color:var(--text-secondary)" x-text="kwh(nodes.battery_charge)"></span></div>
+      <div class="flex justify-between gap-2"><span style="color:var(--ok,#34d399)">Discharged</span>
+        <span class="font-mono" style="color:var(--text-secondary)" x-text="kwh(nodes.battery_discharge)"></span></div>
+      <div class="flex justify-between gap-2"><span style="color:var(--violet,#a78bfa)">Export</span>
+        <span class="font-mono" style="color:var(--text-secondary)" x-text="kwh(nodes.grid_export)"></span></div>
+      <div class="flex justify-between gap-2"><span style="color:var(--danger,#f87171)">Import</span>
+        <span class="font-mono" style="color:var(--text-secondary)" x-text="kwh(nodes.grid_import)"></span></div>
+    </div>
+    </template>
+
+    <div class="text-[0.65rem] mt-3" :class="warn ? 'text-amber-400' : 'text-slate-500'"
+         x-text="quality"></div>
+  </div>
+
+  <!-- Operating Mode & Reserves (mobile-first: LED · tap name to switch · reserve in a modal) -->
+  <div class="card lg:col-span-3" style="padding:0;overflow:hidden"
+       x-data="{
+         resvOpen:false, resvMode:null, resvVal:'', resvStatus:'form', resvMsg:'', resvBusy:false,
+         resvReset(m){ this.resvMode=m; this.resvVal=(m.reserved_soc ?? ''); this.resvStatus='form'; this.resvMsg=''; this.resvBusy=false; this.resvOpen=true; },
+         async resvSave(){
+           const pct = parseInt(this.resvVal, 10);
+           if (isNaN(pct) || pct<0 || pct>100){ this.resvStatus='error'; this.resvMsg='Reserve must be 0–100%.'; return; }
+           this.resvBusy=true; this.resvStatus='saving'; this.resvMsg='';
+           const res = await this.$store.app.applyReserve(this.$store.app.modeAlias(this.resvMode.name), pct);
+           this.resvBusy=false;
+           if (res.ok){
+             this.resvStatus='ok';
+             this.resvMsg='Reserve set to '+pct+'% — syncing to the aGate (~8s).';
+             setTimeout(()=>this.$store.app.poll(), 8500);
+           } else {
+             this.resvStatus='error';
+             this.resvMsg=res.detail || 'Reserve change failed.';
+           }
+         }
+       }"
+       x-show="$store.app.dashCards.operatingMode" :style="$store.app.dashCardStyle('operatingMode')">
+    <div class="px-5 py-3 border-b border-white/[0.06] flex items-center gap-2">
+      <div class="card-label" style="margin-bottom:0">Operating Mode &amp; Reserves</div>
+      <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]"
+            style="color:var(--text-faint)" x-text="$store.app.srcTag('list', 1726)"></span>
+    </div>
+    <div class="divide-y divide-white/[0.06]">
+      <template x-for="m in $store.app.modes" :key="m.name">
+        <div class="flex items-center gap-3 px-5 py-3" :style="m.active ? 'box-shadow:inset 3px 0 0 var(--accent)' : ''">
+          <!-- active LED -->
+          <span class="w-2.5 h-2.5 rounded-full shrink-0"
+                :style="m.active ? 'background:var(--ok,#10b981);box-shadow:0 0 6px var(--ok,#10b981)' : 'background:transparent;border:1.5px solid var(--border)'"></span>
+          <!-- mode name (tap to switch) + tariff -->
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <button type="button" class="font-medium text-left"
+                      :class="(!m.active && $store.app.summary.writes_enabled) ? 'hover:underline cursor-pointer' : 'cursor-default'"
+                      :style="m.active ? 'color:var(--accent)' : 'color:var(--text-primary)'"
+                      :disabled="m.active || !$store.app.summary.writes_enabled"
+                      @click="$store.app.setMode($store.app.modeAlias(m.name))">
+                <span x-text="m.name"></span>
+              </button>
+              <span x-show="m.active" class="chip ok" style="font-size:.55rem">Active now</span>
+            </div>
+            <div class="text-[0.7rem] text-slate-500 truncate" x-show="m.tariff" x-text="m.tariff"></div>
+          </div>
+          <!-- reserve value (read-only) + Set (opens modal) -->
+          <div class="flex items-center gap-2 shrink-0">
+            <span class="text-[0.7rem] text-slate-500 hidden sm:inline">Reserve</span>
+            <span class="font-mono text-sm" style="color:var(--text-primary)" x-text="(m.reserved_soc ?? '--') + '%'"></span>
+            <button type="button" x-show="m.name !== 'Emergency Backup'"
+                    class="btn btn-secondary btn-sm !py-0.5 !px-2 text-[11px]"
+                    :disabled="!$store.app.reserveEditable || !$store.app.summary.writes_enabled"
+                    :title="$store.app.reserveEditable ? 'Set reserve SoC' : 'Needs a valid cloud connection'"
+                    @click="resvReset(m)">Set</button>
+          </div>
+        </div>
+      </template>
+    </div>
+    <div x-show="!$store.app.reserveEditable" class="px-5 py-2 text-[11px]" style="color:var(--text-faint)">
+      Reserve SoC editing needs a valid cloud connection (Settings → Cloud). Mode switching works locally.
+    </div>
+
+    <!-- Reserve-SoC modal — stays open through the whole cloud write lifecycle:
+         form → saving (spinner) → success / error (Retry). Not dismissable while busy. -->
+    <div x-show="resvOpen" x-cloak class="fixed inset-0 z-[115] flex items-center justify-center p-4"
+         @keydown.escape.window="if(!resvBusy) resvOpen=false">
+      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="if(!resvBusy) resvOpen=false"></div>
+      <div class="relative w-full max-w-xs rounded-xl border shadow-2xl" style="background:var(--surface-0,#0f172a);border-color:var(--border)">
+        <div class="px-5 py-3 border-b" style="border-color:var(--border)">
+          <div class="text-sm font-semibold" style="color:var(--text-primary)">Set reserve SoC · <span x-text="resvMode ? resvMode.name : ''"></span></div>
+        </div>
+
+        <!-- 1 · form -->
+        <template x-if="resvStatus==='form'">
+          <div>
+            <div class="px-5 py-4">
+              <label class="text-xs text-slate-500">Reserve SoC (%)
+                <input type="number" min="0" max="100" class="form-control form-control-sm w-full mt-1"
+                       x-model="resvVal" @keydown.enter="resvSave()"></label>
+              <p class="text-[11px] mt-2" style="color:var(--text-faint)">Written via the cloud (updateSocV2). The battery keeps at least this charge in this mode.</p>
+            </div>
+            <div class="px-5 py-3 border-t flex justify-end gap-2" style="border-color:var(--border)">
+              <button class="btn btn-secondary btn-sm" @click="resvOpen=false">Cancel</button>
+              <button class="btn btn-primary btn-sm" :disabled="resvVal===''" @click="resvSave()">Save</button>
+            </div>
+          </div>
+        </template>
+
+        <!-- 2 · saving (cannot be dismissed) -->
+        <template x-if="resvStatus==='saving'">
+          <div class="px-5 py-6 flex flex-col items-center gap-3 text-center">
+            <svg class="w-6 h-6 animate-spin" style="color:var(--accent)" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/>
+              <path class="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/>
+            </svg>
+            <div class="text-sm" style="color:var(--text-primary)">Writing to the FranklinWH cloud…</div>
+            <div class="text-[11px]" style="color:var(--text-faint)">Waiting for the cloud to confirm (updateSocV2).</div>
+          </div>
+        </template>
+
+        <!-- 3 · success -->
+        <template x-if="resvStatus==='ok'">
+          <div>
+            <div class="px-5 py-5 flex flex-col items-center gap-2 text-center">
+              <svg class="w-7 h-7" style="color:var(--ok,#10b981)" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+              <div class="text-sm font-semibold" style="color:var(--text-primary)" x-text="resvMsg"></div>
+              <div class="text-[11px]" style="color:var(--text-faint)">The aGate's mode list reflects it within ~8s.</div>
+            </div>
+            <div class="px-5 py-3 border-t flex justify-end" style="border-color:var(--border)">
+              <button class="btn btn-primary btn-sm" @click="resvOpen=false">Done</button>
+            </div>
+          </div>
+        </template>
+
+        <!-- 4 · error / timeout -->
+        <template x-if="resvStatus==='error'">
+          <div>
+            <div class="px-5 py-5 flex flex-col items-center gap-2 text-center">
+              <svg class="w-7 h-7" style="color:var(--danger,#ef4444)" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+              <div class="text-sm font-semibold" style="color:var(--text-primary)">Reserve change failed</div>
+              <div class="text-[11px]" style="color:var(--text-secondary)" x-text="resvMsg"></div>
+            </div>
+            <div class="px-5 py-3 border-t flex justify-end gap-2" style="border-color:var(--border)">
+              <button class="btn btn-secondary btn-sm" @click="resvOpen=false">Close</button>
+              <button class="btn btn-secondary btn-sm" @click="resvStatus='form'; resvMsg=''">Edit</button>
+              <button class="btn btn-primary btn-sm" @click="resvSave()">Retry</button>
+            </div>
+          </div>
+        </template>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Status row -->
+  <div class="metrics-grid lg:col-span-3" style="margin-bottom:0" x-show="$store.app.dashCards.diagnostics" :style="$store.app.dashCardStyle('diagnostics')">
+    <div class="card metric-card">
+      <div class="metric-label">Round-trip latency</div>
+      <div class="metric-value"><span x-text="fmt.ms($store.app.summary.latency_ms)"></span><span class="unit">ms</span></div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-label">Modbus :502</div>
+      <div class="mt-1">
+        <span class="chip ok" x-show="$store.app.summary.modbus_502">Up</span>
+        <span class="chip error" x-show="!$store.app.summary.modbus_502">Down</span>
+      </div>
+      <div class="metric-sub">Ping: <span x-text="$store.app.summary.ping ?? 'n/a'"></span></div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-label">SunSpec Modbus
+        <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]"
+              style="color:var(--text-faint)" x-text="$store.app.srcTag('sunsMdEn', 1205)"></span></div>
+      <div class="mt-1">
+        <span class="chip ok" x-show="($store.app.summary.der_comms?.sunsMdEn ?? 0) === 1">Enabled</span>
+        <span class="chip muted" x-show="($store.app.summary.der_comms?.sunsMdEn ?? 0) !== 1">Disabled</span>
+      </div>
+      <div class="metric-sub">IEEE 2030.5/CSIP:
+        <span x-text="($store.app.summary.der_comms?.sep2 ?? 0) === 1 ? 'Enabled' : 'Disabled'"></span></div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-label">MQTT</div>
+      <div class="mt-1">
+        <span class="chip ok" x-show="$store.app.summary.mqtt_enabled">Enabled</span>
+        <span class="chip muted" x-show="!$store.app.summary.mqtt_enabled">Disabled</span>
+      </div>
+      <div class="metric-sub">Writes: <span x-text="$store.app.summary.writes_enabled ? 'on' : 'off'"></span></div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-label">Firmware
+        <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]"
+              style="color:var(--text-faint)" x-text="$store.app.srcTag('IBG_VER', 1101)"></span></div>
+      <div class="text-sm font-mono text-slate-200 mt-1 break-all" x-text="$store.app.summary.firmware?.IBG_VER || '--'"></div>
+      <div class="metric-sub">Host: <span x-text="$store.app.summary.host || '--'"></span></div>
+    </div>
+  </div>
+
+  <!-- Solar Forecast (Open-Meteo weather + PV production) -->
+  <div class="card lg:col-span-3" x-data="solarForecastCard()" x-init="init()" x-show="$store.app.dashCards.solarForecast" :style="$store.app.dashCardStyle('solarForecast')">
+    <div class="flex items-center justify-between gap-2 flex-wrap mb-3">
+      <div class="flex items-center gap-2">
+        <span class="card-label" style="margin-bottom:0">Solar Forecast</span>
+        <span x-show="configured && current.temp_c != null" class="chip muted" style="font-size:.65rem"
+              x-text="fmt(current.temp_c,1) + '°C · ' + (current.condition || '')"></span>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-[10px]" style="color:var(--text-faint)">Open-Meteo</span>
+        <button @click="load(true)" class="chip muted" style="font-size:.65rem" :disabled="loading"
+                x-text="loading ? '…' : 'Refresh'"></button>
+      </div>
+    </div>
+
+    <div x-show="data && !configured" class="text-xs p-4 text-center" style="color:var(--text-secondary)">
+      <span x-text="(data && data.reason) || 'Solar forecast not configured.'"></span>
+      <div class="mt-2">
+        <button @click="$store.app.setActiveTab('settings')" class="btn btn-secondary btn-sm">Open Settings</button>
+      </div>
+    </div>
+
+    <template x-if="configured">
+      <div class="space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="rounded-lg p-3" style="background:var(--surface-1);border:1px solid #fbbf2440">
+            <div class="text-[10px] uppercase tracking-wide" style="color:#fbbf24"
+                 x-text="today ? new Date(today.date).toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'}) : 'Today'"></div>
+            <div class="mt-1"><span class="text-xl font-semibold" style="color:var(--text-primary)" x-text="today ? fmt(today.total_kwh,1) : '–'"></span>
+              <span class="text-xs" style="color:var(--text-secondary)">kWh</span></div>
+            <div class="text-xs" style="color:var(--text-faint)" x-show="today">Peak <span x-text="fmt(today.peak_kw,2)"></span> kW @ <span x-text="today && today.peak_time"></span></div>
+            <div class="mt-1.5 pt-1.5" style="border-top:1px solid var(--border)" x-show="today && actualSolarKwh != null" x-cloak>
+              <div class="flex items-baseline justify-between text-[11px]">
+                <span style="color:var(--text-secondary)">Actual so far</span>
+                <span><span class="font-semibold" style="color:var(--text-primary)" x-text="fmt(actualSolarKwh,1)"></span><span style="color:var(--text-faint)"> kWh · </span><span style="color:var(--text-secondary)" x-text="(actualPct!=null?actualPct:'–') + '%'"></span></span>
+              </div>
+              <div class="mt-1 h-1.5 rounded-full overflow-hidden" style="background:var(--surface-2)">
+                <div class="h-full rounded-full" :style="'width:'+Math.min(100, actualPct||0)+'%;background:#fbbf24'"></div>
+              </div>
+              <div class="text-[10px] mt-0.5" x-show="vsExpected" :style="vsExpected && vsExpected.ahead ? 'color:#34d399' : 'color:#f59e0b'" x-text="vsExpected ? ('vs forecast to now: ' + vsExpected.label) : ''"></div>
+              <div class="text-[10px] mt-1 flex flex-wrap gap-x-2 gap-y-0.5" style="color:var(--text-secondary)" x-show="solarSplit || (($store.app.summary.power||{}).soc != null)">
+                <template x-if="solarSplit">
+                  <span class="flex gap-x-2 flex-wrap">
+                    <span><span style="color:var(--text-faint)">→home</span> <span class="font-semibold" style="color:var(--text-primary)" x-text="fmt(solarSplit.home,1)"></span></span>
+                    <span><span style="color:var(--text-faint)">→batt</span> <span class="font-semibold" style="color:var(--text-primary)" x-text="fmt(solarSplit.battery,1)"></span></span>
+                    <span><span style="color:var(--text-faint)">→grid</span> <span class="font-semibold" style="color:var(--text-primary)" x-text="fmt(solarSplit.grid,1)"></span> <span style="color:var(--text-faint)">kWh</span></span>
+                  </span>
+                </template>
+                <span x-show="($store.app.summary.power||{}).soc != null"><span style="color:var(--text-faint)">SoC</span> <span class="font-semibold" style="color:var(--text-primary)" x-text="Math.round(($store.app.summary.power||{}).soc||0) + '%'"></span></span>
+              </div>
+            </div>
+          </div>
+          <div class="rounded-lg p-3" style="background:var(--surface-1);border:1px solid #38bdf840">
+            <div class="text-[10px] uppercase tracking-wide" style="color:#38bdf8"
+                 x-text="tomorrow ? new Date(tomorrow.date).toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'}) : 'Tomorrow'"></div>
+            <div class="mt-1"><span class="text-xl font-semibold" style="color:var(--text-primary)" x-text="tomorrow ? fmt(tomorrow.total_kwh,1) : '–'"></span>
+              <span class="text-xs" style="color:var(--text-secondary)">kWh</span></div>
+            <div class="text-xs" style="color:var(--text-faint)" x-show="tomorrow">Peak <span x-text="fmt(tomorrow.peak_kw,2)"></span> kW @ <span x-text="tomorrow && tomorrow.peak_time"></span></div>
+          </div>
+        </div>
+
+        <div class="relative" style="height:90px">
+          <!-- faint gridlines (Energipays-style) behind the bars -->
+          <div class="absolute inset-0 flex flex-col justify-between pointer-events-none" aria-hidden="true">
+            <div style="border-top:1px solid var(--border);opacity:.7"></div>
+            <div style="border-top:1px solid var(--border);opacity:.4"></div>
+            <div style="border-top:1px solid var(--border);opacity:.7"></div>
+          </div>
+          <div class="flex items-end gap-px h-full relative">
+            <template x-for="(bar, i) in bars" :key="i">
+              <div class="flex-1 relative h-full" style="min-width:1px">
+                <div class="absolute bottom-0 left-0 right-0 rounded-t"
+                     :title="bar.hm + ' · ' + fmt(bar.kw,2) + ' kW'"
+                     :style="'height:'+bar.h+'%;opacity:'+(bar.isNow ? '1' : '.85')+';background:linear-gradient(to top, '+(bar.isToday ? '#f59e0b, #fcd34d' : '#0ea5e9, #7dd3fc')+')'"></div>
+                <div x-show="bar.isNow" class="absolute" style="left:0;top:0;bottom:0;border-left:2px solid #fb7185"></div>
+              </div>
+            </template>
+          </div>
+        </div>
+        <!-- what the battery actually did today, aligned under the bars (charge/discharge) -->
+        <div class="flex gap-px mt-0.5" style="height:5px" x-show="chargeBand.length">
+          <template x-for="(st, i) in chargeBand" :key="'cb'+i">
+            <div class="flex-1 rounded-sm" style="min-width:1px" :style="'background:'+(st==='charge' ? '#34d399' : st==='discharge' ? '#f59e0b' : st==='idle' ? 'var(--surface-2)' : 'transparent')" :title="st ? ('battery '+st) : ''"></div>
+          </template>
+        </div>
+        <div class="flex items-center justify-center gap-3 text-[9px] mt-0.5" style="color:var(--text-faint)" x-show="chargeBand.length">
+          <span class="inline-flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-sm" style="background:#34d399"></span>battery charging</span>
+          <span class="inline-flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-sm" style="background:#f59e0b"></span>discharging</span>
+        </div>
+        <div class="flex gap-px" style="line-height:1">
+          <template x-for="(bar, i) in bars" :key="'t'+i">
+            <div class="flex-1 text-center" style="min-width:1px;font-size:8px;color:var(--text-faint);white-space:nowrap;overflow:visible" x-text="bar.tick"></div>
+          </template>
+        </div>
+        <div class="flex justify-between text-[10px]" style="color:var(--text-faint)">
+          <span>← Today</span><span style="color:#fb7185">now</span><span>Tomorrow →</span>
+        </div>
+        <div class="text-[10px] mt-1 text-center" style="color:var(--text-faint)">Hours are PV-location local time (Open-Meteo), aligned to now by the forecast offset.</div>
+      </div>
+    </template>
+  </div>
+
+  <!-- Power History (local SQLite history via /api/metrics)
+       overflow:visible so the range dropdown can extend past the card without being clipped. -->
+  <section class="card lg:col-span-3" style="padding:0;overflow:visible" x-show="$store.app.dashCards.powerHistory" :style="$store.app.dashCardStyle('powerHistory')">
+    <div class="px-5 py-3 border-b border-white/[0.06] flex items-center justify-between gap-3 flex-wrap">
+      <div class="card-label" style="margin-bottom:0">Power History</div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <!-- Range selector — dropdown, aligned with the Modbus Bridge (Live … 30d) -->
+        <div class="relative" x-data="{ rangeOpen: false }" @keydown.escape="rangeOpen = false">
+          <button type="button" class="chip ok flex items-center gap-1.5"
+                  @click="rangeOpen = !rangeOpen"
+                  :aria-expanded="rangeOpen">
+            <span x-text="$store.app.histRangeLabel($store.app.histRange)"></span>
+            <svg class="w-3 h-3 transition-transform" :class="rangeOpen && 'rotate-180'"
+                 fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          <div x-show="rangeOpen" x-cloak x-transition.opacity.duration.100ms
+               @click.outside="rangeOpen = false"
+               class="absolute right-0 mt-1 z-40 min-w-[7rem] max-h-[26rem] overflow-y-auto rounded-lg
+                      border border-white/10 bg-slate-800 shadow-xl py-1">
+            <template x-for="r in $store.app.histRanges" :key="r">
+              <button type="button"
+                      class="w-full text-left px-3 py-1.5 text-xs hover:bg-white/[0.06]"
+                      :class="$store.app.histRange === r ? 'text-emerald-400 font-semibold' : 'text-slate-300'"
+                      @click="$store.app.loadHistory(r); rangeOpen = false"
+                      x-text="$store.app.histRangeLabel(r)"></button>
+            </template>
+            <!-- Custom window (matches the Modbus Bridge "Range…") -->
+            <div class="border-t border-white/10 mt-1 pt-1">
+              <button type="button"
+                      class="w-full text-left px-3 py-1.5 text-xs hover:bg-white/[0.06]"
+                      :class="$store.app.histRange === 'custom' ? 'text-emerald-400 font-semibold' : 'text-slate-300'"
+                      @click="$store.app.openCustomRange(); rangeOpen = false">Range…</button>
+            </div>
+          </div>
+        </div>
+        <!-- Resolution / aggregation selector — "Auto" like the Modbus Bridge -->
+        <div class="relative" x-data="{ bucketOpen: false }" @keydown.escape="bucketOpen = false">
+          <button type="button" class="chip muted flex items-center gap-1.5"
+                  @click="bucketOpen = !bucketOpen" :aria-expanded="bucketOpen"
+                  title="Aggregation resolution">
+            <span x-text="$store.app.histBucketLabel($store.app.histBucket)"></span>
+            <svg class="w-3 h-3 transition-transform" :class="bucketOpen && 'rotate-180'"
+                 fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          <div x-show="bucketOpen" x-cloak x-transition.opacity.duration.100ms
+               @click.outside="bucketOpen = false"
+               class="absolute right-0 mt-1 z-40 min-w-[6rem] rounded-lg border border-white/10 bg-slate-800 shadow-xl py-1">
+            <template x-for="b in $store.app.histBuckets" :key="b">
+              <button type="button"
+                      class="w-full text-left px-3 py-1.5 text-xs hover:bg-white/[0.06]"
+                      :class="$store.app.histBucket === b ? 'text-emerald-400 font-semibold' : 'text-slate-300'"
+                      @click="$store.app.setBucket(b); bucketOpen = false"
+                      x-text="$store.app.histBucketLabel(b)"></button>
+            </template>
+          </div>
+        </div>
+        <!-- Custom-range form (from / to), shown after picking Range… -->
+        <div x-show="$store.app.histCustomOpen" x-cloak x-transition.opacity.duration.100ms
+             @keydown.escape="$store.app.histCustomOpen = false"
+             class="flex items-end gap-2 rounded-lg border border-white/10 bg-slate-800/70 px-3 py-2">
+          <label class="flex flex-col text-[0.6rem] text-slate-400 gap-1">From
+            <input type="datetime-local" x-model="$store.app.histCustomStart"
+                   class="bg-slate-900 border border-white/10 rounded px-2 py-1 text-xs text-slate-200"></label>
+          <label class="flex flex-col text-[0.6rem] text-slate-400 gap-1">To
+            <input type="datetime-local" x-model="$store.app.histCustomEnd"
+                   class="bg-slate-900 border border-white/10 rounded px-2 py-1 text-xs text-slate-200"></label>
+          <button type="button" class="chip ok" @click="$store.app.applyCustomRange()">Apply</button>
+          <button type="button" class="chip muted" @click="$store.app.histCustomOpen = false">Cancel</button>
+        </div>
+        <div class="flex items-center gap-1">
+          <!-- Export the currently-loaded series as CSV (client-side) -->
+          <button type="button" class="chip muted" @click="$store.app.exportHistoryCsv()"
+                  title="Download the loaded series as CSV">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/>
+            </svg>
+            CSV
+          </button>
+          <!-- Grow / shrink the chart -->
+          <button type="button" class="chip"
+                  :class="$store.app.histExpanded ? 'ok' : 'muted'"
+                  @click="$store.app.toggleExpand()"
+                  :title="$store.app.histExpanded ? 'Collapse chart' : 'Expand chart'">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"/>
+            </svg>
+            <span x-text="$store.app.histExpanded ? 'Collapse' : 'Expand'"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="p-4" style="position:relative"
+         :style="'height:' + ($store.app.histExpanded ? '70vh' : '220px')">
+      <canvas id="histChart" height="120"></canvas>
+      <!-- Loading feedback while the range is (re)fetched + the chart repaints -->
+      <div x-show="$store.app.histLoading" x-cloak
+           class="absolute top-2 right-2 chip ok flex items-center gap-1.5 pointer-events-none">
+        <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"></path>
+        </svg>
+        Loading…
+      </div>
+    </div>
+    <!-- Overlays / Events deferred: the local API exposes no event/overlay series. -->
+    <div class="px-5 py-2 text-[0.65rem] text-slate-500 border-t border-white/[0.06]">
+      Overlays / event markers are not available from the local API (Modbus-only).
+      <span x-show="$store.app.siteTzLabel" x-cloak> · times shown in aGate-local time (<span x-text="$store.app.siteTzLabel"></span>)</span>
+    </div>
+  </section>
+
+  <!-- Live Points (on-demand raw power_flow; NOT auto-polled) -->
+  <section class="card lg:col-span-3" style="padding:0;overflow:hidden" x-show="$store.app.dashCards.livePoints" :style="$store.app.dashCardStyle('livePoints')">
+    <div class="px-5 py-3 flex items-center justify-between gap-3 flex-wrap">
+      <button type="button" class="flex items-center gap-2 text-left"
+              @click="$store.app.toggleLivePoints()">
+        <svg class="w-3.5 h-3.5 text-slate-400 transition-transform"
+             :style="$store.app.livePointsOpen ? 'transform:rotate(90deg)' : ''"
+             fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+        </svg>
+        <span class="card-label" style="margin-bottom:0">Live Points</span>
+        <span class="chip muted" x-show="$store.app.livePoints"
+              x-text="$store.app.livePointCount"></span>
+      </button>
+      <button type="button" class="chip muted" x-show="$store.app.livePointsOpen"
+              @click="$store.app.loadLivePoints()" :disabled="$store.app.livePointsLoading">
+        <svg class="w-3 h-3" :class="$store.app.livePointsLoading && 'animate-spin'"
+             fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M4 4v5h5M20 20v-5h-5M20 9A8 8 0 0 0 5.6 6.6M4 15a8 8 0 0 0 14.4 2.4"/>
+        </svg>
+        Refresh
+      </button>
+    </div>
+    <div x-show="$store.app.livePointsOpen" x-cloak class="px-4 pb-4 space-y-4">
+      <div x-show="$store.app.livePointsLoading" class="text-xs text-slate-500 px-1 py-2">Loading…</div>
+      <!-- Grouped + labelled to match the Device tab exactly (shared $store.app helpers). -->
+      <template x-for="grp in $store.app.livePointGroups" :key="grp.title">
+        <div x-show="!$store.app.livePointsLoading && $store.app.livePoints">
+          <div class="card-label" style="margin-bottom:.4rem" x-text="grp.title"></div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1">
+            <template x-for="row in grp.rows" :key="row.k">
+              <div class="flex items-baseline justify-between gap-3 text-xs px-2 py-1 rounded border border-white/[0.05]">
+                <span class="shrink-0 flex items-baseline gap-1.5 min-w-0">
+                  <span style="color:var(--text-muted)" :title="row.k" x-text="row.label"></span>
+                  <span x-show="$store.app.showRawKeys" class="font-mono text-[10px] truncate"
+                        style="color:var(--text-faint)" x-text="row.k"></span>
+                </span>
+                <span class="truncate text-right" style="color:var(--text-primary)"
+                      :title="row.k + ' = ' + row.v" x-text="row.v"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+      </template>
+    </div>
+  </section>
+
+  </div>
+</div>

@@ -1,0 +1,163 @@
+<!-- ── MQTT Tab ───────────────────────────────────────────── -->
+<div class="space-y-4 max-w-3xl" x-data="mqttTab()" x-init="init()">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between gap-3 flex-wrap">
+    <div class="flex items-center gap-3">
+      <h2 class="page-title">MQTT Entities</h2>
+      <!-- Connection pill -->
+      <span class="chip" :class="connected ? 'ok' : 'muted'">
+        <span class="w-1.5 h-1.5 rounded-full"
+              :class="connected ? 'bg-emerald-400' : 'bg-slate-500'"></span>
+        <span x-text="connected ? 'Connected' : 'Disconnected'"></span>
+      </span>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <button @click="load()" class="btn btn-secondary btn-sm" :disabled="loading">
+        <svg class="w-3.5 h-3.5" :class="loading && 'animate-spin'" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5"/>
+          <path stroke-linecap="round" d="M20.49 9A9 9 0 0 0 5.64 5.64L4 7m16 10l-1.64 1.36A9 9 0 0 1 3.51 15"/>
+        </svg>
+        Refresh
+      </button>
+      <button @click="detect()" class="btn btn-secondary btn-sm" :disabled="detecting">
+        <svg class="w-3.5 h-3.5" :class="detecting && 'animate-spin'" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="M21 21l-4.3-4.3"/>
+        </svg>
+        Detect broker
+      </button>
+      <button @click="scanConflicts()" class="btn btn-secondary btn-sm" :disabled="scanning">
+        <svg class="w-3.5 h-3.5" :class="scanning && 'animate-spin'" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/>
+        </svg>
+        Scan conflicts
+      </button>
+      <button @click="republish()" class="btn btn-primary btn-sm">Republish</button>
+      <button @click="unpublish()" class="btn btn-secondary btn-sm"
+              style="color: var(--danger); border-color: var(--border)">Clear HA</button>
+    </div>
+  </div>
+
+  <!-- Broker discovery result -->
+  <div x-show="detectMsg" x-cloak class="text-xs flex items-center gap-2"
+       :class="detectFound ? 'text-emerald-400' : 'text-slate-500'">
+    <span class="w-1.5 h-1.5 rounded-full shrink-0"
+          :class="detectFound ? 'bg-emerald-400' : 'bg-slate-500'"></span>
+    <span x-text="detectMsg"></span>
+  </div>
+
+  <!-- Broker conflicts: other FranklinWH producers sharing this broker -->
+  <template x-if="conflicts">
+    <div class="card" style="padding:12px 16px" x-cloak>
+      <div class="flex items-center justify-between mb-2">
+        <div class="card-label" style="margin-bottom:0">Broker producers</div>
+        <span class="text-[11px]" style="color:var(--text-faint)"
+              x-text="conflicts.ok ? (conflicts.discovery_prefix + ' · ' + (conflicts.producers ? conflicts.producers.length : 0) + ' device(s)') : ''"></span>
+      </div>
+      <template x-if="!conflicts.ok">
+        <div class="text-xs" style="color:var(--warn)" x-text="conflicts.error || 'scan failed'"></div>
+      </template>
+      <template x-if="conflicts.ok">
+        <div class="space-y-2">
+          <div x-show="conflicts.collision" class="rounded border p-2 text-[11px]" style="border-color:var(--danger);color:var(--danger)">
+            A non-self producer is publishing under THIS bridge's device identifier — a real collision. HA entities get overwritten last-writer-wins. Give one producer a different node/broker.
+          </div>
+          <div x-show="!conflicts.collision && conflicts.foreign_count" class="rounded border p-2 text-[11px]" style="border-color:#f59e0b;color:#f59e0b">
+            <span x-text="conflicts.foreign_count"></span> other FranklinWH producer(s) on this broker. The same aGate appears as <strong>duplicate HA devices</strong> (one card per bridge) — expected, not a topic clash. Point each bridge at its own broker for a single device.
+          </div>
+          <div x-show="!conflicts.foreign_count" class="text-[11px] text-emerald-400">No other FranklinWH producers on this broker — clean.</div>
+          <template x-for="p in conflicts.producers" :key="p.identifier">
+            <div class="flex items-center justify-between gap-2 text-xs rounded border px-2 py-1.5" style="border-color:var(--border)">
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <span class="font-medium truncate" style="color:var(--text-primary)" x-text="p.name || p.identifier"></span>
+                  <span x-show="p.is_self" class="chip ok" style="font-size:.55rem">this bridge</span>
+                </div>
+                <div class="text-[10px] font-mono truncate" style="color:var(--text-faint)" x-text="p.identifier"></div>
+              </div>
+              <div class="text-right shrink-0">
+                <div class="text-[10px]" style="color:var(--text-secondary)" x-text="p.sw_version || '–'"></div>
+                <div class="text-[10px]" style="color:var(--text-faint)"><span x-text="p.entities"></span> entities</div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+    </div>
+  </template>
+
+  <!-- Filter tabs + search + count + publishing badge -->
+  <div class="flex items-center justify-between gap-2 flex-wrap">
+    <div class="flex flex-wrap items-center gap-1">
+      <template x-for="f in ['all','writable','sensors','diagnostic']" :key="f">
+        <button class="btn btn-sm" :class="filter===f ? 'btn-primary' : 'btn-secondary'" style="text-transform:capitalize" @click="filter=f" x-text="f"></button>
+      </template>
+      <span class="text-xs ml-1" style="color:var(--text-faint)" x-text="filteredEntities.length + ' entities'"></span>
+      <span x-show="node" class="chip muted" style="font-size:.6rem" x-text="'node ' + node"></span>
+      <span x-show="!publishing" class="chip" style="font-size:.6rem;background:#fb718522;color:#fb7185" title="This gateway is not publishing to HA (e.g. a mock with publish-to-HA off)">not publishing</span>
+    </div>
+    <input x-model="search" type="text" placeholder="Search…" class="form-control form-control-sm" style="max-width:14rem">
+  </div>
+
+  <!-- Published groups (opt in/out) -->
+  <div class="card" style="padding:10px 14px">
+    <div class="text-xs font-medium mb-2" style="color:var(--text-secondary)">Published groups <span style="color:var(--text-faint)">(opt in/out — turning heavy groups off cuts MQTT/HA load)</span></div>
+    <div class="flex flex-wrap gap-x-5 gap-y-2">
+      <template x-for="(g, key) in groupCatalogue" :key="key">
+        <div class="flex items-center gap-2 text-xs"><span style="color:var(--text-secondary)" x-text="g.label"></span>
+          <button type="button" @click="toggleGroup(key)" :disabled="groupSaving" role="switch" :aria-checked="groupEnabled(key)" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="groupEnabled(key) ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="groupEnabled(key) ? 'translate-x-5' : 'translate-x-0.5'"></span></button>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div x-show="loading && entities.length === 0" class="text-sm text-slate-500 py-8 text-center">Loading…</div>
+
+  <!-- Entity list -->
+  <div class="space-y-2">
+    <template x-for="e in filteredEntities" :key="e.slug">
+      <div class="card" style="padding:12px 16px">
+        <div class="flex items-start gap-3">
+
+          <!-- Type badge -->
+          <span class="chip muted mt-0.5" style="text-transform:none;letter-spacing:0"
+                x-text="e.ha_type"></span>
+
+          <!-- Name + keys + topics -->
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-sm font-medium text-slate-200" x-text="e.name"></span>
+              <span x-show="e.unit" class="text-[10px] text-slate-500" x-text="e.unit"></span>
+            </div>
+            <div class="font-mono text-[10px] text-slate-500 mt-0.5" x-text="e.stat_key"></div>
+
+            <!-- Collapsible topics -->
+            <div x-data="{ showTopics: false }">
+              <button @click="showTopics = !showTopics"
+                      class="text-[10px] text-slate-500 hover:text-slate-300 mt-1 transition-colors"
+                      x-text="showTopics ? 'hide topics' : 'topics'"></button>
+              <div x-show="showTopics" x-cloak class="mt-1">
+                <div class="font-mono text-[10px] text-slate-500 truncate"
+                     x-text="'state: ' + (e.state_topic || '—')"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Current value -->
+          <div class="shrink-0 text-right min-w-[3rem]">
+            <span class="font-mono text-sm font-semibold text-slate-200"
+                  x-text="fmtValue(e.value)"></span>
+          </div>
+
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <p class="text-xs text-slate-500">
+    Entities are published to Home Assistant via MQTT discovery. Values update as the
+    background poller reads the aGate.
+  </p>
+
+</div>

@@ -1,0 +1,353 @@
+<div x-data="networkTab()" x-init="init()" class="space-y-4 max-w-5xl">
+
+  <div class="flex items-center justify-between gap-3 flex-wrap">
+    <div>
+      <h1 class="text-xl font-semibold" style="color:var(--text-primary)">Network</h1>
+      <p class="text-sm text-slate-500">On-LAN diagnostics for this aGate — connectivity, interfaces, and its cloud link. No cloud round-trip.</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <button class="btn btn-secondary btn-sm" @click="exportJson()" :disabled="!net" x-show="net">Export JSON</button>
+      <button class="btn btn-primary btn-sm" @click="load()" :disabled="loading">
+        <svg class="w-3.5 h-3.5" :class="loading && 'animate-spin'" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5"/>
+          <path stroke-linecap="round" d="M20.49 9A9 9 0 0 0 5.64 5.64L4 7m16 10l-1.64 1.36A9 9 0 0 1 3.51 15"/>
+        </svg>
+        <span x-text="loading ? 'Running…' : 'Run diagnostics'"></span>
+      </button>
+    </div>
+  </div>
+
+  <template x-if="net && net.error && !reach.ok">
+    <div class="card"><div class="text-sm" style="color:var(--warn)" x-text="'aGate unreachable: ' + net.error"></div></div>
+  </template>
+
+  <template x-if="net">
+    <div class="space-y-4">
+
+      <!-- Topology diagram: aGate → Local Bridge → browser / MQTT ; + cloud uplinks -->
+      <div class="card">
+        <div class="flex items-center justify-between">
+          <div class="card-label" style="margin-bottom:0">Topology</div>
+          <span class="text-[11px]" style="color:var(--text-faint)"
+                x-text="'bridge uptime ' + fmtUptime(topo.bridge && topo.bridge.uptime_s)"></span>
+        </div>
+        <!-- Active uplink to the FranklinWH cloud: which physical link carries traffic -->
+        <div class="flex items-center gap-2 flex-wrap mt-2">
+          <span class="text-[11px]" style="color:var(--text-secondary)">Uplink to FranklinWH cloud</span>
+          <template x-for="l in links" :key="l.name">
+            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] border"
+                  :style="'border-color:' + linkColor(l.state) + '66;background:' + linkColor(l.state) + '18;color:' + linkColor(l.state)">
+              <span class="w-1.5 h-1.5 rounded-full" :style="'background:' + linkColor(l.state)"></span>
+              <span class="font-medium" x-text="l.name"></span>
+              <span style="color:var(--text-secondary)" x-text="l.state + (l.signal != null ? (' · ' + l.signal) : '')"></span>
+            </span>
+          </template>
+          <span class="text-[10px]" style="color:var(--text-faint)">active = carrying traffic · available = link up, standby · off = disabled</span>
+        </div>
+        <div class="overflow-x-auto mt-2">
+          <svg viewBox="0 0 980 350" width="100%" style="min-width:760px" font-family="ui-sans-serif,system-ui,sans-serif">
+            <!-- edges (drawn first, under the nodes) -->
+            <!-- aGate → AWS IoT -->
+            <line x1="140" y1="150" x2="140" y2="70" stroke-width="2" :stroke="edgeColor(topo.iot && topo.iot.connected)"/>
+            <text x="150" y="112" font-size="10" style="fill:var(--text-secondary)">:8883 IoT</text>
+            <!-- Bridge → FleetView cloud API -->
+            <line x1="520" y1="150" x2="520" y2="70" stroke-width="2" stroke-dasharray="4 3" :stroke="edgeColor(topo.cloud_api && topo.cloud_api.configured ? null : false)"/>
+            <text x="530" y="112" font-size="10" style="fill:var(--text-secondary)">Cloud API</text>
+            <!-- aGate → Bridge :9000 + :502 -->
+            <line x1="260" y1="186" x2="400" y2="186" stroke-width="2" :stroke="edgeColor(topo.agate && topo.agate.ports && topo.agate.ports.local_api_9000)"/>
+            <text x="330" y="180" font-size="10" text-anchor="middle" style="fill:var(--text-secondary)">:9000 Local API</text>
+            <line x1="260" y1="220" x2="400" y2="220" stroke-width="2" :stroke="edgeColor(topo.agate && topo.agate.ports && topo.agate.ports.modbus_502)"/>
+            <text x="330" y="234" font-size="10" text-anchor="middle" style="fill:var(--text-secondary)">:502 Modbus</text>
+            <!-- Bridge → Browser + MQTT -->
+            <line x1="640" y1="192" x2="730" y2="150" stroke-width="2" stroke="#34d399"/>
+            <text x="648" y="164" font-size="10" style="fill:var(--text-secondary)">:8101</text>
+            <line x1="640" y1="216" x2="730" y2="240" stroke-width="2" :stroke="edgeColor(topo.mqtt && topo.mqtt.enabled ? (topo.mqtt.connected||false) : null)"/>
+            <text x="648" y="238" font-size="10" style="fill:var(--text-secondary)">MQTT</text>
+            <!-- MQTT broker → Home Assistant (discovery) + Bridge → HA (REST notify) -->
+            <line x1="845" y1="266" x2="845" y2="290" stroke-width="2" :stroke="edgeColor(topo.mqtt && topo.mqtt.enabled ? (topo.mqtt.connected||false) : null)"/>
+            <text x="852" y="282" font-size="9" style="fill:var(--text-secondary)" x-text="(topo.home_assistant && topo.home_assistant.published_entities != null) ? (topo.home_assistant.published_entities + ' published') : 'discovery'"></text>
+            <line x1="500" y1="254" x2="730" y2="316" stroke-width="2" stroke-dasharray="4 3" :stroke="edgeColor((topo.home_assistant && topo.home_assistant.configured) ? null : false)"/>
+            <text x="548" y="300" font-size="9" style="fill:var(--text-secondary)">REST notify</text>
+
+            <!-- nodes -->
+            <!-- AWS IoT (aGate uplink) -->
+            <g style="cursor:help">
+              <title x-text="'aGate firmware → FranklinWH cloud (AWS IoT) · ' + ((topo.iot && topo.iot.endpoint) || '?') + ':' + ((topo.iot && topo.iot.port) || '') + ' · ' + ((topo.iot && topo.iot.connected) ? 'connected' : 'not connected')"></title>
+              <rect x="20" y="14" width="240" height="54" rx="8" style="fill:var(--surface-2);stroke:var(--border)"/>
+              <text x="34" y="34" font-size="11" font-weight="600" style="fill:var(--text-primary)">FranklinWH cloud · AWS IoT</text>
+              <text x="34" y="50" font-size="9.5" style="fill:var(--text-secondary)" x-text="(topo.iot && topo.iot.port ? ':'+topo.iot.port+' · ' : '') + ((topo.iot && topo.iot.connected) ? 'connected' : 'not connected')"></text>
+              <text x="34" y="62" font-size="8.5" style="fill:var(--text-secondary)" x-text="(topo.iot && topo.iot.endpoint) || ''"></text>
+            </g>
+            <!-- FleetView / Cloud API -->
+            <g style="cursor:help">
+              <title x-text="'FranklinWH FleetView / Cloud API (CloudFront) · ' + ((topo.cloud_api && topo.cloud_api.configured) ? 'account configured' : 'not configured') + ' · PoP ' + ((topo.cloud_api && topo.cloud_api.cf_pop) || '— (phase 2)')"></title>
+              <rect x="380" y="14" width="240" height="54" rx="8" style="fill:var(--surface-2);stroke:var(--border)" stroke-dasharray="4 3"/>
+              <text x="394" y="34" font-size="11" font-weight="600" style="fill:var(--text-primary)">FleetView · Cloud API</text>
+              <text x="394" y="50" font-size="9.5" style="fill:var(--text-secondary)" x-text="(topo.cloud_api && topo.cloud_api.configured) ? 'account configured' : 'not configured (no cloud creds)'"></text>
+              <text x="394" y="62" font-size="8.5" style="fill:var(--text-secondary)" x-text="'CloudFront PoP: ' + ((topo.cloud_api && topo.cloud_api.cf_pop) || '—')"></text>
+            </g>
+            <!-- aGate -->
+            <g style="cursor:help">
+              <title x-text="'aGate ' + ((topo.agate && topo.agate.ip) || '?') + ' · link ' + linkLabel(topo.agate && topo.agate.link) + ' · :9000 Local API ' + ((topo.agate && topo.agate.ports && topo.agate.ports.local_api_9000) ? 'up' : 'down') + ' · :502 Modbus ' + ((topo.agate && topo.agate.ports && topo.agate.ports.modbus_502) ? 'up' : 'down') + (topo.agate && topo.agate.latency_ms != null ? (' · round-trip ' + topo.agate.latency_ms + 'ms') : '')"></title>
+              <rect x="20" y="150" width="240" height="104" rx="8" style="fill:var(--surface-2);stroke:var(--accent)"/>
+              <text x="34" y="176" font-size="13" font-weight="700" style="fill:var(--text-primary)">aGate</text>
+              <text x="34" y="196" font-size="11" font-family="ui-monospace,monospace" style="fill:var(--text-secondary)" x-text="(topo.agate && topo.agate.ip) || '–'"></text>
+              <text x="34" y="216" font-size="9.5" style="fill:var(--text-secondary)">active link</text>
+              <rect x="98" y="206" width="70" height="16" rx="8" style="fill:#34d39922"/>
+              <text x="112" y="217" font-size="9.5" style="fill:#34d399" x-text="linkLabel(topo.agate && topo.agate.link)"></text>
+              <text x="34" y="240" font-size="9.5" style="fill:var(--text-secondary)" x-text="topo.agate && topo.agate.latency_ms!=null ? ('round-trip ' + topo.agate.latency_ms + ' ms') : ''"></text>
+            </g>
+            <!-- Local Bridge -->
+            <g style="cursor:help">
+              <title x-text="'Local Bridge ' + ((topo.bridge && topo.bridge.ip) || '?') + ':8101 · uptime ' + fmtUptime(topo.bridge && topo.bridge.uptime_s) + ' · MQTT ' + ((topo.mqtt && topo.mqtt.connected) ? 'connected' : (topo.mqtt && topo.mqtt.enabled ? 'disconnected' : 'off'))"></title>
+              <rect x="380" y="150" width="240" height="104" rx="8" style="fill:var(--surface-2);stroke:var(--accent)"/>
+              <text x="394" y="176" font-size="13" font-weight="700" style="fill:var(--text-primary)">Local Bridge</text>
+              <text x="394" y="196" font-size="11" font-family="ui-monospace,monospace" style="fill:var(--text-secondary)" x-text="((topo.bridge && topo.bridge.ip) || '–') + ' :8101'"></text>
+              <text x="394" y="216" font-size="9.5" style="fill:var(--text-secondary)" x-text="'uptime ' + fmtUptime(topo.bridge && topo.bridge.uptime_s)"></text>
+              <text x="394" y="234" font-size="9.5" style="fill:var(--text-secondary)" x-text="'MQTT ' + ((topo.mqtt && topo.mqtt.connected) ? 'connected' : (topo.mqtt && topo.mqtt.enabled ? 'disconnected' : 'off'))"></text>
+            </g>
+            <!-- Browser -->
+            <g style="cursor:help">
+              <title x-text="'Your browser · ' + ((topo.browser && topo.browser.ip) || '?') + ' → bridge :8101'"></title>
+              <rect x="730" y="120" width="230" height="56" rx="8" style="fill:var(--surface-2);stroke:var(--border)"/>
+              <text x="744" y="144" font-size="11" font-weight="600" style="fill:var(--text-primary)">Browser (you)</text>
+              <text x="744" y="162" font-size="10" font-family="ui-monospace,monospace" style="fill:var(--text-secondary)" x-text="(topo.browser && topo.browser.ip) || '–'"></text>
+            </g>
+            <!-- MQTT broker -->
+            <g style="cursor:help">
+              <title x-text="'MQTT broker ' + ((topo.mqtt && topo.mqtt.host) || '?') + ':' + ((topo.mqtt && topo.mqtt.port) || '') + ' · ' + ((topo.mqtt && topo.mqtt.connected) ? 'connected' : (topo.mqtt && topo.mqtt.enabled ? 'disconnected' : 'disabled'))"></title>
+              <rect x="730" y="210" width="230" height="56" rx="8" style="fill:var(--surface-2);stroke:var(--border)"/>
+              <text x="744" y="234" font-size="11" font-weight="600" style="fill:var(--text-primary)">MQTT broker</text>
+              <text x="744" y="252" font-size="10" font-family="ui-monospace,monospace" style="fill:var(--text-secondary)" x-text="((topo.mqtt && topo.mqtt.host) || '–') + ':' + ((topo.mqtt && topo.mqtt.port) || '')"></text>
+            </g>
+            <!-- Home Assistant (entities via MQTT discovery; actions via REST) -->
+            <g style="cursor:help">
+              <title x-text="haTitle()"></title>
+              <rect x="730" y="290" width="230" height="50" rx="8" style="fill:var(--surface-2)" :stroke="(topo.home_assistant && topo.home_assistant.configured) ? 'var(--accent)' : 'var(--border)'" :stroke-dasharray="(topo.home_assistant && topo.home_assistant.configured) ? '' : '4 3'"/>
+              <text x="744" y="312" font-size="11" font-weight="600" style="fill:var(--text-primary)">Home Assistant</text>
+              <text x="744" y="328" font-size="9.5" font-family="ui-monospace,monospace" style="fill:var(--text-secondary)" x-text="haSub()"></text>
+            </g>
+          </svg>
+        </div>
+        <p class="text-[10px] mt-1" style="color:var(--text-faint)">
+          TCP 9000 = Direct Connect Local API · TCP 502 = Modbus TCP · 8883 = aGate firmware → FranklinWH cloud (AWS IoT) · Cloud API = FleetView (CloudFront PoP, phase 2). Home Assistant gets aGate entities via MQTT discovery and receives notifications/service calls over REST.
+        </p>
+      </div>
+
+      <!-- Ping test -->
+      <div class="card">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <div class="card-label" style="margin-bottom:0">Latency test</div>
+            <div class="text-[11px]" style="color:var(--text-faint)">5 round-trips to the aGate's Direct-Connect API (:9000).</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="btn btn-sm" :class="watching ? 'btn-primary' : 'btn-secondary'" @click="toggleWatch()">
+              <span class="inline-block w-1.5 h-1.5 rounded-full mr-1" :style="watching ? 'background:#34d399;box-shadow:0 0 0 3px #34d39933' : 'background:var(--text-faint)'"></span>
+              <span x-text="watching ? 'Watching…' : 'Watch'"></span>
+            </button>
+            <button class="btn btn-secondary btn-sm" @click="runPing()" :disabled="pinging" x-text="pinging ? 'Pinging…' : 'Ping aGate'"></button>
+          </div>
+        </div>
+        <template x-if="pingResult">
+          <div class="mt-2">
+            <div class="flex flex-wrap gap-4 text-xs">
+              <span style="color:var(--text-secondary)">min <span class="font-mono" style="color:var(--text-primary)" x-text="val(pingResult.min) + ' ms'"></span></span>
+              <span style="color:var(--text-secondary)">avg <span class="font-mono" style="color:var(--text-primary)" x-text="val(pingResult.avg) + ' ms'"></span></span>
+              <span style="color:var(--text-secondary)">max <span class="font-mono" style="color:var(--text-primary)" x-text="val(pingResult.max) + ' ms'"></span></span>
+              <span style="color:var(--text-secondary)">loss <span class="font-mono" :style="pingResult.loss_pct ? 'color:#ef4444' : 'color:#34d399'" x-text="pingResult.loss_pct + '%'"></span></span>
+            </div>
+            <div class="flex items-end gap-1 mt-2 h-10">
+              <template x-for="(s, i) in pingResult.samples" :key="i">
+                <div class="flex-1 rounded-t" :style="'height:' + (s==null ? 100 : Math.min(100, (s/(pingResult.max||1))*100)) + '%;background:' + (s==null ? '#ef4444' : 'var(--accent)')"
+                     :title="s==null ? 'lost' : s + ' ms'"></div>
+              </template>
+            </div>
+          </div>
+        </template>
+        <template x-if="watching">
+          <div class="mt-3 pt-3" style="border-top:1px solid var(--border)">
+            <div class="flex flex-wrap items-center gap-4 text-xs">
+              <span style="color:var(--text-secondary)">live <span class="font-mono tabular-nums" style="color:var(--text-primary)" x-text="watchLast!=null ? watchLast + ' ms' : '…'"></span></span>
+              <span style="color:var(--text-secondary)">avg <span class="font-mono tabular-nums" style="color:var(--text-primary)" x-text="watchAvg!=null ? watchAvg + ' ms' : '…'"></span></span>
+              <span style="color:var(--text-secondary)">max <span class="font-mono tabular-nums" style="color:var(--text-primary)" x-text="latHistory.some(x=>x!=null) ? watchMax + ' ms' : '…'"></span></span>
+              <span style="color:var(--text-faint)" x-text="latHistory.length + ' samples · every ~6s'"></span>
+            </div>
+            <div class="flex items-end gap-px mt-2 h-12">
+              <template x-for="(s, i) in latHistory" :key="i">
+                <div class="flex-1 rounded-t" style="min-width:2px" :style="'height:' + (s==null ? 100 : Math.max(4, Math.min(100, (s/(watchMax||1))*100))) + '%;background:' + (s==null ? '#ef4444' : 'var(--accent)')"
+                     :title="s==null ? 'lost' : s + ' ms'"></div>
+              </template>
+              <template x-if="!latHistory.length"><span class="text-[11px]" style="color:var(--text-faint)">waiting for first round-trip…</span></template>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- Connectivity chain: router → internet → cloud -->
+      <div class="card">
+        <div class="card-label">Connectivity</div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-1">
+          <template x-for="c in chain" :key="c.label">
+            <div class="rounded border px-3 py-2 flex items-center gap-2.5" style="border-color:var(--border)">
+              <span class="w-2.5 h-2.5 rounded-full shrink-0"
+                    :style="statusOk(c.v) ? 'background:#34d399' : (c.v==null ? 'background:#64748b' : 'background:#ef4444')"></span>
+              <div class="min-w-0">
+                <div class="text-xs" style="color:var(--text-primary)" x-text="c.label"></div>
+                <div class="text-[10px]" style="color:var(--text-faint)"
+                     x-text="c.v==null ? 'unknown' : (statusOk(c.v) ? 'connected' : 'down')"></div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- Reachability (bridge-side — the cloud can't see this) -->
+        <div class="card">
+          <div class="card-label">Reachability <span class="text-[10px] normal-case" style="color:var(--text-faint)">from the bridge</span></div>
+          <div class="space-y-1.5 mt-1 text-xs">
+            <div class="flex items-center justify-between"><span style="color:var(--text-secondary)">Ping</span>
+              <span x-text="reach.ping===true ? 'reply' : (reach.ping===false ? 'no reply' : 'n/a')"
+                    :style="reach.ping===false ? 'color:var(--text-faint)' : 'color:var(--text-primary)'"></span></div>
+            <div class="flex items-center justify-between"><span style="color:var(--text-secondary)">sendMqtt :9000</span>
+              <span class="font-mono" :style="reach.sendmqtt_9000 ? 'color:#34d399' : 'color:#ef4444'"
+                    x-text="(reach.sendmqtt_9000 ? 'OK' : 'FAILED') + (reach.latency_ms!=null ? '  ' + reach.latency_ms + 'ms' : '')"></span></div>
+            <div class="flex items-center justify-between"><span style="color:var(--text-secondary)">Modbus :502</span>
+              <span class="font-mono" :style="reach.modbus_502 ? 'color:#34d399' : 'color:var(--text-faint)'" x-text="reach.modbus_502 ? 'open' : 'closed'"></span></div>
+          </div>
+        </div>
+
+        <!-- AWS IoT (the aGate's cloud uplink) -->
+        <div class="card">
+          <div class="card-label">AWS IoT <span class="text-[10px] normal-case" style="color:var(--text-faint)">aGate → FranklinWH cloud</span></div>
+          <template x-if="!cloudRows || !cloudRows.length">
+            <div class="text-xs text-slate-500 mt-1">Cloud config not reported by this aGate.</div>
+          </template>
+          <div class="space-y-1.5 mt-1 text-xs" x-show="cloudRows && cloudRows.length">
+            <template x-for="[k, v] in (cloudRows || [])" :key="k">
+              <div class="flex items-center justify-between gap-3">
+                <span style="color:var(--text-secondary)" x-text="k"></span>
+                <span class="font-mono truncate text-right" :style="v==='***set***' ? 'color:#f59e0b' : 'color:var(--text-primary)'"
+                      x-text="v==='***set***' ? 'set' : v"></span>
+              </div>
+            </template>
+            <div class="flex items-center justify-between pt-1 border-t" style="border-color:var(--border)"><span style="color:var(--text-secondary)">Status</span>
+              <span x-text="statusOk(chain[2].v) ? 'connected' : 'not connected'" :style="statusOk(chain[2].v) ? 'color:#34d399' : 'color:#ef4444'"></span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CloudFront edge (FleetView / Cloud API) — PoP drill-down from the background cloud poll -->
+      <div class="card" x-show="pop">
+        <div class="flex items-center justify-between gap-2 flex-wrap">
+          <div class="card-label" style="margin-bottom:0">CloudFront edge <span class="text-[10px] normal-case" style="color:var(--text-faint)">FleetView / Cloud API</span></div>
+          <span class="text-[11px]" style="color:var(--text-secondary)" x-show="pop && pop.current_pop" x-text="(pop && pop.current_pop) ? ('current PoP: ' + pop.current_pop) : ''"></span>
+        </div>
+        <template x-if="pop && !pop.cloud_creds && !pop.samples">
+          <div class="text-xs mt-1" style="color:var(--text-secondary)">Cloud API not configured — set <span class="font-mono">FWH_CLOUD_EMAIL</span> / <span class="font-mono">FWH_CLOUD_PASSWORD</span> and the background cloud poll will capture CloudFront PoP metrics here.</div>
+        </template>
+        <template x-if="pop && pop.cloud_creds && !pop.samples">
+          <div class="text-xs mt-1" style="color:var(--text-secondary)">Waiting for the first cloud poll (~every 5 min) to record an edge sample.</div>
+        </template>
+        <template x-if="pop && pop.samples">
+          <div class="space-y-3 mt-2">
+            <div class="flex flex-wrap gap-4 text-xs">
+              <span style="color:var(--text-secondary)">requests <span class="font-mono" style="color:var(--text-primary)" x-text="pop.total_requests"></span></span>
+              <span style="color:var(--text-secondary)">cache hit <span class="font-mono" style="color:var(--text-primary)" x-text="pop.cache_hit_rate != null ? pop.cache_hit_rate + '%' : '–'"></span></span>
+              <span style="color:var(--text-secondary)">transitions <span class="font-mono" style="color:var(--text-primary)" x-text="pop.transition_count"></span></span>
+              <span style="color:var(--text-faint)" x-text="pop.samples + ' samples · ' + pop.window_days + 'd'"></span>
+            </div>
+            <div>
+              <div class="text-[10px] uppercase tracking-wide mb-1" style="color:var(--text-faint)">PoP distribution</div>
+              <div class="space-y-1">
+                <template x-for="[pp, n] in Object.entries(pop.distribution || {})" :key="pp">
+                  <div class="flex items-center gap-2 text-xs">
+                    <span class="font-mono w-24 shrink-0" style="color:var(--text-secondary)" x-text="pp"></span>
+                    <div class="flex-1 h-3 rounded overflow-hidden" style="background:var(--surface-2)">
+                      <div class="h-full rounded" style="background:var(--accent)" :style="'width:' + Math.max(3, (n / (pop.total_requests || 1) * 100)) + '%'"></div>
+                    </div>
+                    <span class="font-mono w-16 text-right" style="color:var(--text-faint)" x-text="n + ' req'"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+            <div x-show="pop.transitions && pop.transitions.length">
+              <div class="text-[10px] uppercase tracking-wide mb-1" style="color:var(--text-faint)">Recent edge transitions</div>
+              <div class="space-y-0.5">
+                <template x-for="(t, i) in pop.transitions" :key="i">
+                  <div class="flex items-center gap-2 text-[11px]">
+                    <span class="font-mono" style="color:var(--text-secondary)" x-text="t.from"></span>
+                    <span style="color:var(--text-faint)">→</span>
+                    <span class="font-mono" style="color:var(--text-primary)" x-text="t.to"></span>
+                    <span style="color:var(--text-faint)" x-text="t.at ? new Date(t.at * 1000).toLocaleString() : ''"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- Interfaces (cloud-CLI parity: enabled / link / active / available / signal) -->
+      <div class="card" x-show="diag.rows.length">
+        <div class="flex items-center justify-between gap-2 flex-wrap">
+          <div class="card-label" style="margin-bottom:0">Interfaces</div>
+          <span class="text-[11px]" style="color:var(--text-secondary)"
+                x-text="'carrying: ' + (diag.carrying.join(', ') || '—') + '  ·  available: ' + (diag.available.join(', ') || '—')"></span>
+        </div>
+        <div class="overflow-x-auto mt-1">
+          <table class="w-full text-xs">
+            <thead><tr style="color:var(--text-faint)" class="text-left">
+              <th class="py-1.5 pr-3 font-medium">Interface</th>
+              <th class="py-1.5 pr-3 font-medium">Enabled</th>
+              <th class="py-1.5 pr-3 font-medium">Link</th>
+              <th class="py-1.5 pr-3 font-medium">State</th>
+              <th class="py-1.5 pr-3 font-medium">Address</th>
+              <th class="py-1.5 pr-3 font-medium">MAC</th>
+              <th class="py-1.5 font-medium text-right">Signal</th>
+            </tr></thead>
+            <tbody>
+              <template x-for="r in diag.rows" :key="r.name">
+                <tr class="border-t border-white/[0.05]">
+                  <td class="py-1.5 pr-3" style="color:var(--text-primary)" x-text="r.name"></td>
+                  <td class="py-1.5 pr-3" :style="r.enabled ? '' : 'color:var(--text-faint)'" x-text="r.enabled ? 'yes' : 'no'"></td>
+                  <td class="py-1.5 pr-3" :style="r.link ? 'color:#34d399' : 'color:var(--text-faint)'" x-text="r.link ? 'up' : 'down'"></td>
+                  <td class="py-1.5 pr-3">
+                    <span class="px-1.5 py-0.5 rounded text-[10px]" x-show="r.active" style="background:#34d39922;color:#34d399">active</span>
+                    <span class="px-1.5 py-0.5 rounded text-[10px]" x-show="!r.active && r.available" style="background:#60a5fa22;color:#60a5fa">available</span>
+                    <span class="text-[10px]" x-show="!r.active && !r.available" style="color:var(--text-faint)">off</span>
+                  </td>
+                  <td class="py-1.5 pr-3 font-mono" :style="r.ip ? 'color:var(--text-secondary)' : 'color:var(--text-faint)'" x-text="r.ip || '—'"></td>
+                  <td class="py-1.5 pr-3 font-mono" style="color:var(--text-faint)" x-text="r.mac || '—'"></td>
+                  <td class="py-1.5 text-right font-mono" style="color:var(--text-secondary)" x-text="sigText(r)"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <!-- Write safety / redundancy (a fallback link makes a control write safer) -->
+        <div class="flex items-center gap-2 flex-wrap mt-2 pt-2 border-t text-[11px]" style="border-color:var(--border)">
+          <span style="color:var(--text-secondary)">Write safety</span>
+          <span class="px-2 py-0.5 rounded-full text-[11px]"
+                :style="diag.redundant ? 'background:#34d39918;color:#34d399' : 'background:#f59e0b18;color:#f59e0b'"
+                x-text="diag.redundant ? 'redundant' : 'single link'"></span>
+          <span style="color:var(--text-faint)" x-text="diag.fallback.length ? ('fallback available: ' + diag.fallback.join(', ')) : 'no fallback link'"></span>
+        </div>
+      </div>
+
+      <!-- Gateway self-report unreliability (339 vs 317) — matches the cloud CLI's warning -->
+      <template x-if="diag.awsReliable && !diag.awsSelfReport">
+        <div class="text-[11px] px-3 py-2 rounded border" style="border-color:#f59e0b44;color:#f59e0b;background:#f59e0b0d">
+          The gateway's self-report (cmdType 339) says AWS/internet disconnected (routerStatus=<span x-text="diag.routerRaw"></span>, a raw code — not a boolean), yet traffic proves the cloud IS reachable. Those flags are known to contradict reality; this tab uses round-trip success + cmdType 317 (authoritative). Don't gate anything on 339.
+        </div>
+      </template>
+
+
+      <p class="text-[11px] text-slate-500">
+        The <span class="font-medium">AWS IoT</span> block is the aGate's real cloud uplink (endpoint + region, connected-state), read on-LAN.
+        A CloudFront edge/PoP — what the Cloud API CLI shows — reflects the <em>bridge's</em> path to AWS, not the aGate's, and lands here once the cloud path is wired.
+      </p>
+    </div>
+  </template>
+</div>

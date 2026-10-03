@@ -1,0 +1,138 @@
+<!-- ── Logs Tab — parity with the FranklinWH Modbus Bridge Logs page ─────────── -->
+<div class="space-y-4" x-data="logsTab()" x-init="init()">
+
+  <!-- real-time auto-paused notice -->
+  <div x-show="liveCapped"
+       class="flex items-center justify-between gap-3 px-3 py-2 rounded text-sm"
+       style="background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.35);color:var(--text)">
+    <span>
+      Live tail paused after <span x-text="$store.app.liveCapMinutes('logs')"></span> min to limit memory and device
+      polling (Settings → Real-time limits). The last data is kept.
+    </span>
+    <button class="btn btn-primary btn-sm shrink-0" @click="resumeLive()">Resume live</button>
+  </div>
+
+  <!-- Header -->
+  <div class="flex items-start justify-between gap-3 flex-wrap">
+    <div class="min-w-0">
+      <h2 class="page-title">Logs</h2>
+      <p class="text-xs text-slate-500 mt-1">
+        Bridge log lines (newest first). Stored in the metrics <span class="font-mono">database</span>
+        (durable, queryable), so history survives reboots — selectable by time range below.
+        Routine polls aren't logged — only startup, state changes and errors.
+        <span x-show="$store.app.hostTzLabel" x-cloak>Times in host time (<span x-text="$store.app.hostTzLabel"></span>).</span>
+      </p>
+    </div>
+  </div>
+
+  <!-- Level totals as one row of tappable filter chips. As five ~130px cards this
+       was ~270px of chrome on a phone before any log was visible, and four of the five
+       read 0 almost always. A 0 recedes; a non-zero count keeps full colour so an ERROR
+       still catches the eye at chip size. Tap to filter to that level; tap again clears. -->
+  <div class="flex flex-wrap gap-1.5">
+    <template x-for="b in buckets" :key="b">
+      <button @click="setLevel(b)"
+              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] transition hover:opacity-80"
+              :class="[
+                levelFilter === b ? 'ring-1 ring-current border-current' : 'border-white/10',
+                levelCounts()[b] > 0 ? '' : 'opacity-50'
+              ]"
+              :title="'Filter to ' + b">
+        <span class="uppercase tracking-wide"
+              :class="levelCounts()[b] === 0 ? 'text-slate-500' :
+                      {'text-slate-400': b==='DEBUG', 'text-emerald-400': b==='INFO',
+                       'text-amber-400': b==='WARNING', 'text-red-400': b==='ERROR' || b==='CRITICAL'}"
+              x-text="b"></span>
+        <span class="font-mono font-semibold"
+              :class="levelCounts()[b] === 0 ? 'text-slate-500' :
+                      {'text-slate-400': b==='DEBUG', 'text-emerald-400': b==='INFO',
+                       'text-amber-400': b==='WARNING', 'text-red-400': b==='ERROR' || b==='CRITICAL'}"
+              x-text="levelCounts()[b]"></span>
+      </button>
+    </template>
+  </div>
+
+  <!-- Controls -->
+  <div class="flex items-center gap-2 flex-wrap">
+    <input type="text" x-model="query" placeholder="Search messages…"
+           class="form-control flex-1" style="min-width:12rem">
+    <select x-model="source" class="form-control" style="width:auto">
+      <option value="">All sources</option>
+      <template x-for="s in sources()" :key="s">
+        <option :value="s" x-text="s"></option>
+      </template>
+    </select>
+    <select x-model="levelFilter" class="form-control" style="width:auto">
+      <option value="">All levels</option>
+      <template x-for="b in buckets" :key="b">
+        <option :value="b" x-text="b"></option>
+      </template>
+    </select>
+    <select x-model="range" @change="load()" class="form-control" style="width:auto"
+            title="How far back to load (over persisted history)">
+      <template x-for="r in ranges" :key="r.v">
+        <option :value="r.v" x-text="r.label"></option>
+      </template>
+    </select>
+    <button @click="paused = !paused" class="btn btn-secondary btn-sm"
+            :class="paused && 'text-amber-400'"
+            :title="paused ? 'Resume 10s auto-refresh' : 'Pause auto-refresh'">
+      <span x-text="paused ? 'Paused' : 'Live'"></span>
+    </button>
+    <button @click="load()" class="btn btn-secondary btn-sm" :disabled="loading">
+      <svg class="w-3.5 h-3.5" :class="loading && 'animate-spin'" fill="none"
+           stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5"/>
+        <path stroke-linecap="round" d="M20.49 9A9 9 0 0 0 5.64 5.64L4 7m16 10l-1.64 1.36A9 9 0 0 1 3.51 15"/>
+      </svg>
+      Refresh
+    </button>
+    <button @click="exportLogs()" class="btn btn-secondary btn-sm" :disabled="!entries.length"
+            title="Download the shown lines as a .log file">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/>
+      </svg>
+      Export
+    </button>
+  </div>
+
+  <!-- Log table -->
+  <div class="card" style="padding:0;overflow:hidden">
+    <!-- Column header -->
+    <div class="flex items-center gap-3 px-4 py-2 border-b border-white/[0.08] text-[10px] uppercase tracking-wide"
+         style="color:var(--text-faint)">
+      <span class="w-20 shrink-0">Time</span>
+      <span class="w-16 shrink-0">Level</span>
+      <span class="w-48 shrink-0 hidden sm:inline">Source</span>
+      <span class="flex-1">Message</span>
+    </div>
+
+    <div class="font-mono text-[11px] leading-relaxed overflow-y-auto" style="max-height:60vh">
+      <template x-for="(e, i) in filtered()" :key="i">
+        <div class="flex items-start gap-3 px-4 py-1.5 border-b border-white/[0.04]">
+          <span class="w-20 shrink-0 text-slate-500 tabular-nums" x-text="fmtTime(e.ts)"></span>
+          <span class="w-16 shrink-0">
+            <span class="chip" :class="levelClass(e.level)"
+                  style="text-transform:none;letter-spacing:0" x-text="e.level"></span>
+          </span>
+          <span class="w-48 shrink-0 text-slate-500 truncate hidden sm:inline" x-text="e.name"></span>
+          <span class="flex-1 text-slate-200 break-all whitespace-pre-wrap" x-text="e.message"></span>
+        </div>
+      </template>
+
+      <div x-show="filtered().length === 0" x-cloak class="px-4 py-6 text-center text-slate-500 text-xs">
+        <span x-show="entries.length === 0">No log entries yet.</span>
+        <span x-show="entries.length > 0">No lines match the current filter.</span>
+      </div>
+    </div>
+
+    <!-- Footer count -->
+    <div class="px-4 py-2 border-t border-white/[0.06] flex items-center justify-between text-[11px] text-slate-500">
+      <span><span class="tabular-nums" x-text="filtered().length"></span> shown<span
+            x-show="levelFilter || source || query"> of <span class="tabular-nums" x-text="entries.length"></span> loaded</span><span
+            x-show="total !== null && total > entries.length" style="color:var(--text-faint)"> · <span class="tabular-nums" x-text="total"></span> in range (narrow the time range to see older)</span></span>
+      <span x-show="paused" class="text-amber-400">auto-refresh paused</span>
+    </div>
+  </div>
+
+</div>

@@ -1,0 +1,223 @@
+<div x-data="gridTab()" x-init="init()" class="space-y-4 max-w-4xl">
+
+  <div class="flex items-center justify-between gap-3 flex-wrap">
+    <div>
+      <h1 class="text-xl font-semibold" style="color:var(--text-primary)">Grid &amp; Inverter</h1>
+      <p class="text-sm text-slate-500">Grid connection, import/export power-plane limits, and the inverter's real charge/discharge limits.</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="chip muted" style="font-size:.6rem">read-only</span>
+      <button class="btn btn-primary btn-sm" @click="load()" :disabled="loading">
+        <svg class="w-3.5 h-3.5" :class="loading && 'animate-spin'" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5"/>
+          <path stroke-linecap="round" d="M20.49 9A9 9 0 0 0 5.64 5.64L4 7m16 10l-1.64 1.36A9 9 0 0 1 3.51 15"/>
+        </svg>
+        <span x-text="loading ? 'Reading…' : 'Refresh'"></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- aGate unreachable — the read returned no profile (offline / flaky link) -->
+  <template x-if="grid && !hasData">
+    <div class="card">
+      <div class="text-sm" style="color:var(--warn)">aGate unreachable — couldn't read the grid &amp; inverter profile. It loads automatically when the aGate is back online.</div>
+      <button class="btn btn-secondary btn-sm mt-2" @click="load()" :disabled="loading" x-text="loading ? 'Reading…' : 'Retry'"></button>
+    </div>
+  </template>
+
+  <template x-if="hasData">
+    <div class="space-y-4">
+
+      <!-- Grid connection -->
+      <div class="card">
+        <div class="card-label">Grid connection</div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mt-1">
+          <div>
+            <div class="text-[10px] uppercase tracking-widest text-slate-500">Phase</div>
+            <div class="text-sm font-semibold" style="color:var(--text-primary)" x-text="grid.grid_connection.three_phase ? 'Three-phase' : 'Single / split'"></div>
+          </div>
+          <div>
+            <div class="text-[10px] uppercase tracking-widest text-slate-500">Supply / service</div>
+            <div class="text-sm font-semibold tabular-nums" style="color:var(--text-primary)" x-text="grid.grid_connection.electric_supply_raw != null ? val(grid.grid_connection.electric_supply_raw, ' A') : '–'"></div>
+          </div>
+          <div>
+            <div class="text-[10px] uppercase tracking-widest text-slate-500">Air switch rating</div>
+            <div class="text-sm font-semibold tabular-nums" style="color:var(--text-secondary)" x-text="val(grid.grid_connection.service_amps, ' A')"></div>
+          </div>
+          <div>
+            <div class="text-[10px] uppercase tracking-widest text-slate-500">Grid voltage</div>
+            <div class="text-sm font-semibold tabular-nums" style="color:var(--text-primary)" x-text="grid.grid_connection.grid_voltage_v != null ? val(grid.grid_connection.grid_voltage_v, ' V') : '–'"></div>
+            <div class="text-[10px]" style="color:var(--text-faint)" x-show="grid.grid_connection.leg_voltage_v != null" x-text="'legs ' + val(grid.grid_connection.leg_voltage_v, ' V')"></div>
+          </div>
+          <div>
+            <div class="text-[10px] uppercase tracking-widest text-slate-500">Frequency</div>
+            <div class="text-sm font-semibold tabular-nums" style="color:var(--text-primary)" x-text="grid.grid_connection.nominal_freq_hz != null ? val(grid.grid_connection.nominal_freq_hz, ' Hz') : '–'"></div>
+            <div class="text-[10px]" style="color:var(--text-faint)" x-show="grid.grid_connection.live_freq_hz != null" x-text="'live ' + (grid.grid_connection.live_freq_hz != null ? grid.grid_connection.live_freq_hz.toFixed(2) : '–') + ' Hz'"></div>
+          </div>
+        </div>
+        <p class="text-[10px] mt-2" style="color:var(--text-faint)"><span class="font-mono">electricSupply</span> = your actual supply/main amperage (e.g. a 63 A single-phase main); <span class="font-mono">airSwitchCur</span> is the aGate air-switch's hardware RATING. Voltage &amp; frequency come from live telemetry (1708 <span class="font-mono">gridLineVol</span>/<span class="font-mono">dspSettingFreq</span>) — 1701's <span class="font-mono">ratedGridHz</span>/<span class="font-mono">ratedGridVolt</span> are region ENUM codes (your <span class="font-mono">ratedGridHz=<span x-text="val(grid.grid_connection.rated_hz_code)"></span></span> means the 50 Hz region, not 1 Hz).</p>
+      </div>
+
+      <!-- Grid import / export limits (power plane) -->
+      <div class="card">
+        <div class="flex items-center justify-between gap-2">
+          <div class="card-label" style="margin-bottom:0">Grid import &amp; export <span class="text-[10px] normal-case" style="color:var(--text-faint)">power-plane limits · 1701</span></div>
+          <button class="btn btn-secondary btn-sm" @click="openModal()">Set limits…</button>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-1">
+          <div class="rounded border p-3" style="border-color:var(--border)">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-medium" style="color:#f59e0b">Grid import</span>
+            </div>
+            <div class="text-lg font-semibold tabular-nums mt-1" style="color:var(--text-primary)" x-text="limit(grid.grid_limits.grid_soft_limit)"></div>
+            <div class="text-[11px] mt-0.5" style="color:var(--text-secondary)" x-text="'charge from grid: ' + (grid.grid_limits.kw_rate_power!=null ? limit(grid.grid_limits.kw_rate_power) : '–')"></div>
+          </div>
+          <div class="rounded border p-3" style="border-color:var(--border)">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-medium" style="color:#eab308">Grid export</span>
+              <span class="chip" :class="grid.grid_limits.export_enable ? 'ok' : 'muted'" style="font-size:.55rem" x-text="grid.grid_limits.export_enable ? 'enabled' : 'disabled'"></span>
+            </div>
+            <div class="text-lg font-semibold tabular-nums mt-1" style="color:var(--text-primary)" x-text="grid.grid_limits.export_enable ? limit(grid.grid_limits.grid_hard_limit) : 'Export not allowed'"></div>
+            <div class="text-[11px] mt-0.5" style="color:var(--text-secondary)" x-text="'PCS discharge: ' + (grid.grid_limits.pcs_discharge ? 'on' : 'off')"></div>
+          </div>
+        </div>
+        <p class="text-[10px] mt-2" style="color:var(--text-faint)">-1 = unlimited (same convention as the cloud global charge/discharge caps). <span style="color:var(--warn)">Set limits</span> writes 1701 by full-block read-modify-write with a read-back verify — an <strong>UNVERIFIED</strong> path: it may be silently ignored, or it may stop grid export/discharge. Confirm-gated; booleans tested last.</p>
+      </div>
+
+      <!-- Inverter limits (Modbus SunSpec 702) -->
+      <div class="card">
+        <div class="card-label">Inverter limits <span class="text-[10px] normal-case" style="color:var(--text-faint)" x-text="grid.inverter.source ? ('· ' + grid.inverter.source) : ''"></span></div>
+        <div class="grid grid-cols-2 gap-4 mt-1">
+          <div>
+            <div class="text-[10px] uppercase tracking-widest text-slate-500">Max charge</div>
+            <div class="text-2xl font-semibold tabular-nums" style="color:var(--text-primary)" x-text="grid.inverter.max_charge_kw != null ? (grid.inverter.max_charge_kw + ' kW') : '–'"></div>
+          </div>
+          <div>
+            <div class="text-[10px] uppercase tracking-widest text-slate-500">Max discharge</div>
+            <div class="text-2xl font-semibold tabular-nums" style="color:var(--text-primary)" x-text="grid.inverter.max_discharge_kw != null ? (grid.inverter.max_discharge_kw + ' kW') : '–'"></div>
+          </div>
+        </div>
+        <template x-if="grid.inverter.max_charge_kw == null">
+          <p class="text-[11px] mt-2" style="color:var(--warn)">Modbus SunSpec not reachable — enable the Modbus interface on the aGate (der_comms sunsMdEn) to read the inverter ratings.</p>
+        </template>
+        <p class="text-[10px] mt-2" style="color:var(--text-faint)">Derived from Modbus SunSpec 702 (<span class="font-mono">WChaRteMaxRtg</span> / <span class="font-mono">WDisChaRteMaxRtg</span>). 1701 <span class="font-mono">fhpRatePower</span> reads <span x-text="val(grid.inverter.fhp_rate_power_1701)"></span> on this firmware — not a reliable source.</p>
+      </div>
+
+    </div>
+  </template>
+
+  <!-- ── PCS write modal — set the 1701 grid import/export limits (UNVERIFIED write) ── -->
+  <div x-show="modal" x-cloak class="fixed inset-0 z-[110] flex items-center justify-center p-4"
+       @keydown.escape.window="modal=false">
+    <div class="absolute inset-0" style="background:rgba(0,0,0,.6)" @click="modal=false"></div>
+    <div class="card relative w-full max-w-lg max-h-[90vh] overflow-y-auto" style="background:var(--surface-1)">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h2 class="text-base font-semibold" style="color:var(--text-primary)">Grid import &amp; export limits</h2>
+          <p class="text-[11px]" style="color:var(--text-faint)">cmdType 1701 · full-block RMW · read-back verified · LOCAL WRITE CONFIRMED IGNORED</p>
+        </div>
+        <button class="btn btn-secondary btn-sm" @click="modal=false">&times;</button>
+      </div>
+
+      <div class="rounded border p-2 mt-2 text-[11px]" style="border-color:var(--danger,#ef4444);color:var(--danger,#ef4444)">
+        CONFIRMED (2026-09-28): this firmware <strong>silently ignores</strong> the local 1701 write —
+        it ACKs <span class="font-mono">result:0</span> but the values do not store or take effect
+        (proven on-hardware: a 2 kW cap did not clamp a 4 kW grid charge). This is a <strong>diagnostic</strong>:
+        the read-back will show "device IGNORED it". The working path for grid caps is the cloud global
+        caps (<span class="font-mono">setPowerControl</span>), a separate plane.
+      </div>
+
+      <div class="space-y-3 mt-3">
+        <!-- Import cap -->
+        <div>
+          <div class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Grid import cap <span class="font-mono normal-case">gridSoftLimit</span></div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <select class="form-control form-control-sm" x-model="f.imp">
+              <option value="keep">Keep current</option><option value="unlimited">Unlimited (-1)</option><option value="custom">Custom kW</option>
+            </select>
+            <input x-show="f.imp==='custom'" type="number" min="0" step="0.1" class="form-control form-control-sm w-24" x-model="f.impKw">
+          </div>
+        </div>
+        <!-- Charge from grid -->
+        <div>
+          <div class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Charge from grid <span class="font-mono normal-case">kwRatePower</span></div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <select class="form-control form-control-sm" x-model="f.chg">
+              <option value="keep">Keep current</option><option value="unlimited">Unlimited (-1)</option><option value="custom">Custom kW</option>
+            </select>
+            <input x-show="f.chg==='custom'" type="number" min="0" step="0.1" class="form-control form-control-sm w-24" x-model="f.chgKw">
+          </div>
+        </div>
+        <!-- Export -->
+        <div>
+          <div class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Grid export <span class="font-mono normal-case">gridExportEnable / gridHardLimit</span></div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <select class="form-control form-control-sm" x-model="f.exp">
+              <option value="keep">Keep current</option><option value="on_unlim">Enabled · unlimited</option><option value="on_custom">Enabled · custom kW</option><option value="off">Disabled (no export)</option>
+            </select>
+            <input x-show="f.exp==='on_custom'" type="number" min="0" step="0.1" class="form-control form-control-sm w-24" x-model="f.expKw">
+          </div>
+        </div>
+        <!-- PCS discharge -->
+        <div>
+          <div class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">PCS discharge <span class="font-mono normal-case">isPcsDischgEn</span></div>
+          <select class="form-control form-control-sm" x-model="f.pcs">
+            <option value="keep">Keep current</option><option value="on">On</option><option value="off">Off (no discharge)</option>
+          </select>
+        </div>
+      </div>
+
+      <p x-show="touchesBooleans" x-cloak class="text-[11px] mt-2" style="color:var(--warn)">
+        You're changing an export/discharge enable — the FranklinWH procedure says test those last, one at a time, with the owner watching.
+      </p>
+
+      <!-- Preview (dry-run frame) -->
+      <template x-if="preview">
+        <div class="mt-3">
+          <div class="text-[10px] uppercase tracking-widest text-slate-500">Frame that would be sent</div>
+          <pre class="text-[11px] font-mono rounded p-2 overflow-x-auto mt-1" style="background:var(--surface-2);color:var(--text-secondary)" x-text="JSON.stringify(preview.frame, null, 2)"></pre>
+        </div>
+      </template>
+
+      <!-- Result (read-back verify) -->
+      <template x-if="result">
+        <div class="mt-3">
+          <div class="flex items-center gap-2">
+            <span class="chip" :class="result.ok ? 'ok' : 'muted'" style="font-size:.6rem" x-text="result.ok ? 'verified applied' : (result.confirmed===false ? 'device IGNORED it' : 'result ' + result.result)"></span>
+            <span class="text-[11px]" style="color:var(--text-faint)">read-back of 1701</span>
+          </div>
+          <div class="mt-1 space-y-0.5">
+            <template x-for="(v, k) in result.requested" :key="k">
+              <div class="flex items-center justify-between text-[11px] font-mono" style="color:var(--text-secondary)">
+                <span x-text="k"></span>
+                <span>
+                  <span style="color:var(--text-faint)" x-text="limLabel(result.before[k])"></span>
+                  <span style="color:var(--text-faint)"> → </span>
+                  <span :style="(result.after[k]===v) ? 'color:#34d399' : 'color:#ef4444'" x-text="limLabel(result.after[k]) + (result.after[k]===v ? '  OK' : '  MISMATCH (asked ' + limLabel(v) + ')')"></span>
+                </span>
+              </div>
+            </template>
+          </div>
+          <!-- cloud witness -->
+          <template x-if="result.cloud">
+            <div class="mt-2 text-[11px]" style="color:var(--text-faint)">
+              <template x-if="result.cloud.available">
+                <div>Cloud witness (global caps): <span class="font-mono" x-text="JSON.stringify(result.cloud.settings)"></span> <span x-text="'· ' + result.cloud.note"></span></div>
+              </template>
+              <template x-if="!result.cloud.available">
+                <div x-text="'Cloud witness unavailable — ' + result.cloud.reason"></div>
+              </template>
+            </div>
+          </template>
+        </div>
+      </template>
+
+      <div class="flex items-center gap-2 mt-4">
+        <button class="btn btn-secondary btn-sm" @click="doPreview()" :disabled="busy || !hasChanges" x-text="busy ? '…' : 'Preview frame'"></button>
+        <button class="btn btn-primary btn-sm" @click="doWrite()" :disabled="busy || !hasChanges">Write &amp; verify</button>
+        <button x-show="result && result.before" class="btn btn-secondary btn-sm" @click="restore()" :disabled="busy">Restore previous</button>
+        <button class="btn btn-secondary btn-sm ml-auto" @click="modal=false">Close</button>
+      </div>
+    </div>
+  </div>
+</div>

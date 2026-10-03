@@ -1,0 +1,9 @@
+{
+  "name": "FranklinWH Local Bridge",
+  "short_name": "FWH Local",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0b6efd",
+  "icons": []
+}

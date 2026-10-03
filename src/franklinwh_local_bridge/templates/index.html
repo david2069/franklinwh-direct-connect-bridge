@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FranklinWH Local Bridge</title>
+  <!-- Inline SVG favicon (green lightning bolt) — silences the browser's /favicon.ico 404 -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%2310b981'/%3E%3Cpath d='M13 3L6 13h4l-1 8 7-10h-4z' fill='white'/%3E%3C/svg%3E">
+  <base href="{{ base_path }}/">
+  <link rel="stylesheet" href="static/css/design-system.css?v={{ cache_bust }}">
+
+  <!-- Tailwind 3.4.1 — local, no CDN -->
+  <script src="static/js/tailwind-3.4.1.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            primary: { DEFAULT: 'var(--primary-color)', dark: 'var(--primary-dark)', light: 'var(--primary-light)' },
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- Chart.js 4.4.7 — local, no CDN (must load before Alpine/app) -->
+  <script src="static/js/chartjs-4.4.7.umd.min.js"></script>
+
+  <!-- App JS — must load before Alpine -->
+  <script src="static/js/app.js?v={{ cache_bust }}"></script>
+  <script src="static/js/live_cap.js?v={{ cache_bust }}"></script>
+  <script src="static/js/mqtt_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/settings_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/health_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/ha_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/scheduler_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/analytics_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/energy_costs_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/network_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/grid_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/battery_control.js?v={{ cache_bust }}"></script>
+  <script src="static/js/circuits_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/generator_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/solar_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/battery_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/device_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/sankey.js?v={{ cache_bust }}"></script>
+  <script src="static/js/energy_flow_card.js?v={{ cache_bust }}"></script>
+  <script src="static/js/solar_forecast_card.js?v={{ cache_bust }}"></script>
+  <script src="static/js/logs_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/terminal.js?v={{ cache_bust }}"></script>
+
+  <!-- Alpine.js — local -->
+  <script defer src="static/js/alpinejs-3.14.1.min.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+
+  <div class="flex h-screen overflow-hidden" x-data x-init="$store.app.init(); $store.app.version = '{{ version }}'">
+
+    <!-- ── Sidebar ──────────────────────────────────────── -->
+    {% include "partials/sidebar.html" %}
+
+    <!-- ── Main Area ────────────────────────────────────── -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+
+      <!-- ── Topbar ───────────────────────────────────── -->
+      {% include "partials/topbar.html" %}
+
+      <!-- ── Content ──────────────────────────────────── -->
+      <main class="flex-1 overflow-y-auto" :class="$store.app.narrow ? 'p-4 pb-24' : 'p-6'">
+
+        <!-- Dashboard Tab -->
+        <div x-show="$store.app.activeTab === 'dashboard'" x-cloak>
+          {% include "tabs/dashboard.html" %}
+        </div>
+
+        <!-- Control Tab -->
+        <div x-show="$store.app.activeTab === 'control'" x-cloak>
+          {% include "tabs/control.html" %}
+        </div>
+
+        <!-- MQTT Tab -->
+        <div x-show="$store.app.activeTab === 'mqtt'" x-cloak>
+          {% include "tabs/mqtt.html" %}
+        </div>
+
+        <!-- Network Tab -->
+        <div x-show="$store.app.activeTab === 'network'" x-cloak>
+          {% include "tabs/network.html" %}
+        </div>
+
+        <!-- Grid & Inverter Tab -->
+        <div x-show="$store.app.activeTab === 'grid'" x-cloak>
+          {% include "tabs/grid.html" %}
+        </div>
+
+        <!-- Settings Tab -->
+        <div x-show="$store.app.activeTab === 'settings'" x-cloak>
+          {% include "tabs/settings.html" %}
+        </div>
+
+        <!-- Health Tab -->
+        <div x-show="$store.app.activeTab === 'health'" x-cloak>
+          {% include "tabs/health.html" %}
+        </div>
+
+        <div x-show="$store.app.activeTab === 'scheduler'" x-cloak>
+          {% include "tabs/scheduler.html" %}
+        </div>
+
+        <div x-show="$store.app.activeTab === 'ha'" x-cloak>
+          {% include "tabs/ha.html" %}
+        </div>
+
+        <div x-show="$store.app.activeTab === 'circuits'" x-cloak>
+          {% include "tabs/circuits.html" %}
+        </div>
+
+        <div x-show="$store.app.activeTab === 'solar'" x-cloak>
+          {% include "tabs/solar.html" %}
+        </div>
+
+        <div x-show="$store.app.activeTab === 'generator'" x-cloak>
+          {% include "tabs/generator.html" %}
+        </div>
+
+        <div x-show="$store.app.activeTab === 'battery'" x-cloak>
+          {% include "tabs/battery.html" %}
+        </div>
+
+        <div x-show="$store.app.activeTab === 'analytics'" x-cloak>
+          {% include "tabs/analytics.html" %}
+        </div>
+
+        <div x-show="$store.app.activeTab === 'energy_costs'" x-cloak>
+          {% include "tabs/energy_costs.html" %}
+        </div>
+
+        <div x-show="$store.app.activeTab === 'device'" x-cloak>
+          {% include "tabs/device.html" %}
+        </div>
+
+        <!-- Logs Tab -->
+        <div x-show="$store.app.activeTab === 'logs'" x-cloak>
+          {% include "tabs/logs.html" %}
+        </div>
+
+      </main>
+    </div>
+
+    <!-- Connection-lost banner. Mirrors the FWHAI UX: a persistent bar that is
+         clickable for detail, rather than a silent stale UI. -->
+    <div x-show="!$store.app.conn.online && !$store.app.conn.dismissed" x-cloak
+         class="fixed top-0 left-0 right-0 z-[90] flex items-center justify-center gap-2 px-4 py-2 cursor-pointer text-sm font-semibold text-white"
+         style="background:var(--danger, #dc2626)"
+         @click="$store.app.conn.detailsOpen = true"
+         x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 -translate-y-2" x-transition:enter-end="opacity-100 translate-y-0">
+      <span class="animate-spin">&#8635;</span>
+      <span>Connection Lost &mdash; Reconnecting&hellip;</span>
+      <span class="font-normal opacity-80">(click for details)</span>
+      <button class="ml-3 opacity-70 hover:opacity-100" title="Dismiss"
+              @click.stop="$store.app.dismissConnBanner()">&times;</button>
+    </div>
+
+    <!-- Connection details modal -->
+    <div x-show="$store.app.conn.detailsOpen" x-cloak
+         class="fixed inset-0 z-[110] flex items-center justify-center p-4"
+         @keydown.escape.window="$store.app.conn.detailsOpen = false"
+         x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
+      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="$store.app.conn.detailsOpen = false"></div>
+      <div class="relative w-full max-w-md rounded-xl border shadow-2xl overflow-hidden"
+           style="background:var(--surface-0, #0f172a);border-color:var(--border)"
+           x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
+        <div class="px-5 py-4 text-white" style="background:var(--danger, #dc2626)">
+          <div class="flex items-center gap-2 text-base font-semibold">
+            <span>&#9877;</span>
+            <span x-text="$store.app.conn.online ? 'System Status — Connected' : 'System Status — Reconnecting'"></span>
+          </div>
+          <div class="text-sm opacity-90 mt-1">Waiting for the bridge to respond&hellip;</div>
+          <div class="mt-2 rounded px-2 py-1 font-mono text-xs" style="background:rgba(0,0,0,.25)">
+            Offline since <span x-text="$store.app.connOfflineSinceLabel"></span>
+            (<span x-text="$store.app.connOfflineFor"></span>)
+          </div>
+        </div>
+        <div class="px-5 py-4 space-y-2">
+          <template x-for="(c, key) in $store.app.conn.checks" :key="key">
+            <div class="rounded-lg border px-3 py-2 flex items-center gap-3" style="border-color:var(--border)">
+              <span class="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                    :style="c.state === 'ok'   ? 'background:var(--success,#16a34a)'
+                          : c.state === 'fail' ? 'background:var(--danger,#dc2626)'
+                          : c.state === 'warn' ? 'background:var(--warning,#f59e0b)'
+                          : 'background:var(--text-muted,#64748b)'"></span>
+              <div class="min-w-0">
+                <div class="text-sm font-medium" style="color:var(--text-primary)" x-text="c.label"></div>
+                <div class="text-xs truncate" style="color:var(--text-secondary)" x-text="c.detail || '—'"></div>
+              </div>
+            </div>
+          </template>
+        </div>
+        <div class="px-5 py-3 border-t flex items-center justify-between gap-2" style="border-color:var(--border)">
+          <div class="text-xs" style="color:var(--text-secondary)">
+            Attempt <span x-text="$store.app.conn.attempt"></span>
+            <template x-if="$store.app.conn.nextRetryIn !== null">
+              <span> &middot; next retry in <span x-text="$store.app.conn.nextRetryIn"></span>s</span>
+            </template>
+          </div>
+          <div class="flex gap-2">
+            <button class="btn btn-primary btn-sm" @click="$store.app.retryNow()">Retry Now</button>
+            <button class="btn btn-secondary btn-sm" @click="$store.app.conn.detailsOpen = false">Dismiss</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirm dialog (styled; replaces native confirm) -->
+    <div x-show="$store.app.confirmState.open" x-cloak
+         class="fixed inset-0 z-[100] flex items-center justify-center p-4"
+         @keydown.escape.window="$store.app.confirmResolve(false)"
+         x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
+      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="$store.app.confirmResolve(false)"></div>
+      <div class="relative w-full max-w-md rounded-xl border shadow-2xl"
+           style="background:var(--surface-0, #0f172a);border-color:var(--border)"
+           x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
+        <div class="px-5 py-4 border-b" style="border-color:var(--border)">
+          <div class="text-sm font-semibold" style="color:var(--text-primary)" x-text="$store.app.confirmState.title"></div>
+        </div>
+        <div class="px-5 py-4 text-sm" style="color:var(--text-secondary);white-space:pre-line" x-text="$store.app.confirmState.message"></div>
+        <div class="px-5 py-3 border-t flex justify-end gap-2" style="border-color:var(--border)">
+          <button class="btn btn-secondary btn-sm" @click="$store.app.confirmResolve(false)">Cancel</button>
+          <button class="btn btn-primary btn-sm" @click="$store.app.confirmResolve(true)"
+                  :style="$store.app.confirmState.danger ? 'background:var(--danger);border-color:var(--danger)' : ''">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- New-build available modal -->
+    <div x-show="$store.app.newBuild" x-cloak
+         class="fixed inset-0 z-[115] flex items-center justify-center p-4"
+         @keydown.escape.window="$store.app.dismissBuild()"
+         x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
+      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="$store.app.dismissBuild()"></div>
+      <div class="relative w-full max-w-md rounded-xl border shadow-2xl"
+           style="background:var(--surface-0, #0f172a);border-color:var(--border)"
+           x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
+        <div class="px-5 py-4 border-b flex items-center gap-2" style="border-color:var(--border)">
+          <svg class="w-5 h-5 shrink-0" style="color:var(--accent, #34d399)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+          <div class="text-sm font-semibold" style="color:var(--text-primary)">A new build is available</div>
+        </div>
+        <div class="px-5 py-4 text-sm" style="color:var(--text-secondary)">
+          The bridge has been rebuilt since this page loaded. Reload now to pick up the
+          latest interface and fixes? Any unsaved edits in an open form will be lost.
+        </div>
+        <div class="px-5 py-3 border-t flex justify-end gap-2" style="border-color:var(--border)">
+          <button class="btn btn-secondary btn-sm" @click="$store.app.dismissBuild()">Later</button>
+          <button class="btn btn-primary btn-sm" @click="$store.app.reloadForBuild()">Reload now</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- First-connection legal disclaimer (unofficial app) — shown once per browser -->
+    <div x-show="$store.app.showDisclaimer" x-cloak
+         class="fixed inset-0 z-[120] flex items-center justify-center p-4"
+         x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
+      <div class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+      <div class="relative w-full max-w-lg rounded-xl border shadow-2xl"
+           style="background:var(--surface-0, #0f172a);border-color:var(--border)"
+           x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
+        <div class="px-5 py-4 border-b flex items-center gap-2" style="border-color:var(--border)">
+          <svg class="w-5 h-5 shrink-0" style="color:var(--warn, #f59e0b)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <div class="text-sm font-semibold" style="color:var(--text-primary)" x-text="($store.app.disclaimer && $store.app.disclaimer.title) || 'Unofficial software'"></div>
+        </div>
+        <div class="px-5 py-4 text-sm space-y-2" style="color:var(--text-secondary)">
+          <template x-for="(line, i) in ($store.app.disclaimer && $store.app.disclaimer.lines) || []" :key="i">
+            <p x-text="line"></p>
+          </template>
+        </div>
+        <div class="px-5 py-3 border-t space-y-3" style="border-color:var(--border)">
+          <label class="flex items-start gap-2 text-sm cursor-pointer select-none" style="color:var(--text-primary)">
+            <input type="checkbox" x-model="$store.app.agreedChecked" class="mt-0.5 shrink-0">
+            <span>I have read and agree to the above — don't show this again.</span>
+          </label>
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <div class="flex items-center gap-3 text-xs">
+              <a :href="($store.app.disclaimer && $store.app.disclaimer.docs_url) || 'guide/'" target="_blank" rel="noopener"
+                 class="inline-flex items-center gap-1" style="color:var(--accent, #34d399)">Documentation</a>
+              <a :href="($store.app.disclaimer && $store.app.disclaimer.issues_url) || '#'" target="_blank" rel="noopener"
+                 x-show="$store.app.disclaimer && $store.app.disclaimer.issues_url"
+                 class="inline-flex items-center gap-1" style="color:var(--accent, #34d399)">GitHub Issues</a>
+              <a :href="($store.app.disclaimer && $store.app.disclaimer.terms_url) || '#'" target="_blank" rel="noopener"
+                 x-show="$store.app.disclaimer && $store.app.disclaimer.terms_url"
+                 class="inline-flex items-center gap-1" style="color:var(--accent, #34d399)">Full terms</a>
+            </div>
+            <button class="btn btn-primary btn-sm" @click="$store.app.ackDisclaimer()"
+                    x-text="$store.app.agreedChecked ? 'Agree & continue' : 'Continue'"></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast notifications -->
+    <div class="toast-container">
+      <template x-for="toast in $store.app.toasts" :key="toast.id">
+        <div class="toast-item" :class="toast.level" x-text="toast.message"
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0 translate-x-4"
+             x-transition:enter-end="opacity-100 translate-x-0"
+             x-transition:leave="transition ease-in duration-150"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0">
+        </div>
+      </template>
+    </div>
+
+    {% include "partials/terminal.html" %}
+    {% include "partials/bottom-nav.html" %}
+  </div> <!-- closes x-data scope -->
+
+</body>
+</html>

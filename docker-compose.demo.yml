@@ -1,0 +1,47 @@
+# Demo / no-hardware mode. Runs two seeded MOCK aGates (the emulator bundled in the
+# bridge image) plus a bridge pointed at mock-1, so the whole UI shows live-looking
+# data with NO hardware. Fully isolated from the real setup: own port (8102), own
+# volume (./data-demo), MQTT off. Never touches the real container on 8101 / ./data.
+#
+#   tools/demo.sh          # build image + up -d, prints http://localhost:8102
+#   tools/demo.sh --down   # tear down
+#
+# Its own project name keeps it in a separate namespace from the real stack, so the
+# real container is never treated as an orphan of this compose file.
+name: fwh-demo
+services:
+  mock-agate-1:
+    image: franklinwh-local-bridge:dev
+    container_name: fwh-demo-mock-1
+    command: franklinwh-local emulate --bind 0.0.0.0 --port 9000 --seed 1 --units 3
+    restart: unless-stopped
+
+  mock-agate-2:
+    # Second seeded site for MULTI-GATEWAY testing (the bridge below rosters both).
+    image: franklinwh-local-bridge:dev
+    container_name: fwh-demo-mock-2
+    command: franklinwh-local emulate --bind 0.0.0.0 --port 9000 --seed 2
+    restart: unless-stopped
+
+  bridge-demo:
+    image: franklinwh-local-bridge:dev
+    container_name: fwh-demo-bridge
+    ports:
+      - "8102:8101"
+    volumes:
+      - ./data-demo:/data
+    environment:
+      # Multi-gateway roster (2 seeded mocks). FWH_HOST stays as a harmless fallback.
+      - FWH_HOSTS=mock-agate-1=Home,mock-agate-2=Shed
+      - FWH_HOST=mock-agate-1
+      - FWH_PORT=9000
+      - MQTT_ENABLED=false
+      - METRICS_ENABLED=true
+      - ALLOW_WRITES=true      # show the control buttons against the mock
+      - READ_ONLY=false
+      - LOG_LEVEL=info
+      - POLL_INTERVAL=10
+    depends_on:
+      - mock-agate-1
+      - mock-agate-2
+    restart: unless-stopped

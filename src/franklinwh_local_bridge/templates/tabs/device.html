@@ -1,0 +1,310 @@
+<!-- ── Device Tab — master/detail field viewer (list left · scrollable output right) ── -->
+<div x-data="deviceTab()" x-init="watchDeviceReadRequest()">
+
+  <!-- ── Raw cmdType console ─────────────────────────────────────────────────
+       Placed above the browser and with the reply directly under the request, so
+       what you sent and what came back are never more than a glance apart. -->
+  <div class="card mb-4 overflow-hidden">
+    <button class="w-full flex items-center justify-between px-4 py-2.5 text-left"
+            @click="toggleConsole()">
+      <span class="flex items-center gap-2">
+        <span class="text-sm font-semibold" style="color:var(--text-primary)">Raw command console</span>
+        <span class="text-xs" style="color:var(--text-faint)">send any cmdType · see the unprocessed reply</span>
+      </span>
+      <svg class="w-4 h-4 transition-transform" :class="conOpen ? 'rotate-180' : ''"
+           fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"
+           style="color:var(--text-secondary)">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+      </svg>
+    </button>
+
+    <div x-show="conOpen" x-cloak class="px-4 pb-4 space-y-3 border-t"
+         style="border-color:var(--border)">
+
+      <div class="flex flex-wrap items-end gap-3 pt-3">
+        <label class="text-xs" style="color:var(--text-secondary)">cmdType
+          <div class="flex items-center gap-2 mt-1">
+            <input type="number" class="form-control form-control-sm w-28 block" x-model="conCmd"
+                   list="cmdlist" @change="conSync()" @input="conInvalidate()">
+            <!-- Safari's <datalist> shows only the value in its dropdown, so echo the resolved
+                 alias inline — the full name is visible the instant a code is typed or picked. -->
+            <span class="font-mono text-xs px-1.5 py-0.5 rounded"
+                  :style="conInfo ? 'background:var(--surface-2);color:var(--text-primary)' : 'color:var(--text-faint)'"
+                  x-text="conInfo ? conInfo.name : (String(conCmd||'').length ? 'unknown code' : '')"></span>
+          </div>
+          <datalist id="cmdlist">
+            <template x-for="c in conCatalog" :key="c.cmd">
+              <option :value="c.cmd" :label="`${c.cmd} — ${c.name}`" x-text="`${c.cmd} — ${c.name}`"></option>
+            </template>
+          </datalist>
+        </label>
+        <div class="flex gap-1">
+          <button class="btn btn-secondary btn-sm" @click="conPreset('read')">opt:0 read</button>
+          <button class="btn btn-secondary btn-sm" @click="conPreset('id')">+ id</button>
+          <button class="btn btn-secondary btn-sm" @click="conPreset('write')">opt:1 write</button>
+          <button class="btn btn-secondary btn-sm" @click="conPreset('noopt')" title="Send {} — some commands reject a missing opt with result:1 reason:-1">no opt</button>
+        </div>
+        <button class="btn btn-primary btn-sm ml-auto" :disabled="conBusy" @click="conSend()"
+                x-text="conBusy ? 'Sending…' : 'Send'"></button>
+      </div>
+
+      <template x-if="conInfo">
+        <div class="text-xs rounded px-3 py-2" style="background:var(--surface-2);color:var(--text-secondary)">
+          <span class="font-mono" x-text="conInfo.name"></span>
+          <span x-show="conInfo.response_cmd"> → <span class="font-mono" x-text="conInfo.response_cmd"></span></span>
+          <div class="mt-1 opacity-80" x-text="conInfo.description"></div>
+        </div>
+      </template>
+      <template x-if="!conInfo && conCmd">
+        <div class="text-xs" style="color:var(--text-faint)">
+          Not in the catalog — out-of-band codes usually close the connection rather than reply.
+        </div>
+      </template>
+
+      <div>
+        <div class="text-xs mb-1" style="color:var(--text-secondary)">dataArea (JSON)</div>
+        <textarea class="form-control w-full font-mono text-xs" rows="5" spellcheck="false"
+                  x-model="conJson" @input="conInvalidate()"></textarea>
+      </div>
+
+      <div x-show="conOptMismatch" x-cloak class="rounded-lg px-3 py-2 text-xs"
+           style="background:rgba(59,130,246,.12);color:#93c5fd" x-text="conOptMismatch"></div>
+
+      <div x-show="conIsWrite" x-cloak class="rounded-lg px-3 py-2 text-xs"
+           style="background:rgba(245,158,11,.12);color:#fbbf24">
+        <strong>This is a write</strong> — <span class="font-mono" x-text="conCmd"></span>
+        reads with <span class="font-mono"
+          x-text="'opt:' + ((conInfo && conInfo.read_payload) ? conInfo.read_payload.opt : 0)"></span>,
+        so this payload is not a read. It needs ALLOW_WRITES and an explicit
+        confirmation. Remember: <span class="font-mono">result: 0</span> means the frame was
+        <em>parsed</em>, not that the setting was applied — several commands accept and
+        silently discard. Always re-read to verify.
+        <template x-if="conInfo && conInfo.dangerous_write">
+          <div class="mt-1 font-semibold" x-text="conInfo.dangerous_write"></div>
+        </template>
+      </div>
+
+      <div x-show="conError && !conResult" x-cloak class="rounded-lg px-3 py-2 text-xs"
+           style="background:rgba(239,68,68,.12);color:#fca5a5" x-text="conError"></div>
+
+      <template x-if="conResult">
+        <div class="space-y-2">
+          <div class="flex flex-wrap items-center gap-2 text-xs" style="color:var(--text-secondary)">
+            <span class="px-2 py-0.5 rounded font-semibold"
+                  :style="conResult.accepted ? 'background:rgba(52,211,153,.15);color:#34d399'
+                                             : 'background:rgba(239,68,68,.15);color:#fca5a5'"
+                  x-text="conResult.accepted ? 'result 0 — frame accepted' : 'refused'"></span>
+            <span x-text="`${conResult.elapsed_ms} ms`"></span>
+            <span class="px-2 py-0.5 rounded"
+                  :style="conResult.is_write ? 'background:rgba(245,158,11,.15);color:#fbbf24'
+                                             : 'background:var(--surface-2);color:var(--text-secondary)'"
+                  x-text="conResult.is_write ? 'write' : 'read'"></span>
+            <button class="btn btn-secondary btn-sm ml-auto" @click="conCopy()">Copy both</button>
+          </div>
+          <div class="grid gap-2" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
+            <div>
+              <div class="text-xs mb-1" style="color:var(--text-secondary)">Request sent</div>
+              <pre class="text-xs font-mono overflow-auto rounded p-2" style="max-height:320px;background:var(--surface-2);color:var(--text-primary)"
+                   x-text="conRequestJson"></pre>
+            </div>
+            <div>
+              <div class="text-xs mb-1" style="color:var(--text-secondary)">Raw response</div>
+              <pre class="text-xs font-mono overflow-auto rounded p-2" style="max-height:320px;background:var(--surface-2);color:var(--text-primary)"
+                   x-text="conResponseJson"></pre>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <div class="flex items-start justify-between gap-3 flex-wrap mb-4">
+    <div>
+      <h2 class="page-title">Device</h2>
+      <p class="text-xs mt-1" style="color:var(--text-faint)">
+        Live on-demand reads over the local sendMqtt API. Not polled. Pick a reading on the
+        left; its labelled + grouped reply opens in the panel on the right.
+      </p>
+    </div>
+    <button @click="exportSnapshot()" class="btn btn-secondary btn-sm" title="Fetch a curated set and download combined JSON">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/>
+      </svg>
+      Export snapshot
+    </button>
+  </div>
+
+  <!-- One threshold for the whole tab: below 700px (app `narrow`) the detail is a modal;
+       at/above 700px it's a right-hand column. Keeps the list↔detail split aligned with
+       the sidebar/bottom-nav switch, so there's no 700–1023px dead zone where the detail
+       got pushed to the bottom under the long readings list. -->
+  <div class="flex gap-4" :class="$store.app.narrow ? 'flex-col items-stretch' : 'flex-row items-start'">
+
+    <!-- ── LEFT: endpoint list (master) — sticky + own scrollbar so it doesn't push
+             the page; groups collapse to cut scrolling ─────────────────────── -->
+    <div class="device-nav space-y-3" :class="$store.app.narrow ? 'w-full' : 'w-72 xl:w-80 shrink-0'">
+      <div class="flex items-center justify-between px-1">
+        <span class="text-[10px] uppercase tracking-wide" style="color:var(--text-faint)">Readings</span>
+        <button @click="allNavCollapsed ? expandAllNav() : collapseAllNav()"
+                class="text-xs" style="color:var(--accent)"
+                x-text="allNavCollapsed ? 'Expand all' : 'Collapse all'"></button>
+      </div>
+      <template x-for="g in endpointGroups" :key="g.title">
+        <div class="card" style="padding:0;overflow:hidden">
+          <button @click="toggleNav(g.title)"
+                  class="w-full px-4 py-2.5 border-b flex items-center justify-between gap-2 hover:bg-white/[0.03]"
+                  style="border-color:var(--border)">
+            <span class="card-label" style="margin-bottom:0" x-text="g.title"></span>
+            <svg class="w-3.5 h-3.5 transition-transform shrink-0" :class="!navCollapsed[g.title] && 'rotate-180'"
+                 style="color:var(--text-faint)" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          <div class="p-2 space-y-1" x-show="!navCollapsed[g.title]">
+            <template x-for="it in g.items" :key="itemName(it)">
+              <button @click="select(itemName(it))"
+                      class="w-full text-left px-3 py-2 rounded-md transition-colors flex items-center justify-between gap-2"
+                      :style="selected === itemName(it)
+                              ? 'background:var(--surface-2);box-shadow:inset 2px 0 0 var(--accent)'
+                              : ''"
+                      :class="selected === itemName(it) ? '' : 'hover:bg-white/[0.04]'">
+                <span class="min-w-0">
+                  <span class="font-mono text-xs block truncate"
+                        :style="selected === itemName(it) ? 'color:var(--accent)' : 'color:var(--text-primary)'"
+                        x-text="itemName(it)"></span>
+                  <span class="text-[0.65rem] block truncate" style="color:var(--text-faint)"
+                        x-text="desc(itemName(it))"></span>
+                </span>
+                <span class="flex items-center gap-1 shrink-0">
+                  <span x-show="isSlow(it)" class="chip warn" style="font-size:.6rem">slow</span>
+                  <span x-show="isWrite(itemName(it))" class="chip muted" style="font-size:.6rem">W</span>
+                  <svg x-show="loading[itemName(it)]" class="w-3 h-3 animate-spin" fill="none"
+                       stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" d="M20.49 9A9 9 0 0 0 5.64 5.64L4 7m16 10l-1.64 1.36A9 9 0 0 1 3.51 15"/>
+                  </svg>
+                </span>
+              </button>
+            </template>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- ── RIGHT: output panel (detail) — inline two-column on desktop, full-screen
+             modal on mobile (the detail used to stack far below the long list). ── -->
+    <div :class="$store.app.narrow ? (selected ? 'fixed inset-0 z-[110] p-3' : 'hidden') : 'flex-1 min-w-0'">
+      <div x-show="$store.app.narrow && selected" x-cloak class="absolute inset-0"
+           style="background:rgba(0,0,0,.6)" @click="selected=''"></div>
+      <div class="card device-detail"
+           :class="$store.app.narrow ? 'absolute inset-x-3 top-3 bottom-3 flex flex-col' : ''"
+           style="padding:0;display:flex;flex-direction:column">
+
+        <!-- mobile close bar -->
+        <div x-show="$store.app.narrow" class="flex items-center justify-between px-3 py-2 border-b shrink-0"
+             style="border-color:var(--border)">
+          <span class="font-mono text-sm truncate" style="color:var(--text-primary)" x-text="selected || 'Reading'"></span>
+          <button @click="selected=''" class="btn btn-secondary btn-sm shrink-0">&times; Close</button>
+        </div>
+
+        <!-- Empty state -->
+        <div x-show="!selected" x-cloak class="p-8 text-center text-xs" style="color:var(--text-faint)">
+          Select a reading on the left to view its live output here.
+        </div>
+
+        <template x-if="selected">
+          <div class="flex flex-col min-h-0" style="flex:1">
+            <!-- Panel header (endpoint name + description + actions) -->
+            <div class="px-5 py-3 border-b flex items-start justify-between gap-3 flex-wrap shrink-0"
+                 style="border-color:var(--border)">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="font-mono text-sm font-semibold" style="color:var(--text-primary)" x-text="selected"></span>
+                  <span x-show="$store.app.showRawKeys && $store.app.catalog[selected]"
+                        class="font-mono" style="color:var(--text-faint);font-size:.65rem"
+                        x-text="'cmd ' + ($store.app.catalog[selected] || {}).cmd"></span>
+                  <!-- The frame ACTUALLY sent, straight from the X-FWH-Request header —
+                       always shown, so the request is never taken on trust. -->
+                  <span x-show="sentFrame(selected)" class="font-mono px-1.5 py-0.5 rounded"
+                        style="background:var(--surface-2);color:var(--text-secondary);font-size:.65rem"
+                        :title="'the exact dataArea sent to the gateway'"
+                        x-text="'sent ' + sentFrameText(selected)"></span>
+                  <span x-show="isWrite(selected)" class="chip muted" style="font-size:.65rem">writable</span>
+                  <button @click="fetchCmd(selected)" class="chip muted" style="font-size:.65rem"
+                          :disabled="loading[selected]">Refresh</button>
+                </div>
+                <p class="text-xs mt-1" style="color:var(--text-faint)" x-text="desc(selected)"></p>
+              </div>
+              <div class="flex items-center gap-2 shrink-0" x-show="hasResult(selected) && !isError(selected)">
+                <button @click="toggleRaw(selected)" class="chip muted" style="font-size:.65rem"
+                        x-text="rawOpen[selected] ? 'Table' : 'Raw JSON'"></button>
+                <button @click="exportJson(selected)" class="chip muted" style="font-size:.65rem">JSON</button>
+                <button @click="exportCsv(selected)" class="chip muted" style="font-size:.65rem">CSV</button>
+              </div>
+            </div>
+
+            <!-- Scrollable body -->
+            <div class="p-4 overflow-y-auto" style="flex:1">
+
+              <!-- Loading -->
+              <div x-show="loading[selected] && !hasResult(selected)" class="text-xs" style="color:var(--text-faint)">
+                Reading…
+              </div>
+
+              <!-- Error (with Retry) -->
+              <div x-show="hasResult(selected) && isError(selected)" x-cloak
+                   class="text-xs px-3 py-2 rounded-md flex items-center justify-between gap-3"
+                   style="background:var(--surface-1);border:1px solid var(--border);color:var(--danger)">
+                <span x-text="results[selected] && results[selected].error"></span>
+                <button @click="fetchCmd(selected)" class="chip muted shrink-0" style="font-size:.65rem"
+                        :disabled="loading[selected]">Retry</button>
+              </div>
+
+              <!-- Empty (successful read, no renderable fields) -->
+              <div x-show="isEmpty(selected) && !rawOpen[selected]" x-cloak
+                   class="text-xs px-3 py-2 rounded-md" style="background:var(--surface-1);border:1px solid var(--border);color:var(--text-faint)">
+                The device returned no data fields for this reading (<span class="font-mono" x-text="envelope(selected)"></span>).
+                This is normal when the feature isn't configured/present on this unit.
+              </div>
+
+              <!-- Grouped + labelled table -->
+              <div x-show="hasResult(selected) && !isError(selected) && !rawOpen[selected]" x-cloak class="space-y-3">
+                <template x-for="grp in grouped(selected)" :key="grp.title">
+                  <div :style="grp.nested ? 'padding-left:0.75rem;border-left:2px solid var(--border)' : ''">
+                    <div class="text-[10px] uppercase tracking-wide mb-1 flex items-center gap-1.5"
+                         :style="grp.nested ? 'color:var(--accent)' : 'color:var(--text-faint)'">
+                      <svg x-show="grp.nested" class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+                      </svg>
+                      <span x-text="grp.title"></span>
+                    </div>
+                    <div class="rounded-md overflow-hidden" style="border:1px solid var(--border)">
+                      <template x-for="(row, i) in grp.rows" :key="row.raw">
+                        <div class="flex items-baseline justify-between gap-3 px-3 py-1.5 text-xs"
+                             :style="i % 2 ? 'background:var(--surface-1)' : ''">
+                          <span class="shrink-0" style="color:var(--text-secondary)" x-text="row.label"></span>
+                          <div class="flex items-baseline gap-2 min-w-0 text-right">
+                            <span class="truncate" style="color:var(--text-primary)" x-text="row.value"></span>
+                            <span x-show="$store.app.showRawKeys" class="font-mono shrink-0"
+                                  style="color:var(--text-faint);font-size:.65rem" x-text="row.raw"></span>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+              </div>
+
+              <!-- Raw JSON -->
+              <pre x-show="hasResult(selected) && !isError(selected) && rawOpen[selected]" x-cloak
+                   class="font-mono text-[11px] leading-relaxed p-3 rounded-md overflow-x-auto"
+                   style="background:var(--surface-1);border:1px solid var(--border)"
+                   x-text="pretty(results[selected])"></pre>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+  </div>
+</div>

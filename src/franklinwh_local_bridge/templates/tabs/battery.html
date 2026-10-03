@@ -1,0 +1,559 @@
+<div x-data="batteryTab()" x-init="init()" class="space-y-4">
+
+  <!-- header + controls -->
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h2 class="page-title">Battery</h2>
+      <p class="text-xs" style="color:var(--text-secondary)">
+        aPower units, BMS telemetry &amp; cell data
+        <span class="font-mono opacity-70">· 1705/1703/1835/1833</span>
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <!-- aPower selector — labelled by serial. Shown whenever the gateway reports
+           any aPower; a multi-battery site makes it a real chooser. -->
+      <template x-if="(data && data.units && (data.units.devMap || []).length > 1)">
+        <select class="form-control form-control-sm" style="width:auto" x-model.number="unitId"
+                @change="load()" title="Select aPower (by serial)">
+          <template x-for="u in (data.units.devMap || [])" :key="u.id">
+            <option :value="u.id" x-text="'aPower ' + u.id + ' · ' + u.devSN"></option>
+          </template>
+        </select>
+      </template>
+
+      <button class="btn btn-secondary btn-sm justify-center" style="min-width:6.5rem" @click="load()" :disabled="loading">
+        <span x-show="!loading">Snapshot</span>
+        <span x-show="loading">Reading…</span>
+      </button>
+
+      <button class="btn btn-sm" @click="toggleAuto()"
+              :class="polling ? 'btn-primary' : 'btn-secondary'"
+              :title="polling ? (auto ? 'Auto-refresh on' : 'Refreshing for the live chart') : 'Refresh continuously'">
+        <span x-text="polling ? 'Auto ● on' : 'Auto ○ off'"></span>
+      </button>
+
+      <select class="form-control form-control-sm" style="width:auto" x-model.number="intervalS"
+              @change="changeInterval()" title="Auto-refresh interval">
+        <template x-for="s in intervals" :key="s">
+          <option :value="s" x-text="s + 's'"></option>
+        </template>
+      </select>
+
+      <button class="btn btn-secondary btn-sm" @click="toggleChart()"
+              x-text="showChart ? 'Hide chart' : 'Chart'"></button>
+
+      <button class="btn btn-sm inline-flex items-center gap-1.5"
+              :class="liveOpen ? 'btn-primary' : 'btn-secondary'"
+              @click="liveOpen ? closeLive() : openLive()"
+              title="Open a full-screen realtime streaming chart">
+        <span class="w-1.5 h-1.5 rounded-full"
+              :class="liveOpen ? 'bg-red-400 animate-pulse' : 'bg-slate-400'"></span>
+        <span>Watch live</span>
+      </button>
+
+      <button class="btn btn-sm inline-flex items-center gap-1.5"
+              :class="bmsCardsOpen ? 'btn-primary' : 'btn-secondary'"
+              @click="bmsCardsOpen = !bmsCardsOpen" title="Show / hide cards">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M7 12h10M10 18h4"/></svg>
+        <span>Cards</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Visible Cards panel (declutter) -->
+  <div x-show="bmsCardsOpen" x-transition.duration.200ms x-cloak class="card p-3">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-[10px] uppercase text-slate-500 font-semibold tracking-wider">Visible Cards</span>
+      <button @click="resetBmsCards()" class="text-[10px] text-slate-500 hover:text-cyan-400 transition" title="Reset to defaults">Reset Defaults</button>
+    </div>
+    <div class="flex flex-wrap gap-x-4 gap-y-1.5">
+      <template x-for="[key, label] in bmsCardList" :key="key">
+        <label class="flex items-center gap-1.5 text-[11px] cursor-pointer select-none">
+          <input type="checkbox" :checked="bmsCards[key]" @change="toggleBmsCard(key)">
+          <span x-text="label" :class="bmsCards[key] ? '' : 'text-slate-500'"></span>
+        </label>
+      </template>
+    </div>
+  </div>
+
+  <!-- sub-tabs: live telemetry vs recorded sessions -->
+  <div class="flex items-center gap-1 border-b overflow-x-auto" style="border-color:var(--border)">
+    <button class="px-3 py-2 text-sm border-b-2 -mb-px"
+            :class="view === 'telemetry' ? 'border-emerald-400 text-emerald-300' : 'border-transparent'"
+            :style="view === 'telemetry' ? '' : 'color:var(--text-secondary)'"
+            @click="setView('telemetry')">BMS Telemetry</button>
+    <button class="px-3 py-2 text-sm border-b-2 -mb-px"
+            :class="view === 'charts' ? 'border-emerald-400 text-emerald-300' : 'border-transparent'"
+            :style="view === 'charts' ? '' : 'color:var(--text-secondary)'"
+            @click="setView('charts')">
+      Charts
+      <span class="ml-1 text-xs opacity-70" x-show="sessions.length"
+            x-text="sessions.length"></span>
+    </button>
+  </div>
+
+  <div x-show="error" x-cloak class="rounded-lg px-3 py-2 text-sm"
+       style="background:rgba(220,38,38,.12);color:var(--danger,#dc2626)">
+    <span x-text="error"></span>
+    <span class="opacity-70"> — showing the last good reading.</span>
+  </div>
+
+  <template x-if="data && view === 'telemetry'">
+    <div class="space-y-4">
+
+      <!-- Nothing visible: all cards toggled off AND no live chart -> guide recovery. -->
+      <div x-show="!anyBmsCard && !showChart && !(unitRows.length > 1)"
+           class="card p-6 text-center space-y-3" x-cloak>
+        <div class="text-sm" style="color:var(--text-secondary)">All telemetry cards are hidden.</div>
+        <div class="flex items-center justify-center gap-2 flex-wrap">
+          <button @click="resetBmsCards()" class="btn btn-primary btn-sm">Show all cards</button>
+          <button @click="toggleChart()" class="btn btn-secondary btn-sm">Show live chart</button>
+        </div>
+        <div class="text-xs" style="color:var(--text-faint)">
+          Use the <span class="font-mono">Cards</span> button above to choose which cards to show.
+        </div>
+      </div>
+
+      <!-- Per-aPower table (multi-battery sites) — one row per aPower, live. -->
+      <template x-if="unitRows.length > 1">
+        <div class="card p-0 overflow-hidden">
+          <div class="px-4 py-3 border-b flex items-center gap-2" style="border-color:var(--border)">
+            <div class="text-xs uppercase tracking-wide" style="color:var(--text-secondary)">aPowers</div>
+            <span class="chip muted" x-text="unitRows.length + ' batteries'"></span>
+            <div class="ml-auto text-xs" style="color:var(--text-secondary)">
+              <span x-show="lastAt">updated <span x-text="lastAt"></span></span>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm" style="border-collapse:collapse">
+              <thead>
+                <tr style="color:var(--text-secondary)" class="text-xs uppercase tracking-wide">
+                  <th class="text-left font-medium px-4 py-2">aPower</th>
+                  <th class="text-right font-medium px-3 py-2">SoC</th>
+                  <th class="text-right font-medium px-3 py-2">SoH</th>
+                  <th class="text-right font-medium px-3 py-2">Current</th>
+                  <th class="text-left font-medium px-3 py-2">BMS state</th>
+                  <th class="text-left font-medium px-3 py-2">DCDC</th>
+                  <th class="text-left font-medium px-4 py-2">Firmware</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="r in unitRows" :key="r.id">
+                  <tr class="border-t" style="border-color:var(--border)"
+                      :style="r.id === unitId ? 'background:var(--surface-2)' : ''">
+                    <td class="px-4 py-2">
+                      <button class="font-mono text-left hover:underline" @click="unitId = r.id; load()"
+                              :style="r.id === unitId ? 'color:var(--accent)' : 'color:var(--text-primary)'"
+                              x-text="'aP' + r.id + ' · ' + r.devSN"></button>
+                    </td>
+                    <td class="px-3 py-2 text-right font-mono" x-text="r.offline ? '—' : (fmt(r.soc,1,'%'))"></td>
+                    <td class="px-3 py-2 text-right font-mono" style="color:var(--text-secondary)" x-text="r.offline ? '—' : (fmt(r.soh,1,'%'))"></td>
+                    <td class="px-3 py-2 text-right font-mono"
+                        :style="r.offline ? '' : (r.current > 0 ? 'color:#34d399' : r.current < 0 ? 'color:#f59e0b' : '')"
+                        x-text="r.offline ? '—' : (fmt(r.current,1,'A'))"></td>
+                    <td class="px-3 py-2" x-text="r.offline ? 'offline' : (r.bms || '—')"></td>
+                    <td class="px-3 py-2" style="color:var(--text-secondary)" x-text="r.offline ? '' : (r.dcdc || '—')"></td>
+                    <td class="px-4 py-2 font-mono text-xs" style="color:var(--text-secondary)" x-text="r.offline ? '' : (r.bmsVer || '—')"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </template>
+
+      <!-- BMS identity (single aPower) -->
+      <div class="card p-4 flex flex-wrap items-center gap-x-6 gap-y-2" x-show="!(unitRows.length > 1) && bmsCards.header">
+        <div>
+          <div class="text-xs uppercase tracking-wide" style="color:var(--text-secondary)">Battery Management System</div>
+          <div class="font-mono text-sm" style="color:var(--text-primary)" x-text="fw.fhp_sn || '—'"></div>
+        </div>
+        <div class="text-sm">
+          <span style="color:var(--text-secondary)">Firmware </span>
+          <span class="font-mono" x-text="fw.bms_ver || '—'"></span>
+        </div>
+        <div class="text-sm">
+          <span style="color:var(--text-secondary)">BMS state </span>
+          <span x-text="states.bmsState_desc || (states.bmsState ?? '—')"></span>
+          <span class="font-mono text-xs opacity-60" x-show="$store.app.showRawKeys"
+                x-text="'(' + states.bmsState + ')'"></span>
+        </div>
+        <div class="text-sm" x-show="states.peState_desc">
+          <span style="color:var(--text-secondary)">Inverter </span>
+          <span x-text="states.peState_desc"></span>
+          <span class="font-mono text-xs opacity-60" x-show="$store.app.showRawKeys"
+                x-text="'(' + states.peState + ')'"></span>
+        </div>
+        <div class="text-sm" x-show="fw.pe_ver">
+          <span style="color:var(--text-secondary)">Inverter fw </span>
+          <span class="font-mono" x-text="fw.pe_ver"></span>
+        </div>
+        <div class="ml-auto text-xs" style="color:var(--text-secondary)">
+          <span x-show="lastAt">updated <span x-text="lastAt"></span></span>
+          <span x-show="auto" class="ml-2">· auto <span x-text="intervalS"></span>s</span>
+        </div>
+      </div>
+
+      <!-- pack + electrical -->
+      <div class="grid gap-4" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))" x-show="bmsCards.metrics">
+        <div class="card metric-card"><div class="metric-label">State of Charge</div>
+          <div class="metric-value" x-text="fmt(cells.batSoc, 1, '%')"></div></div>
+        <div class="card metric-card"><div class="metric-label">State of Health</div>
+          <div class="metric-value" x-text="fmt(cells.batSoh, 1, '%')"></div></div>
+        <div class="card metric-card"><div class="metric-label">Pack Voltage</div>
+          <div class="metric-value" x-text="fmt(cells.batTotalVolt, 1, 'V')"></div></div>
+        <div class="card metric-card"><div class="metric-label">Current</div>
+          <div class="metric-value text-base" x-text="currentLabel"></div></div>
+        <div class="card metric-card"><div class="metric-label">Grid Frequency</div>
+          <div class="metric-value" x-text="fmt(el.gridFreq, 2, 'Hz')"></div></div>
+        <div class="card metric-card"><div class="metric-label">Alarm</div>
+          <div class="metric-value text-base"
+               :class="cells.alarmLevel ? 'text-red-400' : 'text-emerald-400'"
+               x-text="cells.alarmLevel ? ('Level ' + cells.alarmLevel) : 'None'"></div></div>
+      </div>
+
+      <!-- cell grid -->
+      <div class="card p-4" x-show="volts.length && bmsCards.cells">
+        <div class="flex flex-wrap items-center justify-between mb-3 gap-2">
+          <div class="card-label">
+            Cell Telemetry (<span x-text="volts.length"></span> series)
+          </div>
+          <div class="text-xs flex items-center gap-3" style="color:var(--text-secondary)">
+            <span>↑ HIGH <span class="font-mono" x-text="(stats.vmax/1000).toFixed(3)+'V'"></span></span>
+            <span>↓ LOW <span class="font-mono" x-text="(stats.vmin/1000).toFixed(3)+'V'"></span></span>
+            <span>Δ <span class="font-mono font-semibold" :class="spreadClass"
+                          x-text="stats.spread + 'mV'"></span></span>
+          </div>
+        </div>
+        <div class="grid gap-2" style="grid-template-columns:repeat(auto-fit,minmax(92px,1fr))">
+          <template x-for="(mv, i) in volts" :key="i">
+            <div class="rounded-lg border p-2 text-center" :class="cellClass(i)"
+                 style="border-color:var(--border)">
+              <div class="text-[10px]" style="color:var(--text-secondary)" x-text="i+1"></div>
+              <div class="font-mono text-sm" style="color:var(--text-primary)"
+                   x-text="(mv/1000).toFixed(3)+'V'"></div>
+              <div class="font-mono text-[11px]" style="color:var(--text-secondary)"
+                   x-text="temps[i] !== undefined ? temps[i].toFixed(1)+'°C' : ''"></div>
+            </div>
+          </template>
+        </div>
+        <div class="mt-3 text-xs flex flex-wrap gap-4" style="color:var(--text-secondary)">
+          <span>Lowest: cell <span class="font-mono" x-text="stats.vminCell"></span></span>
+          <span>Highest: cell <span class="font-mono" x-text="stats.vmaxCell"></span></span>
+          <span x-show="stats.tmax !== undefined">Temp
+            <span class="font-mono" x-text="stats.tmin?.toFixed(1)+'°C → '+stats.tmax?.toFixed(1)+'°C'"></span>
+            (cells <span class="font-mono" x-text="stats.tminCell+' → '+stats.tmaxCell"></span>)
+          </span>
+        </div>
+      </div>
+
+      <!-- electrical -->
+      <div class="card p-4" x-show="el.gridVol1 !== undefined && bmsCards.inverter">
+        <div class="card-label">Inverter &amp; Power Electronics</div>
+        <div class="grid gap-4 text-sm" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+          <div><div class="metric-label">Grid Voltages</div>
+            <div class="font-mono">L1 <span x-text="fmt(el.gridVol1,1,'V')"></span></div>
+            <div class="font-mono">L2 <span x-text="fmt(el.gridVol2,1,'V')"></span></div></div>
+          <div><div class="metric-label">Inverter Lines</div>
+            <div class="font-mono">L1 <span x-text="fmt(el.inverterVolt1,1,'V')"></span></div>
+            <div class="font-mono">L2 <span x-text="fmt(el.inverterVolt2,1,'V')"></span></div></div>
+          <div><div class="metric-label">DC Bus</div>
+            <div class="font-mono">Pos <span x-text="fmt(el.positiveBusVolt,1,'V')"></span></div>
+            <div class="font-mono">Neg <span x-text="fmt(el.negativeBusVolt,1,'V')"></span></div>
+            <div class="font-mono">Mid <span x-text="fmt(el.middleBusVolt,1,'V')"></span></div></div>
+          <div><div class="metric-label">Currents</div>
+            <div class="font-mono">Load <span x-text="fmt(el.loadCurr1,1,'A')"></span></div>
+            <div class="font-mono">Inv <span x-text="fmt(el.inverterCurr1,1,'A')"></span></div>
+            <div class="font-mono">BuckBoost <span x-text="fmt(el.buckboostCurr,1,'A')"></span></div></div>
+          <div><div class="metric-label">States</div>
+            <div class="font-mono">Run <span x-text="el.runMode ?? '—'"></span></div>
+            <div class="font-mono">Inverter <span x-text="el.inverterStatus ?? '—'"></span></div>
+            <div class="font-mono">DCDC <span x-text="el.DCDCStatus ?? '—'"></span><span
+                 x-show="el.DCDCStatus_desc" class="text-xs font-sans"
+                 style="color:var(--text-secondary)"> · <span x-text="el.DCDCStatus_desc"></span></span></div></div>
+        </div>
+      </div>
+
+      <!-- chart -->
+      <div class="card p-4" x-show="showChart" x-cloak>
+        <div class="flex flex-wrap items-center justify-between mb-3 gap-2">
+          <div class="card-label">
+            Trend <span class="text-xs font-normal" style="color:var(--text-secondary)"
+              >· <span x-text="samples.length"></span> sample(s) this session</span>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- Multi-aPower select (only on a 2+ battery site): default = current
+                 aPower, tick others to overlay them on the chart. -->
+            <template x-if="data && data.units && (data.units.devMap || []).length > 1">
+              <div class="relative" x-data="{ open: false }" @click.outside="open = false">
+                <button class="btn btn-secondary btn-sm inline-flex items-center gap-1"
+                        @click="open = !open" title="Choose which aPowers to chart">
+                  <span x-text="'Units (' + selectedUnits.length + ')'"></span>
+                  <svg class="w-3 h-3 opacity-70" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                </button>
+                <div x-show="open" x-cloak class="absolute z-20 mt-1 w-60 rounded-lg border shadow-xl p-1"
+                     style="background:var(--surface-1);border-color:var(--border)">
+                  <template x-for="u in data.units.devMap" :key="u.id">
+                    <label class="flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-white/[0.05] cursor-pointer">
+                      <input type="checkbox" :checked="selectedUnits.includes(u.id)"
+                             :disabled="u.id === unitId" @change="toggleChartUnit(u.id)">
+                      <span style="color:var(--text-primary)" x-text="'aPower ' + u.id + ' · ' + u.devSN"></span>
+                      <span x-show="u.id === unitId" class="ml-auto text-[9px]" style="color:var(--accent)">current</span>
+                    </label>
+                  </template>
+                </div>
+              </div>
+            </template>
+            <!-- Switch the same chart between the original aggregate trend and the
+                 BMS per-cell voltages (or their average / median). -->
+            <div class="flex items-center gap-0.5 p-0.5 rounded-lg border" style="border-color:var(--border)">
+              <template x-for="m in [['trend','Trend'],['percell','Per-cell'],['average','Avg'],['median','Median']]" :key="m[0]">
+                <button class="px-2 py-1 text-xs rounded-md transition"
+                        :class="trendMode === m[0] ? 'bg-emerald-400/15 text-emerald-300' : 'text-slate-400 hover:text-slate-200'"
+                        @click="setTrendMode(m[0])" x-text="m[1]"></button>
+              </template>
+            </div>
+            <!-- Voltage / Temperature — only meaningful for the per-cell + aggregate
+                 modes (the plain Trend already carries its own SoC/temp axes). -->
+            <div class="flex items-center gap-0.5 p-0.5 rounded-lg border" style="border-color:var(--border)"
+                 :class="trendMode === 'trend' ? 'invisible pointer-events-none' : ''">
+              <template x-for="m in [['voltage','Voltage'],['temp','Temp']]" :key="m[0]">
+                <button class="px-2 py-1 text-xs rounded-md transition"
+                        :class="trendMetric === m[0] ? 'bg-sky-400/15 text-sky-300' : 'text-slate-400 hover:text-slate-200'"
+                        @click="setTrendMetric(m[0])" x-text="m[1]"></button>
+              </template>
+            </div>
+            <button class="btn btn-secondary btn-sm" @click="exportCsv()"
+                    :disabled="!samples.length">Export CSV</button>
+            <button class="btn btn-secondary btn-sm" @click="clearSamples()">Clear</button>
+          </div>
+        </div>
+        <!-- Single chart: single-unit, or the aggregate/trend multi-unit overlay. -->
+        <div style="height:260px" x-show="!showStack"><canvas id="bmsChart"></canvas></div>
+        <!-- Per-cell stack: one small chart per selected aPower (Per-cell + 2+ units). -->
+        <div x-show="showStack" x-cloak class="space-y-3">
+          <template x-for="u in selectedUnits" :key="'stack-' + u">
+            <div>
+              <div class="text-xs font-mono mb-1" style="color:var(--text-secondary)" x-text="unitLabel(u)"></div>
+              <div style="height:180px"><canvas :id="'bmsCellChart-' + u"></canvas></div>
+            </div>
+          </template>
+        </div>
+        <p class="mt-2 text-xs" style="color:var(--text-secondary)">
+          Samples are collected in this browser while the tab is open — turn on Auto to build a
+          trend. Not persisted; use Export CSV to keep them.
+        </p>
+      </div>
+
+      <p class="text-xs" style="color:var(--text-secondary)">
+        Local only. Thermal sensors, cell balancing and MOS/fan/heater state are not on the
+        local channel — they come from the cloud's BMS payload.
+      </p>
+    </div>
+  </template>
+
+  <!-- Charts: recorded sessions -->
+  <div x-show="view === 'charts'" x-cloak class="grid gap-4"
+       style="grid-template-columns:minmax(260px,340px) 1fr">
+
+    <div class="card p-4 space-y-3">
+      <div class="flex items-center justify-between">
+        <div class="card-label">Recorded sessions</div>
+        <button class="btn btn-secondary btn-sm" @click="loadSessions()">Refresh</button>
+      </div>
+
+      <div class="rounded-lg border p-3 space-y-2" style="border-color:var(--border)">
+        <div class="text-xs font-semibold" style="color:var(--text-secondary)">New recording</div>
+        <div class="flex items-center gap-2 text-sm">
+          <input type="number" min="1" max="500" class="form-control form-control-sm w-20"
+                 x-model.number="recSamples" :disabled="rec.active">
+          <span style="color:var(--text-secondary)">samples every</span>
+          <input type="number" min="5" max="600" class="form-control form-control-sm w-20"
+                 x-model.number="recIntervalS" :disabled="rec.active">
+          <span style="color:var(--text-secondary)">s</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="btn btn-primary btn-sm" @click="startRecording()"
+                  x-show="!rec.active">Record</button>
+          <button class="btn btn-secondary btn-sm" @click="stopRecording()"
+                  x-show="rec.active">Stop</button>
+          <span class="text-xs" style="color:var(--text-secondary)" x-show="rec.active">
+            <span x-text="rec.captured"></span>/<span x-text="rec.planned"></span>
+            <span x-show="rec.errors" class="text-amber-400">
+              · <span x-text="rec.errors"></span> failed</span>
+          </span>
+        </div>
+        <p class="text-xs" style="color:var(--text-secondary)">
+          Runs on the bridge, not in this browser — you can close the page.
+        </p>
+      </div>
+
+      <div class="space-y-1 overflow-auto" style="max-height:460px">
+        <template x-for="s in sessions" :key="s.id">
+          <div class="rounded-lg border px-3 py-2 cursor-pointer flex items-start gap-2"
+               :class="sessionId === s.id ? 'border-emerald-400/60 bg-emerald-500/5' : ''"
+               style="border-color:var(--border)" @click="openSession(s.id)">
+            <div class="min-w-0 flex-1">
+              <div class="text-sm" style="color:var(--text-primary)"
+                   x-text="`${s.samples} sample(s) @ ${Math.round(s.interval_s)}s`"></div>
+              <div class="text-xs" style="color:var(--text-secondary)"
+                   x-text="new Date(s.started_ts*1000).toLocaleString()"></div>
+              <div class="text-xs font-mono truncate" style="color:var(--text-secondary)"
+                   x-text="(s.apower_sn || '').slice(-8)"></div>
+            </div>
+            <button class="btn btn-secondary btn-sm !px-2" title="Delete"
+                    @click.stop="deleteSession(s.id)">&times;</button>
+          </div>
+        </template>
+        <div x-show="!sessions.length" class="text-sm py-6 text-center"
+             style="color:var(--text-secondary)">No recordings yet.</div>
+      </div>
+    </div>
+
+    <div class="card p-4">
+      <template x-if="!session">
+        <div class="text-sm py-16 text-center" style="color:var(--text-secondary)">
+          Select a session to chart it.</div>
+      </template>
+      <template x-if="session">
+        <div class="space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div class="card-label"
+                   x-text="`${session.samples.length} snapshot(s) @ ${Math.round(session.interval_s)}s`"></div>
+              <div class="text-xs font-mono" style="color:var(--text-secondary)"
+                   x-text="session.apower_sn || ''"></div>
+            </div>
+            <button class="btn btn-secondary btn-sm" @click="sessionCsv()">CSV</button>
+          </div>
+
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-1">
+              <template x-for="v in ['voltage','temperature','comparison']" :key="v">
+                <button class="px-3 py-1.5 text-sm rounded-lg border"
+                        :class="chartView === v ? 'border-emerald-400/60 text-emerald-300' : 'border-transparent'"
+                        :style="chartView === v ? '' : 'color:var(--text-secondary)'"
+                        @click="setChartView(v)"
+                        x-text="v === 'comparison' ? 'Comparison (Δ)' : (v[0].toUpperCase()+v.slice(1))"></button>
+              </template>
+            </div>
+            <!-- Series mode: 16 per-cell lines can be a hairball; Average / Median
+                 collapse them to one line with a faint min–max band. -->
+            <div class="flex items-center gap-0.5 p-0.5 rounded-lg border"
+                 x-show="chartView !== 'comparison'" style="border-color:var(--border)">
+              <template x-for="m in [['all','All cells'],['average','Average'],['median','Median']]" :key="m[0]">
+                <button class="px-2.5 py-1 text-xs rounded-md transition"
+                        :class="seriesMode === m[0] ? 'bg-emerald-400/15 text-emerald-300' : 'text-slate-400 hover:text-slate-200'"
+                        @click="setSeriesMode(m[0])" x-text="m[1]"></button>
+              </template>
+            </div>
+          </div>
+
+          <div x-show="chartView !== 'comparison'" style="height:320px">
+            <canvas id="cellChart"></canvas>
+          </div>
+
+          <div x-show="chartView === 'comparison'" x-cloak>
+            <div class="text-xs mb-2" style="color:var(--text-secondary)">
+              Cell voltages (mV) — previous vs latest snapshot</div>
+            <template x-if="!comparison.length">
+              <div class="text-sm py-6 text-center" style="color:var(--text-secondary)">
+                Needs at least two snapshots.</div>
+            </template>
+            <table x-show="comparison.length" class="w-full text-sm">
+              <thead><tr style="color:var(--text-secondary)" class="text-xs text-left">
+                <th class="py-1">Cell</th><th>Previous</th><th>Current</th><th class="text-right">Δ mV</th>
+              </tr></thead>
+              <tbody>
+                <template x-for="r in comparison" :key="r.cell">
+                  <tr class="border-t" style="border-color:var(--border)">
+                    <td class="py-1" x-text="r.cell"></td>
+                    <td class="font-mono" x-text="r.prev"></td>
+                    <td class="font-mono font-semibold" x-text="r.cur"></td>
+                    <td class="font-mono text-right"
+                        :class="r.delta > 0 ? 'text-emerald-400' : r.delta < 0 ? 'text-red-400' : ''"
+                        x-text="(r.delta > 0 ? '▲ +' : r.delta < 0 ? '▼ ' : '  ') + r.delta"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <div x-show="view === 'telemetry' && !data && !loading && !error"
+       class="card p-8 text-center text-sm"
+       style="color:var(--text-secondary)">No reading yet — press Snapshot.</div>
+
+  <!-- Watch-live modal: full-screen realtime streaming chart -->
+  <div x-show="liveOpen" x-cloak
+       class="fixed inset-0 z-[105] flex flex-col p-3 sm:p-6"
+       style="background:rgba(2,6,23,.85);backdrop-filter:blur(4px)"
+       @click.self="closeLive()"
+       @keydown.escape.window="closeLive()">
+    <!-- Always-visible close: a big corner target so you can never get trapped, even if
+         a redraw lands under your finger on the header Close. -->
+    <button @click="closeLive()" title="Close live view"
+            class="absolute top-2 right-2 z-10 w-9 h-9 inline-flex items-center justify-center rounded-full border shadow-lg"
+            style="background:var(--surface-1);border-color:var(--border);color:var(--text-primary)">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6L6 18"/>
+      </svg>
+    </button>
+    <div class="relative flex flex-col w-full h-full max-w-5xl mx-auto rounded-xl border shadow-2xl overflow-hidden"
+         style="background:var(--surface-0,#0f172a);border-color:var(--border)">
+
+      <!-- header -->
+      <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b"
+           style="border-color:var(--border)">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="w-2 h-2 rounded-full bg-red-400 animate-pulse shrink-0"></span>
+          <span class="card-label">Live BMS — realtime</span>
+          <span class="chip ok" x-show="rec.active" x-cloak
+                x-text="'● Recording · ' + rec.captured + ' saved'"></span>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <select class="form-control form-control-sm" x-model.number="intervalS"
+                  @change="changeLiveInterval()" title="Poll interval">
+            <template x-for="s in intervals" :key="s"><option :value="s" x-text="s + 's'"></option></template>
+          </select>
+          <button class="btn btn-secondary btn-sm" @click="clearSamples(); drawLive()">Clear</button>
+          <button class="btn btn-secondary btn-sm" @click="exportCsv()"
+                  :disabled="!samples.length">Export CSV</button>
+          <button class="btn btn-secondary btn-sm" @click="closeLive()">Close</button>
+        </div>
+      </div>
+
+      <!-- live readouts -->
+      <div class="flex flex-wrap gap-x-6 gap-y-2 px-4 py-3 border-b text-sm"
+           style="border-color:var(--border)">
+        <div><span style="color:var(--text-secondary)">SoC </span>
+             <span class="font-mono font-semibold" style="color:#10b981"
+                   x-text="liveLast ? fmt(liveLast.soc, 1, '%') : '—'"></span></div>
+        <div><span style="color:var(--text-secondary)">Spread </span>
+             <span class="font-mono font-semibold" style="color:#f59e0b"
+                   x-text="liveLast ? fmt(liveLast.spread, 0, 'mV') : '—'"></span></div>
+        <div><span style="color:var(--text-secondary)">Max temp </span>
+             <span class="font-mono font-semibold" style="color:#ef4444"
+                   x-text="liveLast && liveLast.tmax != null ? fmt(liveLast.tmax, 1, '°C') : '—'"></span></div>
+        <div><span style="color:var(--text-secondary)">Current </span>
+             <span class="font-mono font-semibold" style="color:var(--text-primary)"
+                   x-text="liveLast && liveLast.current != null ? fmt(liveLast.current, 1, 'A') : '—'"></span></div>
+        <div class="ml-auto" style="color:var(--text-faint)"
+             x-text="samples.length + ' sample(s) · showing last ' + Math.min(samples.length, liveWindow)"></div>
+      </div>
+
+      <!-- chart fills the rest -->
+      <div class="flex-1 min-h-0 p-4"><canvas id="bmsLiveChart"></canvas></div>
+
+      <div class="px-4 pb-3 text-xs" style="color:var(--text-faint)">
+        Realtime to the poll — the gateway is the clock, so the line advances no faster
+        than the read interval. Samples are in-browser; Export CSV to keep them, or use
+        Charts ▸ Record to persist a session on the bridge.
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,678 @@
+/* ============================================================
+   FranklinWH Modbus Bridge — Design System
+   Dark-first, glassmorphism, CSS custom properties
+   Matches FHAI visual language
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* ── Tokens ─────────────────────────────────────────────── */
+:root {
+  /* Status Colours */
+  --live:         #06b6d4; /* cyan-500 */
+  --ok:           #10b981; /* emerald-500 */
+  --warn:         #f59e0b; /* amber-500 */
+  --danger:       #ef4444; /* red-500 */
+  --solar:        #f59e0b; /* amber-500 */
+  --grid-import:  #ef4444; /* red-500 */
+  --grid-export:  #10b981; /* emerald-500 */
+
+  --glass-blur:   blur(12px);
+
+  /* Layout */
+  --sidebar-w:    240px;
+  --topbar-h:     52px;
+  --radius-sm:    4px;
+  --radius-md:    8px;
+  --radius-lg:    12px;
+
+  /* Animation */
+  --ease-out:     cubic-bezier(.4, 0, .2, 1);
+  --dur-fast:     150ms;
+  --dur-base:     250ms;
+  --dur-slow:     400ms;
+}
+
+/* ── Accent ────────────────────────────────────────────── */
+:root {
+  --accent:       #22c55e; /* green-500 — local bridge theme */
+  --accent-glow:  rgba(34, 197, 94, 0.15);
+  --border-accent:rgba(34, 197, 94, 0.3);
+
+  /* Tailwind config needs these */
+  --primary-color: #22c55e;
+  --primary-dark:  #16a34a;
+  --primary-light: #4ade80;
+}
+
+/* ── Theme: Dark (default) ─────────────────────────────── */
+:root, [data-theme="dark"] {
+  --bg:           #0f172a; /* slate-900 */
+  --surface-0:    #1e293b; /* slate-800 */
+  --surface-1:    #334155; /* slate-700 */
+  --surface-2:    #475569; /* slate-600 */
+  --border:       rgba(255, 255, 255, 0.08);
+  --glass-bg:     rgba(30, 41, 59, 0.85);
+
+  --text-primary:   #f8fafc; /* slate-50 */
+  --text-secondary: #cbd5e1; /* slate-300 */
+  --text-muted:     #94a3b8; /* slate-400 — boosted from slate-500 for readability */
+  --text-faint:     #64748b; /* slate-500 */
+}
+
+/* ── Theme: Light ──────────────────────────────────────── */
+[data-theme="light"] {
+  --bg:           #f1f5f9; /* slate-100 */
+  --surface-0:    #ffffff;
+  --surface-1:    #f8fafc; /* slate-50 */
+  --surface-2:    #e2e8f0; /* slate-200 */
+  --border:       rgba(0, 0, 0, 0.10);
+  --glass-bg:     rgba(255, 255, 255, 0.90);
+
+  --text-primary:   #0f172a; /* slate-900 */
+  --text-secondary: #334155; /* slate-700 */
+  --text-muted:     #64748b; /* slate-500 */
+  --text-faint:     #94a3b8; /* slate-400 */
+
+  --accent-glow:    rgba(34, 197, 94, 0.10);
+  --border-accent:  rgba(34, 197, 94, 0.20);
+}
+
+/* ── Reset ──────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 15px; -webkit-font-smoothing: antialiased; }
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Alpine cloak */
+[x-cloak] { display: none !important; }
+
+/* ── Scrollbar ──────────────────────────────────────────── */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--surface-0); border-radius: 5px; }
+::-webkit-scrollbar-thumb { background: var(--surface-2); border-radius: 5px; min-height: 40px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+/* Firefox */
+* { scrollbar-width: auto; scrollbar-color: var(--surface-2) var(--surface-0); }
+
+/* ── Resize divider ────────────────────────────────────── */
+.resize-handle {
+  flex-shrink: 0;
+  cursor: col-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--dur-fast);
+}
+.resize-handle:hover, .resize-handle.active {
+  background: var(--accent-glow);
+}
+.resize-handle-v {
+  cursor: row-resize;
+}
+.resize-handle-dots {
+  width: 4px;
+  height: 20px;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--surface-2) 0px,
+    var(--surface-2) 2px,
+    transparent 2px,
+    transparent 5px
+  );
+  border-radius: 2px;
+}
+.resize-handle-v .resize-handle-dots {
+  width: 20px;
+  height: 4px;
+  background: repeating-linear-gradient(
+    to right,
+    var(--surface-2) 0px,
+    var(--surface-2) 2px,
+    transparent 2px,
+    transparent 5px
+  );
+}
+
+/* ── Cards ──────────────────────────────────────────────── */
+.card {
+  background: var(--surface-0);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.06),
+    0 2px 8px rgba(0,0,0,0.35);
+  transition: border-color var(--dur-base), box-shadow var(--dur-base);
+}
+.card:hover {
+  border-color: var(--accent);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.08),
+    0 4px 16px rgba(0,0,0,0.4);
+}
+.card-label {
+  font-size: .7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.card-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+}
+.card-value .unit {
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+  margin-left: 4px;
+}
+.card-sub {
+  font-size: .75rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+/* ── Metric tile — compact key/value (SoC, SoH, latency, …). Shares the exact type
+   scale as .card-label/.card-value so tiles read CONSISTENTLY on every tab. These were
+   previously undefined, so they fell back to the 16px browser default — the source of
+   the mismatched fonts and white space. ── */
+.metric-label {
+  font-size: .7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-muted);
+  line-height: 1.2;
+}
+.metric-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--text-primary);
+  margin-top: .2rem;
+}
+.metric-value .unit,
+.metric-value small { font-size: .9rem; font-weight: 400; color: var(--text-secondary); }
+.metric-sub { font-size: .72rem; color: var(--text-muted); margin-top: .15rem; }
+/* Compact key/value tile — less padding than a full .card, used for metric grids. */
+.metric-card { padding: 14px 16px; }
+/* Canonical tab/page heading — one size everywhere (was text-base/lg/xl at random). */
+.page-title { font-size: 1.25rem; font-weight: 600; line-height: 1.3; color: var(--text-primary); }
+
+/* ── Metrics Grid ───────────────────────────────────────── */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+/* ── Status Chip ────────────────────────────────────────── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 99px;
+  font-size: .7rem;
+  font-weight: 600;
+}
+.chip.ok      { background: hsla(160,84%,39%,.15); color: var(--ok); }
+.chip.error   { background: hsla(343,88%,60%,.15); color: var(--danger); }
+.chip.warn    { background: hsla(43,96%,56%,.15);  color: var(--warn); }
+.chip.muted   { background: var(--surface-2);      color: var(--text-muted); }
+.chip.vpp     { background: hsla(265,85%,66%,.18);  color: #b388ff; }
+/* Off-grid: unmissable, solid red with a soft pulse — the aGate is islanded. */
+.chip.offgrid { background: hsla(343,88%,55%,.9);   color: #fff; box-shadow: 0 0 0 0 hsla(343,88%,55%,.55); animation: chip-pulse 2s infinite; }
+@keyframes chip-pulse { 70% { box-shadow: 0 0 0 7px hsla(343,88%,55%,0); } 100% { box-shadow: 0 0 0 0 hsla(343,88%,55%,0); } }
+@media (prefers-reduced-motion: reduce) { .chip.offgrid { animation: none; } }
+
+/* ── Nav Items ──────────────────────────────────────────── */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: .85rem;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background var(--dur-fast), color var(--dur-fast);
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+}
+.nav-item:hover { background: var(--surface-1); color: var(--text-primary); }
+
+/* ── Tables ─────────────────────────────────────────────── */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th {
+  font-size: .7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  text-align: left;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.data-table td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: .85rem;
+}
+.data-table tbody tr:hover td { background: var(--surface-1); }
+
+/* ── Form elements ──────────────────────────────────────── */
+.form-control {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: .875rem;
+  padding: 8px 12px;
+  outline: none;
+  width: 100%;
+  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+}
+/* Compact variant for inline controls (console payloads, filter rows, modals).
+   Same surface and border as .form-control so a small field never falls back to
+   the browser default — an unstyled input renders as a white box on a dark page. */
+.form-control-sm {
+  font-size: .8125rem;
+  padding: 5px 8px;
+}
+
+.form-control:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.form-control option { background: var(--surface-1); }
+
+/* ── Buttons ────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all var(--dur-fast);
+  white-space: nowrap;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { filter: brightness(1.15); box-shadow: 0 4px 16px var(--accent-glow); }
+.btn-secondary { background: var(--surface-1); color: var(--text-primary); border-color: var(--border); }
+.btn-secondary:hover { border-color: var(--border-accent); background: var(--surface-2); }
+.btn-sm { padding: 5px 12px; font-size: .78rem; }
+.btn-danger { background: hsla(0,84%,60%,.13); color: var(--danger); border-color: hsla(0,84%,60%,.38); }
+.btn-danger:hover { background: hsla(0,84%,60%,.24); border-color: hsla(0,84%,60%,.6); }
+.btn-icon { padding: 6px 9px; }   /* compact square-ish button for icon/single-glyph actions */
+
+/* ── SOC Ring ───────────────────────────────────────────── */
+.soc-ring {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  flex-shrink: 0;
+}
+.soc-ring svg { transform: rotate(-90deg); width: 100px; height: 100px; }
+.soc-ring-track { fill: none; stroke: var(--surface-2); stroke-width: 8; }
+.soc-ring-fill {
+  fill: none;
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-dasharray: 251.3;  /* 2*pi*40 */
+  transition: stroke-dashoffset var(--dur-slow) var(--ease-out), stroke var(--dur-base);
+}
+.soc-ring-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* ── Toasts ────────────────────────────────────────────── */
+.toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast-item {
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--ok);
+  box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5);
+  font-size: .85rem;
+  max-width: 360px;
+}
+.toast-item.error { border-left-color: var(--danger); }
+.toast-item.warn { border-left-color: var(--warn); }
+
+/* ── Loading Spinner ────────────────────────────────────── */
+.loading-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Syntax Highlighting (sequencer editor) ────────────── */
+.sh-keyword  { color: #f59e0b; font-weight: 600; }       /* amber-500: step, writes, reads … */
+.sh-model    { color: #06b6d4; }                          /* cyan-500: model IDs 704, 703 … */
+.sh-point    { color: #10b981; }                          /* emerald-500: point names WSetEna … */
+.sh-string   { color: #34d399; }                          /* emerald-400: string values */
+.sh-number   { color: #a78bfa; }                          /* violet-400: numbers */
+.sh-bool     { color: #f87171; }                          /* red-400: true/false/null */
+.sh-bracket  { color: #64748b; }                          /* slate-500: {} [] */
+
+/* Code editor: plain textarea with line-number gutter.
+   No overlay tricks — the textarea is the only interactive element. */
+.code-editor {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.code-editor-lines {
+  flex-shrink: 0;
+  width: 3rem;
+  padding: 0.75rem 0.5rem 0.75rem 0;
+  text-align: right;
+  font-family: ui-monospace, SFMono-Regular, 'Cascadia Code', 'Courier New', monospace;
+  font-size: 0.75rem;         /* match textarea exactly */
+  line-height: 1.5;
+  color: #475569;            /* slate-600 */
+  border-right: 1px solid rgba(255,255,255,0.06);
+  overflow: hidden;
+  user-select: none;
+  white-space: pre;           /* preserve newlines */
+}
+.code-editor textarea,
+.code-editor-highlight {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  background: transparent;
+  color: #cbd5e1;            /* slate-300 */
+  font-family: ui-monospace, SFMono-Regular, 'Cascadia Code', 'Courier New', monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  padding: 0.75rem;
+  border: 0;
+  resize: none;
+  outline: none;
+  white-space: pre;
+  overflow: auto;
+  tab-size: 2;
+}
+.code-editor-highlight {
+  cursor: text;              /* hint that clicking opens editor */
+}
+
+/* ── Sidebar Tooltip ────────────────────────────────────── */
+.sidebar-tooltip {
+  background: #1e293b;      /* slate-800 — always dark */
+  color: #f1f5f9;           /* slate-100 — always light text */
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* ── Colour helpers ─────────────────────────────────────── */
+.c-ok      { color: var(--ok); }
+.c-warn    { color: var(--warn); }
+.c-danger  { color: var(--danger); }
+.c-accent  { color: var(--accent); }
+.c-muted   { color: var(--text-muted); }
+.c-solar   { color: var(--solar); }
+
+/* ── SunSpec source annotation tags ────────────────────── */
+.source-tag {
+  font-size: 8px;
+  font-family: ui-monospace, monospace;
+  color: var(--accent);
+  opacity: 0.7;
+}
+
+/* ── Light theme: override Tailwind utility classes ─────── */
+[data-theme="light"] {
+  color-scheme: light;
+}
+[data-theme="light"] body {
+  background: var(--bg);
+  color: var(--text-primary);
+}
+/* Backgrounds */
+[data-theme="light"] .bg-slate-900 { background-color: var(--bg) !important; }
+[data-theme="light"] .bg-slate-800 { background-color: var(--surface-0) !important; }
+[data-theme="light"] .bg-slate-800\/30,
+[data-theme="light"] .bg-slate-800\/40,
+[data-theme="light"] .bg-slate-800\/50 { background-color: var(--surface-1) !important; }
+[data-theme="light"] .bg-slate-700\/40,
+[data-theme="light"] .bg-slate-700\/20,
+[data-theme="light"] .bg-slate-700\/50 { background-color: rgba(0,0,0,0.04) !important; }
+[data-theme="light"] .bg-slate-950 { background-color: #f1f5f9 !important; } /* terminal bg */
+/* Text colours */
+[data-theme="light"] .text-slate-100 { color: var(--text-primary) !important; }
+[data-theme="light"] .text-slate-200 { color: var(--text-primary) !important; }
+[data-theme="light"] .text-slate-300 { color: var(--text-secondary) !important; }
+[data-theme="light"] .text-slate-400 { color: var(--text-muted) !important; }
+[data-theme="light"] .text-slate-500 { color: var(--text-muted) !important; }
+[data-theme="light"] .text-slate-600 { color: var(--text-faint) !important; }
+[data-theme="light"] .text-slate-700 { color: #94a3b8 !important; }
+/* Accent text — darken slightly for light bg */
+[data-theme="light"] .text-cyan-300 { color: #0891b2 !important; }
+[data-theme="light"] .text-cyan-400 { color: #0e7490 !important; }
+[data-theme="light"] .text-amber-400 { color: #d97706 !important; }
+[data-theme="light"] .text-emerald-400 { color: #059669 !important; }
+[data-theme="light"] .text-red-400 { color: #dc2626 !important; }
+/* Borders */
+[data-theme="light"] .border-white\/5,
+[data-theme="light"] .border-white\/\[0\.08\],
+[data-theme="light"] .border-white\/\[0\.06\],
+[data-theme="light"] .border-white\/\[0\.04\],
+[data-theme="light"] .border-white\/\[0\.03\] { border-color: rgba(0,0,0,0.08) !important; }
+/* Card & surface overrides */
+[data-theme="light"] .card {
+  background: var(--surface-0);
+  border-color: var(--border-accent);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+}
+[data-theme="light"] .card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.10);
+}
+/* Scrollbar */
+[data-theme="light"] ::-webkit-scrollbar-track { background: var(--surface-1); }
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: var(--surface-2); }
+/* Status chip backgrounds */
+[data-theme="light"] .bg-cyan-500\/10,
+[data-theme="light"] .bg-cyan-500\/15,
+[data-theme="light"] .bg-cyan-500\/20 { background-color: rgba(6,182,212,0.12) !important; }
+[data-theme="light"] .bg-amber-500\/20 { background-color: rgba(245,158,11,0.12) !important; }
+/* Nav & sidebar */
+[data-theme="light"] aside,
+[data-theme="light"] .nav-item { color: var(--text-secondary); }
+[data-theme="light"] .nav-item:hover { background: var(--surface-2); }
+/* Topbar */
+[data-theme="light"] header { border-color: rgba(0,0,0,0.06) !important; }
+/* Toast */
+[data-theme="light"] .toast-item {
+  background: var(--surface-0);
+  box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+}
+/* Form controls */
+[data-theme="light"] .form-control {
+  background: var(--surface-1);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+/* SOC ring track */
+[data-theme="light"] .soc-ring-track { stroke: var(--surface-2); }
+/* Dark surfaces used for tiles, modals, overlays — need visible bg in light */
+[data-theme="light"] .bg-slate-900\/50,
+[data-theme="light"] .bg-slate-900\/40 { background-color: #f1f5f9 !important; }  /* slate-100 */
+/* Sidebar tooltip — uses .sidebar-tooltip class (always dark bg, always light text) */
+/* Hover states */
+[data-theme="light"] .hover\:bg-slate-700:hover { background-color: rgba(0,0,0,0.06) !important; }
+[data-theme="light"] .hover\:bg-slate-600:hover { background-color: rgba(0,0,0,0.08) !important; }
+/* Terminal/log backgrounds — slightly darker in light mode */
+[data-theme="light"] .bg-black\/20,
+[data-theme="light"] .bg-black\/30 { background-color: rgba(0,0,0,0.05) !important; }
+/* Ensure sidebar/topbar backdrop */
+[data-theme="light"] aside { background-color: rgba(255,255,255,0.85) !important; }
+[data-theme="light"] header { background-color: rgba(255,255,255,0.90) !important; }
+
+/* ── Light theme: sequencer syntax highlighting ─────────── */
+[data-theme="light"] .code-editor textarea { color: #334155; }    /* slate-700 base text */
+[data-theme="light"] .code-editor-lines { color: #94a3b8; border-color: rgba(0,0,0,0.08); }
+[data-theme="light"] .sh-keyword  { color: #b45309; }             /* amber-700 */
+[data-theme="light"] .sh-model    { color: #0e7490; }             /* cyan-700 */
+[data-theme="light"] .sh-point    { color: #047857; }             /* emerald-700 */
+[data-theme="light"] .sh-string   { color: #059669; }             /* emerald-600 */
+[data-theme="light"] .sh-number   { color: #6d28d9; }             /* violet-700 */
+[data-theme="light"] .sh-bool     { color: #dc2626; }             /* red-600 */
+[data-theme="light"] .sh-bracket  { color: #64748b; }             /* slate-500 */
+/* Sequencer output terminal — ensure readable in light mode */
+[data-theme="light"] .text-emerald-300 { color: #047857 !important; }
+[data-theme="light"] .text-red-300 { color: #dc2626 !important; }
+[data-theme="light"] .text-violet-400 { color: #6d28d9 !important; }
+
+/* ── Light theme: source & status badge colours ──────── */
+/* Tinted backgrounds: dark translucent → light translucent */
+[data-theme="light"] .bg-purple-900\/50 { background-color: rgba(147, 51, 234, 0.10) !important; }
+[data-theme="light"] .bg-amber-900\/50  { background-color: rgba(217, 119, 6, 0.12) !important; }
+[data-theme="light"] .bg-blue-900\/50   { background-color: rgba(37, 99, 235, 0.10) !important; }
+[data-theme="light"] .bg-emerald-900\/50{ background-color: rgba(16, 185, 129, 0.10) !important; }
+[data-theme="light"] .bg-orange-900\/50 { background-color: rgba(234, 88, 12, 0.10) !important; }
+[data-theme="light"] .bg-teal-900\/50   { background-color: rgba(13, 148, 136, 0.10) !important; }
+[data-theme="light"] .bg-yellow-900\/50 { background-color: rgba(202, 138, 4, 0.12) !important; }
+/* Pastel text → rich saturated text */
+[data-theme="light"] .text-purple-300 { color: #7c3aed !important; } /* purple-600 */
+[data-theme="light"] .text-amber-300  { color: #b45309 !important; } /* amber-700 */
+[data-theme="light"] .text-blue-300   { color: #1d4ed8 !important; } /* blue-700 */
+[data-theme="light"] .text-orange-300 { color: #c2410c !important; } /* orange-700 */
+[data-theme="light"] .text-teal-300   { color: #0f766e !important; } /* teal-700 */
+[data-theme="light"] .text-yellow-300 { color: #a16207 !important; } /* yellow-700 */
+/* text-emerald-300 already overridden above (→ #047857) */
+
+/* ── Light theme: Live Points panel & deep surfaces ───── */
+/* Override near-invisible white borders to dark hairlines */
+[data-theme="light"] .border-white\/\[0\.05\] {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+[data-theme="light"] .hover\:border-white\/\[0\.1\]:hover {
+  border-color: rgba(0, 0, 0, 0.15) !important;
+}
+
+/* ── Light theme: Release Control modal ─────────────────── */
+/* Modal panel border + surface */
+[data-theme="light"] .border-slate-600\/40,
+[data-theme="light"] .border-slate-600\/30 { border-color: rgba(0,0,0,0.12) !important; }
+[data-theme="light"] .border-slate-700 { border-color: rgba(0,0,0,0.10) !important; }
+[data-theme="light"] .border-slate-700\/50 { border-color: rgba(0,0,0,0.06) !important; }
+/* Red-tinted elements — ensure contrast on white */
+[data-theme="light"] .border-red-500\/40 { border-color: rgba(220,38,38,0.35) !important; }
+[data-theme="light"] .border-red-500\/30 { border-color: rgba(220,38,38,0.25) !important; }
+[data-theme="light"] .border-red-500\/20 { border-color: rgba(220,38,38,0.20) !important; }
+[data-theme="light"] .bg-red-500\/10 { background-color: rgba(220,38,38,0.06) !important; }
+[data-theme="light"] .bg-red-500\/20 { background-color: rgba(220,38,38,0.10) !important; }
+[data-theme="light"] .hover\:bg-red-500\/30:hover { background-color: rgba(220,38,38,0.15) !important; }
+[data-theme="light"] .hover\:border-red-400:hover { border-color: rgba(220,38,38,0.50) !important; }
+/* Pale red text → readable on light bg */
+[data-theme="light"] .text-red-300,
+[data-theme="light"] .text-red-300\/80 { color: #b91c1c !important; } /* red-700 */
+/* Button surfaces */
+[data-theme="light"] .bg-slate-700 { background-color: #e2e8f0 !important; } /* slate-200 */
+/* Release modal cells */
+[data-theme="light"] .release-cell { background-color: rgba(0,0,0,0.03) !important; }
+/* Backdrop — keep dark overlay */
+[data-theme="light"] .bg-black\/60 { background-color: rgba(0,0,0,0.40) !important; }
+
+/* ── Responsive ─────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .metrics-grid { grid-template-columns: 1fr 1fr; }
+}
+
+
+/* Device tab master/detail: stack on mobile, sticky two-column only at lg+.
+   Was a plain flex at every width, so on a phone the detail panel was pushed
+   off-screen to the right with no indication you had to scroll sideways. */
+@media (min-width: 1024px) {
+  .device-nav {
+    position: sticky;
+    top: 0;
+    max-height: calc(100vh - 7rem);
+    overflow-y: auto;
+  }
+  .device-detail {
+    position: sticky;
+    top: 0;
+    max-height: calc(100vh - 7rem);
+  }
+}
+
+/* ── Energy-flow Sankey (rendered by static/js/sankey.js) ─────────────── */
+.fwh-sankey { width: 100%; }
+.sankey-svg { display: block; width: 100%; overflow: visible; }
+.sankey-arc { transition: fill-opacity .15s; }
+.sankey-arc:hover,
+.sankey-arc:focus { fill-opacity: .75; outline: none; }
+.sankey-label { font-size: 11px; font-weight: 600; fill: var(--text-primary); }
+.sankey-value { font-size: 10px; fill: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.sankey-empty {
+  color: var(--text-secondary); font-size: 12px; text-align: center;
+  padding: 28px 0; margin: 0;
+}
+
+/* ── Accent theming (FEAT-ACCENT) ─────────────────────────────────────────────
+   Route the hardcoded emerald/green Tailwind classes through --accent so the
+   accent picker (Settings → Display) recolours the whole UI. Default --accent is
+   #22c55e, so with no custom accent the look is unchanged (also unifies the two
+   greens the app used: emerald-500 #10b981 and green-500 --accent). color-mix
+   needs Safari 16.2+ / Chrome 111+. */
+.text-emerald-300, .text-emerald-400 { color: var(--accent) !important; }
+.bg-emerald-500, .bg-emerald-400 { background-color: var(--accent) !important; }
+.bg-emerald-500\/5  { background-color: color-mix(in srgb, var(--accent) 6%, transparent) !important; }
+.bg-emerald-500\/10, .bg-emerald-400\/15 { background-color: color-mix(in srgb, var(--accent) 12%, transparent) !important; }
+.bg-emerald-500\/15 { background-color: color-mix(in srgb, var(--accent) 16%, transparent) !important; }
+.bg-emerald-500\/20 { background-color: color-mix(in srgb, var(--accent) 20%, transparent) !important; }
+.bg-emerald-500\/30 { background-color: color-mix(in srgb, var(--accent) 30%, transparent) !important; }
+.border-emerald-400, .border-emerald-500 { border-color: var(--accent) !important; }
+.border-emerald-400\/60, .border-emerald-400\/30, .border-emerald-500\/50 { border-color: color-mix(in srgb, var(--accent) 45%, transparent) !important; }
+.ring-emerald-400\/50 { --tw-ring-color: color-mix(in srgb, var(--accent) 50%, transparent) !important; }
+/* light bg needs a darker accent for readable accent TEXT (comes after the earlier
+   [data-theme="light"] emerald rules, so it wins) */
+[data-theme="light"] .text-emerald-300,
+[data-theme="light"] .text-emerald-400 { color: color-mix(in srgb, var(--accent) 75%, black) !important; }

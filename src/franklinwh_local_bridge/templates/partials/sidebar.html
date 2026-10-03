@@ -1,0 +1,366 @@
+<!-- ── Sidebar — Collapsible Navigation ─────────────────── -->
+<aside x-data="{ hoverText: '', hoverTop: 0, hoverTimer: null }"
+       :class="$store.app.sidebarCollapsed ? 'w-14' : 'w-56'"
+       x-show="!$store.app.narrow" x-cloak
+       class="flex flex-col bg-slate-800/50 border-r border-white/[0.08] flex-shrink-0 h-screen transition-all duration-300 relative">
+
+  <!-- Logo -->
+  <div class="flex items-center gap-3 px-3 py-3 border-b border-white/[0.08] overflow-hidden">
+    <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 cursor-pointer"
+         style="background: linear-gradient(135deg, var(--primary-light), var(--primary-dark));"
+         @click="$store.app.toggleSidebar()"
+         :title="$store.app.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'">
+      <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+      </svg>
+    </div>
+    <div x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms class="overflow-hidden whitespace-nowrap">
+      <p class="text-sm font-bold text-slate-100 leading-tight">FranklinWH</p>
+      <p class="text-[10px] text-slate-500 font-medium">Local Bridge</p>
+    </div>
+  </div>
+
+  <!-- Navigation -->
+  <nav class="flex-1 overflow-y-auto py-4 space-y-1" :class="$store.app.sidebarCollapsed ? 'px-1.5' : 'px-3'">
+
+    <!-- Dashboard -->
+    <button @click="$store.app.setActiveTab('dashboard')"
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Dashboard'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+            class="nav-item w-full"
+            :class="[
+              $store.app.activeTab === 'dashboard' ? 'bg-emerald-500/10 text-emerald-300 border-l-2 border-emerald-400' : 'border-l-2 border-transparent',
+              $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
+            ]">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Dashboard</span>
+    </button>
+
+    <!-- Control -->
+    <button @click="$store.app.setActiveTab('control')"
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Control'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+            class="nav-item w-full"
+            :class="[
+              $store.app.activeTab === 'control' ? 'bg-emerald-500/10 text-emerald-300 border-l-2 border-emerald-400' : 'border-l-2 border-transparent',
+              $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
+            ]">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
+        <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
+        <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
+        <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Control</span>
+    </button>
+
+    <!-- MQTT -->
+    <button @click="$store.app.setActiveTab('mqtt')"
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'MQTT'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+            class="nav-item w-full"
+            :class="[
+              $store.app.activeTab === 'mqtt' ? 'bg-emerald-500/10 text-emerald-300 border-l-2 border-emerald-400' : 'border-l-2 border-transparent',
+              $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
+            ]">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="2"/>
+        <path stroke-linecap="round" d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49"/>
+        <path stroke-linecap="round" d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>MQTT</span>
+    </button>
+
+    <!-- Network -->
+    <button @click="$store.app.setActiveTab('network')"
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Network'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+            class="nav-item w-full"
+            :class="[
+              $store.app.activeTab === 'network' ? 'bg-emerald-500/10 text-emerald-300 border-l-2 border-emerald-400' : 'border-l-2 border-transparent',
+              $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
+            ]">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9"/>
+        <path stroke-linecap="round" d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Network</span>
+    </button>
+
+    <!-- Grid & Inverter -->
+    <button @click="$store.app.setActiveTab('grid')"
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Grid & Inverter'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+            class="nav-item w-full"
+            :class="[
+              $store.app.activeTab === 'grid' ? 'bg-emerald-500/10 text-emerald-300 border-l-2 border-emerald-400' : 'border-l-2 border-transparent',
+              $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
+            ]">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Grid &amp; Inverter</span>
+    </button>
+
+    <!-- Settings -->
+    <button @click="$store.app.setActiveTab('settings')"
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Settings'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+            class="nav-item w-full"
+            :class="[
+              $store.app.activeTab === 'settings' ? 'bg-emerald-500/10 text-emerald-300 border-l-2 border-emerald-400' : 'border-l-2 border-transparent',
+              $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
+            ]">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Settings</span>
+    </button>
+
+    <!-- Health -->
+    <button @click="$store.app.setActiveTab('health')"
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Health'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+            class="nav-item w-full"
+            :class="[
+              $store.app.activeTab === 'health' ? 'bg-emerald-500/10 text-emerald-300 border-l-2 border-emerald-400' : 'border-l-2 border-transparent',
+              $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
+            ]">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Health</span>
+    </button>
+
+    <!-- Smart Circuits -->
+    <button @click="$store.app.setActiveTab('circuits')"
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Smart Circuits'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+            class="nav-item w-full"
+            :class="[
+              $store.app.activeTab === 'circuits' ? 'bg-emerald-500/10 text-emerald-300 border-l-2 border-emerald-400' : 'border-l-2 border-transparent',
+              $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
+            ]">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M9 2v6"/><path d="M15 2v6"/><path d="M6 8h12v4a6 6 0 0 1-12 0z"/><path d="M12 18v4"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Smart Circuits</span>
+    </button>
+
+    <!-- Solar -->
+    <button @click="$store.app.setActiveTab('solar')"
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Solar'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+            class="nav-item w-full"
+            :class="[
+              $store.app.activeTab === 'solar' ? 'bg-emerald-500/10 text-emerald-300 border-l-2 border-emerald-400' : 'border-l-2 border-transparent',
+              $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
+            ]">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Solar</span>
+    </button>
+
+    <!-- Generator -->
+    <button @click="$store.app.setActiveTab('generator')"
+            x-show="$store.app.generatorInstalled" x-cloak
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Generator'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+            class="nav-item w-full"
+            :class="[
+              $store.app.activeTab === 'generator' ? 'bg-emerald-500/10 text-emerald-300 border-l-2 border-emerald-400' : 'border-l-2 border-transparent',
+              $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
+            ]">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <rect x="3" y="9" width="18" height="11" rx="2"/><path d="M7 9V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3"/><path d="M11 13l-2 3h4l-2 3"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Generator</span>
+    </button>
+
+    <!-- Battery -->
+    <button @click="$store.app.setActiveTab('battery')"
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Battery'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+            class="nav-item w-full"
+            :class="[
+              $store.app.activeTab === 'battery' ? 'bg-emerald-500/10 text-emerald-300 border-l-2 border-emerald-400' : 'border-l-2 border-transparent',
+              $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
+            ]">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <rect x="2" y="7" width="18" height="10" rx="2"/><path d="M22 11v2"/><path d="M6 11v2"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Battery</span>
+    </button>
+
+    <!-- Analytics -->
+    <button @click="$store.app.setActiveTab('analytics')"
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Analytics'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+            class="nav-item w-full"
+            :class="[
+              $store.app.activeTab === 'analytics' ? 'bg-emerald-500/10 text-emerald-300 border-l-2 border-emerald-400' : 'border-l-2 border-transparent',
+              $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
+            ]">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M3 3v18h18"/><path d="M7 14l3-4 3 3 4-6"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Analytics</span>
+    </button>
+
+    <!-- Energy Costs -->
+    <button @click="$store.app.setActiveTab('energy_costs')"
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Energy Costs'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+            class="nav-item w-full"
+            :class="[
+              $store.app.activeTab === 'energy_costs' ? 'bg-emerald-500/10 text-emerald-300 border-l-2 border-emerald-400' : 'border-l-2 border-transparent',
+              $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
+            ]">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9"/><path d="M14.8 9.5a2.5 2.5 0 0 0-2.3-1.5c-1.4 0-2.5.9-2.5 2s1.1 2 2.5 2 2.5.9 2.5 2-1.1 2-2.5 2a2.5 2.5 0 0 1-2.3-1.5M12 6.5v11"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Energy Costs</span>
+    </button>
+
+    <!-- Scheduler -->
+    <button @click="$store.app.setActiveTab('scheduler')"
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Scheduler'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+            class="nav-item w-full"
+            :class="[
+              $store.app.activeTab === 'scheduler' ? 'bg-emerald-500/10 text-emerald-300 border-l-2 border-emerald-400' : 'border-l-2 border-transparent',
+              $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
+            ]">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Scheduler</span>
+    </button>
+
+    <!-- Home Assistant -->
+    <button @click="$store.app.setActiveTab('ha')"
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Home Assistant'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+            class="nav-item w-full"
+            :class="[
+              $store.app.activeTab === 'ha' ? 'bg-emerald-500/10 text-emerald-300 border-l-2 border-emerald-400' : 'border-l-2 border-transparent',
+              $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
+            ]">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 11l9-8 9 8"/>
+        <path stroke-linecap="round" stroke-linejoin="round" d="M5 10v10h14V10"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Home Assistant</span>
+    </button>
+
+    <!-- Device -->
+    <button @click="$store.app.setActiveTab('device')"
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Device'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+            class="nav-item w-full"
+            :class="[
+              $store.app.activeTab === 'device' ? 'bg-emerald-500/10 text-emerald-300 border-l-2 border-emerald-400' : 'border-l-2 border-transparent',
+              $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
+            ]">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <rect x="4" y="4" width="16" height="16" rx="2"/>
+        <rect x="9" y="9" width="6" height="6"/>
+        <path stroke-linecap="round" d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Device</span>
+    </button>
+
+    <!-- Logs -->
+    <button @click="$store.app.setActiveTab('logs')"
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Logs'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+            class="nav-item w-full"
+            :class="[
+              $store.app.activeTab === 'logs' ? 'bg-emerald-500/10 text-emerald-300 border-l-2 border-emerald-400' : 'border-l-2 border-transparent',
+              $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
+            ]">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h10"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Logs</span>
+    </button>
+
+    <!-- Terminal: toggles the global console drawer (also ` / Ctrl-`). Not a view — a tool. -->
+    <button @click="$store.app.toggleTerminal()"
+            @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Terminal'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+            @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+            class="nav-item w-full"
+            :class="[
+              $store.app.terminalOpen ? 'bg-emerald-500/10 text-emerald-300 border-l-2 border-emerald-400' : 'border-l-2 border-transparent',
+              $store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'
+            ]">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="16" rx="2"/>
+        <path stroke-linecap="round" stroke-linejoin="round" d="M7 9l3 3-3 3M13 15h4"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Terminal</span>
+    </button>
+
+    <!-- Guide: the franklinwh-local library docs (static mkdocs site at /guide),
+         bundled into the image. Opens in a new tab; relative to <base> so it works
+         behind the HA add-on ingress path too. Hidden if the docs weren't bundled? No —
+         the link always shows; the server 404s cleanly if /guide isn't mounted. -->
+    <a href="guide/" target="_blank" rel="noopener"
+       @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Guide'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+       @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+       class="nav-item w-full border-l-2 border-transparent"
+       :class="$store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.5A2.5 2.5 0 0114.5 4H20v14h-6a2 2 0 00-2 2M12 6.5A2.5 2.5 0 009.5 4H4v14h6a2 2 0 012 2M12 6.5V20"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Guide</span>
+    </a>
+
+  </nav>
+
+  <!-- Footer -->
+  <div class="border-t border-white/[0.08] px-3 py-3">
+    <div x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms
+         class="text-[10px] text-slate-500 font-mono text-center"
+         x-text="'v' + $store.app.version + ($store.app.buildAsset ? ' · ' + $store.app.buildAsset : '')"
+         title="Running build — changes on every deploy; if it doesn't change after a reload, you're on a cached page"></div>
+    <button x-show="!$store.app.sidebarCollapsed"
+            @click="$store.app.setSidebar(true)"
+            class="w-full flex items-center justify-center gap-1.5 mt-1 p-1 rounded hover:bg-slate-700/50 text-slate-600 hover:text-slate-400 transition text-[10px]">
+      <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15 5l-7 7 7 7"/>
+      </svg>
+      <span>Collapse</span>
+    </button>
+    <!-- Expand (collapsed state). Was text-slate-600 + tiny + unlabelled, so it read
+         as broken. Now a clear, full-size target with a tooltip. -->
+    <button x-show="$store.app.sidebarCollapsed"
+            @click="$store.app.setSidebar(false)"
+            title="Expand sidebar"
+            class="w-full flex items-center justify-center p-2 rounded-lg border border-white/[0.08]
+                   bg-slate-700/40 hover:bg-slate-600/60 text-slate-300 hover:text-white transition">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Hover tooltip (visible only when collapsed) -->
+  <div x-show="$store.app.sidebarCollapsed && hoverText !== ''"
+       x-transition:enter="transition ease-out duration-100"
+       x-transition:enter-start="opacity-0 translate-x-1"
+       x-transition:enter-end="opacity-100 translate-x-0"
+       x-transition:leave="transition ease-in duration-75"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0"
+       class="sidebar-tooltip fixed left-[60px] z-[200] text-xs font-medium px-2.5 py-1.5 rounded-md shadow-xl pointer-events-none whitespace-nowrap"
+       :style="`top: ${hoverTop}px`"
+       x-text="hoverText">
+  </div>
+</aside>

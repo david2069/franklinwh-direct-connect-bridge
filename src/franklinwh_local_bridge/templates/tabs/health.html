@@ -1,0 +1,103 @@
+<!-- ── Health Tab ─────────────────────────────────────────── -->
+<div x-data="healthTab" class="space-y-6 max-w-2xl">
+
+  <!-- Connection -->
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="px-5 py-3 border-b border-white/[0.06]">
+      <div class="card-label" style="margin-bottom:0">Connection</div>
+    </div>
+    <table class="data-table">
+      <tbody>
+        <tr><td class="text-slate-500">Host</td><td class="font-mono text-right" x-text="$store.app.summary.host || '--'"></td></tr>
+        <tr>
+          <td class="text-slate-500">Status</td>
+          <td class="text-right">
+            <span class="chip ok" x-show="$store.app.isOnline">Online</span>
+            <span class="chip error" x-show="!$store.app.isOnline">Offline</span>
+          </td>
+        </tr>
+        <tr><td class="text-slate-500">Round-trip latency</td><td class="font-mono text-right"><span x-text="fmt.ms($store.app.summary.latency_ms)"></span> ms</td></tr>
+        <tr>
+          <td class="text-slate-500">Modbus :502</td>
+          <td class="text-right">
+            <span class="chip ok" x-show="$store.app.summary.modbus_502">Up</span>
+            <span class="chip error" x-show="!$store.app.summary.modbus_502">Down</span>
+          </td>
+        </tr>
+        <tr><td class="text-slate-500">Ping</td><td class="font-mono text-right" x-text="$store.app.summary.ping ?? 'n/a'"></td></tr>
+        <tr><td class="text-slate-500">Rediscovered</td><td class="font-mono text-right" x-text="String($store.app.summary.rediscovered ?? false)"></td></tr>
+        <tr><td class="text-slate-500">MQTT</td><td class="font-mono text-right" x-text="$store.app.summary.mqtt_enabled ? 'enabled' : 'disabled'"></td></tr>
+        <tr><td class="text-slate-500">Writes</td><td class="font-mono text-right" x-text="$store.app.summary.writes_enabled ? 'enabled' : 'disabled'"></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Firmware — the DETAIL view. Health already spelled the tags out in plain
+       words, so the full per-component and per-battery data lives here rather
+       than sending the reader to the Device tab's raw codes. -->
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="px-5 py-3 border-b border-white/[0.06] flex items-center justify-between gap-3">
+      <div class="card-label" style="margin-bottom:0">Firmware</div>
+      <button @click="load()" class="chip muted" style="font-size:.65rem"
+              :disabled="loading" x-text="loading ? 'Reading…' : 'Refresh'">Refresh</button>
+    </div>
+
+    <div x-show="error" x-cloak class="px-5 py-3 text-xs" style="color:#fca5a5" x-text="error"></div>
+
+    <table class="data-table" x-show="fw">
+      <tbody>
+        <template x-for="[k, v] in gatewayRows" :key="k">
+          <tr>
+            <td class="text-slate-500">
+              <span x-text="label(k)"></span>
+              <span class="font-mono text-[10px] opacity-50 ml-1" x-text="k"></span>
+            </td>
+            <td class="font-mono text-right break-all" x-text="value(v)"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+
+    <div x-show="fw && serialRows.length" class="px-5 pt-3 pb-1 text-xs uppercase tracking-wide"
+         style="color:var(--text-secondary)">Serials</div>
+    <table class="data-table" x-show="fw && serialRows.length">
+      <tbody>
+        <template x-for="[k, v] in serialRows" :key="k">
+          <tr>
+            <td class="text-slate-500">
+              <span x-text="label(k)"></span>
+              <span class="font-mono text-[10px] opacity-50 ml-1" x-text="k"></span>
+            </td>
+            <td class="font-mono text-right break-all" x-text="value(v)"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+
+    <template x-for="dev in batteries" :key="dev.id">
+      <div>
+        <div class="px-5 pt-3 pb-1 text-xs uppercase tracking-wide"
+             style="color:var(--text-secondary)"
+             x-text="`aPower ${dev.id}`"></div>
+        <div x-show="dev.error" class="px-5 pb-2 text-xs" style="color:#fca5a5" x-text="dev.error"></div>
+        <table class="data-table" x-show="!dev.error">
+          <tbody>
+            <template x-for="[k, v] in deviceRows(dev)" :key="k">
+              <tr>
+                <td class="text-slate-500">
+                  <span x-text="label(k)"></span>
+                  <span class="font-mono text-[10px] opacity-50 ml-1" x-text="k"></span>
+                </td>
+                <td class="font-mono text-right break-all" x-text="value(v)"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </template>
+
+    <div x-show="!fw && !loading && !error" class="px-5 py-4 text-xs"
+         style="color:var(--text-secondary)">No reading yet.</div>
+  </div>
+
+</div>

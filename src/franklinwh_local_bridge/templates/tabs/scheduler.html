@@ -1,0 +1,989 @@
+<div x-data="schedulerTab" class="space-y-4">
+
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <h2 class="page-title">Scheduler</h2>
+      <p class="text-sm" style="color:var(--text-secondary)">
+        Time windows that run a gateway action and optional Home Assistant actions
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <button class="btn btn-secondary btn-sm inline-flex items-center gap-1.5"
+              @click="load()" :disabled="loading" title="Refresh schedules">
+        <svg class="w-3.5 h-3.5" :class="loading && 'animate-spin'" fill="none"
+             stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5"/>
+          <path stroke-linecap="round" d="M20.49 9A9 9 0 0 0 5.64 5.64L4 7m16 10l-1.64 1.36A9 9 0 0 1 3.51 15"/>
+        </svg>
+        <span x-text="loading ? 'Loading…' : 'Refresh'">Refresh</span>
+      </button>
+      <button class="btn btn-secondary btn-sm" @click="openPresets()">Templates</button>
+      <div class="relative inline-block" @click.outside="exportOpen = false">
+        <button class="btn btn-secondary btn-sm inline-flex items-center gap-1" @click="exportOpen = !exportOpen"
+                :disabled="!schedules.length">Export
+          <svg class="w-3 h-3 opacity-70" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div x-show="exportOpen" x-cloak class="absolute left-0 mt-1 w-52 rounded-lg border shadow-xl z-40 overflow-hidden"
+             style="background:var(--surface-1);border-color:var(--border)">
+          <button class="w-full text-left px-3 py-2 text-xs hover:bg-white/[0.06] transition" @click="exportAll('native')">
+            <div style="color:var(--text-primary)">This bridge</div>
+            <div class="text-slate-500 text-[10px]">franklinwh-local-schedules</div>
+          </button>
+          <button class="w-full text-left px-3 py-2 text-xs hover:bg-white/[0.06] transition border-t" style="border-color:var(--border)" @click="exportAll('automations')">
+            <div style="color:var(--text-primary)">Modbus bridge</div>
+            <div class="text-slate-500 text-[10px]">franklinwh-automations</div>
+          </button>
+        </div>
+      </div>
+      <button class="btn btn-secondary btn-sm" :disabled="!canWrite"
+              @click="triggerImport()">Import</button>
+      <input type="file" accept="application/json" x-ref="importFile"
+             class="hidden" @change="onImportFile($event)">
+      <button class="btn btn-primary btn-sm" :disabled="!canWrite"
+              :title="canWrite ? '' : 'Writes are disabled (ALLOW_WRITES=true)'"
+              @click="newEntry()">Add schedule</button>
+    </div>
+  </div>
+
+  <div x-show="error" x-cloak class="rounded-lg px-3 py-2 text-sm"
+       style="background:rgba(239,68,68,.1);color:#fca5a5" x-text="error"></div>
+
+  <div class="flex items-center gap-1 border-b overflow-x-auto" style="border-color:var(--border)">
+    <template x-for="v in [['schedules','Schedules'],['timeline','Timeline'],['history','History']]" :key="v[0]">
+      <button class="px-3 py-2 text-sm border-b-2 -mb-px"
+              :class="view === v[0] ? 'border-emerald-400 text-emerald-300' : 'border-transparent'"
+              :style="view === v[0] ? '' : 'color:var(--text-secondary)'"
+              @click="setView(v[0])" x-text="v[1]"></button>
+    </template>
+  </div>
+
+  <!-- what this bridge cannot do, said plainly -->
+  <div class="card px-4 py-3 text-xs" style="color:var(--text-secondary)">
+    <span style="color:var(--text-primary)">Schedules run on the poll tick</span>, so they
+    react no faster than the bridge reads the gateway.
+    <template x-if="Object.keys(unavailable).length">
+      <span>
+        Not available here:
+        <template x-for="[k, why] in Object.entries(unavailable)" :key="k">
+          <span><span class="font-mono" x-text="k"></span> (<span x-text="why"></span>)&nbsp;</span>
+        </template>
+      </span>
+    </template>
+  </div>
+
+  <div x-show="view === 'schedules' && schedules.length" class="flex items-center flex-wrap gap-2 mb-3">
+    <span x-show="activeCount" class="chip" style="font-size:.65rem;background:#34d39922;color:#34d399">
+      <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1 animate-pulse"></span>
+      <span x-text="activeCount + ' active now'"></span>
+    </span>
+    <div class="ml-auto inline-flex rounded-lg border overflow-hidden" style="border-color:var(--border)">
+      <template x-for="f in ['all','enabled','disabled']" :key="f">
+        <button class="px-2.5 py-1 text-[11px] capitalize"
+                :class="listFilter === f ? 'bg-emerald-500 text-white' : ''"
+                :style="listFilter === f ? '' : 'color:var(--text-secondary)'"
+                @click="listFilter = f" x-text="f"></button>
+      </template>
+    </div>
+    <span x-show="hiddenCount" class="text-[11px]" style="color:var(--text-faint)"
+          x-text="hiddenCount + ' hidden'"></span>
+  </div>
+
+  <div x-show="view === 'schedules'" class="grid gap-3"
+       style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">
+    <template x-for="s in filteredSchedules" :key="s.id">
+      <div class="card p-4 space-y-2" :class="(s.enabled ? '' : 'opacity-60 ') + (s.active_now ? 'ring-1 ring-emerald-400/50' : '')">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <div class="font-semibold truncate" style="color:var(--text-primary)" x-text="s.name"></div>
+            <div class="text-xs" style="color:var(--text-secondary)">
+              <span x-text="s.fire_at"></span>
+              <span x-show="s.duration_min" x-text="` for ${s.duration_min} min`"></span>
+              · <span x-text="recurrenceLabel(s)"></span>
+              · <span x-text="(s.conditions || []).length"></span> condition(s)
+            </div>
+            <div class="text-[11px] mt-0.5" style="color:var(--text-faint)">
+              Next: <span x-text="nextFireLabel(s)"></span></div>
+          </div>
+          <span x-show="s.active_now" class="chip" style="font-size:.6rem;background:#34d39922;color:#34d399"
+                title="Running now">● active</span>
+          <span class="chip" :class="s.enabled ? 'ok' : 'muted'" style="font-size:.6rem"
+                x-text="s.enabled ? 'On' : 'Off'"></span>
+        </div>
+
+        <div class="text-xs" style="color:var(--text-secondary)">
+          <span x-show="s.action && s.action.kind"
+                x-text="(actions[s.action.kind] || {}).label || s.action.kind"></span>
+          <span x-show="!(s.action && s.action.kind)">No gateway action</span>
+          <span x-show="(s.ha_actions || []).length"
+                x-text="` · ${s.ha_actions.length} HA action(s)`"></span>
+        </div>
+
+        <!-- Explain (min / medium / full) — plain-language "what will this do?" -->
+        <div>
+          <button class="btn btn-secondary btn-sm" style="padding:3px 10px;font-size:.72rem"
+                  @click="toggleExplain(s)"
+                  x-text="explainId === s.id ? 'Hide explanation' : 'Explain'"></button>
+          <template x-if="explainId === s.id">
+            <div class="mt-1.5 rounded-lg p-2.5" style="background:var(--surface-2);border:1px solid var(--border)">
+              <div class="flex gap-1 mb-2">
+                <template x-for="lv in ['min','medium','full']" :key="lv">
+                  <button class="btn btn-sm" :class="explainLevel === lv ? 'btn-primary' : 'btn-secondary'"
+                          style="padding:2px 10px;font-size:.7rem;text-transform:capitalize"
+                          @click="explainLevel = lv" x-text="lv"></button>
+                </template>
+              </div>
+              <div class="text-xs font-mono" style="white-space:pre-line;color:var(--text-secondary);line-height:1.5"
+                   x-text="explain(s, explainLevel)"></div>
+            </div>
+          </template>
+        </div>
+
+        <div x-show="s.last_result" class="text-xs rounded px-2 py-1"
+             style="background:var(--surface-2);color:var(--text-secondary)">
+          <span x-text="s.last_fired_day"></span>: <span x-text="s.last_result"></span>
+        </div>
+
+        <template x-if="testResult && testResult.id === s.id">
+          <div class="text-xs rounded px-2 py-1.5 space-y-1"
+               :style="testResult.would_fire ? 'background:rgba(52,211,153,.12);color:#34d399'
+                                             : 'background:rgba(245,158,11,.12);color:#fbbf24'">
+            <div>
+              <span x-text="testResult.would_fire ? 'Would fire' : 'Would not fire'"></span>
+              — <span x-text="testResult.reason"></span>
+              (window: <span x-text="testResult.window"></span>)
+            </div>
+            <template x-for="(r, i) in testResult.rows" :key="i">
+              <div class="font-mono">
+                <span><span x-show="r.passes"><svg class="w-3.5 h-3.5 inline-block shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></span><span x-show="!r.passes"><svg class="w-3.5 h-3.5 inline-block shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6L6 18"/></svg></span></span>
+                <span x-text="sensorLabel(r.sensor)"></span>
+                <span x-text="r.op"></span>
+                <span x-text="r.value"></span>
+                — actual <span x-text="r.actual ?? '—'"></span>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <div class="flex items-center gap-2 pt-1">
+          <button class="btn btn-secondary btn-sm" :disabled="!canWrite" @click="editEntry(s)">Edit</button>
+          <button class="btn btn-secondary btn-sm" :disabled="!canWrite"
+                  @click="toggle(s)" x-text="s.enabled ? 'Turn off' : 'Turn on'"></button>
+          <button x-show="s.active_now" class="btn btn-sm" :disabled="!canWrite"
+                  style="background:#fb718522;color:#fb7185" @click="stopEntry(s)"
+                  title="Release this schedule's running dispatch">Stop</button>
+          <!-- less-frequent actions tucked into a ⋮ menu -->
+          <div class="relative ml-auto" x-data="{ menu: false }" @click.outside="menu = false"
+               @keydown.escape.window="menu = false">
+            <button class="btn btn-secondary btn-sm" @click="menu = !menu"
+                    title="More actions" aria-haspopup="true" :aria-expanded="menu">
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+            </button>
+            <div x-show="menu" x-cloak x-transition.opacity.duration.100ms
+                 class="absolute right-0 mt-1 z-30 rounded-lg border shadow-xl py-1 min-w-[10rem]"
+                 style="background:var(--surface-0,#0f172a);border-color:var(--border)">
+              <button class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5"
+                      style="color:var(--text-primary)" :disabled="busy" @click="verify(s); menu = false">Test against live</button>
+              <button class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5"
+                      style="color:var(--text-primary)" :disabled="!canWrite || busy" @click="runNow(s); menu = false">Run now</button>
+              <button class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5"
+                      style="color:var(--text-primary)" :disabled="!canWrite" @click="duplicate(s); menu = false">Duplicate</button>
+              <div class="my-1 border-t" style="border-color:var(--border)"></div>
+              <button class="w-full text-left px-3 py-1.5 text-sm text-rose-400 hover:bg-rose-500/10"
+                      :disabled="!canWrite" @click="remove(s); menu = false">Delete</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- Timeline: SoC line + work-mode band + fire markers, then planned windows -->
+  <div x-show="view === 'timeline'" x-cloak class="space-y-2">
+    <template x-if="timeline">
+      <div class="card p-4 space-y-3">
+        <div class="flex items-center justify-between text-xs flex-wrap gap-2" style="color:var(--text-secondary)">
+          <span>Today · now <span class="font-mono" x-text="hhmm(timeline.now_min)"></span></span>
+          <span class="flex items-center gap-3 flex-wrap text-[11px]">
+            <template x-for="m in modeLegend" :key="m.mode">
+              <span class="flex items-center gap-1"><span class="inline-block w-2.5 h-2.5 rounded-sm" :style="`background:${m.color}`"></span><span x-text="m.mode"></span></span>
+            </template>
+            <span class="flex items-center gap-1"><span class="inline-block w-3" style="height:2px;background:#38bdf8"></span>SoC</span>
+            <span class="flex items-center gap-1"><span class="inline-block w-3" style="height:2px;background:#fbbf24"></span>now</span>
+          </span>
+        </div>
+
+        <!-- chart: SVG stretched full width (viewBox x = minute-of-day); interior via x-html -->
+        <div class="relative" style="height:132px">
+          <svg viewBox="0 0 1440 100" preserveAspectRatio="none" style="width:100%;height:100%;display:block" x-html="svgInner"></svg>
+          <div class="absolute left-0 text-[9px] font-mono" style="top:12px;color:var(--text-faint)">100%</div>
+          <div class="absolute left-0 text-[9px] font-mono" style="bottom:2px;color:var(--text-faint)">0%</div>
+          <div x-show="!(timeline.soc || []).length" class="absolute inset-0 flex items-center justify-center text-xs"
+               style="color:var(--text-secondary)">No history recorded yet today.</div>
+        </div>
+        <div class="flex justify-between text-[10px]" style="color:var(--text-faint)">
+          <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
+        </div>
+
+        <!-- planned schedule windows -->
+        <div class="space-y-2 pt-2 border-t" style="border-color:var(--border)">
+          <div class="text-[10px] uppercase tracking-wide" style="color:var(--text-secondary)">Planned windows</div>
+          <template x-for="seg in timeline.segments" :key="seg.schedule_id">
+            <div>
+              <div class="flex items-center justify-between text-xs mb-0.5">
+                <span style="color:var(--text-primary)" x-text="seg.name"></span>
+                <span class="font-mono" style="color:var(--text-secondary)"
+                      x-text="hhmm(seg.start_min) + (seg.end_min !== seg.start_min ? '–' + hhmm(seg.end_min) : '') + (seg.wraps_midnight ? ' (+1d)' : '')"></span>
+              </div>
+              <div class="relative rounded" style="height:14px;background:var(--surface-2)">
+                <template x-if="!seg.wraps_midnight">
+                  <div class="absolute rounded" style="height:14px;background:#34d399;opacity:.6"
+                       :style="`left:${seg.start_min/1440*100}%;width:${Math.max(1,(seg.end_min-seg.start_min)/1440*100)}%`"></div>
+                </template>
+                <template x-if="seg.wraps_midnight">
+                  <div>
+                    <div class="absolute rounded" style="height:14px;background:#34d399;opacity:.6"
+                         :style="`left:${seg.start_min/1440*100}%;right:0`"></div>
+                    <div class="absolute rounded" style="height:14px;background:#34d399;opacity:.6"
+                         :style="`left:0;width:${seg.end_min/1440*100}%`"></div>
+                  </div>
+                </template>
+                <div class="absolute" style="top:0;bottom:0;width:2px;background:#fbbf24"
+                     :style="`left:${timeline.now_min/1440*100}%`"></div>
+              </div>
+            </div>
+          </template>
+          <div x-show="!timeline.segments.length" class="text-sm py-3 text-center"
+               style="color:var(--text-secondary)">No enabled schedules to show.</div>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- History: activity log -->
+  <div x-show="view === 'history'" x-cloak class="space-y-2">
+    <template x-if="logEvents">
+      <div class="space-y-2">
+        <!-- status filter chips -->
+        <div class="flex items-center gap-2 flex-wrap" x-show="logEvents.length">
+          <button class="chip" :class="!logFilter ? 'ok' : 'muted'" @click="logFilter=''"
+                  x-text="'all ' + logEvents.length"></button>
+          <button x-show="batteryLogCount" class="chip"
+                  :class="(logFilter==='_battery_') ? '' : 'muted'"
+                  :style="(logFilter==='_battery_') ? 'background:#22d3ee22;color:#22d3ee' : ''"
+                  @click="setLogFilter('_battery_')"><span class="inline-flex items-center gap-1"><svg class="w-3 h-3 inline-block shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="7" width="18" height="10" rx="2"/><path d="M23 11v2"/></svg><span x-text="'battery ' + batteryLogCount"></span></span></button>
+          <template x-for="st in logStatuses" :key="st.status">
+            <button class="chip" :class="(logFilter===st.status) ? '' : 'muted'"
+                    :style="(logFilter===st.status) ? statusStyle(st.status) : ''"
+                    @click="setLogFilter(st.status)" x-text="st.status + ' ' + st.n"></button>
+          </template>
+        </div>
+        <div class="card overflow-auto" style="max-height:60vh">
+          <table class="data-table">
+            <tbody>
+              <template x-for="(e, i) in filteredLog" :key="i">
+                <tr>
+                  <td class="text-xs font-mono" style="color:var(--text-secondary);white-space:nowrap"
+                      x-text="when(e.ts)"></td>
+                  <td>
+                    <div class="text-sm" style="color:var(--text-primary)" x-text="e.name"></div>
+                    <div class="text-xs font-mono" style="color:var(--text-secondary)" x-text="e.result"></div>
+                  </td>
+                  <td class="text-right">
+                    <span class="chip" :style="statusStyle(e.status) + ';font-size:.6rem'" x-text="e.status"></span>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div x-show="!filteredLog.length" class="p-8 text-center text-sm" style="color:var(--text-secondary)"
+               x-text="logFilter ? ('No ' + logFilter + ' events.') : 'No schedule activity yet.'"></div>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <div x-show="view === 'schedules' && !schedules.length && !loading" class="card p-8 text-center text-sm"
+       style="color:var(--text-secondary)">
+    No schedules yet.
+    <div class="text-xs mt-1">Add one — then use Test to check it against live values before enabling.</div>
+  </div>
+
+  <!-- Load preset -->
+  <div x-show="presetOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+       style="background:rgba(0,0,0,.6)" @click.self="presetOpen = false">
+    <div class="card w-full max-w-lg p-5 space-y-3">
+      <div class="flex items-center justify-between">
+        <h3 class="text-lg font-semibold" style="color:var(--text-primary)">Templates</h3>
+        <button class="btn btn-secondary btn-sm" @click="presetOpen = false">Close</button>
+      </div>
+      <p class="text-xs" style="color:var(--text-secondary)">
+        Loads into the editor disabled — review, then save. Every preset uses an action
+        the local channel can actually do.
+      </p>
+      <div class="space-y-2 overflow-auto" style="max-height:60vh">
+        <template x-for="p in presets" :key="p.id">
+          <div class="rounded-lg border p-3 flex items-start justify-between gap-3"
+               style="border-color:var(--border)">
+            <div class="min-w-0">
+              <div class="text-sm font-semibold flex items-center gap-2" style="color:var(--text-primary)">
+                <span x-text="p.name"></span>
+                <span x-show="p.requires === 'modbus'" class="chip"
+                      :class="force_available ? 'muted' : 'warn'" style="font-size:.55rem"
+                      :title="force_available ? 'Uses the Modbus force path' : (force_reason || 'Requires Modbus')">Modbus</span>
+              </div>
+              <div class="text-xs" style="color:var(--text-secondary)" x-text="p.description"></div>
+            </div>
+            <button class="btn btn-primary btn-sm shrink-0" @click="loadPreset(p)">Use</button>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <!-- Import review -->
+  <div x-show="importReport" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+       style="background:rgba(0,0,0,.6)" @click.self="importReport = null">
+    <div class="card w-full max-w-lg p-5 space-y-3">
+      <h3 class="text-lg font-semibold" style="color:var(--text-primary)">Import schedules</h3>
+      <div class="text-xs" style="color:var(--text-secondary)"
+           x-text="importReport ? `${importReport.importable} of ${importReport.count} can be imported (disabled for review)` : ''"></div>
+      <div x-show="importReport && importReport.mapped_from" x-cloak
+           class="text-[11px] rounded px-2.5 py-1.5" style="background:rgba(251,191,36,.12);color:#fcd34d">
+        Mapped from the Modbus bridge (<span class="font-mono" x-text="importReport && importReport.mapped_from"></span>).
+        Review sensor names &amp; actions before enabling — some may differ on the local bridge.
+      </div>
+      <div class="space-y-1 overflow-auto" style="max-height:50vh">
+        <template x-for="(e, i) in (importReport ? importReport.entries : [])" :key="i">
+          <div class="rounded px-3 py-2 text-xs"
+               :style="e.ok ? 'background:var(--surface-2)' : 'background:rgba(239,68,68,.1)'">
+            <div class="flex items-center gap-2">
+              <span :style="e.ok ? 'color:#34d399' : 'color:#fca5a5'"><span x-show="e.ok"><svg class="w-3.5 h-3.5 inline-block shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></span><span x-show="!e.ok"><svg class="w-3.5 h-3.5 inline-block shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6L6 18"/></svg></span></span>
+              <span style="color:var(--text-primary)" x-text="e.name"></span>
+            </div>
+            <template x-for="err in e.errors" :key="err">
+              <div style="color:#fca5a5" x-text="'· ' + err"></div>
+            </template>
+            <template x-for="w in e.warnings" :key="w">
+              <div style="color:#fbbf24" x-text="'· ' + w"></div>
+            </template>
+          </div>
+        </template>
+      </div>
+      <div class="flex justify-end gap-2">
+        <button class="btn btn-secondary btn-sm" @click="importReport = null">Cancel</button>
+        <button class="btn btn-primary btn-sm"
+                :disabled="!importReport || !importReport.importable"
+                @click="confirmImport()">Import valid</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- editor -->
+  <template x-if="form">
+  <div class="fixed inset-0 z-50 flex items-start justify-center p-2 sm:p-4 overflow-y-auto"
+       style="background:rgba(0,0,0,.6)" @click.self="closeForm()">
+    <div class="card w-full max-w-xl p-0 my-2 sm:my-8 flex flex-col" style="max-height:90dvh">
+      <div class="px-5 pt-4 pb-3 shrink-0 border-b" style="border-color:var(--border)">
+        <h3 class="text-lg font-semibold" style="color:var(--text-primary)"
+            x-text="form.id ? 'Edit schedule' : 'Add schedule'"></h3>
+      </div>
+      <div class="flex-1 overflow-y-auto px-5 py-4 space-y-3" style="min-height:0">
+      <label class="block text-xs" style="color:var(--text-secondary)">Name
+        <input class="form-control form-control-sm w-full mt-1" x-model="form.name"
+               placeholder="Evening export"></label>
+
+      <!-- Trigger type + quick preset -->
+      <div class="grid grid-cols-2 gap-3">
+        <label class="block text-xs" style="color:var(--text-secondary)">Trigger type
+          <select class="form-control form-control-sm w-full mt-1" x-model="form.trigger_type"
+                  @change="onTriggerType()">
+            <option value="window">Recurring windows</option>
+            <option value="once">One-off date</option>
+            <option value="daily">Daily at time</option>
+            <option value="weekly">Weekly at time</option>
+            <option value="interval">Every N minutes</option>
+            <option value="monthly">Monthly / calendar</option>
+            <option value="cron" :disabled="!cron_available" x-text="cron_available ? 'Custom cron' : 'Custom cron — unavailable'"></option>
+            <option value="always">Always (sensor-driven)</option>
+          </select></label>
+        <label class="block text-xs" style="color:var(--text-secondary)">Quick preset
+          <span style="color:var(--text-faint)">(fills fields)</span>
+          <select class="form-control form-control-sm w-full mt-1" x-model="presetSel" @change="applyPreset()">
+            <template x-for="pr in triggerPresets" :key="pr.id"><option :value="pr.id" x-text="pr.label"></option></template>
+          </select></label>
+      </div>
+
+      <!-- Days (recurring windows / weekly) -->
+      <div x-show="showDays">
+        <div class="text-xs font-semibold mb-1" style="color:var(--text-secondary)">Days
+          <span style="color:var(--text-faint)">(none = every day)</span></div>
+        <div class="flex flex-wrap gap-1">
+          <template x-for="(lbl, di) in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="di">
+            <button type="button" class="px-2 py-1 rounded text-[11px] border"
+                    :class="(form.days||[]).includes(di) ? 'bg-emerald-500 text-white border-emerald-500' : ''"
+                    :style="(form.days||[]).includes(di) ? '' : 'border-color:var(--border);color:var(--text-secondary)'"
+                    @click="toggleDay(di)" x-text="lbl"></button>
+          </template>
+        </div>
+      </div>
+
+      <!-- Time windows (recurring windows / one-off) -->
+      <div x-show="showWindows">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs font-semibold" style="color:var(--text-secondary)">Time windows</span>
+          <button type="button" class="btn btn-secondary btn-sm" @click="addWindow()">+ add window</button>
+        </div>
+        <template x-for="(w, wi) in form.windows" :key="wi">
+          <div class="flex items-center gap-2 mb-1">
+            <input type="time" class="form-control form-control-sm flex-1" x-model="w.start">
+            <span style="color:var(--text-faint)">→</span>
+            <input type="time" class="form-control form-control-sm flex-1" x-model="w.end">
+            <button class="btn btn-secondary btn-sm" @click="removeWindow(wi)">&times;</button>
+          </div>
+        </template>
+        <p x-show="!form.windows.length" class="text-[11px]" style="color:var(--text-faint)">
+          Add at least one window — wraps past midnight when end ≤ start.</p>
+      </div>
+
+      <!-- One-off date -->
+      <label x-show="showDate" class="block text-xs" style="color:var(--text-secondary)">Date
+        <input type="date" class="form-control form-control-sm w-full mt-1"
+               :value="form.start_date || ''" @change="form.start_date = $event.target.value || null">
+        <span class="text-[11px] block mt-0.5" style="color:var(--text-faint)">Fires once on this date, then goes dormant.</span></label>
+
+      <!-- Fire at + Duration (daily / weekly / monthly / one-off) -->
+      <div x-show="showFireAt" class="grid grid-cols-2 gap-3">
+        <label class="block text-xs" style="color:var(--text-secondary)">Fire at
+          <input type="time" class="form-control form-control-sm w-full mt-1" x-model="form.fire_at"></label>
+        <label class="block text-xs" style="color:var(--text-secondary)">Duration (min)
+          <input type="number" min="0" max="1440" class="form-control form-control-sm w-full mt-1" x-model.number="form.duration_min"></label>
+      </div>
+
+      <!-- Monthly (day of month + months) -->
+      <div x-show="showMonthly" class="space-y-2">
+        <label class="block text-xs" style="color:var(--text-secondary)">Day of month
+          <span style="color:var(--text-faint)">(clamped to month length)</span>
+          <input type="number" min="1" max="31" placeholder="1–31" class="form-control form-control-sm w-40 mt-1"
+                 :value="form.day_of_month ?? ''" @input="form.day_of_month = $event.target.value === '' ? null : Number($event.target.value)"></label>
+        <div class="text-[11px]" style="color:var(--text-secondary)">Months (none = every month)</div>
+        <div class="flex flex-wrap gap-1">
+          <template x-for="(lbl, mi) in ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']" :key="mi">
+            <button type="button" class="px-2 py-1 rounded text-[11px] border"
+                    :class="(form.months||[]).includes(mi+1) ? 'bg-emerald-500 text-white border-emerald-500' : ''"
+                    :style="(form.months||[]).includes(mi+1) ? '' : 'border-color:var(--border);color:var(--text-secondary)'"
+                    @click="toggleMonth(mi+1)" x-text="lbl"></button>
+          </template>
+        </div>
+      </div>
+
+      <!-- Interval -->
+      <div x-show="showInterval" class="grid grid-cols-3 gap-3">
+        <label class="block text-xs" style="color:var(--text-secondary)">Every (min)
+          <input type="number" min="1" step="5" class="form-control form-control-sm w-full mt-1" x-model.number="form.interval_min"></label>
+        <label class="block text-xs" style="color:var(--text-secondary)">Anchor <span style="color:var(--text-faint)">(optional)</span>
+          <input type="time" class="form-control form-control-sm w-full mt-1"
+                 :value="form.anchor || ''" @change="form.anchor = $event.target.value"></label>
+        <label class="block text-xs" style="color:var(--text-secondary)">Duration (min)
+          <input type="number" min="0" class="form-control form-control-sm w-full mt-1" x-model.number="form.duration_min"></label>
+      </div>
+
+      <!-- Cron -->
+      <div x-show="showCron" class="space-y-2">
+        <label class="block text-xs" style="color:var(--text-secondary)">Cron expression
+          <input class="form-control form-control-sm w-full mt-1 font-mono" x-model="form.cron" placeholder="0 3 * * *">
+          <span class="text-[11px] block mt-0.5" style="color:var(--text-faint)">min&nbsp;hour&nbsp;day-of-month&nbsp;month&nbsp;day-of-week — e.g. <span class="font-mono">*/15 * * * *</span></span></label>
+        <label class="block text-xs w-40" style="color:var(--text-secondary)">Duration (min)
+          <input type="number" min="0" class="form-control form-control-sm w-full mt-1" x-model.number="form.duration_min"></label>
+      </div>
+
+      <!-- Always -->
+      <p x-show="showAlways" class="text-[11px] rounded p-2" style="color:var(--text-secondary);background:var(--surface-1)">
+        No time trigger — this dispatches whenever the <strong>entry conditions</strong> hold and releases
+        when they stop. Set the entry conditions below to define when it acts.</p>
+
+      <!-- Advanced: restrict to a date range (for recurring types) -->
+      <div x-show="!showAlways && !showDate">
+        <button type="button" x-show="!advRepeat" class="btn btn-secondary btn-sm" @click="advRepeat=true">Advanced…</button>
+        <div x-show="advRepeat" class="space-y-2 pt-1 border-t" style="border-color:var(--border)">
+          <div class="text-[11px]" style="color:var(--text-secondary)">Restrict to a date range (optional)</div>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="block text-[11px]" style="color:var(--text-secondary)">Start date
+              <input type="date" class="form-control form-control-sm w-full mt-1"
+                     :value="form.start_date || ''" @change="form.start_date = $event.target.value || null"></label>
+            <label class="block text-[11px]" style="color:var(--text-secondary)">End date
+              <input type="date" class="form-control form-control-sm w-full mt-1"
+                     :value="form.end_date || ''" @change="form.end_date = $event.target.value || null"></label>
+          </div>
+        </div>
+      </div>
+      <!-- gateway action -->
+      <div class="rounded-lg border p-3 space-y-2" style="border-color:var(--border)">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <div class="text-xs font-semibold" style="color:var(--text-secondary)">Battery action</div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <!-- Priority: higher wins when several schedules fire the same tick for the
+                 same gateway; the rest are deferred for the day. -->
+            <label class="flex items-center gap-1 text-[11px]" style="color:var(--text-faint)"
+                   title="Higher priority wins when schedules collide on the same gateway">Priority
+              <input type="number" step="1" class="form-control form-control-sm w-16 text-center"
+                     x-model.number="form.priority"></label>
+            <label class="flex items-center gap-1 text-[11px]" style="color:var(--text-faint)"
+                   title="If the battery is already under another schedule's dispatch">If busy
+              <select class="form-control form-control-sm" style="width:auto" x-model="form.conflict"
+                      x-init="$nextTick(() => { $el.value = form.conflict })">
+                <option value="override">override</option>
+                <option value="defer">defer</option>
+                <option value="wait">wait</option>
+              </select></label>
+            <!-- Which gateway the action targets. Shown only when there is more than one. -->
+            <select x-show="gateways.length > 1" class="form-control form-control-sm"
+                    style="width:auto" x-model="form.gateway_id">
+              <option value="">Default gateway</option>
+              <template x-for="g in gateways" :key="g.id">
+                <option :value="g.id" x-text="g.name"></option>
+              </template>
+            </select>
+          </div>
+        </div>
+        <select class="form-control form-control-sm w-full" x-model="form.action.kind"
+                @change="onActionKind()">
+          <option value="">No battery action (HA only)</option>
+          <template x-for="[k, a] in Object.entries(actions)" :key="k">
+            <!-- Force is offered only when the direct-Modbus path is reachable; when it
+                 is not, it is shown disabled with the reason rather than hidden. -->
+            <option :value="k" :disabled="k === 'force' && !force_available"
+                    x-text="a.label + (k === 'force' && !force_available ? ' — unavailable' : '')"></option>
+          </template>
+        </select>
+        <p x-show="form.action.kind === 'force' && !force_available"
+           class="text-xs" style="color:var(--danger)"
+           x-text="'Modbus unavailable: ' + force_reason"></p>
+        <div x-show="form.action.kind" class="grid grid-cols-2 gap-2">
+          <template x-for="p in actionParams(form.action.kind)" :key="p">
+            <label class="block text-xs" style="color:var(--text-secondary)">
+              <span x-text="paramLabel(p)"></span>
+              <!-- A picker, not a text box: the operating work modes are a fixed
+                   set of three, read from the gateway. -->
+              <template x-if="paramChoices(p)">
+                <select class="form-control form-control-sm w-full mt-1" x-model="form.action[p]">
+                  <option value="">— choose —</option>
+                  <template x-for="c in paramChoices(p)" :key="c.value">
+                    <option :value="c.value" x-text="c.label"></option>
+                  </template>
+                </select>
+              </template>
+              <template x-if="!paramChoices(p)">
+                <input class="form-control form-control-sm w-full mt-1"
+                       :type="(p === 'power' || p === 'target_soc' || p === 'soc') ? 'number' : 'text'"
+                       :placeholder="paramLabel(p)" x-model="form.action[p]">
+              </template>
+            </label>
+          </template>
+        </div>
+        <p x-show="form.action.kind && (actions[form.action.kind] || {}).note"
+           class="text-xs" style="color:var(--text-secondary)"
+           x-text="(actions[form.action.kind] || {}).note"></p>
+      </div>
+
+      <!-- entry conditions (nestable ALL/ANY gate + Value|Lookup + Test Verify) -->
+      <div class="rounded-lg border p-3 space-y-2" style="border-color:var(--border)">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <span class="text-xs font-semibold" style="color:var(--text-secondary)">
+            Entry conditions (must hold to fire)</span>
+          <span class="flex items-center gap-2">
+            <select class="form-control form-control-sm" style="width:auto" x-model="form.match">
+              <option value="all">Match ALL</option>
+              <option value="any">Match ANY</option>
+            </select>
+            <button class="btn btn-secondary btn-sm" @click="addRow()">+ row</button>
+            <button class="btn btn-secondary btn-sm" @click="addGroup()">+ group</button>
+            <button class="btn btn-secondary btn-sm" :disabled="busy" @click="testVerify()">Test</button>
+          </span>
+        </div>
+
+        <template x-for="item in flatConds" :key="item.node._cid + '-' + item.kind + '-' + (item.j ?? '')">
+          <div>
+            <!-- GROUP HEADER -->
+            <div x-show="item.kind==='group'" class="flex items-center justify-between rounded-t border-t border-x px-2 py-1.5"
+                 style="border-color:var(--border);background:var(--surface-1)">
+              <span class="flex items-center gap-2">
+                <span class="text-[10px] uppercase tracking-wide" style="color:var(--text-secondary)">group</span>
+                <select class="form-control form-control-sm" style="width:auto" x-model="item.node.match">
+                  <option value="all">Match ALL</option>
+                  <option value="any">Match ANY</option>
+                </select>
+              </span>
+              <span class="flex gap-2">
+                <button class="btn btn-secondary btn-sm" @click="addToGroup(item.node)">+ row</button>
+                <button class="btn btn-secondary btn-sm" @click="removeCond(item.i)">remove group</button>
+              </span>
+            </div>
+            <!-- EMPTY GROUP note -->
+            <div x-show="item.kind==='groupempty'" class="border-x border-b px-2 py-1.5 text-[11px]"
+                 style="border-color:var(--border);background:var(--surface-1);color:var(--text-secondary)">Empty group.</div>
+
+            <!-- ROW (top-level or inside a group) -->
+            <div x-show="item.kind==='row' || item.kind==='grouprow'"
+                 class="flex flex-wrap items-center gap-2 p-1"
+                 :class="(item.kind==='grouprow' ? 'border-x pl-3 ' : '') + condRingClass(item.node)"
+                 :style="item.kind==='grouprow' ? 'border-color:var(--border);background:var(--surface-1)' : ''">
+              <div class="relative flex-1" style="min-width:150px" x-data="{ open:false, q:'', obj: item.node, key:'sensor' }" @click.outside="open=false; q=''">
+                <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
+                  <span class="truncate" x-text="sensorLabel(obj[key]) || '&#8212; choose sensor &#8212;'"></span><span style="color:var(--text-faint)">&#9662;</span>
+                </button>
+                <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.q && $refs.q.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);min-width:240px;left:0">
+                  <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors&#8230;" class="form-control form-control-sm w-full"></div>
+                  <div class="max-h-60 overflow-y-auto py-1">
+                    <template x-for="it in pickerItems(q)" :key="it.key"><div>
+                      <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
+                      <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
+                    </div></template>
+                    <div x-show="!pickerItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No match.</div>
+                  </div>
+                </div>
+              </div>
+              <select class="form-control form-control-sm" style="width:auto" x-model="item.node.op" x-init="$nextTick(() => { $el.value = item.node.op })">
+                <template x-for="o in ops" :key="o"><option :value="o" x-text="o"></option></template>
+              </select>
+              <span x-show="!isTextRhs(item.node.op)" class="inline-flex rounded overflow-hidden border" style="border-color:var(--border)">
+                <button type="button" class="px-2 py-0.5 text-[11px]" :class="(item.node.value_kind||'value')==='value' ? 'bg-emerald-500 text-white' : ''" style="color:var(--text-secondary)" @click="item.node.value_kind='value'">Value</button>
+                <button type="button" class="px-2 py-0.5 text-[11px]" :class="item.node.value_kind==='sensor' ? 'bg-emerald-500 text-white' : ''" style="color:var(--text-secondary)" @click="item.node.value_kind='sensor'">Lookup</button>
+              </span>
+              <span x-show="isTextRhs(item.node.op) || (item.node.value_kind||'value')==='value'" class="flex items-center gap-1">
+                <input class="form-control form-control-sm w-24" x-model="item.node.value"
+                       :placeholder="item.node.op==='between' ? 'low' : (isTextRhs(item.node.op) ? '10,20,42-49' : 'value')">
+                <input x-show="item.node.op==='between'" class="form-control form-control-sm w-20" x-model="item.node.value2" placeholder="high">
+              </span>
+              <div class="relative" style="min-width:130px" x-show="!isTextRhs(item.node.op) && item.node.value_kind==='sensor'" x-data="{ open:false, q:'', obj: item.node, key:'value_sensor' }" @click.outside="open=false; q=''">
+                <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
+                  <span class="truncate" x-text="sensorLabel(obj[key]) || '&#8212; sensor &#8212;'"></span><span style="color:var(--text-faint)">&#9662;</span>
+                </button>
+                <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.q && $refs.q.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);min-width:240px;left:0">
+                  <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors&#8230;" class="form-control form-control-sm w-full"></div>
+                  <div class="max-h-60 overflow-y-auto py-1">
+                    <template x-for="it in pickerItems(q)" :key="it.key"><div>
+                      <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
+                      <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
+                    </div></template>
+                    <div x-show="!pickerItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No match.</div>
+                  </div>
+                </div>
+              </div>
+              <span x-show="condTested(item.node)" class="text-[11px] whitespace-nowrap" :class="condVerdictClass(item.node)" x-text="condVerdict(item.node)"></span>
+              <button class="btn btn-secondary btn-sm"
+                      @click="item.kind==='grouprow' ? removeFromGroup(item.group, item.j) : removeCond(item.i)">&times;</button>
+            </div>
+          </div>
+        </template>
+
+        <p x-show="!form.conditions.length" class="text-xs" style="color:var(--text-secondary)">
+          No conditions — it fires on time alone.
+        </p>
+
+        <!-- overall Test Verification result + legend -->
+        <div class="flex items-center justify-between flex-wrap gap-2 pt-1">
+          <span x-show="testResult" class="text-xs font-semibold inline-flex items-center gap-1"
+                :class="testResult && testResult.result ? 'text-emerald-400' : 'text-amber-400'"><span x-show="testResult && testResult.result"><svg class="w-3.5 h-3.5 inline-block shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></span><span x-show="testResult && !testResult.result"><svg class="w-3.5 h-3.5 inline-block shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6L6 18"/></svg></span><span x-text="testResult && testResult.result ? 'conditions currently PASS' : 'conditions currently FAIL'"></span></span>
+          <span class="text-[10px] flex items-center gap-3" style="color:var(--text-secondary)">
+            <span><span class="inline-block w-2 h-2 rounded-sm bg-emerald-400 mr-1"></span>passes</span>
+            <span><span class="inline-block w-2 h-2 rounded-sm bg-rose-400 mr-1"></span>fails</span>
+            <span><span class="inline-block w-2 h-2 rounded-sm bg-amber-400 mr-1"></span>no value</span>
+          </span>
+        </div>
+
+        <!-- duration hold: conditions must hold continuously before firing -->
+        <div class="flex items-center justify-between gap-2 pt-1 border-t" style="border-color:var(--border)">
+          <span class="text-xs" style="color:var(--text-secondary)">
+            Hold (HH:MM:SS) — must stay true this long before firing</span>
+          <input class="form-control form-control-sm w-28 text-right font-mono"
+                 :value="secToHms(form.entry_hold_s)"
+                 @change="form.entry_hold_s = hmsToSec($event.target.value)"
+                 placeholder="00:00:00">
+        </div>
+      </div>
+
+      <!-- exit conditions — SAME nestable ALL/ANY builder as entry, plus Test Verify -->
+      <div class="rounded-lg border p-3 space-y-2" style="border-color:var(--border)">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <span class="text-xs font-semibold" style="color:var(--text-secondary)">
+            End early when… <span style="color:var(--text-faint)">(optional exit conditions)</span></span>
+          <span class="flex items-center gap-2">
+            <select class="form-control form-control-sm" style="width:auto" x-model="form.exit_match">
+              <option value="all">Match ALL</option>
+              <option value="any">Match ANY</option>
+            </select>
+            <button class="btn btn-secondary btn-sm" @click="addExitRow()">+ row</button>
+            <button class="btn btn-secondary btn-sm" @click="addExitGroup()">+ group</button>
+            <button class="btn btn-secondary btn-sm" :disabled="busy || !form.exit_conditions.length" @click="testExit()">Test</button>
+          </span>
+        </div>
+
+        <template x-for="item in flatExit" :key="item.node._cid + '-' + item.kind + '-' + (item.j ?? '')">
+          <div>
+            <!-- GROUP HEADER -->
+            <div x-show="item.kind==='group'" class="flex items-center justify-between rounded-t border-t border-x px-2 py-1.5"
+                 style="border-color:var(--border);background:var(--surface-1)">
+              <span class="flex items-center gap-2">
+                <span class="text-[10px] uppercase tracking-wide" style="color:var(--text-secondary)">group</span>
+                <select class="form-control form-control-sm" style="width:auto" x-model="item.node.match">
+                  <option value="all">Match ALL</option>
+                  <option value="any">Match ANY</option>
+                </select>
+              </span>
+              <span class="flex gap-2">
+                <button class="btn btn-secondary btn-sm" @click="addToGroup(item.node)">+ row</button>
+                <button class="btn btn-secondary btn-sm" @click="removeExitCond(item.i)">remove group</button>
+              </span>
+            </div>
+            <div x-show="item.kind==='groupempty'" class="border-x border-b px-2 py-1.5 text-[11px]"
+                 style="border-color:var(--border);background:var(--surface-1);color:var(--text-secondary)">Empty group.</div>
+
+            <!-- ROW -->
+            <div x-show="item.kind==='row' || item.kind==='grouprow'"
+                 class="flex flex-wrap items-center gap-2 p-1"
+                 :class="(item.kind==='grouprow' ? 'border-x pl-3 ' : '') + condRingClass(item.node)"
+                 :style="item.kind==='grouprow' ? 'border-color:var(--border);background:var(--surface-1)' : ''">
+              <div class="relative flex-1" style="min-width:150px" x-data="{ open:false, q:'', obj: item.node, key:'sensor' }" @click.outside="open=false; q=''">
+                <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
+                  <span class="truncate" x-text="sensorLabel(obj[key]) || '&#8212; choose sensor &#8212;'"></span><span style="color:var(--text-faint)">&#9662;</span>
+                </button>
+                <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.q && $refs.q.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);min-width:240px;left:0">
+                  <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors&#8230;" class="form-control form-control-sm w-full"></div>
+                  <div class="max-h-60 overflow-y-auto py-1">
+                    <template x-for="it in pickerItems(q)" :key="it.key"><div>
+                      <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
+                      <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
+                    </div></template>
+                    <div x-show="!pickerItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No match.</div>
+                  </div>
+                </div>
+              </div>
+              <select class="form-control form-control-sm" style="width:auto" x-model="item.node.op" x-init="$nextTick(() => { $el.value = item.node.op })">
+                <template x-for="o in ops" :key="o"><option :value="o" x-text="o"></option></template>
+              </select>
+              <span x-show="!isTextRhs(item.node.op)" class="inline-flex rounded overflow-hidden border" style="border-color:var(--border)">
+                <button type="button" class="px-2 py-0.5 text-[11px]" :class="(item.node.value_kind||'value')==='value' ? 'bg-emerald-500 text-white' : ''" style="color:var(--text-secondary)" @click="item.node.value_kind='value'">Value</button>
+                <button type="button" class="px-2 py-0.5 text-[11px]" :class="item.node.value_kind==='sensor' ? 'bg-emerald-500 text-white' : ''" style="color:var(--text-secondary)" @click="item.node.value_kind='sensor'">Lookup</button>
+              </span>
+              <span x-show="isTextRhs(item.node.op) || (item.node.value_kind||'value')==='value'" class="flex items-center gap-1">
+                <input class="form-control form-control-sm w-24" x-model="item.node.value"
+                       :placeholder="item.node.op==='between' ? 'low' : (isTextRhs(item.node.op) ? '10,20,42-49' : 'value')">
+                <input x-show="item.node.op==='between'" class="form-control form-control-sm w-20" x-model="item.node.value2" placeholder="high">
+              </span>
+              <div class="relative" style="min-width:130px" x-show="!isTextRhs(item.node.op) && item.node.value_kind==='sensor'" x-data="{ open:false, q:'', obj: item.node, key:'value_sensor' }" @click.outside="open=false; q=''">
+                <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
+                  <span class="truncate" x-text="sensorLabel(obj[key]) || '&#8212; sensor &#8212;'"></span><span style="color:var(--text-faint)">&#9662;</span>
+                </button>
+                <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.q && $refs.q.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);min-width:240px;left:0">
+                  <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors&#8230;" class="form-control form-control-sm w-full"></div>
+                  <div class="max-h-60 overflow-y-auto py-1">
+                    <template x-for="it in pickerItems(q)" :key="it.key"><div>
+                      <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
+                      <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
+                    </div></template>
+                    <div x-show="!pickerItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No match.</div>
+                  </div>
+                </div>
+              </div>
+              <span x-show="condTested(item.node)" class="text-[11px] whitespace-nowrap" :class="condVerdictClass(item.node)" x-text="condVerdict(item.node)"></span>
+              <button class="btn btn-secondary btn-sm"
+                      @click="item.kind==='grouprow' ? removeFromGroup(item.group, item.j) : removeExitCond(item.i)">&times;</button>
+            </div>
+          </div>
+        </template>
+
+        <p x-show="!form.exit_conditions.length" class="text-xs" style="color:var(--text-secondary)">
+          No exit conditions — the window ends on time (fire + duration). Add a rule to end it early,
+          e.g. stop a force discharge when <span class="font-mono">battery.soc_pct ≤ 20</span>. On early
+          exit the force is released and any exit-tagged HA actions run.
+        </p>
+        <div class="flex items-center justify-between flex-wrap gap-2 pt-1">
+          <span x-show="exitTestResult" class="text-xs font-semibold inline-flex items-center gap-1"
+                :class="exitTestResult && exitTestResult.result ? 'text-amber-400' : 'text-emerald-400'"><span x-show="exitTestResult && exitTestResult.result"><svg class="w-3.5 h-3.5 inline-block shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4M12 17h.01M10.3 4 2 18.5A2 2 0 0 0 3.7 21h16.6a2 2 0 0 0 1.7-2.5L13.7 4a2 2 0 0 0-3.4 0z"/></svg></span><span x-show="exitTestResult && !exitTestResult.result"><svg class="w-3.5 h-3.5 inline-block shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></span><span x-text="exitTestResult && exitTestResult.result ? 'exit WOULD end the window now' : 'exit would NOT fire now'"></span></span>
+        </div>
+      </div>
+
+      <!-- HA actions -->
+      <div class="rounded-lg border p-3 space-y-2" style="border-color:var(--border)">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold" style="color:var(--text-secondary)">
+            Home Assistant actions (optional)</span>
+          <span class="flex gap-2">
+            <button class="btn btn-secondary btn-sm" :disabled="!devices.length"
+                    :title="devices.length ? '' : 'Add a notification device first'"
+                    @click="addHa()">+ notify</button>
+            <button class="btn btn-secondary btn-sm" :disabled="!instances.length"
+                    :title="instances.length ? '' : 'Add a Home Assistant instance in Settings first'"
+                    @click="addHaService()">+ entity</button>
+          </span>
+        </div>
+        <template x-for="(ha, i) in form.ha_actions" :key="i">
+          <div class="space-y-2 border-b pb-2 last:border-0" style="border-color:var(--border)">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="chip muted" style="font-size:.6rem" x-text="ha.ha_kind==='service' ? (ha.raw ? 'SERVICE' : 'ENTITY') : 'NOTIFY'"></span>
+              <!-- notify target -->
+              <select x-show="ha.ha_kind!=='service'" class="form-control form-control-sm flex-1" style="min-width:130px" x-model="ha.device_id"
+                      x-init="$nextTick(() => { $el.value = ha.device_id })">
+                <template x-for="d in devices" :key="d.id">
+                  <option :value="d.id" x-text="d.alias + (d.enabled ? '' : ' (off)')"></option>
+                </template>
+              </select>
+              <!-- service GUIDED: entity picker (grouped by instance) -->
+              <select x-show="ha.ha_kind==='service' && !ha.raw" class="form-control form-control-sm flex-1" style="min-width:130px"
+                      @change="onHaEntityPick(ha, $event.target.value)">
+                <option value="" :selected="!ha.entity_id">— choose an entity —</option>
+                <template x-for="grp in haEntityGroups" :key="grp.instance"><optgroup :label="grp.instance">
+                  <template x-for="e in grp.entities" :key="e.instance_id + '::' + e.entity_id">
+                    <option :value="e.instance_id + '::' + e.entity_id"
+                            :selected="ha.instance_id === e.instance_id && ha.entity_id === e.entity_id"
+                            x-text="e.label"></option>
+                  </template>
+                </optgroup></template>
+              </select>
+              <!-- service RAW: instance picker -->
+              <select x-show="ha.ha_kind==='service' && ha.raw" class="form-control form-control-sm flex-1" style="min-width:130px" x-model="ha.instance_id"
+                      x-init="$nextTick(() => { $el.value = ha.instance_id })">
+                <template x-for="inst in instances" :key="inst.id">
+                  <option :value="inst.id" x-text="inst.name + (inst.enabled ? '' : ' (off)')"></option>
+                </template>
+              </select>
+              <select class="form-control form-control-sm" style="width:auto" x-model="ha.when"
+                      x-init="$nextTick(() => { $el.value = ha.when })" title="When this action fires">
+                <option value="fire">On entry</option>
+                <option value="exit">On exit</option>
+                <option value="both">Entry &amp; exit</option>
+              </select>
+              <button class="btn btn-secondary btn-sm" @click="removeHa(i)">&times;</button>
+            </div>
+            <!-- notify fields -->
+            <div x-show="ha.ha_kind!=='service'" class="space-y-2">
+              <input class="form-control form-control-sm w-full" placeholder="Title (optional)"
+                     x-model="ha.title">
+              <input class="form-control form-control-sm w-full"
+                     placeholder="Message — e.g. SoC is %battery.soc_pct%%, mode %mode.name%"
+                     x-model="ha.message">
+            </div>
+            <!-- service GUIDED: domain-aware control widget -->
+            <div x-show="ha.ha_kind==='service' && !ha.raw" class="space-y-2">
+              <div x-show="!ha.entity_id && !haEntities.length" class="text-[11px]" style="color:var(--text-faint)">
+                No controllable HA entities exposed yet — expose some in the Home Assistant tab, or use Advanced (raw) below.</div>
+              <!-- toggle: switch / light / input_boolean -->
+              <div x-show="ha.entity_id && haControlKind(ha)==='toggle'" class="flex items-center gap-2">
+                <span class="text-[11px]" style="color:var(--text-secondary)">Action</span>
+                <select class="form-control form-control-sm" style="width:auto" x-model="ha.service"
+                        x-init="$nextTick(() => { $el.value = ha.service })">
+                  <option value="turn_on">Turn On</option>
+                  <option value="turn_off">Turn Off</option>
+                  <option value="toggle">Toggle</option>
+                </select>
+              </div>
+              <!-- select / input_select: option dropdown from the entity's own options -->
+              <div x-show="ha.entity_id && haControlKind(ha)==='select'" class="flex items-center gap-2">
+                <span class="text-[11px]" style="color:var(--text-secondary)">Option</span>
+                <select class="form-control form-control-sm flex-1" x-model="ha.data.option"
+                        x-init="$nextTick(() => { $el.value = (ha.data || {}).option })">
+                  <option value="">— option —</option>
+                  <template x-for="opt in (haEntityMeta(ha)?.options || [])" :key="opt">
+                    <option :value="opt" x-text="opt"></option>
+                  </template>
+                </select>
+              </div>
+              <!-- number / input_number -->
+              <div x-show="ha.entity_id && haControlKind(ha)==='number'" class="flex items-center gap-2">
+                <span class="text-[11px]" style="color:var(--text-secondary)">Value</span>
+                <input type="number" class="form-control form-control-sm w-32" x-model.number="ha.data.value"
+                       :min="haEntityMeta(ha)?.min" :max="haEntityMeta(ha)?.max" :step="haEntityMeta(ha)?.step">
+              </div>
+              <!-- button -->
+              <div x-show="ha.entity_id && haControlKind(ha)==='press'" class="text-[11px]" style="color:var(--text-secondary)">Presses the button on fire.</div>
+              <!-- scene / script -->
+              <div x-show="ha.entity_id && haControlKind(ha)==='run'" class="text-[11px]" style="color:var(--text-secondary)">Runs the scene / script on fire.</div>
+              <button type="button" class="text-[11px]" style="color:var(--accent)" @click="ha.raw = true">Advanced (raw service)…</button>
+            </div>
+            <!-- service RAW: free-text domain/service/entity/JSON -->
+            <div x-show="ha.ha_kind==='service' && ha.raw" class="space-y-2">
+              <div class="flex gap-2 flex-wrap">
+                <input class="form-control form-control-sm flex-1" style="min-width:110px" placeholder="domain — e.g. switch" x-model="ha.domain">
+                <input class="form-control form-control-sm flex-1" style="min-width:110px" placeholder="service — e.g. turn_on" x-model="ha.service">
+              </div>
+              <input class="form-control form-control-sm w-full" placeholder="entity_id — e.g. switch.garage (optional; %sensor.id% ok)" x-model="ha.entity_id">
+              <input class="form-control form-control-sm w-full font-mono text-xs"
+                     placeholder='data JSON — e.g. {&quot;brightness&quot;: 180} (optional)'
+                     :value="typeof ha.data === 'object' ? JSON.stringify(ha.data) : (ha.data || '')"
+                     @change="ha.data = $event.target.value">
+              <button type="button" class="text-[11px]" style="color:var(--accent)" @click="ha.raw = false">← Back to guided picker</button>
+            </div>
+            <!-- optional guard: fire this action only if a condition holds right now -->
+            <div class="flex items-center gap-2 flex-wrap text-xs">
+              <button x-show="!ha.guard.enabled" class="btn btn-secondary btn-sm" @click="ha.guard.enabled = true">+ guard</button>
+              <span x-show="ha.guard.enabled" class="flex items-center gap-2 flex-wrap">
+                <span style="color:var(--text-secondary)">Only if</span>
+                <div class="relative" style="min-width:130px" x-data="{ open:false, q:'', obj: ha.guard, key:'sensor' }" @click.outside="open=false; q=''">
+                  <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
+                    <span class="truncate" x-text="sensorLabel(obj[key]) || '&#8212; sensor &#8212;'"></span><span style="color:var(--text-faint)">&#9662;</span>
+                  </button>
+                  <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.q && $refs.q.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);min-width:240px;left:0">
+                    <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors&#8230;" class="form-control form-control-sm w-full"></div>
+                    <div class="max-h-60 overflow-y-auto py-1">
+                      <template x-for="it in pickerItems(q)" :key="it.key"><div>
+                        <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
+                        <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
+                      </div></template>
+                      <div x-show="!pickerItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No match.</div>
+                    </div>
+                  </div>
+                </div>
+                <select class="form-control form-control-sm" style="width:auto" x-model="ha.guard.op"
+                        x-init="$nextTick(() => { $el.value = ha.guard.op })">
+                  <template x-for="o in ops" :key="o"><option :value="o" x-text="o"></option></template>
+                </select>
+                <span x-show="!isTextRhs(ha.guard.op)" class="inline-flex rounded overflow-hidden border" style="border-color:var(--border)">
+                  <button type="button" class="px-2 py-0.5 text-[11px]" :class="(ha.guard.value_kind||'value')==='value' ? 'bg-emerald-500 text-white' : ''" style="color:var(--text-secondary)" @click="ha.guard.value_kind='value'">Value</button>
+                  <button type="button" class="px-2 py-0.5 text-[11px]" :class="ha.guard.value_kind==='sensor' ? 'bg-emerald-500 text-white' : ''" style="color:var(--text-secondary)" @click="ha.guard.value_kind='sensor'">Lookup</button>
+                </span>
+                <span x-show="isTextRhs(ha.guard.op) || (ha.guard.value_kind||'value')==='value'" class="flex items-center gap-1">
+                  <input class="form-control form-control-sm w-20" x-model="ha.guard.value" :placeholder="ha.guard.op==='between' ? 'low' : 'value'">
+                  <input x-show="ha.guard.op==='between'" class="form-control form-control-sm w-16" x-model="ha.guard.value2" placeholder="high">
+                </span>
+                <div class="relative" style="min-width:120px" x-show="!isTextRhs(ha.guard.op) && ha.guard.value_kind==='sensor'" x-data="{ open:false, q:'', obj: ha.guard, key:'value_sensor' }" @click.outside="open=false; q=''">
+                  <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
+                    <span class="truncate" x-text="sensorLabel(obj[key]) || '&#8212; sensor &#8212;'"></span><span style="color:var(--text-faint)">&#9662;</span>
+                  </button>
+                  <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.q && $refs.q.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);min-width:240px;left:0">
+                    <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors&#8230;" class="form-control form-control-sm w-full"></div>
+                    <div class="max-h-60 overflow-y-auto py-1">
+                      <template x-for="it in pickerItems(q)" :key="it.key"><div>
+                        <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
+                        <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
+                      </div></template>
+                      <div x-show="!pickerItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No match.</div>
+                    </div>
+                  </div>
+                </div>
+                <button class="btn btn-secondary btn-sm" @click="ha.guard.enabled=false">clear guard</button>
+              </span>
+            </div>
+          </div>
+        </template>
+        <p class="text-xs" style="color:var(--text-secondary)">
+          Insert live values with <span class="font-mono">%sensor.id%</span> — the same ids the
+          conditions use. An unreadable value renders as <span class="font-mono">?</span> rather
+          than blocking the message.
+        </p>
+      </div>
+      </div><!-- /scroll body -->
+
+      <div class="shrink-0 px-5 py-3 border-t flex items-center gap-3" style="border-color:var(--border)">
+        <label class="flex items-center gap-2 text-sm" style="color:var(--text-primary)">
+          <input type="checkbox" x-model="form.enabled"> Enabled</label>
+        <div class="flex justify-end gap-2 ml-auto">
+          <button class="btn btn-secondary btn-sm" @click="closeForm()">Cancel</button>
+          <button class="btn btn-primary btn-sm" :disabled="busy || !form.name"
+                  @click="save()" x-text="busy ? 'Saving…' : (form.id ? 'Save Changes' : 'Create Entry')"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+  </template>
+</div>

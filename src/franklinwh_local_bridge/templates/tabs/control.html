@@ -1,0 +1,572 @@
+<!-- ── Control Tab ────────────────────────────────────────── -->
+<div class="space-y-6 max-w-3xl"
+     x-data="{
+       reserveFor(name) {
+         const m = ($store.app.modes || []).find(x => x.name === name);
+         return m && m.reserved_soc != null ? m.reserved_soc + '%' : '--';
+       },
+       isActive(name) {
+         return $store.app.activeMode === name;
+       }
+     }">
+
+  <!-- Multi-gateway: controls are scoped to the SELECTED gateway -->
+  <p class="text-xs" style="color: var(--text-muted)"
+     x-show="$store.app.gateways.length > 1">
+    Controlling
+    <span class="font-semibold" style="color: var(--text-primary)"
+          x-text="(($store.app.gateways.find(g => g.id === $store.app.selectedGateway) || {}).label) || $store.app.selectedGateway"></span>
+  </p>
+
+  <!-- Read-only notice -->
+  <div class="card" x-show="!$store.app.summary.writes_enabled"
+       style="border-color: var(--border); background: var(--surface-1)">
+    <div class="flex items-center gap-3">
+      <svg class="w-5 h-5 flex-shrink-0 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+      <div>
+        <div class="text-sm font-semibold text-slate-300">Control writes are disabled (read-only)</div>
+        <div class="text-xs text-slate-500">Set <span class="font-mono">ALLOW_WRITES=true</span> to enable mode switching and off-grid control.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Battery Control — Force Charge/Discharge/Standby via direct Modbus (WSet) -->
+  <div class="card space-y-4" x-data="batteryControl()" x-init="init()">
+    <div class="flex items-center justify-between">
+      <div class="card-label inline-flex items-center gap-2" style="margin-bottom:0">Battery Control
+        {% with kind='modbus', label='Modbus' %}{% include 'partials/cap-marker.html' %}{% endwith %}
+      </div>
+    </div>
+
+    <div x-show="!available" class="text-xs rounded px-3 py-2"
+         style="background:var(--surface-1);color:var(--text-secondary)"
+         x-text="reason || 'Force charge/discharge/standby drive the aGate over Modbus (WSet). Enable + configure the aGate Modbus interface to use these — read-only until then.'"></div>
+
+    <!-- Command — styled dropdown (explicit set, so it always persists) -->
+    <div class="flex items-center justify-between gap-3 text-sm">
+      <span style="color:var(--text-secondary)">Command</span>
+      <div class="relative" style="width:16rem;max-width:60%" x-data="{ open:false }" @click.outside="open=false">
+        <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1"
+                :disabled="!available || !canWrite" @click="open=!open">
+          <span :style="command!=='Not Active' ? 'color:var(--accent);font-weight:600' : ''" x-text="command"></span>
+          <span style="color:var(--text-faint)">&#9662;</span>
+        </button>
+        <div x-show="open" x-cloak class="absolute z-40 mt-1 rounded-lg border shadow-xl py-1"
+             style="background:var(--surface-0);border-color:var(--border);left:0;right:0">
+          <template x-for="opt in ['Not Active','Force Charge','Force Discharge','Force Standby','Release']" :key="opt">
+            <button type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5"
+                    :style="command===opt ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'"
+                    @click="command=opt; open=false; sendCommand('battery_command', command)" x-text="opt"></button>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- Power — W or % are mutually exclusive; the segmented toggle picks the unit
+         and only that unit's slider/ticks show. The backend uses whichever is active. -->
+    <div class="space-y-1">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <div class="text-xs font-semibold" style="color:var(--text-secondary)"
+               x-text="powerMode==='w' ? 'Power — Watts' : 'Power — Percentage'"></div>
+          <div class="text-[10px]" style="color:var(--text-faint)"
+               x-text="powerMode==='w'
+                 ? ('nameplate max ' + nameplateW.toLocaleString() + ' W · SunSpec M702')
+                 : ('100% = ' + nameplateW.toLocaleString() + ' W nameplate')"></div>
+        </div>
+        <!-- segmented unit toggle (W | %) -->
+        <div class="inline-flex rounded-lg border overflow-hidden" style="border-color:var(--border)" role="radiogroup" aria-label="Power unit">
+          <button type="button" class="px-3 py-0.5 text-xs font-semibold transition" role="radio" :aria-checked="powerMode==='w'"
+                  :disabled="!available || !canWrite"
+                  :style="powerMode==='w' ? 'background:var(--accent);color:#fff' : 'color:var(--text-secondary)'"
+                  @click="setPowerUnit('w')">W</button>
+          <button type="button" class="px-3 py-0.5 text-xs font-semibold transition border-l" style="border-color:var(--border)" role="radio" :aria-checked="powerMode==='pct'"
+                  :disabled="!available || !canWrite"
+                  :style="powerMode==='pct' ? 'background:var(--accent);color:#fff' : 'color:var(--text-secondary)'"
+                  @click="setPowerUnit('pct')">%</button>
+        </div>
+      </div>
+
+      <!-- Watts -->
+      <template x-if="powerMode==='w'">
+        <div class="space-y-1">
+          <div class="flex items-center gap-3">
+            <input type="range" min="0" :max="Math.max(maxChargeW, maxDischargeW)" step="100" x-model.number="powerW"
+                   class="flex-1 accent-emerald-500 cursor-pointer" :disabled="!available || !canWrite"
+                   @change="sendCommand('battery_command_power', powerW)">
+            <input type="number" min="0" step="100" x-model.number="powerW"
+                   class="form-control form-control-sm w-24 text-center" :disabled="!available || !canWrite"
+                   @change="sendCommand('battery_command_power', powerW)">
+            <span class="text-xs" style="color:var(--text-faint)">W</span>
+          </div>
+          <div class="flex items-center gap-1.5 flex-wrap pt-1">
+            <template x-for="t in powerWTicks" :key="t.v">
+              <button type="button" class="text-[11px] px-2 py-0.5 rounded-full border transition shrink-0"
+                      :disabled="!available || !canWrite"
+                      :style="Math.round(powerW)===t.v ? 'border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent)' : 'border-color:var(--border);color:var(--text-secondary)'"
+                      @click="setTick('powerW', t.v, 'battery_command_power')" x-text="t.label"></button>
+            </template>
+          </div>
+          <div class="flex gap-2 pt-1">
+            <button class="btn btn-secondary btn-sm" :disabled="!available || !canWrite" @click="setMaxCharge()">Max Charge</button>
+            <button class="btn btn-secondary btn-sm" :disabled="!available || !canWrite" @click="setMaxDischarge()">Max Discharge</button>
+          </div>
+        </div>
+      </template>
+
+      <!-- Percent -->
+      <template x-if="powerMode==='pct'">
+        <div class="space-y-1">
+          <div class="flex items-center gap-3">
+            <input type="range" min="0" max="100" step="5" x-model.number="powerPct"
+                   class="flex-1 accent-emerald-500 cursor-pointer" :disabled="!available || !canWrite"
+                   @change="sendCommand('battery_command_power_pct', powerPct)">
+            <input type="number" min="0" max="100" step="5" x-model.number="powerPct"
+                   class="form-control form-control-sm w-24 text-center" :disabled="!available || !canWrite"
+                   @change="sendCommand('battery_command_power_pct', powerPct)">
+            <span class="text-xs" style="color:var(--text-faint)">%</span>
+          </div>
+          <div class="flex items-center gap-1.5 flex-wrap pt-1">
+            <template x-for="t in pctTicks" :key="t.v">
+              <button type="button" class="text-[11px] px-2 py-0.5 rounded-full border transition shrink-0"
+                      :disabled="!available || !canWrite"
+                      :style="powerPct===t.v ? 'border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent)' : 'border-color:var(--border);color:var(--text-secondary)'"
+                      @click="setTick('powerPct', t.v, 'battery_command_power_pct')" x-text="t.label"></button>
+            </template>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- Duration — slider + hh:mm:ss (or raw seconds); either entry stays in sync -->
+    <div class="space-y-1">
+      <div class="text-xs" style="color:var(--text-secondary)">Duration</div>
+      <div class="flex items-center gap-3">
+        <input type="range" min="0" max="21600" step="300" x-model.number="duration"
+               class="flex-1 accent-emerald-500 cursor-pointer" :disabled="!available || !canWrite"
+               @change="sendCommand('battery_command_duration', duration)">
+        <!-- hh:mm:ss -->
+        <div class="flex items-center gap-1 shrink-0">
+          <input type="number" min="0" :value="durH" @change="setDurPart('h', $event.target.value)"
+                 class="form-control form-control-sm w-12 text-center" :disabled="!available || !canWrite" title="hours">
+          <span class="text-xs" style="color:var(--text-faint)">:</span>
+          <input type="number" min="0" max="59" :value="durM" @change="setDurPart('m', $event.target.value)"
+                 class="form-control form-control-sm w-12 text-center" :disabled="!available || !canWrite" title="minutes">
+          <span class="text-xs" style="color:var(--text-faint)">:</span>
+          <input type="number" min="0" max="59" :value="durS" @change="setDurPart('s', $event.target.value)"
+                 class="form-control form-control-sm w-12 text-center" :disabled="!available || !canWrite" title="seconds">
+        </div>
+      </div>
+      <div class="flex items-center justify-between gap-2 flex-wrap">
+        <div class="flex items-center gap-1.5 flex-wrap pt-1">
+          <template x-for="t in durationTicks" :key="t.v">
+            <button type="button" class="text-[11px] px-2 py-0.5 rounded-full border transition shrink-0"
+                    :disabled="!available || !canWrite"
+                    :style="duration===t.v ? 'border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent)' : 'border-color:var(--border);color:var(--text-secondary)'"
+                    @click="setTick('duration', t.v, 'battery_command_duration')" x-text="t.label"></button>
+          </template>
+        </div>
+        <span class="text-[10px] shrink-0" style="color:var(--text-faint)">hh : mm : ss</span>
+      </div>
+      <div class="text-xs" style="color:var(--text-faint)"
+           x-text="duration == 0 ? 'No limit (run until released)' : fmtHMS(duration)+' · '+duration+' sec'"></div>
+    </div>
+
+    <!-- Target SoC -->
+    <div class="space-y-1">
+      <div class="text-xs" style="color:var(--text-secondary)">Target SoC</div>
+      <div class="flex items-center gap-3">
+        <input type="range" min="0" max="100" step="5" x-model.number="targetSoc"
+               class="flex-1 accent-emerald-500 cursor-pointer" :disabled="!available || !canWrite"
+               @change="sendCommand('battery_command_target_soc', targetSoc)">
+        <input type="number" min="0" max="100" step="5" x-model.number="targetSoc"
+               class="form-control form-control-sm w-20 text-center" :disabled="!available || !canWrite"
+               @change="sendCommand('battery_command_target_soc', targetSoc)">
+        <span class="text-xs" style="color:var(--text-faint)">%</span>
+      </div>
+      <div class="flex items-center gap-1.5 flex-wrap pt-1">
+        <template x-for="t in socTicks" :key="t.v">
+          <button type="button" class="text-[11px] px-2 py-0.5 rounded-full border transition shrink-0"
+                  :disabled="!available || !canWrite"
+                  :style="targetSoc===t.v ? 'border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent)' : 'border-color:var(--border);color:var(--text-secondary)'"
+                  @click="setTick('targetSoc', t.v, 'battery_command_target_soc')" x-text="t.label"></button>
+        </template>
+      </div>
+      <div class="text-xs" style="color:var(--text-faint)"
+           x-text="targetSoc == 0 ? 'Disabled (0%)' : 'Stop at '+targetSoc+'%'"></div>
+    </div>
+
+    <!-- Active + command log -->
+    <div class="flex items-center justify-between text-sm pt-1 border-t" style="border-color:var(--border)">
+      <span style="color:var(--text-secondary)">Active</span>
+      <span class="font-medium" :style="active !== 'Not Active' ? 'color:var(--accent)' : 'color:var(--text-secondary)'" x-text="active"></span>
+    </div>
+    <div x-ref="logScroll" class="rounded text-xs font-mono overflow-auto max-h-32 p-2"
+         style="background:var(--surface-1)">
+      <div x-show="!commandLog.length" style="color:var(--text-faint)">No commands yet</div>
+      <template x-for="(e, i) in commandLog" :key="i">
+        <div class="flex gap-2">
+          <span style="color:var(--text-faint)" x-text="e.ts"></span>
+          <span :style="e.ok ? 'color:var(--ok)' : 'color:var(--danger)'"><span x-show="e.ok"><svg class="w-3.5 h-3.5 inline-block shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></span><span x-show="!e.ok"><svg class="w-3.5 h-3.5 inline-block shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6L6 18"/></svg></span></span>
+          <span style="color:var(--text-secondary)" x-text="e.slug + (e.value!=='' && e.value!=null ? ' '+e.value : '') + ' · ' + e.message"></span>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Operating Mode -->
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="px-5 py-3 border-b border-white/[0.06]">
+      <div class="card-label" style="margin-bottom:0">Operating Mode</div>
+    </div>
+    <div class="p-5 space-y-3">
+
+      <!-- Self-Consumption -->
+      <button @click="!isActive('Self-Consumption') && $store.app.summary.writes_enabled && $store.app.setMode('self')"
+              :disabled="!$store.app.summary.writes_enabled"
+              class="w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all"
+              :class="isActive('Self-Consumption') ? 'border-emerald-500 bg-emerald-500/10' : 'border-[var(--border)] hover:border-[var(--border-accent)]'"
+              :style="!$store.app.summary.writes_enabled ? 'opacity:0.6;cursor:not-allowed' : 'cursor:pointer'">
+        <div class="w-10 h-10 flex-shrink-0 rounded-lg flex items-center justify-center"
+             style="background: rgba(34,197,94,0.2); color: #4ade80;">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/>
+            <path d="M2 21c0-3 1.85-5.36 5.08-6"/>
+          </svg>
+        </div>
+        <div class="flex-1">
+          <div class="font-semibold text-sm text-slate-100">Self-Consumption</div>
+          <div class="text-xs text-slate-500 hidden sm:block">Maximise use of your own solar energy at home</div>
+          <div class="text-xs font-semibold mt-0.5 text-emerald-400">Reserve: <span x-text="reserveFor('Self-Consumption')"></span></div>
+        </div>
+        <svg x-show="isActive('Self-Consumption')" class="w-5 h-5 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+        </svg>
+      </button>
+
+      <!-- Time-of-Use -->
+      <button @click="!isActive('Time-of-Use') && $store.app.summary.writes_enabled && $store.app.setMode('tou')"
+              :disabled="!$store.app.summary.writes_enabled"
+              class="w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all"
+              :class="isActive('Time-of-Use') ? 'border-emerald-500 bg-emerald-500/10' : 'border-[var(--border)] hover:border-[var(--border-accent)]'"
+              :style="!$store.app.summary.writes_enabled ? 'opacity:0.6;cursor:not-allowed' : 'cursor:pointer'">
+        <div class="w-10 h-10 flex-shrink-0 rounded-lg flex items-center justify-center"
+             style="background: rgba(168,85,247,0.2); color: #c084fc;">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 7v5l3 2"/>
+          </svg>
+        </div>
+        <div class="flex-1">
+          <div class="font-semibold text-sm text-slate-100">Time-of-Use</div>
+          <div class="text-xs text-slate-500 hidden sm:block">Charge and discharge around tariff price windows</div>
+          <div class="text-xs font-semibold mt-0.5 text-purple-400">Reserve: <span x-text="reserveFor('Time-of-Use')"></span></div>
+        </div>
+        <svg x-show="isActive('Time-of-Use')" class="w-5 h-5 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+        </svg>
+      </button>
+
+      <!-- Emergency Backup -->
+      <button @click="!isActive('Emergency Backup') && $store.app.summary.writes_enabled && $store.app.setMode('backup')"
+              :disabled="!$store.app.summary.writes_enabled"
+              class="w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all"
+              :class="isActive('Emergency Backup') ? 'border-emerald-500 bg-emerald-500/10' : 'border-[var(--border)] hover:border-[var(--border-accent)]'"
+              :style="!$store.app.summary.writes_enabled ? 'opacity:0.6;cursor:not-allowed' : 'cursor:pointer'">
+        <div class="w-10 h-10 flex-shrink-0 rounded-lg flex items-center justify-center"
+             style="background: rgba(59,130,246,0.2); color: #60a5fa;">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+        </div>
+        <div class="flex-1">
+          <div class="font-semibold text-sm text-slate-100">Emergency Backup</div>
+          <div class="text-xs text-slate-500 hidden sm:block">Hold the battery full and ready for grid outages</div>
+          <div class="text-xs font-semibold mt-0.5 text-blue-400">Reserve: <span x-text="reserveFor('Emergency Backup')"></span></div>
+        </div>
+        <svg x-show="isActive('Emergency Backup')" class="w-5 h-5 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+        </svg>
+      </button>
+
+    </div>
+  </div>
+
+  <!-- Reserve SoC (cloud-owned; editable only when a cloud provider is configured) -->
+  <div class="card" style="padding:0;overflow:hidden"
+       x-data="{
+         reservePct(name) { const m = ($store.app.modes || []).find(x => x.name === name); return m && m.reserved_soc != null ? m.reserved_soc : ''; },
+         edit: {}, status: {}, msg: {},
+         async save(row) {
+           const val = (this.edit[row.alias] ?? this.reservePct(row.name));
+           this.status[row.alias] = 'saving'; this.msg[row.alias] = '';
+           const res = await this.$store.app.applyReserve(row.alias, val);
+           if (res.ok) {
+             this.status[row.alias] = 'ok';
+             this.msg[row.alias] = 'Set to ' + parseInt(val, 10) + '% · syncing ~8s';
+             this.edit[row.alias] = '';
+             setTimeout(() => this.$store.app.poll(), 8500);
+             setTimeout(() => { this.status[row.alias] = ''; this.msg[row.alias] = ''; }, 6000);
+           } else {
+             this.status[row.alias] = 'error';
+             this.msg[row.alias] = res.detail || 'Reserve change failed.';
+           }
+         }
+       }">
+    <div class="px-5 py-3 border-b border-white/[0.06] flex items-center justify-between gap-2">
+      <div class="card-label inline-flex items-center gap-2" style="margin-bottom:0">Reserve SoC
+        {% with kind='cloud', label='Cloud' %}{% include 'partials/cap-marker.html' %}{% endwith %}
+      </div>
+      <span class="chip muted" style="font-size:.65rem" x-show="!$store.app.reserveEditable">read-only</span>
+    </div>
+    <div class="p-5 space-y-3">
+      <!-- Editable when a cloud provider is present + writes on -->
+      <template x-if="$store.app.reserveEditable && $store.app.summary.writes_enabled">
+        <div class="space-y-3">
+          <template x-for="row in [{alias:'self', name:'Self-Consumption', color:'text-emerald-400'}, {alias:'tou', name:'Time-of-Use', color:'text-purple-400'}]" :key="row.alias">
+            <div class="p-3 rounded-lg space-y-1" style="background:var(--surface-1)">
+              <div class="flex items-center justify-between gap-3">
+                <div class="text-sm font-semibold" :class="row.color" x-text="row.name"></div>
+                <div class="flex items-center gap-2">
+                  <input type="number" min="0" max="100"
+                         class="w-20 bg-slate-900 border border-white/10 rounded px-2 py-1 text-sm text-slate-200 text-right"
+                         :placeholder="reservePct(row.name)" :disabled="status[row.alias]==='saving'"
+                         x-model="edit[row.alias]" @keydown.enter="save(row)">
+                  <span class="text-slate-500 text-sm">%</span>
+                  <button class="chip ok inline-flex items-center gap-1" @click="save(row)"
+                          :disabled="status[row.alias]==='saving' || ((edit[row.alias]==null || edit[row.alias]==='') && status[row.alias]!=='error')">
+                    <svg x-show="status[row.alias]==='saving'" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/>
+                      <path class="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/>
+                    </svg>
+                    <span x-text="status[row.alias]==='saving' ? 'Saving…' : (status[row.alias]==='error' ? 'Retry' : 'Save')"></span>
+                  </button>
+                </div>
+              </div>
+              <div class="text-[11px] text-right" x-show="msg[row.alias]"
+                   :style="status[row.alias]==='error' ? 'color:var(--danger)' : 'color:var(--ok)'"
+                   x-text="msg[row.alias]"></div>
+            </div>
+          </template>
+          <p class="text-[0.7rem] text-slate-500">Reserve is applied via the FranklinWH cloud and syncs to the aGate within ~8&nbsp;s. Emergency Backup is fixed at 100%.</p>
+        </div>
+      </template>
+      <!-- Read-only explanation when no cloud provider -->
+      <template x-if="!$store.app.reserveEditable">
+        <div class="text-sm text-slate-400 space-y-2">
+          <div class="flex flex-wrap gap-x-6 gap-y-1 font-mono text-slate-300">
+            <span>Self-Consumption: <span x-text="reservePct('Self-Consumption') + '%'"></span></span>
+            <span>Time-of-Use: <span x-text="reservePct('Time-of-Use') + '%'"></span></span>
+            <span>Emergency Backup: <span x-text="reservePct('Emergency Backup') + '%'"></span></span>
+          </div>
+          <p class="text-[0.7rem] text-slate-500">
+            Reserve SoC is <strong>cloud-owned</strong> — the local API silently discards reserve writes, so it's read-only here.
+            To edit it, set the FranklinWH cloud credentials (<span class="font-mono">FWH_CLOUD_EMAIL</span> / <span class="font-mono">FWH_CLOUD_PASSWORD</span> / <span class="font-mono">FWH_CLOUD_GATEWAY</span>) — or change it in the FranklinWH app.
+          </p>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Off-grid -->
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="px-5 py-3 border-b border-white/[0.06] flex items-center justify-between gap-2">
+      <div class="card-label" style="margin-bottom:0">Off-grid</div>
+      <!-- Prominent current grid state (mirrors the top-nav badge). -->
+      <span class="chip" :class="$store.app.isOffGrid ? 'offgrid' : 'ok'"
+            x-text="$store.app.isOffGrid ? ($store.app.power.run_status_desc || 'OFF-GRID') : 'On-grid'"></span>
+    </div>
+    <div class="p-5">
+      <p class="text-sm text-slate-400 mb-4"
+         x-text="$store.app.isOffGrid
+           ? 'The gateway is islanded — disconnected from the grid, running on battery. Reconnect to return to normal grid operation.'
+           : 'Manually disconnect from the grid and run off battery, or reconnect. Use with care.'"></p>
+
+      <div x-show="$store.app.summary.writes_enabled">
+        <!-- Restore / reserve SoC: settable AND displayed. Held while islanded so the
+             battery is not drained below this floor before reconnecting. -->
+        <div class="flex items-center justify-between gap-3 mb-4 p-3 rounded-lg"
+             style="background:var(--surface-2)" x-show="!$store.app.isOffGrid">
+          <div>
+            <div class="text-sm" style="color:var(--text-primary)">Restore SoC floor</div>
+            <div class="text-xs text-slate-500">Battery reserve to hold while off-grid (%).</div>
+          </div>
+          <div class="flex items-center gap-1">
+            <input type="number" min="0" max="100" x-model.number="$store.app.offgridSoc"
+                   class="form-control form-control-sm w-20 text-right">
+            <span class="text-slate-500 text-sm">%</span>
+          </div>
+        </div>
+
+        <!-- Single state button — red to go off-grid, green to go on-grid. -->
+        <button @click="$store.app.setOffgrid(!$store.app.isOffGrid)"
+                class="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-semibold text-sm transition-all border"
+                :class="$store.app.isOffGrid
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 hover:bg-emerald-500/30'
+                  : 'bg-red-500/20 text-red-300 border-red-500/50 hover:bg-red-500/30'">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>
+          </svg>
+          <span x-text="$store.app.isOffGrid ? 'Go on-grid (reconnect)' : 'Go off-grid'"></span>
+        </button>
+      </div>
+      <div class="text-xs text-slate-500" x-show="!$store.app.summary.writes_enabled">
+        Off-grid controls are hidden while writes are disabled.
+      </div>
+    </div>
+  </div>
+
+  <!-- Modbus (SunSpec 502) -->
+  <div class="card" style="padding:0;overflow:hidden" x-init="$store.app.loadModbus()">
+    <div class="px-5 py-3 border-b border-white/[0.06]">
+      <div class="card-label" style="margin-bottom:0">Modbus TCP (SunSpec 502)</div>
+    </div>
+    <div class="p-5">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <div class="text-sm" style="color:var(--text-primary)">Enable Modbus path</div>
+          <div class="text-xs text-slate-500">
+            Powers battery ratings (max charge/discharge) and force dispatch. Off → the bridge
+            falls back to the max-power constant and cannot force-dispatch.
+          </div>
+        </div>
+        <button type="button" @click="$store.app.toggleModbus()" role="switch"
+                :aria-checked="$store.app.modbus.enabled"
+                class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0"
+                :class="$store.app.modbus.enabled ? 'bg-emerald-500' : 'bg-slate-600'">
+          <span class="inline-block h-5 w-5 rounded-full bg-white transition"
+                :class="$store.app.modbus.enabled ? 'translate-x-5' : 'translate-x-0.5'"></span>
+        </button>
+      </div>
+      <div class="flex items-center gap-2 mt-3 text-xs flex-wrap">
+        <span class="chip" :class="$store.app.summary.modbus_502 ? 'ok' : 'muted'"
+              x-text="$store.app.summary.modbus_502 ? 'Port 502 reachable' : 'Port 502 not reachable'"></span>
+        <span class="text-slate-500" x-show="!$store.app.modbus.enabled && $store.app.modbus.reason"
+              x-text="$store.app.modbus.reason"></span>
+      </div>
+
+      <!-- Connection target: resolved host:port + unit, with an optional override -->
+      <div class="mt-4 pt-4 border-t border-white/[0.06] space-y-3">
+        <div class="flex items-baseline justify-between gap-2">
+          <span class="text-xs font-semibold" style="color:var(--text-secondary)">Connection</span>
+          <span class="text-[11px]" style="color:var(--text-faint)">
+            target
+            <span class="font-mono" style="color:var(--text-primary)"
+                  x-text="($store.app.modbus.resolved_host || '—') + ':' + $store.app.modbus.resolved_port"></span>
+            · unit <span class="font-mono" x-text="$store.app.modbus.unit_id ?? '—'"></span>
+            · <span x-text="$store.app.modbus.auto ? 'auto (from gateway)' : 'override'"></span>
+          </span>
+        </div>
+        <div class="grid grid-cols-3 gap-2">
+          <label class="col-span-2 text-[11px] text-slate-500">Host override
+            <input type="text" class="form-control form-control-sm w-full mt-1 font-mono"
+                   x-model="$store.app.modbus.host_override"
+                   :placeholder="$store.app.modbus.resolved_host || 'auto from gateway'"
+                   @keydown.enter="$store.app.saveModbusOverride()"></label>
+          <label class="text-[11px] text-slate-500">Port
+            <input type="number" min="1" max="65535" class="form-control form-control-sm w-full mt-1 font-mono"
+                   x-model="$store.app.modbus.port_override" placeholder="502"
+                   @keydown.enter="$store.app.saveModbusOverride()"></label>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button type="button" class="btn btn-secondary btn-sm" @click="$store.app.saveModbusOverride()">Save</button>
+          <button type="button" class="btn btn-secondary btn-sm"
+                  @click="$store.app.modbus.host_override=''; $store.app.modbus.port_override=null; $store.app.saveModbusOverride()"
+                  x-show="!$store.app.modbus.auto">Clear (auto)</button>
+          <button type="button" class="btn btn-primary btn-sm" @click="$store.app.testModbus()"
+                  :disabled="$store.app.modbusTesting">
+            <span x-show="!$store.app.modbusTesting">Test</span>
+            <span x-show="$store.app.modbusTesting">Testing…</span>
+          </button>
+          <template x-if="$store.app.modbusTest">
+            <span class="text-[11px]" :style="$store.app.modbusTest.ok ? 'color:var(--ok,#10b981)' : 'color:var(--danger,#ef4444)'">
+              <span x-show="$store.app.modbusTest.ok"
+                    x-text="'reachable at ' + $store.app.modbusTest.target + ' · ' + ($store.app.modbusTest.max_charge_w||'?') + '/' + ($store.app.modbusTest.max_discharge_w||'?') + ' W'"></span>
+              <span x-show="!$store.app.modbusTest.ok"
+                    x-text="'unreachable — ' + ($store.app.modbusTest.target || '') + ' · ' + ($store.app.modbusTest.reason || '')"></span>
+            </span>
+          </template>
+        </div>
+        <p class="text-[11px]" style="color:var(--text-faint)">
+          Leave the host blank to auto-derive from the selected gateway (the usual case — the aGate's
+          Modbus is on the same IP). Set it only when Modbus is reachable at a different host/port.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gateway -->
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="px-5 py-3 border-b border-white/[0.06]">
+      <div class="card-label" style="margin-bottom:0">Gateway</div>
+    </div>
+    <div class="p-5">
+      <div class="flex items-center justify-between gap-4 flex-wrap"
+           x-show="$store.app.summary.writes_enabled">
+        <div>
+          <div class="text-sm" style="color:var(--text-primary)">Reboot gateway</div>
+          <div class="text-xs text-slate-500">
+            Restarts the aGate. Offline for a minute or two; may switch to 4G.
+          </div>
+        </div>
+        <button @click="$store.app.rebootGateway()"
+                class="flex items-center gap-2 px-4 py-2 rounded-xl border-2 text-sm font-semibold"
+                style="border-color:rgba(239,68,68,.5);color:#fca5a5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M20 9A8 8 0 006 5.3L4 7"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M20 20v-5h-5"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 15a8 8 0 0014 3.7l2-1.7"/>
+          </svg>
+          Reboot
+        </button>
+      </div>
+      <div class="text-xs text-slate-500" x-show="!$store.app.summary.writes_enabled">
+        Reboot is hidden while writes are disabled.
+      </div>
+    </div>
+  </div>
+
+  <!-- Audit trail -->
+  <div class="card" style="padding:0;overflow:hidden" x-init="$store.app.loadControlLog()">
+    <div class="px-5 py-3 border-b border-white/[0.06] flex items-center justify-between gap-2">
+      <div class="flex items-baseline gap-2">
+        <div class="card-label" style="margin-bottom:0">Audit trail</div>
+        <span x-show="$store.app.hostTzLabel" x-cloak class="text-[10px]" style="color:var(--text-faint)">host time · <span x-text="$store.app.hostTzLabel"></span></span>
+      </div>
+      <button @click="$store.app.loadControlLog()"
+              class="text-xs text-slate-400 hover:text-slate-200 inline-flex items-center gap-1">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5"/>
+          <path stroke-linecap="round" d="M20 9A8 8 0 006 5.3L4 7m16 10l-2 1.7A8 8 0 014 15"/></svg>
+        Refresh
+      </button>
+    </div>
+    <div class="p-5">
+      <p class="text-xs text-slate-500 mb-3">
+        Every consequential control invoked here — off-grid, reconnect, reboot, mode and Modbus
+        changes — with its source, detail and result. Newest first.
+      </p>
+      <div x-show="!$store.app.controlLog.length" class="text-sm text-slate-500 py-4 text-center">
+        No control actions recorded yet.
+      </div>
+      <div class="space-y-2" x-show="$store.app.controlLog.length">
+        <template x-for="(e, i) in $store.app.controlLog" :key="i">
+          <div class="flex items-start justify-between gap-3 p-3 rounded-lg" style="background:var(--surface-2)">
+            <div class="min-w-0">
+              <div class="text-sm font-medium" style="color:var(--text-primary)" x-text="$store.app.controlActionLabel(e.action)"></div>
+              <div class="text-xs text-slate-500 truncate" x-text="(e.detail || '') + (e.result ? ' · ' + e.result : '')"></div>
+            </div>
+            <div class="text-right shrink-0">
+              <span class="chip" :class="e.ok === 1 ? 'ok' : (e.ok === 0 ? 'error' : 'muted')"
+                    x-text="e.ok === 1 ? 'ok' : (e.ok === 0 ? 'failed' : 'sent')"></span>
+              <div class="text-[10px] text-slate-500 mt-1" x-text="$store.app.fmtTime(e.ts)"></div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+</div>

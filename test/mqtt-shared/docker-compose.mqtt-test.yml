@@ -1,0 +1,84 @@
+# MQTT shared-broker collision test (FEAT-SETUP-WIZARD).
+#
+# Puts the Local bridge AND the real Modbus bridge on ONE shared broker with the
+# SAME `homeassistant` discovery prefix — the exact scenario a user hits when both
+# integrations point at their HA's core-mosquitto. We then enumerate the retained
+# discovery configs and check whether the two land as DISTINCT HA devices or COLLIDE
+# (shared device identifier / unique_id / state topic).
+#
+# Fully isolated: own project name, own broker (host 1890), own ports (8110/8111),
+# mock gateways only (fake serials) — never touches the real :8101/:8100 stacks.
+#
+#   test/mqtt-shared/run.sh        # up + register modbus mock + dump the analysis
+#   test/mqtt-shared/run.sh --down # tear down
+name: fwh-mqtt-test
+
+services:
+  broker:
+    image: eclipse-mosquitto:2
+    container_name: fwhmqtt-broker
+    ports:
+      - "1890:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-i", "hc", "-W", "3"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Local bridge side: a seeded mock aGate (fake serial) + the bridge publishing HA ──
+  local-mock:
+    image: franklinwh-local-bridge:dev
+    container_name: fwhmqtt-local-mock
+    command: franklinwh-local emulate --bind 0.0.0.0 --port 9000 --seed 7 --units 2
+    restart: unless-stopped
+
+  local-bridge:
+    image: franklinwh-local-bridge:dev
+    container_name: fwhmqtt-local-bridge
+    ports:
+      - "8110:8101"
+    environment:
+      - FWH_HOSTS=local-mock=SharedTest
+      - FWH_HOST=local-mock
+      - FWH_PORT=9000
+      - POLL_INTERVAL=10
+      - MQTT_ENABLED=true
+      - MQTT_HOST=broker
+      - MQTT_PORT=1883
+      - METRICS_ENABLED=true
+      - LOG_LEVEL=info
+    depends_on:
+      broker:
+        condition: service_healthy
+      local-mock:
+        condition: service_started
+    restart: unless-stopped
+
+  # ── Modbus bridge side: the REAL image, mock gateway added post-boot via its API ──
+  modbus-bridge:
+    image: franklinwh-modbus-bridge-app:latest
+    container_name: fwhmqtt-modbus-bridge
+    ports:
+      - "8111:8099"
+    # Match the running fwhbridge-app: src on PYTHONPATH so imports resolve identically.
+    volumes:
+      - ${MODBUS_SRC:?set MODBUS_SRC to your franklinwh-modbus-bridge/src path (run.sh auto-detects it)}:/app/src:ro
+    command: >-
+      uvicorn franklinwh_bridge.main:app --host 0.0.0.0 --port 8099 --workers 1
+    environment:
+      - APP_ENV=docker
+      - DATA_DIR=/data
+      - PYTHONPATH=/app/src
+      - TZ=Australia/Sydney
+      - ALLOW_INSECURE_AUTH=1
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=admin
+      - MQTT_HOST=broker
+      - MQTT_PORT=1883
+      - LOG_LEVEL=INFO
+    depends_on:
+      broker:
+        condition: service_healthy
+    restart: unless-stopped

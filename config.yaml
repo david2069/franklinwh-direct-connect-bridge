@@ -1,0 +1,66 @@
+name: "FranklinWH Local Bridge"
+description: "REST + MQTT bridge for the FranklinWH aGate local (sendMqtt) API"
+version: "0.2.0"
+slug: "franklinwh_local_bridge"
+url: "https://github.com/david2069/franklinwh-local-bridge"
+init: false
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+  - i386
+
+# Web UI + REST served through HA ingress (sidebar panel).
+ingress: true
+ingress_port: 8101
+ports:
+  8101/tcp: 8101
+ports_description:
+  8101/tcp: "Web UI + REST API"
+panel_icon: "mdi:home-battery"
+panel_title: "FranklinWH Local"
+
+# Supervisor watchdog — restarts the add-on if the web app stops serving. Points at
+# /api/live (liveness only, no device I/O) so a down aGate never triggers a restart.
+watchdog: "http://[HOST]:[PORT:8101]/api/live"
+
+# Auto-discover the Mosquitto add-on's broker + credentials.
+hassio_api: true
+services:
+  - "mqtt:want"
+# Send (non-actionable) notifications through this add-on's own HA instance.
+homeassistant_api: true
+
+map:
+  - data:rw
+
+options:
+  fwh_host: ""
+  poll_interval: 30
+  mqtt_enabled: false
+  log_level: "info"
+  read_only: true
+  allow_writes: false
+  ha_notify: true
+  # metrics_enabled intentionally unset → auto: on, unless add-on + MQTT (HA recorder
+  # already stores history via the published MQTT entities). Set explicitly to override.
+
+schema:
+  fwh_host: str
+  fwh_port: int?
+  poll_interval: int
+  mqtt_enabled: bool
+  mqtt_host: str?
+  mqtt_port: int?
+  mqtt_username: str?
+  mqtt_password: str?
+  log_level: "list(trace|debug|info|notice|warning|error|fatal)"
+  read_only: bool
+  allow_writes: bool?
+  ha_notify: bool?
+  metrics_enabled: bool?
+  metrics_retention_days: int?
+  modbus_bridge_url: str?
+  fwhai_url: str?
+  modbus_host: str?

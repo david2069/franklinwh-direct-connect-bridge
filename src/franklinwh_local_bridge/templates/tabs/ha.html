@@ -1,0 +1,221 @@
+<div x-data="haTab" class="space-y-4">
+
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <h2 class="page-title">Home Assistant</h2>
+      <p class="text-sm" style="color:var(--text-secondary)">
+        Entities this bridge publishes, and Home Assistants it reads from
+      </p>
+    </div>
+    <button class="btn btn-secondary btn-sm" @click="load()" :disabled="loading"
+            x-text="loading ? 'Loading…' : 'Refresh'">Refresh</button>
+  </div>
+
+  <div class="flex items-center gap-1 border-b overflow-x-auto" style="border-color:var(--border)">
+    <template x-for="v in [['instances','Instances'],['entities','Browse entities'],
+                           ['published','Published by bridge']]" :key="v[0]">
+      <button class="px-3 py-2 text-sm border-b-2 -mb-px"
+              :class="view === v[0] ? 'border-emerald-400 text-emerald-300' : 'border-transparent'"
+              :style="view === v[0] ? '' : 'color:var(--text-secondary)'"
+              @click="setView(v[0])" x-text="v[1]"></button>
+    </template>
+  </div>
+
+  <div x-show="error" x-cloak class="rounded-lg px-3 py-2 text-sm"
+       style="background:rgba(239,68,68,.1);color:#fca5a5" x-text="error"></div>
+
+  <!-- Instances -->
+  <div x-show="view === 'instances'" class="space-y-3">
+    <div class="flex justify-end">
+      <button class="btn btn-primary btn-sm" :disabled="!canWrite"
+              :title="canWrite ? '' : 'Writes are disabled (ALLOW_WRITES=true)'"
+              @click="newInstance()">Add instance</button>
+    </div>
+
+    <div class="grid gap-3" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">
+      <template x-for="i in instances" :key="i.id">
+        <div class="card p-4 space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-semibold" style="color:var(--text-primary)" x-text="i.name"></span>
+            <span class="flex gap-1">
+              <span x-show="i.is_default" class="chip ok" style="font-size:.6rem">default</span>
+              <span x-show="!i.enabled" class="chip muted" style="font-size:.6rem">disabled</span>
+            </span>
+          </div>
+          <div class="text-xs font-mono break-all" style="color:var(--text-secondary)" x-text="i.base_url"></div>
+          <div class="text-xs" style="color:var(--text-secondary)">
+            <span x-text="i.has_token ? 'Token set' : 'No token — reads will fail'"></span>
+          </div>
+          <div class="flex gap-2 pt-1">
+            <button class="btn btn-secondary btn-sm" :disabled="!canWrite"
+                    @click="editInstance(i)">Edit</button>
+            <button class="btn btn-secondary btn-sm" :disabled="!canWrite"
+                    @click="removeInstance(i)">Remove</button>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <div x-show="!instances.length && !loading" class="card p-8 text-center text-sm"
+         style="color:var(--text-secondary)">
+      No Home Assistant instances configured.
+      <div class="text-xs mt-1">Add one to browse its entities and notification targets.</div>
+    </div>
+  </div>
+
+  <!-- Entity browser -->
+  <div x-show="view === 'entities'" x-cloak class="space-y-3">
+
+    <!-- totals bar -->
+    <template x-if="ents">
+      <div class="flex flex-wrap gap-2">
+        <div class="card px-3 py-2 text-center" style="min-width:90px">
+          <div class="text-lg font-semibold" style="color:var(--text-primary)"
+               x-text="(ents.total_all ?? ents.total)"></div>
+          <div class="text-[10px] uppercase tracking-wide" style="color:var(--text-secondary)">Entities</div>
+        </div>
+        <div class="card px-3 py-2 text-center" style="min-width:90px">
+          <div class="text-lg font-semibold" style="color:#34d399" x-text="ents.exposed_count ?? 0"></div>
+          <div class="text-[10px] uppercase tracking-wide" style="color:var(--text-secondary)">Exposed</div>
+        </div>
+        <div class="card px-3 py-2 text-center" style="min-width:90px">
+          <div class="text-lg font-semibold" style="color:var(--text-primary)" x-text="ents.instances ?? instances.length"></div>
+          <div class="text-[10px] uppercase tracking-wide" style="color:var(--text-secondary)">Instances</div>
+        </div>
+      </div>
+    </template>
+
+    <div class="flex flex-wrap items-center gap-2">
+      <input class="form-control form-control-sm flex-1" style="min-width:160px"
+             placeholder="Search entities… (comma = OR)"
+             x-model="fSearch" @keydown.enter="loadEntities()">
+      <select class="form-control form-control-sm" x-model="fInstance" @change="loadEntities()">
+        <option value="">All instances</option>
+        <template x-for="i in instances" :key="i.id"><option :value="i.id" x-text="i.name"></option></template>
+      </select>
+      <select class="form-control form-control-sm" x-model="fDomain" @change="loadEntities()">
+        <option value="">All domains</option>
+        <template x-for="d in (ents ? ents.domains : [])" :key="d">
+          <option :value="d" x-text="`${d} (${ents.domain_counts[d]})`"></option>
+        </template>
+      </select>
+      <label class="flex items-center gap-2 text-sm" style="color:var(--text-primary)">
+        <input type="checkbox" x-model="fExposedOnly" @change="loadEntities()"> Exposed only
+      </label>
+    </div>
+
+    <!-- topic chips -->
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-[10px] uppercase tracking-wide" style="color:var(--text-secondary)">Topics</span>
+      <template x-for="t in (ents ? ents.topics : [])" :key="t">
+        <button class="px-2.5 py-1 rounded-lg text-xs border"
+                :class="fTopic === t ? 'border-emerald-400 text-emerald-300' : 'border-transparent'"
+                :style="fTopic === t ? '' : 'background:var(--surface-2);color:var(--text-secondary)'"
+                @click="setTopic(t)" x-text="t"></button>
+      </template>
+    </div>
+
+    <template x-if="ents">
+      <div class="space-y-2">
+        <div class="text-xs" style="color:var(--text-secondary)"
+             x-text="`${ents.returned} shown · ${ents.total} match`"></div>
+        <template x-for="[id, err] in Object.entries(ents.errors || {})" :key="id">
+          <div class="rounded px-3 py-1.5 text-xs"
+               style="background:rgba(245,158,11,.12);color:#fbbf24"
+               x-text="`instance ${id}: ${err}`"></div>
+        </template>
+        <div class="card overflow-auto" style="max-height:60vh">
+          <table class="data-table">
+            <tbody>
+              <template x-for="e in ents.entities" :key="e.instance_id + e.entity_id">
+                <tr>
+                  <td style="width:2.5rem">
+                    <input type="checkbox" :checked="e.exposed" @change="toggleExposed(e)"
+                           :disabled="!canWrite" title="Expose / hide">
+                  </td>
+                  <td>
+                    <div class="text-sm" style="color:var(--text-primary)" x-text="e.name"></div>
+                    <div class="font-mono text-[10px]" style="color:var(--text-faint)"
+                         x-text="e.entity_id + ' · ' + e.instance"></div>
+                  </td>
+                  <td class="font-mono text-right text-sm" x-text="e.state"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- Published by the bridge -->
+  <div x-show="view === 'published'" x-cloak class="space-y-2">
+    <template x-if="published">
+      <div class="space-y-2">
+        <div class="text-xs" style="color:var(--text-secondary)">
+          MQTT <span x-text="published.mqtt_enabled ? 'enabled' : 'disabled'"></span> ·
+          prefix <span class="font-mono" x-text="published.prefix"></span> ·
+          discovery <span class="font-mono" x-text="published.discovery_prefix"></span>
+        </div>
+        <div class="card">
+          <table class="data-table">
+            <tbody>
+              <template x-for="e in published.entities" :key="e.key">
+                <tr>
+                  <td>
+                    <span class="text-sm" style="color:var(--text-primary)" x-text="e.name"></span>
+                    <span class="font-mono text-[10px] ml-2" style="color:var(--text-faint)" x-text="e.key"></span>
+                  </td>
+                  <td class="text-right text-xs" style="color:var(--text-secondary)"
+                      x-text="e.unit || ''"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-xs" style="color:var(--text-secondary)">
+          All read-only. No control entities are published yet — see
+          <span class="font-mono">ANALYSIS-METRICS-GAP</span> phase 3.
+        </p>
+      </div>
+    </template>
+  </div>
+
+  <!-- add / edit -->
+  <!-- x-if, not x-show: x-show keeps evaluating the bindings inside, so `form.name`
+       throws while form is null and Alpine stops updating the whole subtree — which
+       is why typing into the fields did nothing. -->
+  <template x-if="form">
+  <div class="fixed inset-0 z-50 flex items-center justify-center p-4"
+       style="background:rgba(0,0,0,.6)" @click.self="closeForm()">
+    <div class="card w-full max-w-md p-5 space-y-3">
+      <h3 class="text-lg font-semibold" style="color:var(--text-primary)"
+          x-text="form && form.id ? 'Edit instance' : 'Add Home Assistant'"></h3>
+      <label class="block text-xs" style="color:var(--text-secondary)">Name
+        <input class="form-control form-control-sm w-full mt-1" x-model="form.name" placeholder="Main"></label>
+      <label class="block text-xs" style="color:var(--text-secondary)">Base URL
+        <input class="form-control form-control-sm w-full mt-1" x-model="form.base_url"
+               placeholder="http://homeassistant.local:8123"></label>
+      <label class="block text-xs" style="color:var(--text-secondary)">Long-lived token
+        <input type="password" class="form-control form-control-sm w-full mt-1" x-model="form.token"
+               :placeholder="form.id ? 'unchanged' : 'paste token'"></label>
+      <div class="flex gap-4 text-sm" style="color:var(--text-primary)">
+        <label class="flex items-center gap-2"><input type="checkbox" x-model="form.is_default"> Default</label>
+        <label class="flex items-center gap-2"><input type="checkbox" x-model="form.enabled"> Enabled</label>
+      </div>
+      <div x-show="testResult" x-cloak class="rounded px-3 py-2 text-xs"
+           :style="testResult && testResult.ok ? 'background:rgba(52,211,153,.12);color:#34d399'
+                                               : 'background:rgba(239,68,68,.12);color:#fca5a5'"
+           x-text="testResult && (testResult.ok ? ('Connected — ' + testResult.message) : testResult.error)"></div>
+      <div class="flex justify-between gap-2">
+        <button class="btn btn-secondary btn-sm" :disabled="busy" @click="testConnection()">Test</button>
+        <span class="flex gap-2">
+          <button class="btn btn-secondary btn-sm" @click="closeForm()">Cancel</button>
+          <button class="btn btn-primary btn-sm" :disabled="busy" @click="saveInstance()"
+                  x-text="busy ? 'Saving…' : 'Save'"></button>
+        </span>
+      </div>
+    </div>
+  </div>
+  </template>
+</div>

@@ -1,0 +1,1889 @@
+<!-- ── Settings Tab (read-only) ───────────────────────────── -->
+<div class="space-y-6 max-w-5xl" x-data="settingsTab()" x-init="init()">
+
+  <!-- Settings sub-tabs -->
+  <div class="flex flex-wrap gap-1.5">
+    <template x-for="t in subTabs" :key="t.key">
+      <button class="px-3 py-1.5 rounded-lg text-xs font-medium transition"
+              :class="sub === t.key ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'"
+              @click="setSub(t.key)" x-text="t.label"></button>
+    </template>
+  </div>
+
+  <div x-show="sub==='general'" x-cloak class="space-y-6">
+  <!-- ══ Environment ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Environment</span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+  </div>
+  <div class="card space-y-2.5">
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Runtime</span>
+      <span class="chip" :class="cfg.environment.is_ha_addon ? 'ok' : 'muted'"
+            x-text="runtimeLabel(cfg.environment.runtime)"></span>
+    </div>
+  </div>
+
+  </div>
+  <div x-show="sub==='general'" x-cloak class="space-y-6">
+  <!-- ══ Connection ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Connection</span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+  </div>
+  <div class="card space-y-2.5">
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Active host</span>
+      <span class="font-mono text-slate-200" x-text="cfg.connection.host || '—'"></span>
+    </div>
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Configured host</span>
+      <span class="font-mono text-slate-300" x-text="cfg.connection.configured_host || '—'"></span>
+    </div>
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Port</span>
+      <span class="font-mono text-slate-300" x-text="cfg.connection.port ?? '—'"></span>
+    </div>
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Timeout</span>
+      <span class="font-mono text-slate-300" x-text="(cfg.connection.timeout ?? '—') + ' s'"></span>
+    </div>
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Retries</span>
+      <span class="font-mono text-slate-300" x-text="cfg.connection.retries ?? '—'"></span>
+    </div>
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Subnet</span>
+      <span class="font-mono text-slate-300" x-text="cfg.connection.subnet || 'auto (/24)'"></span>
+    </div>
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Poll interval</span>
+      <span class="font-mono text-slate-300" x-text="(cfg.connection.poll_interval ?? '—') + ' s'"></span>
+    </div>
+  </div>
+
+  </div>
+  <div x-show="sub==='automation'" x-cloak class="space-y-6">
+  <!-- ══ Automation Constants ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Automation Constants</span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+    <span class="text-[10px] uppercase tracking-wide" style="color:var(--text-faint)">const.* sensors</span>
+  </div>
+  <div class="card space-y-3">
+    <p class="text-xs" style="color:var(--text-faint)">
+      SoC parameters your automations use — available as <span class="font-mono">const.*</span>
+      condition sensors in the Schedule builder. Not read from the aGate; set them here.
+    </p>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <label class="flex flex-col gap-1"><span class="text-xs" style="color:var(--text-secondary)">Min Discharge SoC (%)</span>
+        <input type="number" min="0" max="100" step="1" class="form-control form-control-sm" x-model.number="constants.min_discharge_soc"></label>
+      <label class="flex flex-col gap-1"><span class="text-xs" style="color:var(--text-secondary)">Max Charge SoC (%)</span>
+        <input type="number" min="0" max="100" step="1" class="form-control form-control-sm" x-model.number="constants.max_charge_soc"></label>
+      <label class="flex flex-col gap-1"><span class="text-xs" style="color:var(--text-secondary)">Demand-Charge Min SoC (%)</span>
+        <input type="number" min="0" max="100" step="1" class="form-control form-control-sm" x-model.number="constants.demand_charge_min_soc"></label>
+    </div>
+    <label class="flex flex-col gap-1" x-init="loadApowerSpecs()">
+      <span class="text-xs" style="color:var(--text-secondary)">Battery capacity (kWh)</span>
+      <input type="number" min="0" max="1000" step="0.1" class="form-control form-control-sm" x-model.number="constants.battery_capacity_kwh">
+      <div class="flex items-center gap-1.5 flex-wrap mt-0.5">
+        <span class="text-[10px]" style="color:var(--text-faint)">Derive from aPower:</span>
+        <select class="form-control form-control-sm !py-0.5 !text-[11px]" style="width:auto" x-model="apowerModel">
+          <option value="">model…</option>
+          <template x-for="m in apowerSpecs" :key="m.model">
+            <option :value="m.model" x-text="m.model + ' (' + m.usable_kwh + ' kWh)'"></option>
+          </template>
+        </select>
+        <span class="text-[10px]" style="color:var(--text-faint)">×</span>
+        <input type="number" min="1" max="16" class="form-control form-control-sm !py-0.5 !text-[11px] text-center" style="width:3.5rem" x-model.number="apowerCount">
+        <button type="button" class="btn btn-secondary btn-sm !py-0.5 !px-2 !text-[11px]"
+                :disabled="!apowerModel || !apowerCount" @click="fillCapacityFromModel()">Fill</button>
+      </div>
+      <span class="text-[10px]" style="color:var(--text-faint)">Usable kWh — the local API can't read it. Powers the derived Stored energy / Headroom / ETA sensors. 0 = unset.</span>
+    </label>
+    <label class="flex flex-col gap-1">
+      <span class="text-xs" style="color:var(--text-secondary)">Max continuous power (kW) — fallback</span>
+      <input type="number" min="0" max="100" step="0.1" class="form-control form-control-sm" x-model.number="constants.battery_max_power_kw">
+      <span class="text-[10px]" style="color:var(--text-faint)">Fallback for the "at max rate" ETA when Modbus can't be read. Modbus (SunSpec 702) overrides this when enabled. Default 5 kW (aPower X).</span>
+    </label>
+    <label class="flex flex-col gap-1">
+      <span class="text-xs" style="color:var(--text-secondary)">Default operating mode</span>
+      <select class="form-control form-control-sm" x-model="constants.default_operating_mode">
+        <option value="self" :disabled="!modeAvail('self')" x-text="'Self-Consumption' + (modeAvail('self') ? '' : ' — not available')"></option>
+        <option value="tou" :disabled="!modeAvail('tou')" x-text="'Time-of-Use' + (modeAvail('tou') ? '' : ' — not set up')"></option>
+        <option value="backup" x-text="'Emergency Backup'"></option>
+      </select>
+      <span class="text-[10px]" style="color:var(--text-faint)">The mode you consider normal for this gate — exposed as <span class="font-mono">const.default_operating_mode</span>. Options come from what the aGate reports; storing it does not write to the device.</span>
+    </label>
+    <div class="flex justify-end">
+      <button class="btn btn-primary btn-sm" :disabled="!canWrite() || constSaving" @click="saveConstants()"
+              x-text="constSaving ? 'Saving…' : 'Save Constants'"></button>
+    </div>
+  </div>
+
+  </div>
+  <div x-show="sub==='gateways'" x-cloak class="space-y-6">
+  <!-- ══ System Setup ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">System Setup</span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+    <span class="text-[10px] uppercase tracking-wide" style="color:var(--text-faint)">system.* sensors</span>
+  </div>
+  <div class="card space-y-3">
+    <p class="text-xs" style="color:var(--text-faint)">Install characteristics for this gateway — derived from the aGate where possible, editable below. Exposed as <span class="font-mono">system.*</span> schedule sensors. Storing overrides does not write to the device.</p>
+    <div class="grid grid-cols-2 gap-3">
+      <label class="flex flex-col gap-1"><span class="text-xs" style="color:var(--text-secondary)">Solar type</span>
+        <select class="form-control form-control-sm" x-model="systemSetup.solar_type" x-init="$nextTick(() => { $el.value = systemSetup.solar_type })"><option value="none">None</option><option value="ac">AC-coupled</option><option value="dc">DC (aPower S)</option><option value="remote">Remote / MPPT</option></select></label>
+      <label class="flex flex-col gap-1"><span class="text-xs" style="color:var(--text-secondary)">Solar size (kWp)</span>
+        <input type="number" step="0.1" min="0" class="form-control form-control-sm" x-model.number="systemSetup.solar_kwp"></label>
+    </div>
+    <label class="flex flex-col gap-1"><span class="text-xs" style="color:var(--text-secondary)">Battery label</span>
+      <input class="form-control form-control-sm" x-model="systemSetup.battery_label" placeholder="FranklinWH"></label>
+    <div class="space-y-1.5 text-xs pt-1">
+        <div class="flex items-center justify-between gap-2"><span style="color:var(--text-secondary)">Generator input <span x-show="sysDerived('generator_input')" class="text-[9px] uppercase tracking-wide" style="color:var(--text-faint)">derived</span></span><button type="button" @click="systemSetup.generator_input = !systemSetup.generator_input" role="switch" :aria-checked="systemSetup.generator_input" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="systemSetup.generator_input ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="systemSetup.generator_input ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
+        <div class="flex items-center justify-between gap-2"><span style="color:var(--text-secondary)">Grid-forming <span x-show="sysDerived('grid_forming')" class="text-[9px] uppercase tracking-wide" style="color:var(--text-faint)">derived</span></span><button type="button" @click="systemSetup.grid_forming = !systemSetup.grid_forming" role="switch" :aria-checked="systemSetup.grid_forming" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="systemSetup.grid_forming ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="systemSetup.grid_forming ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
+        <div class="flex items-center justify-between gap-2"><span style="color:var(--text-secondary)">Whole-home backup <span x-show="sysDerived('whole_home_backup')" class="text-[9px] uppercase tracking-wide" style="color:var(--text-faint)">derived</span></span><button type="button" @click="systemSetup.whole_home_backup = !systemSetup.whole_home_backup" role="switch" :aria-checked="systemSetup.whole_home_backup" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="systemSetup.whole_home_backup ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="systemSetup.whole_home_backup ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
+        <div class="flex items-center justify-between gap-2"><span style="color:var(--text-secondary)">Load shedding <span x-show="sysDerived('load_shedding')" class="text-[9px] uppercase tracking-wide" style="color:var(--text-faint)">derived</span></span><button type="button" @click="systemSetup.load_shedding = !systemSetup.load_shedding" role="switch" :aria-checked="systemSetup.load_shedding" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="systemSetup.load_shedding ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="systemSetup.load_shedding ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
+        <div class="flex items-center justify-between gap-2"><span style="color:var(--text-secondary)">Non-backup loads panel <span x-show="sysDerived('non_backup_loads')" class="text-[9px] uppercase tracking-wide" style="color:var(--text-faint)">derived</span></span><button type="button" @click="systemSetup.non_backup_loads = !systemSetup.non_backup_loads" role="switch" :aria-checked="systemSetup.non_backup_loads" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="systemSetup.non_backup_loads ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="systemSetup.non_backup_loads ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
+    </div>
+    <div class="flex justify-end">
+      <button class="btn btn-primary btn-sm" :disabled="!canWrite() || systemSaving" @click="saveSystemSetup()" x-text="systemSaving ? 'Saving…' : 'Save System Setup'"></button>
+    </div>
+  </div>
+
+  </div>
+  <div x-show="sub==='billing'" x-cloak class="space-y-6">
+  <!-- ══ Sites &amp; Meters ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Sites &amp; Meters</span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+    <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="newSite()">+ Add Site</button>
+  </div>
+  <div class="card space-y-3">
+    <p class="text-[11px]" style="color:var(--text-faint)">
+      Most installs have one site and one meter — the defaults just work. Add more only for multi-meter
+      or multi-site setups. A gateway connects to one meter (set on the gateway's Edit).</p>
+
+    <!-- site + meter editor (inline) -->
+    <template x-if="siteEdit"><div class="rounded-lg border p-3 space-y-2" style="border-color:var(--accent)">
+      <div class="text-xs font-semibold" style="color:var(--text-secondary)" x-text="siteEdit && siteEdit.id ? 'Edit site' : 'New site'"></div>
+      <div class="grid grid-cols-2 gap-2">
+        <label class="text-[11px]" style="color:var(--text-secondary)">Name
+          <input class="form-control form-control-sm w-full mt-1" x-model="siteEdit.name" placeholder="Home"></label>
+        <label class="text-[11px]" style="color:var(--text-secondary)">Region
+          <input class="form-control form-control-sm w-full mt-1" x-model="siteEdit.region" placeholder="AU-NSW"></label>
+        <label class="text-[11px]" style="color:var(--text-secondary)">Postcode
+          <input class="form-control form-control-sm w-full mt-1" x-model="siteEdit.postcode"></label>
+        <label class="text-[11px]" style="color:var(--text-secondary)">Timezone (IANA)
+          <input class="form-control form-control-sm w-full mt-1" x-model="siteEdit.timezone" placeholder="Australia/Sydney"></label>
+      </div>
+      <div class="flex gap-2">
+        <button class="btn btn-primary btn-sm" @click="saveSite()">Save</button>
+        <button class="btn btn-secondary btn-sm" @click="siteEdit = null">Cancel</button>
+      </div>
+    </div></template>
+    <template x-if="meterEdit"><div class="rounded-lg border p-3 space-y-2" style="border-color:var(--accent)">
+      <div class="text-xs font-semibold" style="color:var(--text-secondary)" x-text="meterEdit && meterEdit.id ? 'Edit meter' : 'New meter'"></div>
+      <div class="grid grid-cols-2 gap-2">
+        <label class="text-[11px]" style="color:var(--text-secondary)">Name
+          <input class="form-control form-control-sm w-full mt-1" x-model="meterEdit.name"></label>
+        <label class="text-[11px]" style="color:var(--text-secondary)">Meter number (NMI/MPAN)
+          <input class="form-control form-control-sm w-full mt-1" x-model="meterEdit.meter_number"></label>
+        <label class="text-[11px]" style="color:var(--text-secondary)">AC type
+          <select class="form-control form-control-sm w-full mt-1" x-model="meterEdit.ac_type"
+                  x-init="$nextTick(() => { $el.value = meterEdit.ac_type })">
+            <option value="single">Single phase</option>
+            <option value="split">Split / dual</option>
+            <option value="three">Three phase</option>
+          </select></label>
+        <label class="text-[11px]" style="color:var(--text-secondary)">Rated amps
+          <input type="number" step="1" class="form-control form-control-sm w-full mt-1" x-model="meterEdit.rated_amps" placeholder="optional"></label>
+        <label class="text-[11px]" style="color:var(--text-secondary)">PTO status
+          <select class="form-control form-control-sm w-full mt-1" x-model="meterEdit.pto_status"
+                  x-init="$nextTick(() => { $el.value = meterEdit.pto_status })">
+            <option value="unknown">Unknown</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="exempt">Exempt</option>
+          </select></label>
+        <label class="text-[11px]" style="color:var(--text-secondary)">PTO reference
+          <input class="form-control form-control-sm w-full mt-1" x-model="meterEdit.pto_reference" placeholder="approval / NMI ref (optional)"></label>
+        <label class="text-[11px]" style="color:var(--text-secondary)">Timezone
+          <input class="form-control form-control-sm w-full mt-1" x-model="meterEdit.timezone" placeholder="e.g. Australia/Sydney"></label>
+        <label class="text-[11px]" style="color:var(--text-secondary)">Utility
+          <select class="form-control form-control-sm w-full mt-1" x-model="meterEdit.utility_id"
+                  x-init="$nextTick(() => { $el.value = meterEdit.utility_id })" @change="meterEdit.tariff_id = ''">
+            <option value="">— none —</option>
+            <template x-for="u in utilities" :key="u.id"><option :value="u.id" x-text="u.name"></option></template>
+          </select></label>
+        <label class="text-[11px]" style="color:var(--text-secondary)">Tariff
+          <select class="form-control form-control-sm w-full mt-1" x-model="meterEdit.tariff_id"
+                  x-init="$nextTick(() => { $el.value = meterEdit.tariff_id })" :disabled="!meterEdit.utility_id">
+            <option value="">— none —</option>
+            <template x-for="t in tariffsForUtility(meterEdit.utility_id)" :key="t.id"><option :value="t.id" x-text="t.name"></option></template>
+          </select></label>
+      </div>
+      <div class="flex gap-2">
+        <button class="btn btn-primary btn-sm" @click="saveMeter()">Save</button>
+        <button class="btn btn-secondary btn-sm" @click="meterEdit = null">Cancel</button>
+      </div>
+    </div></template>
+
+    <!-- sites list -->
+    <template x-for="s in sites" :key="s.id">
+      <div class="rounded-lg border p-3 space-y-2.5" style="border-color:var(--border)">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-semibold text-sm" style="color:var(--text-primary)" x-text="s.name"></span>
+              <span x-show="s.is_default" class="chip ok" style="font-size:.55rem">default</span>
+            </div>
+            <div class="text-[11px] mt-0.5" style="color:var(--text-faint)"
+                 x-text="[s.region, s.postcode, s.timezone].filter(Boolean).join(' · ') || 'No location set'"></div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="editSite(s)">Edit</button>
+            <button x-show="!s.is_default && !metersForSite(s.id).length" class="btn btn-danger btn-sm btn-icon"
+                    :disabled="!canWrite()" @click="deleteSite(s)" aria-label="Delete site" title="Delete site"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+          </div>
+        </div>
+        <div class="space-y-1.5">
+          <template x-for="m in metersForSite(s.id)" :key="m.id">
+            <div class="flex items-center justify-between gap-3 rounded-md px-2.5 py-2" style="background:var(--surface-1)">
+              <div class="min-w-0">
+                <span class="font-medium text-sm" style="color:var(--text-primary)" x-text="m.name"></span>
+                <div class="text-[11px] mt-0.5" style="color:var(--text-faint)">
+                  <span x-text="acLabel(m.ac_type)"></span><span x-show="m.rated_amps" x-text="' · ' + m.rated_amps + ' A'"></span><span x-show="m.meter_number" class="font-mono" x-text="' · ' + m.meter_number"></span><span x-show="m.pto_status && m.pto_status !== 'unknown'" class="chip" :class="m.pto_status === 'approved' ? 'ok' : (m.pto_status === 'pending' ? 'warn' : 'muted')" style="font-size:.6rem;margin-left:6px" x-text="'PTO ' + ptoLabel(m.pto_status)"></span>
+                  · <span x-text="gateways.filter(g => g.meter_id === m.id).length"></span> gateway(s)
+                </div>
+              </div>
+              <div class="flex items-center gap-1.5 shrink-0">
+                <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="editMeter(m)">Edit</button>
+                <button x-show="gateways.filter(g => g.meter_id === m.id).length === 0" class="btn btn-danger btn-sm btn-icon"
+                        :disabled="!canWrite()" @click="deleteMeter(m)" aria-label="Delete meter" title="Delete meter"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+              </div>
+            </div>
+          </template>
+          <div x-show="!metersForSite(s.id).length" class="text-[11px]" style="color:var(--text-faint)">No meters.</div>
+        </div>
+        <button class="btn btn-secondary btn-sm w-full" :disabled="!canWrite()" @click="newMeter(s.id)">+ Add meter</button>
+      </div>
+    </template>
+  </div>
+
+  </div>
+  <div x-show="sub==='billing'" x-cloak class="space-y-6">
+  <!-- ══ Utilities &amp; Tariffs ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Utilities &amp; Tariffs</span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+    <input type="file" accept="application/json,.json" class="hidden" x-ref="tariffImportFile" @change="importTariffProfile($event)">
+    <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="$refs.tariffImportFile.click()"
+            title="Import a Modbus-bridge tariff export (franklinwh-bridge/tariff-profile)">Import tariff</button>
+    <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="newUtility()">+ Add Utility</button>
+  </div>
+  <div class="card space-y-3">
+    <p class="text-[11px]" style="color:var(--text-faint)">
+      A utility is your electricity supplier + its plan permissions (export/charge). A tariff is a rate
+      plan under it. Assign a utility + tariff to a meter (on the meter's Edit) to power the
+      <span class="font-mono">tariff.*</span> / <span class="font-mono">service.*</span> schedule sensors.</p>
+
+    <!-- utility editor -->
+    <template x-if="utilEdit"><div class="rounded-lg border p-3 space-y-2" style="border-color:var(--accent)"
+         x-init="$nextTick(() => $el.scrollIntoView({ behavior: 'smooth', block: 'center' }))">
+      <div class="text-xs font-semibold" style="color:var(--text-secondary)" x-text="utilEdit.id ? 'Edit utility' : 'New utility'"></div>
+      <div class="grid grid-cols-2 gap-2">
+        <label class="text-[11px]" style="color:var(--text-secondary)">Retailer / name
+          <input class="form-control form-control-sm w-full mt-1" x-model="utilEdit.name" placeholder="AGL"></label>
+        <label class="text-[11px]" style="color:var(--text-secondary)">Network / DNSP
+          <input class="form-control form-control-sm w-full mt-1" x-model="utilEdit.network_dnsp" placeholder="Ausgrid"></label>
+        <label class="text-[11px]" style="color:var(--text-secondary)">Country
+          <input class="form-control form-control-sm w-full mt-1" x-model="utilEdit.country" placeholder="AU"></label>
+        <label class="text-[11px]" style="color:var(--text-secondary)">Export limit (kW)
+          <input type="number" step="0.1" class="form-control form-control-sm w-full mt-1" x-model="utilEdit.export_limit_kw" placeholder="unlimited"></label>
+      </div>
+      <div class="space-y-1.5 text-xs">
+        <div class="flex items-center justify-between gap-2"><span style="color:var(--text-secondary)">Export allowed</span><button type="button" @click="utilEdit.export_allowed = !utilEdit.export_allowed" role="switch" :aria-checked="utilEdit.export_allowed" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="utilEdit.export_allowed ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="utilEdit.export_allowed ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
+        <div class="flex items-center justify-between gap-2"><span style="color:var(--text-secondary)">Solar export</span><button type="button" @click="utilEdit.solar_export_allowed = !utilEdit.solar_export_allowed" role="switch" :aria-checked="utilEdit.solar_export_allowed" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="utilEdit.solar_export_allowed ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="utilEdit.solar_export_allowed ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
+        <div class="flex items-center justify-between gap-2"><span style="color:var(--text-secondary)">Battery export</span><button type="button" @click="utilEdit.battery_export_allowed = !utilEdit.battery_export_allowed" role="switch" :aria-checked="utilEdit.battery_export_allowed" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="utilEdit.battery_export_allowed ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="utilEdit.battery_export_allowed ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
+        <div class="flex items-center justify-between gap-2"><span style="color:var(--text-secondary)">Charging</span><button type="button" @click="utilEdit.charging_allowed = !utilEdit.charging_allowed" role="switch" :aria-checked="utilEdit.charging_allowed" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="utilEdit.charging_allowed ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="utilEdit.charging_allowed ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
+        <div class="flex items-center justify-between gap-2"><span style="color:var(--text-secondary)">Discharging</span><button type="button" @click="utilEdit.discharging_allowed = !utilEdit.discharging_allowed" role="switch" :aria-checked="utilEdit.discharging_allowed" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="utilEdit.discharging_allowed ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="utilEdit.discharging_allowed ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
+      </div>
+      <label class="text-[11px] block" style="color:var(--text-secondary)">Export restriction note
+        <textarea rows="2" class="form-control form-control-sm w-full mt-1" x-model="utilEdit.export_note"
+                  placeholder="e.g. 5 kW export limit per phase; zero-export approved sites only"></textarea></label>
+      <div class="grid grid-cols-2 gap-3">
+        <label class="text-[11px]" style="color:var(--text-secondary)">Provider from
+          <input type="date" class="form-control form-control-sm w-full mt-1" x-model="utilEdit.effective_start"></label>
+        <label class="text-[11px]" style="color:var(--text-secondary)">Provider until <span class="text-slate-600">(blank = current)</span>
+          <input type="date" class="form-control form-control-sm w-full mt-1" x-model="utilEdit.effective_end"></label>
+      </div>
+      <p class="text-[10px]" style="color:var(--text-faint)">Switched retailers? Add the new provider with a
+        <span class="font-mono">from</span> date and set the old one's <span class="font-mono">until</span> —
+        don't delete it, so past bills stay attributed correctly (AU/NZ).</p>
+      <p class="text-[10px]" style="color:var(--text-faint)">Permissions are informational — they surface as
+        <span class="font-mono">service.*</span> sensors for your rules; the bridge never enforces them.</p>
+      <div class="flex gap-2">
+        <button class="btn btn-primary btn-sm" @click="saveUtility()">Save</button>
+        <button class="btn btn-secondary btn-sm" @click="utilEdit = null">Cancel</button>
+      </div>
+    </div></template>
+
+    <!-- tariff editor (flat rate; seasonal-TOU editor lands next) -->
+    <template x-if="tariffEdit"><div class="rounded-lg border p-3 space-y-2" style="border-color:var(--accent)"
+         x-data="{ tariffTab: 'rates' }"
+         x-init="$nextTick(() => $el.scrollIntoView({ behavior: 'smooth', block: 'start' }))">
+      <div class="text-xs font-semibold" style="color:var(--text-secondary)" x-text="tariffEdit.id ? 'Edit tariff' : 'New tariff'"></div>
+      <div class="grid grid-cols-3 gap-2">
+        <label class="text-[11px] col-span-2" style="color:var(--text-secondary)">Name
+          <input class="form-control form-control-sm w-full mt-1" x-model="tariffEdit.name" placeholder="AGL Home"></label>
+        <label class="text-[11px]" style="color:var(--text-secondary)">Billing day
+          <input type="number" min="1" max="31" class="form-control form-control-sm w-full mt-1" x-model="tariffEdit.billing_cycle_day"></label>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <label class="text-[11px]" style="color:var(--text-secondary)">Effective from <span style="color:var(--text-faint)">(optional)</span>
+          <input type="date" class="form-control form-control-sm w-full mt-1" x-model="tariffEdit.effective_start"></label>
+        <label class="text-[11px]" style="color:var(--text-secondary)">Effective to <span style="color:var(--text-faint)">(blank = current)</span>
+          <input type="date" class="form-control form-control-sm w-full mt-1" x-model="tariffEdit.effective_end"></label>
+      </div>
+      <!-- Modbus-style sub-tabs (Peak demand · Export bonus · Export charge · Standing charges · Energy rates) -->
+      <div class="flex flex-wrap gap-0.5 border-b pt-1" style="border-color:var(--border)">
+        <template x-for="tt in [
+            {id:'rates', label:'Energy rates', on:(tariffEdit.pricing.seasons||[]).length>0 || tariffEdit.pricing.kind==='dynamic'},
+            {id:'demand', label:'Peak demand', on:tariffEdit.demand.on},
+            {id:'bonus', label:'Export bonus', on:tariffEdit.bonus.on},
+            {id:'charge', label:'Export charge', on:tariffEdit.charge.on},
+            {id:'fixed', label:'Standing charges', on:(tariffEdit.fixed||[]).length>0}
+          ]" :key="tt.id">
+          <button type="button" @click="tariffTab = tt.id"
+                  class="px-2.5 py-1 text-[11px] rounded-t border-b-2 -mb-px transition inline-flex items-center gap-1.5"
+                  :class="tariffTab===tt.id ? 'font-semibold' : ''"
+                  :style="tariffTab===tt.id ? 'border-color:var(--accent);color:var(--text-primary)' : 'border-color:transparent;color:var(--text-secondary)'">
+            <span x-text="tt.label"></span>
+            <span x-show="tt.on" class="w-1.5 h-1.5 rounded-full bg-emerald-500" title="configured"></span>
+          </button>
+        </template>
+      </div>
+
+      <!-- Energy rates tab (cloned from the Modbus bridge) -->
+      <div x-show="tariffTab==='rates'" x-cloak class="space-y-2">
+        <!-- Rate type: Static vs Wholesale (live) — per-tariff dynamic pricing -->
+        <div class="flex items-center gap-2 text-xs">
+          <span class="text-slate-500">Rate type:</span>
+          <span class="flex rounded overflow-hidden border border-white/10">
+            <button type="button" @click="tariffEdit.pricing.kind='static'" class="px-2 py-0.5 text-[11px]"
+                    :class="tariffEdit.pricing.kind!=='dynamic' ? 'bg-sky-500/20 text-sky-300' : 'text-slate-500 hover:text-slate-300'">Static</button>
+            <button type="button" @click="tariffEdit.pricing.kind='dynamic'" class="px-2 py-0.5 text-[11px]"
+                    :class="tariffEdit.pricing.kind==='dynamic' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-500 hover:text-slate-300'">Dynamic (live)</button>
+          </span>
+        </div>
+        <!-- Wholesale (live) provider — AusNEM or an HA price entity, per this tariff -->
+        <div x-show="tariffEdit.pricing.kind==='dynamic'" x-cloak class="rounded border border-emerald-500/20 p-2 space-y-2">
+          <div class="text-[11px] text-emerald-300">Dynamic — priced at the live rate
+            <span class="text-slate-500">(drives billing + <span class="font-mono">tariff.spot_price</span> while this tariff is active)</span></div>
+          <!-- Provider — styled dropdown (explicit set, so it always persists) -->
+          <div class="flex items-center gap-2 text-xs">
+            <span class="text-slate-500 w-16 shrink-0">Provider</span>
+            <div class="relative flex-1" x-data="{ open:false }" @click.outside="open=false">
+              <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
+                <span x-text="tariffEdit.pricing.dynamic.source==='ha' ? 'Home Assistant price entity' : 'AusNEM (AEMO spot)'"></span>
+                <span style="color:var(--text-faint)">&#9662;</span>
+              </button>
+              <div x-show="open" x-cloak class="absolute z-40 mt-1 rounded-lg border shadow-xl py-1" style="background:var(--surface-0);border-color:var(--border);left:0;right:0">
+                <button type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="tariffEdit.pricing.dynamic.source!=='ha' ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="tariffEdit.pricing.dynamic.source='nem'; open=false">AusNEM (AEMO spot)</button>
+                <button type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="tariffEdit.pricing.dynamic.source==='ha' ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="tariffEdit.pricing.dynamic.source='ha'; open=false">Home Assistant price entity</button>
+              </div>
+            </div>
+          </div>
+          <!-- Region — styled dropdown (explicit set) -->
+          <div class="flex items-center gap-2 text-xs" x-show="tariffEdit.pricing.dynamic.source==='nem'">
+            <span class="text-slate-500 w-16 shrink-0">Region</span>
+            <div class="relative flex-1" x-data="{ open:false }" @click.outside="open=false">
+              <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
+                <span :style="tariffEdit.pricing.dynamic.region ? '' : 'color:var(--text-faint)'" x-text="tariffEdit.pricing.dynamic.region || 'choose region…'"></span>
+                <span style="color:var(--text-faint)">&#9662;</span>
+              </button>
+              <div x-show="open" x-cloak class="absolute z-40 mt-1 rounded-lg border shadow-xl py-1 max-h-56 overflow-y-auto" style="background:var(--surface-0);border-color:var(--border);left:0;right:0">
+                <template x-for="rg in nemRegions" :key="rg">
+                  <button type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="tariffEdit.pricing.dynamic.region===rg ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="tariffEdit.pricing.dynamic.region=rg; open=false" x-text="rg"></button>
+                </template>
+              </div>
+            </div>
+          </div>
+          <template x-if="tariffEdit.pricing.dynamic.source==='ha'">
+            <div class="space-y-1.5">
+              <!-- Buy price entity — styled, filterable, friendly-name combobox (like the scheduler) -->
+              <div class="flex items-center gap-2 text-xs">
+                <span class="text-slate-500 w-16 shrink-0">Buy</span>
+                <div class="relative flex-1" x-data="{ open:false, q:'' }" @click.outside="open=false; q=''">
+                  <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
+                    <span class="truncate" :style="tariffEdit.pricing.dynamic.buy_entity ? '' : 'color:var(--text-faint)'"
+                          x-text="haPriceLabel(tariffEdit.pricing.dynamic.buy_entity) || 'choose price entity…'"></span>
+                    <span style="color:var(--text-faint)">&#9662;</span>
+                  </button>
+                  <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.bq && $refs.bq.focus()) })"
+                       class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);left:0;right:0">
+                    <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="bq" x-model="q" @click.stop type="text" placeholder="Filter&#8230;" class="form-control form-control-sm w-full"></div>
+                    <div class="max-h-56 overflow-y-auto py-1">
+                      <button type="button" class="w-full text-left px-3 py-1.5 text-xs" style="color:var(--text-faint)" @click="tariffEdit.pricing.dynamic.buy_entity=''; open=false; q=''">&#8212; Clear &#8212;</button>
+                      <template x-for="it in haPriceItems(q)" :key="'b'+it.key"><div>
+                        <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
+                        <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="tariffEdit.pricing.dynamic.buy_entity===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="tariffEdit.pricing.dynamic.buy_entity=it.id; open=false; q=''" x-text="it.label"></button>
+                      </div></template>
+                      <div x-show="!haPriceItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No exposed price entities. Expose them under HA &#8594; Browse entities.</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <!-- Feed-in (sell) entity — optional -->
+              <div class="flex items-center gap-2 text-xs">
+                <span class="text-slate-500 w-16 shrink-0">Feed-in</span>
+                <div class="relative flex-1" x-data="{ open:false, q:'' }" @click.outside="open=false; q=''">
+                  <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
+                    <span class="truncate" :style="tariffEdit.pricing.dynamic.feedin_entity ? '' : 'color:var(--text-faint)'"
+                          x-text="haPriceLabel(tariffEdit.pricing.dynamic.feedin_entity) || 'none (use buy price)'"></span>
+                    <span style="color:var(--text-faint)">&#9662;</span>
+                  </button>
+                  <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.fq && $refs.fq.focus()) })"
+                       class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);left:0;right:0">
+                    <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="fq" x-model="q" @click.stop type="text" placeholder="Filter&#8230;" class="form-control form-control-sm w-full"></div>
+                    <div class="max-h-56 overflow-y-auto py-1">
+                      <button type="button" class="w-full text-left px-3 py-1.5 text-xs" style="color:var(--text-faint)" @click="tariffEdit.pricing.dynamic.feedin_entity=''; open=false; q=''">&#8212; None (use buy) &#8212;</button>
+                      <template x-for="it in haPriceItems(q)" :key="'f'+it.key"><div>
+                        <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
+                        <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="tariffEdit.pricing.dynamic.feedin_entity===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="tariffEdit.pricing.dynamic.feedin_entity=it.id; open=false; q=''" x-text="it.label"></button>
+                      </div></template>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+          <p class="text-[10px] text-slate-500">Only <span class="font-medium">exposed</span> HA entities appear (HA → Browse entities). Prices in c/kWh ($/kWh auto-scaled). Demand / export charges / standing charges below still apply.</p>
+        </div>
+        <!-- Static rate section (hidden when Wholesale) -->
+        <div x-show="tariffEdit.pricing.kind!=='dynamic'" class="space-y-2">
+        <!-- Tariff-wide rate — what a kWh costs when no time period overrides it. -->
+        <div class="rounded border border-white/[0.06] p-2 space-y-1.5">
+          <div class="text-[11px] text-sky-400">Tariff rate
+            <span class="text-slate-500">— applies unless a time period below overrides it</span></div>
+          <template x-for="side in ['buy', 'sell']" :key="'d' + side">
+            <div class="flex items-center gap-1.5 text-xs">
+              <span class="text-slate-500 w-8 shrink-0" x-text="side"></span>
+              <template x-if="!isDefaultTiered(side)">
+                <label class="flex items-center gap-1 flex-1 min-w-0">
+                  <span class="text-slate-500">$</span>
+                  <input type="number" min="0" step="0.00001" x-model.number="defaultRate[side]" @change="checkRates()"
+                         class="form-control !py-0.5 !text-xs w-24"></label>
+              </template>
+              <template x-if="isDefaultTiered(side)">
+                <span class="flex-1 text-slate-500" x-text="`${defaultRate[side].length} tiers`"></span>
+              </template>
+              <span class="flex rounded overflow-hidden border border-white/10 shrink-0">
+                <button type="button" @click="makeDefaultFlat(side)" class="px-1.5 py-0.5 text-[10px]"
+                        :class="!isDefaultTiered(side) ? 'bg-sky-500/20 text-sky-300' : 'text-slate-500 hover:text-slate-300'">Flat</button>
+                <button type="button" @click="isDefaultTiered(side) || makeDefaultTiered(side)" class="px-1.5 py-0.5 text-[10px]"
+                        :class="isDefaultTiered(side) ? 'bg-sky-500/20 text-sky-300' : 'text-slate-500 hover:text-slate-300'">Tiered</button>
+              </span>
+            </div>
+          </template>
+          <template x-for="side in ['buy', 'sell']" :key="'dt' + side">
+            <template x-if="isDefaultTiered(side)">
+              <div class="pl-3 space-y-0.5">
+                <div class="flex items-center justify-between">
+                  <span class="text-[10px] uppercase tracking-wide text-slate-500" x-text="`${side} tiers — by kWh at the meter this billing period`"></span>
+                  <button type="button" @click="addDefaultTier(side)" class="text-[10px] text-sky-300 hover:text-sky-200">+ tier</button>
+                </div>
+                <template x-for="(t, ti) in defaultRate[side]" :key="'dti' + ti">
+                  <div class="flex items-center gap-1.5 text-xs">
+                    <span class="text-slate-500 text-[10px] w-8" x-text="`#${ti + 1}`"></span>
+                    <template x-if="typeof t.up_to_kwh === 'number'">
+                      <label class="flex items-center gap-1"><span class="text-slate-500 text-[10px]">up to</span>
+                        <input type="number" min="0" step="1" x-model.number="t.up_to_kwh" @change="checkRates()" class="form-control !py-0.5 !text-xs w-20">
+                        <span class="text-slate-500 text-[10px]">kWh</span></label>
+                    </template>
+                    <template x-if="typeof t.up_to_kwh !== 'number'">
+                      <span class="text-slate-500 text-[10px]">and above</span>
+                    </template>
+                    <label class="flex items-center gap-1"><span class="text-slate-500 text-[10px]">$</span>
+                      <input type="number" min="0" step="0.00001" x-model.number="t.rate" @change="checkRates()" class="form-control !py-0.5 !text-xs w-24"></label>
+                    <button type="button" @click="removeDefaultTier(side, ti)" class="text-[10px] text-red-300/70 hover:text-red-300">×</button>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </template>
+          <div class="flex items-center justify-between gap-2" x-show="seasons.length">
+            <span class="text-[10px] text-slate-600">Time periods below override this. Changing it here leaves them alone.</span>
+            <button type="button" @click="applyDefaultToAllPeriods()"
+                    class="shrink-0 px-2 py-0.5 rounded text-[10px] border border-white/10 text-slate-400 hover:text-slate-200"
+                    title="Overwrite every time period in every season with this rate">Reset all time periods</button>
+          </div>
+          <div class="text-[10px] text-slate-600" x-show="!seasons.length">
+            That's enough for a flat or tiered tariff. Add a TOU season below only if your rate changes by time of day.</div>
+        </div>
+
+        <!-- Season tabs -->
+        <div class="flex flex-wrap items-center gap-1 border-b border-white/[0.06] pb-1">
+          <template x-for="(s, i) in seasons" :key="s.id || i">
+            <button type="button" @click="seasonIdx = i; checkRates()"
+                    class="px-2 py-1 rounded-t text-[11px] border-b-2 transition-colors"
+                    :class="seasonIdx === i ? 'border-sky-400 text-sky-300' : 'border-transparent text-slate-400 hover:text-slate-200'">
+              <span x-text="s.name || 'Season'"></span>
+              <span class="text-slate-500" x-text="(s.months || []).length ? `${s.months.length} mo` : 'all year'"></span>
+            </button>
+          </template>
+          <button type="button" @click="addSeason()" class="px-2 py-0.5 rounded text-[10px] border border-dashed border-white/20 text-slate-400 hover:text-slate-200">+ Add TOU season</button>
+          <button type="button" @click="addFlatSeason()" class="px-2 py-0.5 rounded text-[10px] border border-dashed border-sky-500/40 text-sky-300 hover:bg-sky-500/10">+ Flat rate</button>
+        </div>
+
+        <template x-if="!seasons.length">
+          <div class="text-[11px] text-slate-500 py-2">
+            No rates yet. <strong>Flat rate</strong> gives one price all year; <strong>Add season</strong> builds a
+            time-of-use plan with peak bands. Until one exists, "cost this period" counts only demand, export charges
+            and standing charges — not the energy itself.</div>
+        </template>
+
+        <template x-if="season">
+          <div class="space-y-2">
+            <div class="flex items-center gap-2 text-xs">
+              <label class="flex items-center gap-1.5 flex-1"><span class="text-slate-500 shrink-0">Name</span>
+                <input type="text" maxlength="60" x-model="season.name" class="form-control !py-0.5 !text-xs w-full"></label>
+              <button type="button" @click="removeSeason(seasonIdx)" x-show="seasons.length > 1"
+                      class="px-2 py-0.5 rounded text-[10px] border border-red-500/40 text-red-300 hover:bg-red-500/10">Remove</button>
+            </div>
+
+            <!-- Months (exclusive across seasons — click a dimmed one to move it here) -->
+            <div>
+              <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Months</div>
+              <div class="flex flex-wrap gap-1">
+                <template x-for="(mo, mi) in monthLabels" :key="'sm'+mi">
+                  <button type="button" @click="toggleMonth(mi+1)" class="px-1.5 py-0.5 rounded text-[10px] border"
+                          :title="monthOwner(mi+1) && !(season.months||[]).includes(mi+1) ? `Belongs to ${monthOwner(mi+1)} — click to move it here` : ''"
+                          :class="(season.months || []).includes(mi+1) ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                            : (monthOwner(mi+1) ? 'text-slate-600 border-white/5' : 'text-slate-400 border-white/10')"
+                          x-text="mo"></button>
+                </template>
+              </div>
+              <div class="text-[10px] text-slate-600 mt-0.5">Dimmed months belong to another season — click to move them here. No months = the catch-all, used only when no other season matches.</div>
+            </div>
+
+            <!-- Rate grid -->
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <div class="text-[10px] uppercase tracking-wide text-slate-500">Rates — buy &amp; sell per time period</div>
+                <button type="button" @click="copyRatesToAllSeasons()" x-show="seasons.length > 1"
+                        class="px-2 py-0.5 rounded text-[10px] border border-white/10 text-slate-400 hover:text-slate-200">Copy rates → all seasons</button>
+              </div>
+              <div class="rounded border border-white/[0.06] divide-y divide-white/[0.06]">
+                <template x-for="w in PERIOD_IDS" :key="w">
+                  <div class="px-2 py-1 text-xs space-y-1">
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full shrink-0" :style="`background:${PERIOD_DOTS[w]}`"></span>
+                        <span x-text="PERIOD_LABELS[w]"></span>
+                      </span>
+                      <span class="text-[10px] shrink-0" :class="periodUsed(w) ? 'text-emerald-400' : 'text-slate-600'"
+                            x-text="periodUsed(w) ? 'active' : 'not used'"></span>
+                    </div>
+                    <template x-for="side in ['buy', 'sell']" :key="w + side + 'h'">
+                      <div class="flex items-center gap-1.5">
+                        <span class="text-slate-500 w-8 shrink-0" x-text="side"></span>
+                        <template x-if="!isTiered(w, side)">
+                          <label class="flex items-center gap-1 flex-1 min-w-0"><span class="text-slate-500">$</span>
+                            <input type="number" min="0" step="0.00001" x-model.number="season.time_periods[w][side]" class="form-control !py-0.5 !text-xs w-24"></label>
+                        </template>
+                        <template x-if="isTiered(w, side)">
+                          <span class="flex-1 text-slate-500" x-text="`${season.time_periods[w][side].length} tiers`"></span>
+                        </template>
+                        <span class="flex rounded overflow-hidden border border-white/10 shrink-0">
+                          <button type="button" @click="makeFlat(w, side)" class="px-1.5 py-0.5 text-[10px] transition-colors"
+                                  :class="!isTiered(w, side) ? 'bg-sky-500/20 text-sky-300' : 'text-slate-500 hover:text-slate-300'">Flat</button>
+                          <button type="button" @click="isTiered(w, side) || makeTiered(w, side)" class="px-1.5 py-0.5 text-[10px] transition-colors"
+                                  :class="isTiered(w, side) ? 'bg-sky-500/20 text-sky-300' : 'text-slate-500 hover:text-slate-300'">Tiered</button>
+                        </span>
+                      </div>
+                    </template>
+                    <template x-for="side in ['buy', 'sell']" :key="w + side">
+                      <div>
+                        <template x-if="isTiered(w, side)">
+                          <div class="pl-3 space-y-0.5">
+                            <div class="flex items-center justify-between">
+                              <span class="text-[10px] uppercase tracking-wide text-slate-500" x-text="`${side} tiers — by kWh used this period`"></span>
+                              <button type="button" @click="addTier(w, side)" class="text-[10px] text-sky-300 hover:text-sky-200">+ tier</button>
+                            </div>
+                            <template x-for="(t, ti) in season.time_periods[w][side]" :key="ti">
+                              <div class="flex items-center gap-1.5">
+                                <span class="text-slate-500 text-[10px] w-10" x-text="`#${ti + 1}`"></span>
+                                <template x-if="typeof t.up_to_kwh === 'number'">
+                                  <label class="flex items-center gap-1"><span class="text-slate-500 text-[10px]">up to</span>
+                                    <input type="number" min="0" step="1" x-model.number="t.up_to_kwh" @change="checkRates()" class="form-control !py-0.5 !text-xs w-20">
+                                    <span class="text-slate-500 text-[10px]">kWh</span></label>
+                                </template>
+                                <template x-if="typeof t.up_to_kwh !== 'number'">
+                                  <span class="text-slate-500 text-[10px]">and above</span>
+                                </template>
+                                <label class="flex items-center gap-1"><span class="text-slate-500 text-[10px]">$</span>
+                                  <input type="number" min="0" step="0.00001" x-model.number="t.rate" @change="checkRates()" class="form-control !py-0.5 !text-xs w-24"></label>
+                                <button type="button" @click="removeTier(w, side, ti)" class="text-[10px] text-red-300/70 hover:text-red-300">×</button>
+                              </div>
+                            </template>
+                          </div>
+                        </template>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+              </div>
+              <div class="text-[10px] text-slate-600 mt-0.5">A time period priced buy $0 is a free-import band. Periods are named, not price-derived — two may share a price and stay distinct.</div>
+            </div>
+
+            <!-- Time blocks -->
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <div class="text-[10px] uppercase tracking-wide text-slate-500">Time blocks → time period</div>
+                <button type="button" @click="addBlock()" class="px-2 py-0.5 rounded text-[10px] border border-sky-500/40 text-sky-300 hover:bg-sky-500/10">+ Add block</button>
+              </div>
+              <div class="space-y-1">
+                <template x-for="(b, bi) in season.blocks" :key="bi">
+                  <div class="text-xs rounded border border-white/[0.06] p-1 space-y-1 sm:border-0 sm:p-0 sm:space-y-0 sm:flex sm:items-center sm:gap-1.5">
+                    <div class="flex items-center gap-1.5">
+                      <input type="time" x-model="b.start" @change="checkRates()" class="form-control !py-0.5 !text-xs w-[5.5rem]">
+                      <span class="text-slate-500">to</span>
+                      <input type="time" :value="b.end === '24:00' ? '00:00' : b.end" @change="b.end = $event.target.value; checkRates()" class="form-control !py-0.5 !text-xs w-[5.5rem]">
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                      <select x-model="b.time_period" @change="checkRates()" class="form-control !py-0.5 !text-xs flex-1 min-w-0 sm:flex-none sm:w-32">
+                        <option value="super_off_peak">Super Off-Peak</option>
+                        <option value="off_peak">Off-Peak</option>
+                        <option value="mid_peak">Mid-Peak</option>
+                        <option value="on_peak">On-Peak</option>
+                      </select>
+                      <select :value="blockDayPreset(b)" @change="setBlockDays(b, $event.target.value)" class="form-control !py-0.5 !text-xs flex-1 min-w-0 sm:flex-none sm:w-28">
+                        <option value="all">All days</option>
+                        <option value="weekdays">Weekdays</option>
+                        <option value="weekend">Weekend</option>
+                      </select>
+                      <button type="button" @click="removeBlock(bi)" class="shrink-0 px-1.5 py-0.5 rounded text-[10px] border border-red-500/40 text-red-300 hover:bg-red-500/10">×</button>
+                    </div>
+                  </div>
+                </template>
+              </div>
+              <div class="text-[10px] text-slate-600 mt-0.5">An end at or before the start wraps past midnight, so <span class="font-mono">00:00</span> as an end means end-of-day. The FranklinWH cloud writes that as <span class="font-mono">24:00</span>; both are accepted. Blocks must cover all 24 h — uncovered hours fall back to the tariff rate, or are recorded as unpriced if there isn't one.</div>
+            </div>
+
+            <!-- Coverage validation, from the same resolver that prices -->
+            <template x-if="rateProblems.length">
+              <div class="rounded border border-amber-500/30 bg-amber-500/10 p-2 space-y-0.5">
+                <div class="text-[11px] text-amber-300">This plan won't price everything:</div>
+                <template x-for="(p, pi) in rateProblems" :key="pi"><div class="text-[10px] text-amber-200/80" x-text="p"></div></template>
+              </div>
+            </template>
+            <template x-if="!rateProblems.length && seasons.length">
+              <div class="text-[10px] text-emerald-400">Every hour of every month is priced.</div>
+            </template>
+          </div>
+        </template>
+        </div><!-- /static rate section -->
+      </div><!-- /Energy rates tab -->
+
+      <!-- Peak demand tab -->
+      <div x-show="tariffTab==='demand'" x-cloak class="space-y-2.5">
+        <div class="text-[11px] text-amber-400">Peak-demand charge <span class="text-slate-500 font-mono">→ demand.period_charge / demand.peak_kw</span></div>
+        <div class="flex items-center justify-between gap-2 text-xs"><span style="color:var(--text-primary)">Peak-demand charge</span><button type="button" @click="tariffEdit.demand.on = !tariffEdit.demand.on" role="switch" :aria-checked="tariffEdit.demand.on" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="tariffEdit.demand.on ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="tariffEdit.demand.on ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
+        <div x-show="tariffEdit.demand.on" class="grid grid-cols-2 sm:grid-cols-4 gap-2 pl-5">
+          <label class="text-[10px]" style="color:var(--text-faint)">From<input type="time" class="form-control form-control-sm w-full" x-model="tariffEdit.demand.start"></label>
+          <label class="text-[10px]" style="color:var(--text-faint)">To<input type="time" class="form-control form-control-sm w-full" x-model="tariffEdit.demand.end"></label>
+          <label class="text-[10px]" style="color:var(--text-faint)">Rate ($/kW)<input type="number" step="0.01" class="form-control form-control-sm w-full" x-model="tariffEdit.demand.rate"></label>
+          <label class="text-[10px]" style="color:var(--text-faint)">Interval<select class="form-control form-control-sm w-full" x-model.number="tariffEdit.demand.interval_min" x-init="$nextTick(() => { $el.value = tariffEdit.demand.interval_min })"><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option></select></label>
+          <label class="text-[10px] col-span-2 sm:col-span-4" style="color:var(--text-faint)">Basis<select class="form-control form-control-sm w-full" x-model="tariffEdit.demand.basis" x-init="$nextTick(() => { $el.value = tariffEdit.demand.basis })"><option value="per_kw_day">$/kW/day &times; days in period</option><option value="flat_per_kw">flat $/kW</option></select></label>
+        </div>
+        <template x-if="tariffEdit.demand.on">
+          <div class="pl-5 space-y-1">
+            <div class="text-[10px] uppercase tracking-wide text-slate-500">Months <span class="text-slate-600 normal-case">(none = every month)</span></div>
+            <div class="flex flex-wrap gap-1">
+              <template x-for="(mo, mi) in monthLabels" :key="'dmm'+mi">
+                <button type="button" @click="toggleWinMonth(tariffEdit.demand, mi+1)" class="px-1.5 py-0.5 rounded text-[10px] border"
+                        :class="(tariffEdit.demand.months||[]).includes(mi+1) ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'text-slate-400 border-white/10'" x-text="mo"></button>
+              </template>
+            </div>
+            <div class="text-[10px] uppercase tracking-wide text-slate-500 mt-1">Days <span class="text-slate-600 normal-case">(none = every day)</span></div>
+            <div class="flex flex-wrap gap-1">
+              <template x-for="(dl, di) in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="'dmd'+di">
+                <button type="button" @click="toggleWinDay(tariffEdit.demand, di)" class="px-1.5 py-0.5 rounded text-[10px] border"
+                        :class="(tariffEdit.demand.days||[]).includes(di) ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'text-slate-400 border-white/10'" x-text="dl"></button>
+              </template>
+            </div>
+          </div>
+        </template>
+        <p x-show="!tariffEdit.demand.on" class="text-[10px]" style="color:var(--text-faint)">Off. A capacity charge on your highest averaged demand interval within the window.</p>
+      </div>
+
+      <!-- Export bonus tab -->
+      <div x-show="tariffTab==='bonus'" x-cloak class="space-y-2.5">
+        <div class="text-[11px] text-emerald-400">Battery-export-bonus window <span class="text-slate-500 font-mono">→ bonus.period_credit</span></div>
+        <div class="flex items-center justify-between gap-2 text-xs"><span style="color:var(--text-primary)">Battery-export bonus</span><button type="button" @click="tariffEdit.bonus.on = !tariffEdit.bonus.on" role="switch" :aria-checked="tariffEdit.bonus.on" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="tariffEdit.bonus.on ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="tariffEdit.bonus.on ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
+        <div x-show="tariffEdit.bonus.on" class="grid grid-cols-3 gap-2 pl-5">
+          <label class="text-[10px]" style="color:var(--text-faint)">From<input type="time" class="form-control form-control-sm w-full" x-model="tariffEdit.bonus.start"></label>
+          <label class="text-[10px]" style="color:var(--text-faint)">To<input type="time" class="form-control form-control-sm w-full" x-model="tariffEdit.bonus.end"></label>
+          <label class="text-[10px]" style="color:var(--text-faint)">Rate ($/kWh)<input type="number" step="0.001" class="form-control form-control-sm w-full" x-model="tariffEdit.bonus.rate"></label>
+        </div>
+        <template x-if="tariffEdit.bonus.on && exportPricedByPeriod">
+          <div class="pl-5 text-[10px] text-amber-300/90 leading-snug">Superseded: your Energy rates already price export (sell $/kWh), so this window no longer credits the bill — counting both would pay you twice for the same kWh. Set the feed-in rate on the time period instead.</div>
+        </template>
+        <template x-if="tariffEdit.bonus.on">
+          <div class="pl-5 space-y-1">
+            <div class="text-[10px] uppercase tracking-wide text-slate-500">Months <span class="text-slate-600 normal-case">(none = every month)</span></div>
+            <div class="flex flex-wrap gap-1">
+              <template x-for="(mo, mi) in monthLabels" :key="'bmm'+mi">
+                <button type="button" @click="toggleWinMonth(tariffEdit.bonus, mi+1)" class="px-1.5 py-0.5 rounded text-[10px] border"
+                        :class="(tariffEdit.bonus.months||[]).includes(mi+1) ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'text-slate-400 border-white/10'" x-text="mo"></button>
+              </template>
+            </div>
+            <div class="text-[10px] uppercase tracking-wide text-slate-500 mt-1">Days <span class="text-slate-600 normal-case">(none = every day)</span></div>
+            <div class="flex flex-wrap gap-1">
+              <template x-for="(dl, di) in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="'bmd'+di">
+                <button type="button" @click="toggleWinDay(tariffEdit.bonus, di)" class="px-1.5 py-0.5 rounded text-[10px] border"
+                        :class="(tariffEdit.bonus.days||[]).includes(di) ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'text-slate-400 border-white/10'" x-text="dl"></button>
+              </template>
+            </div>
+          </div>
+        </template>
+        <p x-show="!tariffEdit.bonus.on" class="text-[10px]" style="color:var(--text-faint)">Off. An extra feed-in incentive on exports during a set window (e.g. an evening peak).</p>
+      </div>
+
+      <!-- Export charge tab -->
+      <div x-show="tariffTab==='charge'" x-cloak class="space-y-2.5">
+        <div class="text-[11px] text-amber-400">Export-charge window <span class="text-slate-500 font-mono">→ tariff.export_charge_net_kwh / _cost</span></div>
+        <div class="flex items-center justify-between gap-2 text-xs"><span style="color:var(--text-primary)">Export charge (two-way / solar sponge)</span><button type="button" @click="tariffEdit.charge.on = !tariffEdit.charge.on" role="switch" :aria-checked="tariffEdit.charge.on" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="tariffEdit.charge.on ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="tariffEdit.charge.on ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
+        <div x-show="tariffEdit.charge.on" class="grid grid-cols-2 sm:grid-cols-4 gap-2 pl-5">
+          <label class="text-[10px]" style="color:var(--text-faint)">From<input type="time" class="form-control form-control-sm w-full" x-model="tariffEdit.charge.start"></label>
+          <label class="text-[10px]" style="color:var(--text-faint)">To<input type="time" class="form-control form-control-sm w-full" x-model="tariffEdit.charge.end"></label>
+          <label class="text-[10px]" style="color:var(--text-faint)">Rate ($/kWh)<input type="number" step="0.001" class="form-control form-control-sm w-full" x-model="tariffEdit.charge.rate"></label>
+          <label class="text-[10px]" style="color:var(--text-faint)">Free kWh/day<input type="number" step="0.1" class="form-control form-control-sm w-full" x-model="tariffEdit.charge.free_kwh_per_day"></label>
+        </div>
+        <p x-show="tariffEdit.charge.on" class="text-[10px] pl-5" style="color:var(--text-faint)">Free allowance = kWh/day × days in the billing period; only export above it is charged.</p>
+        <template x-if="tariffEdit.charge.on">
+          <div class="pl-5 space-y-1">
+            <div class="text-[10px] uppercase tracking-wide text-slate-500">Months <span class="text-slate-600 normal-case">(none = every month)</span></div>
+            <div class="flex flex-wrap gap-1">
+              <template x-for="(mo, mi) in monthLabels" :key="'cmm'+mi">
+                <button type="button" @click="toggleWinMonth(tariffEdit.charge, mi+1)" class="px-1.5 py-0.5 rounded text-[10px] border"
+                        :class="(tariffEdit.charge.months||[]).includes(mi+1) ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'text-slate-400 border-white/10'" x-text="mo"></button>
+              </template>
+            </div>
+            <div class="text-[10px] uppercase tracking-wide text-slate-500 mt-1">Days <span class="text-slate-600 normal-case">(none = every day)</span></div>
+            <div class="flex flex-wrap gap-1">
+              <template x-for="(dl, di) in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="'cmd'+di">
+                <button type="button" @click="toggleWinDay(tariffEdit.charge, di)" class="px-1.5 py-0.5 rounded text-[10px] border"
+                        :class="(tariffEdit.charge.days||[]).includes(di) ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'text-slate-400 border-white/10'" x-text="dl"></button>
+              </template>
+            </div>
+          </div>
+        </template>
+        <p x-show="!tariffEdit.charge.on" class="text-[10px]" style="color:var(--text-faint)">Off. A two-way / solar-sponge charge levied on exports in the window, above a free daily allowance.</p>
+      </div>
+
+      <!-- Standing charges tab -->
+      <div x-show="tariffTab==='fixed'" x-cloak class="space-y-2.5">
+        <div class="flex items-center justify-between pt-1">
+          <span class="text-xs" style="color:var(--text-primary)">Fixed / standing charges <span class="text-slate-500 font-mono text-[10px]">→ fixed.accrued_period / fixed.remaining</span></span>
+          <button type="button" class="btn btn-secondary btn-sm" @click="addFixed()">+ Add charge</button>
+        </div>
+        <p class="text-[10px]" style="color:var(--text-faint)">Daily supply, metering, membership or connection fees — charged whatever you use. Counted in the Energy Costs net total.</p>
+        <template x-for="(f, fi) in tariffEdit.fixed" :key="fi">
+          <div class="rounded border border-white/[0.06] p-2 space-y-2">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <label class="text-[10px]" style="color:var(--text-faint)">Type<select class="form-control form-control-sm w-full" x-model="f.type" x-init="$nextTick(() => { $el.value = f.type })"><option value="supply">Supply</option><option value="metering">Metering</option><option value="membership">Membership</option><option value="connection">Connection</option><option value="other">Other</option></select></label>
+              <label class="text-[10px]" style="color:var(--text-faint)">Levied by<select class="form-control form-control-sm w-full" x-model="f.levied_by" x-init="$nextTick(() => { $el.value = f.levied_by })"><option value="utility">Utility / network</option><option value="retailer">Retailer</option><option value="metering">Metering agent</option><option value="other">Other</option></select></label>
+              <label class="text-[10px]" style="color:var(--text-faint)">Frequency<select class="form-control form-control-sm w-full" x-model="f.frequency" x-init="$nextTick(() => { $el.value = f.frequency })"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="annual">Annual</option></select></label>
+              <label class="text-[10px]" style="color:var(--text-faint)">Rate ($)<input type="number" step="0.00001" class="form-control form-control-sm w-full" x-model="f.rate"></label>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 items-end">
+              <label class="text-[10px] col-span-2" style="color:var(--text-faint)">Description<input class="form-control form-control-sm w-full" x-model="f.description" placeholder="Daily supply charge"></label>
+              <label class="text-[10px]" style="color:var(--text-faint)">Tax rate<input type="number" step="0.01" class="form-control form-control-sm w-full" x-model="f.tax_rate" placeholder="0"></label>
+              <div class="flex items-end justify-end"><button type="button" class="btn btn-danger btn-sm" @click="removeFixed(fi)">Remove</button></div>
+            </div>
+            <div class="text-[10px] text-sky-400/80 font-mono" x-show="f.rate!==''&&f.rate!=null" x-text="`≈ $${fixedPerDay(f).toFixed(4)}/day incl. tax`"></div>
+          </div>
+        </template>
+        <div class="flex items-center justify-between border-t pt-2 text-xs" style="border-color:var(--border)" x-show="(tariffEdit.fixed||[]).length">
+          <span style="color:var(--text-secondary)">Total standing charges</span>
+          <span class="font-mono" style="color:var(--text-primary)" x-text="`$${fixedTotalPerDay.toFixed(4)}/day  ·  $${(fixedTotalPerDay*30).toFixed(2)}/30d`"></span>
+        </div>
+        <p x-show="!(tariffEdit.fixed||[]).length" class="text-[10px]" style="color:var(--text-faint)">No standing charges. Add a daily supply charge, meter fee, etc.</p>
+      </div>
+
+      <template x-if="tariffProblems.length"><div class="text-[11px]" style="color:var(--warn)">
+        <template x-for="pr in tariffProblems" :key="pr"><div x-text="'• ' + pr"></div></template>
+      </div></template>
+      <div class="flex gap-2">
+        <button class="btn btn-primary btn-sm" @click="saveTariff()">Save</button>
+        <button class="btn btn-secondary btn-sm" @click="validateTariff()">Validate</button>
+        <button class="btn btn-secondary btn-sm" @click="tariffEdit = null">Cancel</button>
+      </div>
+    </div></template>
+
+    <!-- utilities list -->
+    <template x-for="u in utilities" :key="u.id">
+      <div class="rounded-lg border p-3 space-y-2.5" style="border-color:var(--border)">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-semibold text-sm" style="color:var(--text-primary)" x-text="u.name || '(unnamed)'"></span>
+              <span x-show="!u.battery_export_allowed" class="chip" style="font-size:.55rem;background:#fb718522;color:#fb7185">no battery export</span>
+            </div>
+            <div class="text-[11px] mt-0.5" style="color:var(--text-faint)" x-text="[u.network_dnsp, u.country].filter(Boolean).join(' · ') || 'No network set'"></div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="editUtility(u)">Edit</button>
+            <button x-show="!tariffsForUtility(u.id).length" class="btn btn-danger btn-sm btn-icon"
+                    :disabled="!canWrite()" @click="deleteUtility(u)" aria-label="Delete utility" title="Delete utility"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+          </div>
+        </div>
+        <div class="space-y-1.5">
+          <template x-for="t in tariffsForUtility(u.id)" :key="t.id">
+            <div class="flex items-center justify-between gap-3 rounded-md px-2.5 py-2" style="background:var(--surface-1)">
+              <div class="min-w-0">
+                <span class="font-medium text-sm" style="color:var(--text-primary)" x-text="t.name || '(unnamed tariff)'"></span>
+                <div class="text-[11px] mt-0.5" style="color:var(--text-faint)">
+                  <span x-show="t.pricing && t.pricing.default_rate && t.pricing.default_rate.buy != null" x-text="'buy ' + (t.pricing?.default_rate?.buy) + '/kWh · '"></span><span x-show="(t.pricing?.seasons || []).length" x-text="(t.pricing?.seasons || []).length + '-season TOU · '"></span>day <span x-text="t.billing_cycle_day"></span>
+                  <span x-show="tariffDateLabel(t)" x-text="' · ' + tariffDateLabel(t)"></span>
+                  <span x-show="tariffStatus(t) !== 'active'" class="uppercase font-semibold" :style="tariffStatus(t) === 'past' ? 'color:var(--danger)' : 'color:var(--warn)'" x-text="' · ' + tariffStatus(t)"></span>
+                </div>
+              </div>
+              <div class="flex items-center gap-1.5 shrink-0">
+                <button class="btn btn-secondary btn-sm" @click="exportTariffProfile(t)" title="Export as a Modbus-compatible tariff profile">Export</button>
+                <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="editTariff(t)">Edit</button>
+                <button class="btn btn-secondary btn-sm btn-icon" :disabled="!canWrite()" @click="supersedeTariff(t)" aria-label="Supersede" title="Supersede — end-date this plan and start a new one">&#8635;</button>
+                <button class="btn btn-danger btn-sm btn-icon" :disabled="!canWrite()" @click="deleteTariff(t)" aria-label="Delete tariff" title="Delete tariff"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+              </div>
+            </div>
+          </template>
+          <div x-show="!tariffsForUtility(u.id).length" class="text-[11px]" style="color:var(--text-faint)">No tariffs.</div>
+        </div>
+        <button class="btn btn-secondary btn-sm w-full" :disabled="!canWrite()" @click="newTariff(u.id)">+ Add tariff</button>
+      </div>
+    </template>
+    <div x-show="!utilities.length" class="text-[11px]" style="color:var(--text-faint)">No utilities yet — add one to define your plan &amp; rates.</div>
+  </div>
+
+  </div>
+  <div x-show="sub==='gateways'" x-cloak class="space-y-6">
+  <!-- ══ Gateways ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Gateways</span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+    <button class="btn btn-secondary btn-sm" @click="openAddGateway()">+ Add Gateway</button>
+  </div>
+  <div class="card p-0 overflow-hidden">
+    <div x-show="gwErr" x-cloak class="px-4 py-2 text-xs" style="background:rgba(239,68,68,.1);color:#fca5a5"
+         x-text="gwErr"></div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm" style="border-collapse:collapse">
+        <thead>
+          <tr class="text-[10px] uppercase tracking-wide" style="color:var(--text-secondary)">
+            <th class="text-left font-medium px-4 py-2">Name</th>
+            <th class="text-left font-medium px-3 py-2">Host</th>
+            <th class="text-left font-medium px-3 py-2 hidden sm:table-cell">Serial</th>
+            <th class="text-left font-medium px-3 py-2 hidden sm:table-cell">Model</th>
+            <th class="text-left font-medium px-3 py-2 hidden md:table-cell">TZ</th>
+            <th class="text-center font-medium px-3 py-2">Enabled</th>
+            <th class="text-right font-medium px-3 py-2 hidden md:table-cell">Poll</th>
+            <th class="px-3 py-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="gw in gateways" :key="gw.id">
+            <tr class="border-t" style="border-color:var(--border)">
+              <td class="px-4 py-2">
+                <div class="flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full shrink-0"
+                        :class="gw.ok ? 'bg-emerald-400' : (gw.enabled ? 'bg-amber-400' : 'bg-slate-600')"></span>
+                  <span class="font-medium" style="color:var(--text-primary)" x-text="gw.label"></span>
+                  <span x-show="gw.is_mock" class="text-[9px] px-1.5 rounded"
+                        style="background:rgba(167,139,250,.2);color:#c4b5fd">MOCK</span>
+                  <span x-show="gw.is_default" class="text-[9px]" style="color:var(--text-faint)">default</span>
+                </div>
+              </td>
+              <td class="px-3 py-2 font-mono text-xs" style="color:var(--text-secondary)"
+                  x-text="(gw.host || '—') + (gw.port && gw.port !== 9000 ? ':' + gw.port : '')"></td>
+              <td class="px-3 py-2 font-mono text-xs hidden sm:table-cell" style="color:var(--text-secondary)"
+                  x-text="gw.serial || '—'"></td>
+              <td class="px-3 py-2 text-xs hidden sm:table-cell" style="color:var(--text-secondary)"
+                  x-text="gw.model || 'aGate'"></td>
+              <td class="px-3 py-2 text-xs font-mono hidden md:table-cell" style="color:var(--text-secondary)"
+                  x-text="_gwTz[gw.id] || '—'"></td>
+              <td class="px-3 py-2 text-center">
+                <button @click="toggleGateway(gw)" :disabled="gwBusy[gw.id]"
+                        class="relative inline-flex h-5 w-9 items-center rounded-full transition"
+                        :class="gw.enabled ? 'bg-emerald-500' : 'bg-slate-600'" :title="gw.enabled ? 'Disable' : 'Enable'">
+                  <span class="inline-block h-4 w-4 rounded-full bg-white transition"
+                        :class="gw.enabled ? 'translate-x-4' : 'translate-x-0.5'"></span>
+                </button>
+              </td>
+              <td class="px-3 py-2 text-right text-xs hidden md:table-cell" style="color:var(--text-secondary)"
+                  x-text="!gw.enabled ? 'off' : (gw.ok ? 'live' : (gw.cached ? 'stale' : 'cold'))"></td>
+              <td class="px-3 py-2 text-right">
+                <button class="btn btn-secondary btn-sm" @click="openEditGateway(gw)"
+                        title="Edit gateway">Edit</button>
+              </td>
+            </tr>
+          </template>
+          <tr x-show="!gateways.length">
+            <td colspan="8" class="px-4 py-6 text-center text-xs" style="color:var(--text-secondary)">
+              No gateways configured.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <!-- Add panel: Discover (primary, real gateways) + Manual (advanced) -->
+    <template x-if="gwAdd">
+      <div class="border-t px-4 py-4 space-y-4" style="border-color:var(--border)">
+        <!-- Discover real gateways -->
+        <div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button class="btn btn-primary btn-sm inline-flex items-center gap-1.5"
+                    @click="discoverGateways()" :disabled="scanning">
+              <svg class="w-3.5 h-3.5" :class="scanning && 'animate-spin'" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="M21 21l-4.3-4.3"/></svg>
+              <span x-text="scanning ? 'Scanning…' : 'Discover gateways'"></span>
+            </button>
+            <input class="form-control form-control-sm" style="width:11rem" x-model="scanSubnet"
+                   placeholder="subnet (auto)" title="e.g. 192.0.2.0/24 — blank auto-detects">
+            <button class="btn btn-secondary btn-sm ml-auto" @click="cancelAddGateway()">Close</button>
+          </div>
+          <p class="text-[10px] mt-1" style="color:var(--text-faint)">Sweeps TCP 9000 and confirms each with a Direct-Connect Local-API login. No manual entry needed — finds 0, 1 or more.</p>
+          <template x-if="scanCands !== null">
+            <div class="mt-2 space-y-1">
+              <template x-if="!confirmedCands().length">
+                <div class="text-xs" style="color:var(--text-secondary)">No aGates found on <span class="font-mono" x-text="scanSubnet"></span>.</div>
+              </template>
+              <!-- Only CONFIRMED aGates (answered the Local-API login) are addable. -->
+              <template x-for="c in confirmedCands()" :key="c.host">
+                <div class="flex items-center gap-2 text-sm rounded px-2 py-1.5" style="background:var(--surface-2)">
+                  <span class="w-1.5 h-1.5 rounded-full shrink-0 bg-emerald-400"></span>
+                  <span class="font-mono" style="color:var(--text-primary)" x-text="c.host"></span>
+                  <span class="font-mono text-xs" style="color:var(--text-secondary)" x-text="c.serial || ''"></span>
+                  <span class="text-[9px] px-1 rounded" style="background:rgba(52,211,153,.2);color:#6ee7b7">aGate</span>
+                  <button class="btn btn-sm ml-auto" :class="c.already_added ? 'btn-secondary' : 'btn-primary'"
+                          :disabled="c.already_added" @click="addFromScan(c)"
+                          x-text="c.already_added ? 'Added' : 'Add'"></button>
+                </div>
+              </template>
+              <!-- Non-aGate hosts that merely had 9000 open — noted, not offered. -->
+              <div x-show="unconfirmedCount()" class="text-[10px] pt-0.5" style="color:var(--text-faint)">
+                <span x-text="unconfirmedCount()"></span> other host(s) had TCP 9000 open but didn't answer the aGate login (not FranklinWH). Add one via "manually" below if you're sure.
+              </div>
+            </div>
+          </template>
+        </div>
+        <!-- Add a real gateway manually — the DEFAULT path (Discover above is easiest) -->
+        <div class="border-t pt-3" style="border-color:var(--border)">
+          <div class="text-xs uppercase tracking-wide mb-2" style="color:var(--text-secondary)">Add a gateway manually</div>
+          <p class="text-[11px] text-slate-500 mb-2">Most installs just use <strong>Discover</strong> above. Or enter the aGate's IP directly:</p>
+          <div class="flex flex-wrap items-end gap-2">
+            <label class="text-xs" style="color:var(--text-secondary)">Name
+              <input class="form-control form-control-sm block mt-1" style="width:10rem" x-model="gwAdd.label" placeholder="Home"></label>
+            <label class="text-xs" style="color:var(--text-secondary)">Host
+              <input class="form-control form-control-sm block mt-1" style="width:11rem" x-model="gwAdd.host" placeholder="192.0.2.110"></label>
+            <label class="text-xs" style="color:var(--text-secondary)">Port
+              <input type="number" class="form-control form-control-sm block mt-1" style="width:5.5rem" x-model.number="gwAdd.port"></label>
+            <button class="btn btn-primary btn-sm" @click="saveAddGateway()">Add</button>
+          </div>
+        </div>
+        <!-- Mock gateway (in-process emulator) — OPTIONAL, for testing only -->
+        <details class="border-t pt-3" style="border-color:var(--border)">
+          <summary class="text-xs uppercase tracking-wide cursor-pointer" style="color:var(--text-secondary)">Add a mock gateway (testing) <span class="text-[9px] px-1.5 rounded ml-1" style="background:rgba(167,139,250,.2);color:#c4b5fd">OPTIONAL</span></summary>
+          <p class="text-[11px] text-slate-500 my-2 leading-relaxed">
+            A <strong>mock</strong> is an in-process emulated aGate — no hardware, no network, running inside
+            the bridge — for trying the UI, dashboards and HA discovery. Each mock is a deterministic
+            <em>seed-derived</em> site: it simulates <strong>battery + aPowers, live power flow, operating
+            modes, Smart Circuits and daily energy history</strong>. It does <strong>not</strong> simulate a
+            Generator or V2L (those read as absent). Set the number of aPowers (1–8); an optional seed makes
+            the profile reproducible (leave blank for a random one). <strong>Publish to Home Assistant</strong>
+            is off by default so synthetic data never pollutes your HA statistics. Remove it anytime with the
+            gateway's <em>Edit → Remove</em>.
+          </p>
+          <div class="flex flex-wrap items-end gap-3">
+            <label class="text-xs" style="color:var(--text-secondary)">Name
+              <input class="form-control form-control-sm block mt-1" style="width:9rem" x-model="mockForm.label" placeholder="Mock"></label>
+            <label class="text-xs" style="color:var(--text-secondary)">aPowers
+              <input type="number" min="1" max="8" class="form-control form-control-sm block mt-1" style="width:5rem" x-model.number="mockForm.units"></label>
+            <label class="text-xs" style="color:var(--text-secondary)">Seed <span class="text-slate-600">(optional)</span>
+              <input type="number" class="form-control form-control-sm block mt-1" style="width:6rem" x-model="mockForm.seed" placeholder="random"></label>
+            <div class="flex items-center justify-between gap-2 text-xs pb-1.5" style="color:var(--text-secondary)"><span>Publish to Home Assistant</span><button type="button" @click="mockForm.publish_ha = !mockForm.publish_ha" role="switch" :aria-checked="mockForm.publish_ha" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="mockForm.publish_ha ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="mockForm.publish_ha ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
+            <button class="btn btn-primary btn-sm" @click="saveMockGateway()">Add mock</button>
+          </div>
+        </details>
+      </div>
+    </template>
+    <div class="px-4 py-2 text-[10px]" style="color:var(--text-faint)">
+      Each gateway is one aGate. Disabling a gateway stops its poller (and unpublishes its HA entities). Requires writes enabled.
+    </div>
+  </div>
+
+  <!-- Edit Gateway modal -->
+  <div x-show="gwEdit.open" x-cloak class="fixed inset-0 z-[110] flex items-center justify-center p-4"
+       @keydown.escape.window="closeEditGateway()">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="closeEditGateway()"></div>
+    <div class="relative w-full max-w-lg rounded-xl border shadow-2xl max-h-[90vh] overflow-auto"
+         style="background:var(--surface-0,#0f172a);border-color:var(--border)">
+      <div class="px-5 py-3 border-b flex items-center justify-between" style="border-color:var(--border)">
+        <div class="text-sm font-semibold" style="color:var(--text-primary)">
+          Edit gateway <span class="font-normal" style="color:var(--text-secondary)" x-text="gwEdit.label"></span>
+          <span x-show="gwEdit.is_mock" class="text-[9px] px-1.5 rounded ml-1" style="background:rgba(167,139,250,.2);color:#c4b5fd">MOCK</span>
+        </div>
+        <button class="text-slate-400 hover:text-slate-200" @click="closeEditGateway()"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="px-5 py-4 space-y-3">
+        <div x-show="gwErr" x-cloak class="rounded px-3 py-2 text-xs" style="background:rgba(239,68,68,.1);color:#fca5a5" x-text="gwErr"></div>
+        <div class="grid grid-cols-2 gap-3">
+          <label class="text-xs" style="color:var(--text-secondary)">Name
+            <input class="form-control form-control-sm block mt-1 w-full" x-model="gwEdit.label"></label>
+          <template x-if="!gwEdit.is_mock">
+            <label class="text-xs" style="color:var(--text-secondary)">Host
+              <input class="form-control form-control-sm block mt-1 w-full" x-model="gwEdit.host"></label>
+          </template>
+          <template x-if="!gwEdit.is_mock">
+            <label class="text-xs" style="color:var(--text-secondary)">Port
+              <input type="number" class="form-control form-control-sm block mt-1 w-full" x-model.number="gwEdit.port"></label>
+          </template>
+          <template x-if="gwEdit.is_mock">
+            <label class="text-xs" style="color:var(--text-secondary)">aPowers
+              <input type="number" min="1" max="8" class="form-control form-control-sm block mt-1 w-full" x-model.number="gwEdit.mock_units"></label>
+          </template>
+        </div>
+        <label x-show="meters.length" class="text-xs block" style="color:var(--text-secondary)">Meter
+          <select class="form-control form-control-sm block mt-1 w-full" x-model="gwEdit.meter_id"
+                  x-init="$nextTick(() => { $el.value = gwEdit.meter_id })">
+            <template x-for="m in meters" :key="m.id">
+              <option :value="m.id" x-text="m.name + ' — ' + acLabel(m.ac_type) + (m.meter_number ? ' (' + m.meter_number + ')' : '')"></option>
+            </template>
+          </select>
+          <span class="text-[10px] block mt-0.5" style="color:var(--text-faint)">Which meter this gateway connects to (→ its site).</span></label>
+        <label class="text-xs block" style="color:var(--text-secondary)">Description
+          <input class="form-control form-control-sm block mt-1 w-full" x-model="gwEdit.description" placeholder="optional"></label>
+        <div class="space-y-1.5 text-xs" style="color:var(--text-secondary)">
+          <div class="flex items-center justify-between gap-2"><span>Publish to Home Assistant (MQTT)</span><button type="button" @click="gwEdit.publish_ha = !gwEdit.publish_ha" role="switch" :aria-checked="gwEdit.publish_ha" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="gwEdit.publish_ha ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="gwEdit.publish_ha ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
+          <div class="flex items-center justify-between gap-2"><span>Default gateway</span><button type="button" @click="gwEdit.is_default = !gwEdit.is_default" role="switch" :aria-checked="gwEdit.is_default" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="gwEdit.is_default ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="gwEdit.is_default ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
+        </div>
+        <p x-show="gwEdit.is_mock" class="text-[10px]" style="color:var(--text-faint)">Mock host/port are managed by the in-process emulator. Changing aPowers restarts it. Publishing synthetic energy to HA is discouraged.</p>
+        <p class="text-[10px]" style="color:var(--text-faint)">Poll interval &amp; timeout are global (Connection, above) and apply on reconnect.</p>
+        <div class="flex items-center gap-2 pt-1">
+          <button class="btn btn-primary btn-sm" @click="saveEditGateway()">Save Changes</button>
+          <button class="btn btn-secondary btn-sm" @click="closeEditGateway()">Cancel</button>
+        </div>
+      </div>
+      <!-- Diagnostics -->
+      <div class="px-5 py-3 border-t space-y-2" style="border-color:var(--border)">
+        <div class="text-[10px] uppercase tracking-wide" style="color:var(--text-secondary)">Connection &amp; diagnostics</div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button class="btn btn-secondary btn-sm" @click="testEditGateway()" :disabled="gwTesting"
+                  x-text="gwTesting ? 'Testing…' : 'Test'"></button>
+          <button class="btn btn-secondary btn-sm" @click="restartEditGateway()">Restart</button>
+          <template x-if="gwTest">
+            <span class="text-xs" :style="gwTest.ok || gwTest.restarted ? 'color:#6ee7b7' : 'color:#fca5a5'"
+                  x-text="gwTest.restarted ? 'restarted' : (gwTest.ok ? ('ok · ' + (gwTest.latency ?? '?') + ' ms' + (gwTest.serial ? ' · ' + gwTest.serial : '')) : ('failed' + (gwTest.error ? ' · ' + gwTest.error : '')))"></span>
+          </template>
+        </div>
+      </div>
+      <!-- Danger zone -->
+      <div class="px-5 py-3 border-t" style="border-color:var(--border)">
+        <div class="text-[10px] uppercase tracking-wide mb-2" style="color:#fca5a5">Danger zone</div>
+        <button class="btn btn-sm" style="background:var(--danger);border-color:var(--danger)" @click="removeEditGateway()">Remove Gateway</button>
+      </div>
+    </div>
+  </div>
+
+  </div>
+  <div x-show="sub==='general'" x-cloak class="space-y-6">
+  <!-- ══ Display ══ -->
+  <!-- Client-side only: persisted to localStorage, applied live to the UI. NOT a
+       server setting — there is no PUT here. -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Display</span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+  </div>
+  <div class="card space-y-2.5">
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Power unit</span>
+      <select class="form-control" style="width:auto"
+              x-model="$store.app.powerUnit"
+              @change="$store.app.setPowerUnit($store.app.powerUnit)">
+        <option value="W">Watts (W)</option>
+        <option value="kW">Kilowatts (kW)</option>
+      </select>
+    </div>
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Temperature unit</span>
+      <select class="form-control" style="width:auto"
+              x-model="$store.app.tempUnit"
+              @change="$store.app.setTempUnit($store.app.tempUnit)">
+        <option value="C">Celsius (°C)</option>
+        <option value="F">Fahrenheit (°F)</option>
+        <option value="both">Both</option>
+      </select>
+    </div>
+    <div>
+      <div class="flex items-center justify-between text-sm">
+        <span class="text-slate-500">Navigation</span>
+        <select class="form-control" style="width:auto"
+                x-model="$store.app.navLayout"
+                x-init="$nextTick(() => { $el.value = $store.app.navLayout })"
+                @change="$store.app.setNavLayout($store.app.navLayout)">
+          <option value="auto">Auto (by screen width)</option>
+          <option value="sidebar">Sidebar only (no bottom bar)</option>
+          <option value="bottom">Bottom bar only</option>
+        </select>
+      </div>
+      <p class="text-[11px] mt-1" style="color:var(--text-faint)">
+        Auto shows the bottom bar on phones and the sidebar on wider screens.
+        Choose <span class="font-medium">Sidebar only</span> to turn the bottom bar off everywhere.
+      </p>
+    </div>
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Show raw keys / cmdTypes
+        <span class="block text-[11px]" style="color:var(--text-faint)">The dim <span class="font-mono">name·1301</span> API-key tags on the dashboard. Also the top-bar <span class="font-mono">&lt;/&gt;</span> button.</span></span>
+      <button type="button" @click="$store.app.toggleRawKeys()" role="switch" :aria-checked="$store.app.showRawKeys"
+              class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0"
+              :class="$store.app.showRawKeys ? 'bg-emerald-500' : 'bg-slate-500/60'">
+        <span class="inline-block h-5 w-5 rounded-full bg-white shadow transition"
+              :class="$store.app.showRawKeys ? 'translate-x-5' : 'translate-x-0.5'"></span>
+      </button>
+    </div>
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Accent colour</span>
+      <div class="flex items-center gap-1.5">
+        <template x-for="a in $store.app.accents" :key="a.color">
+          <button @click="$store.app.setAccent(a.color)" :title="a.name"
+                  class="w-5 h-5 rounded-full transition"
+                  :style="'background:'+a.color+';box-shadow:'+(($store.app.accent||'#22c55e')===a.color ? '0 0 0 2px var(--surface-0),0 0 0 4px '+a.color : '0 0 0 1px var(--border)')"></button>
+        </template>
+        <input type="color" :value="$store.app.accent || '#22c55e'" @input="$store.app.setAccent($event.target.value)"
+               title="Custom colour" class="w-6 h-6 rounded cursor-pointer" style="border:1px solid var(--border);background:transparent">
+        <button @click="$store.app.setAccent('')" class="chip muted" style="font-size:.6rem" title="Reset to default green">reset</button>
+      </div>
+    </div>
+    <p class="text-xs text-slate-500 pt-1">
+      Display preference only — stored in this browser, applied live. Navigation: Auto uses the
+      sidebar on tablets/desktop (≥ 768 px) and the bottom bar on phones; override to force either. Accent recolours the whole UI; a very pale custom colour can reduce contrast.
+    </p>
+  </div>
+
+  </div>
+  <div x-show="sub==='integrations'" x-cloak class="space-y-6">
+  <!-- ══ MQTT ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">MQTT</span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+  </div>
+  <div class="card space-y-2.5">
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Enabled</span>
+      <span class="chip" :class="cfg.mqtt.enabled ? 'ok' : 'muted'" x-text="cfg.mqtt.enabled ? 'on' : 'off'"></span>
+    </div>
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Broker host</span>
+      <span class="font-mono text-slate-300" x-text="cfg.mqtt.host || '—'"></span>
+    </div>
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Port</span>
+      <span class="font-mono text-slate-300" x-text="cfg.mqtt.port ?? '—'"></span>
+    </div>
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Username</span>
+      <span class="font-mono text-slate-300" x-text="cfg.mqtt.username || '(none)'"></span>
+    </div>
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Password</span>
+      <span class="chip" :class="cfg.mqtt.password_set ? 'ok' : 'muted'" x-text="cfg.mqtt.password_set ? 'set' : 'unset'"></span>
+    </div>
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Prefix</span>
+      <span class="font-mono text-slate-300" x-text="cfg.mqtt.prefix || '—'"></span>
+    </div>
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Discovery prefix</span>
+      <span class="font-mono text-slate-300" x-text="cfg.mqtt.discovery_prefix || '—'"></span>
+    </div>
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Connected</span>
+      <span class="chip" :class="cfg.mqtt.connected ? 'ok' : 'muted'" x-text="cfg.mqtt.connected ? 'yes' : 'no'"></span>
+    </div>
+  </div>
+
+  </div>
+  <div x-show="sub==='admin'" x-cloak class="space-y-6">
+  <!-- ══ Help & documentation ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Help &amp; documentation</span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+  </div>
+  <div class="card flex items-center justify-between gap-3 flex-wrap">
+    <div>
+      <div class="text-sm" style="color:var(--text-primary)">Guide &amp; docs</div>
+      <div class="text-xs text-slate-500">How the bridge works, the local / cloud / Modbus APIs, and setup.</div>
+    </div>
+    <a href="guide/" target="_blank" rel="noopener" class="btn btn-secondary btn-sm inline-flex items-center gap-1.5">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.5A2.5 2.5 0 0114.5 4H20v14h-6a2 2 0 00-2 2M12 6.5A2.5 2.5 0 009.5 4H4v14h6a2 2 0 012 2M12 6.5V20"/>
+      </svg>
+      Open Guide
+    </a>
+  </div>
+
+  <!-- Support info (redacted bundle for GitHub issues) -->
+  <div class="card space-y-3" x-init="loadSupportInfo()">
+    <div class="flex items-center justify-between gap-2 flex-wrap">
+      <div>
+        <div class="text-sm" style="color:var(--text-primary)">Support info</div>
+        <div class="text-xs text-slate-500">A <span class="font-medium">redacted</span> snapshot (models, firmware, counts, settings) — no serials, host, location, or credentials. Paste into a GitHub issue.</div>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <button class="btn btn-secondary btn-sm" @click="loadSupportInfo()" :disabled="supportBusy">Refresh</button>
+        <button class="btn btn-secondary btn-sm" @click="copySupport()" x-text="supportCopied ? 'Copied' : 'Copy'"></button>
+        <button class="btn btn-secondary btn-sm" @click="downloadSupportJson()">JSON</button>
+        <button class="btn btn-secondary btn-sm" @click="downloadSupportCsv()">CSV</button>
+      </div>
+    </div>
+    <pre class="text-[11px] font-mono overflow-x-auto rounded-lg p-3" style="background:var(--surface-2);color:var(--text-secondary);max-height:22rem;white-space:pre-wrap" x-text="supportText || 'Loading…'"></pre>
+  </div>
+
+  <!-- ══ Metrics / history ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Local history</span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+  </div>
+  <div class="card space-y-2.5">
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Metrics store</span>
+      <span class="chip" :class="cfg.metrics.enabled ? 'ok' : 'muted'"
+            x-text="cfg.metrics.enabled ? 'on' : 'off'"></span>
+    </div>
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Mode</span>
+      <span class="chip muted" style="text-transform:none;letter-spacing:0"
+            x-text="cfg.metrics.mode || '—'"></span>
+    </div>
+    <p x-show="metricsCaption()" x-cloak class="text-xs text-slate-500 pt-1"
+       x-text="metricsCaption()"></p>
+  </div>
+
+  </div>
+  <div x-show="sub==='admin'" x-cloak class="space-y-6">
+  <!-- ══ Storage & Admin ══ -->
+  <div class="flex items-center gap-3" x-init="loadAdmin()">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Storage &amp; Admin</span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+  </div>
+
+  <!-- Storage usage -->
+  <div class="card space-y-3">
+    <div class="flex items-center justify-between">
+      <div>
+        <div class="text-sm" style="color:var(--text-primary)">Database storage</div>
+        <div class="text-xs text-slate-500">
+          <span class="font-mono" x-text="admin.storage.db_human || '–'"></span>
+          <span x-show="admin.storage.freelist_count" class="text-slate-600"
+                x-text="' · ' + admin.storage.freelist_count + ' free pages'"></span>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <button class="btn btn-secondary btn-sm" @click="loadAdmin()" :disabled="admin.busy">Refresh</button>
+        <button class="btn btn-secondary btn-sm" @click="vacuumDb()" :disabled="admin.busy"
+                title="Compact the database file, reclaiming freed pages">Vacuum</button>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead>
+          <tr class="text-slate-500 text-left">
+            <th class="py-1 pr-3 font-medium">Table</th>
+            <th class="py-1 pr-3 font-medium text-right">Rows</th>
+            <th class="py-1 font-medium text-right">Span</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="t in (admin.storage.tables || [])" :key="t.name">
+            <tr class="border-t border-white/[0.05]">
+              <td class="py-1 pr-3 font-mono text-slate-400" x-text="t.name"></td>
+              <td class="py-1 pr-3 text-right font-mono tabular-nums" x-text="(t.rows ?? 0).toLocaleString()"></td>
+              <td class="py-1 text-right font-mono text-slate-500"
+                  x-text="t.span_days != null ? t.span_days + ' d' : '–'"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Metrics export -->
+  <div class="card space-y-3">
+    <div class="flex items-center justify-between gap-3 flex-wrap">
+      <div>
+        <div class="text-sm" style="color:var(--text-primary)">Export power history</div>
+        <div class="text-xs text-slate-500">Download the recent samples for analysis.</div>
+      </div>
+      <div class="flex items-center gap-2">
+        <select class="form-control form-control-sm" x-model.number="admin.exportHours">
+          <option :value="24">24 h</option>
+          <option :value="72">3 d</option>
+          <option :value="168">7 d</option>
+          <option :value="720">30 d</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" @click="exportMetrics('csv')">CSV</button>
+        <button class="btn btn-secondary btn-sm" @click="exportMetrics('json')">JSON</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Backup & restore -->
+  <div class="card space-y-3">
+    <div class="flex items-center justify-between">
+      <div>
+        <div class="text-sm" style="color:var(--text-primary)">Backups</div>
+        <div class="text-xs text-slate-500">Snapshots of the full database (newest 10 kept).</div>
+      </div>
+      <button class="btn btn-primary btn-sm" @click="createBackup()" :disabled="admin.busy">
+        <span x-text="admin.busy ? 'Working…' : 'Create backup'"></span>
+      </button>
+    </div>
+    <div x-show="!(admin.storage.backups || []).length" class="text-xs text-slate-500 py-2">
+      No backups yet.
+    </div>
+    <div class="space-y-2" x-show="(admin.storage.backups || []).length">
+      <template x-for="b in (admin.storage.backups || [])" :key="b.name">
+        <div class="flex items-center justify-between gap-3 p-2.5 rounded-lg" style="background:var(--surface-2)">
+          <div class="min-w-0">
+            <div class="text-xs font-mono truncate" style="color:var(--text-primary)" x-text="b.name"></div>
+            <div class="text-[10px] text-slate-500" x-text="b.human + ' · ' + fmtBackupTime(b.mtime)"></div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <a class="btn btn-secondary btn-sm" :href="'api/admin/backup/' + b.name">Download</a>
+            <button class="btn btn-secondary btn-sm" @click="restoreBackup(b.name)">Restore</button>
+            <button class="btn btn-icon btn-danger" @click="deleteBackup(b.name)" title="Delete backup">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5h6v2m-1 0v12H10V7M9 7v12"/></svg>
+            </button>
+          </div>
+        </div>
+      </template>
+    </div>
+    <p class="text-[11px] text-slate-500">
+      Restore overwrites the current database (schedules, sites/tariffs, history) with the snapshot — it asks to confirm first.
+    </p>
+  </div>
+
+  </div>
+  <div x-show="sub==='automation'" x-cloak class="space-y-6">
+  <!-- ══ Control ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Control</span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+  </div>
+  <div class="card space-y-2.5">
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Read only</span>
+      <span class="chip" :class="cfg.control.read_only ? 'ok' : 'muted'" x-text="cfg.control.read_only ? 'on' : 'off'"></span>
+    </div>
+    <!-- Live-editable: allow_writes is a runtime kill-switch (applies immediately). -->
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Allow writes</span>
+      <div class="flex items-center gap-2">
+        <span class="text-[10px] text-amber-400" x-show="form.allow_writes">writes enabled</span>
+        <button type="button" @click="form.allow_writes = !form.allow_writes; saveOne({allow_writes: form.allow_writes})" role="switch" :aria-checked="form.allow_writes" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="form.allow_writes ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="form.allow_writes ? 'translate-x-5' : 'translate-x-0.5'"></span></button>
+      </div>
+    </div>
+    <!-- Live-editable: log level applies immediately to the bridge logger. -->
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Log level</span>
+      <select x-model="form.log_level" @change="saveOne({log_level: form.log_level})" class="form-control" style="width:auto">
+        <template x-for="lvl in logLevels" :key="lvl">
+          <option :value="lvl" x-text="lvl"></option>
+        </template>
+      </select>
+    </div>
+  </div>
+
+  </div>
+  <div x-show="sub==='integrations'" x-cloak class="space-y-6">
+  <!-- ══ Notifications ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Notifications</span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+  </div>
+
+  <div class="card space-y-4">
+    <!-- Master push toggle -->
+    <div class="flex items-center justify-between gap-3">
+      <div class="min-w-0">
+        <div class="card-label">Push notifications</div>
+        <div class="text-xs text-slate-500"
+             x-text="notif.master ? 'On — enabled devices below receive alerts' : 'Off — no notifications are sent'"></div>
+      </div>
+      <button @click="toggleMaster()" role="switch" :aria-checked="notif.master"
+              class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0"
+              :class="notif.master ? 'bg-emerald-500' : 'bg-slate-600'"
+              :title="notif.master ? 'Disable all' : 'Enable all'">
+        <span class="inline-block h-5 w-5 rounded-full bg-white transition"
+              :class="notif.master ? 'translate-x-5' : 'translate-x-0.5'"></span>
+      </button>
+    </div>
+
+    <!-- ── Auto-notify triggers ── -->
+    <div class="space-y-1.5 pt-1 border-t border-white/[0.06]" x-init="loadTriggers()">
+      <div class="flex items-center justify-between">
+        <span class="metric-label">Auto-notify triggers</span>
+        <div class="flex gap-2">
+          <button class="btn btn-secondary btn-sm" @click="testTrigger()">Send test</button>
+          <button class="btn btn-secondary btn-sm" @click="loadTriggers()">Refresh</button>
+        </div>
+      </div>
+      <p class="text-[11px] text-slate-500">Fire automatically on these events, delivered to the enabled devices below.</p>
+      <template x-for="[key, t] in Object.entries((triggers.config && triggers.config.triggers) || {})" :key="key">
+        <div class="flex items-center justify-between gap-2 py-0.5">
+          <span class="text-xs flex items-center gap-1.5" style="color:var(--text-secondary)">
+            <span x-text="t.label"></span>
+            <template x-if="'threshold' in t">
+              <span class="inline-flex items-center gap-1"><input type="number" min="0" max="100"
+                    class="form-control form-control-sm w-16" :value="t.threshold"
+                    @change="setThreshold(key, $event.target.value)"><span class="text-slate-500">%</span></span>
+            </template>
+            <span x-show="triggerStat(key)" class="text-[10px] text-slate-500" x-text="triggerStat(key)"></span>
+          </span>
+          <button type="button" role="switch" :aria-checked="t.enabled" @click="toggleTrigger(key)"
+                  class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0"
+                  :class="t.enabled ? 'bg-emerald-500' : 'bg-slate-600'">
+            <span class="inline-block h-5 w-5 rounded-full bg-white transition"
+                  :class="t.enabled ? 'translate-x-5' : 'translate-x-0.5'"></span>
+          </button>
+        </div>
+      </template>
+    </div>
+
+    <!-- ── Recent notifications (delivery log) ── -->
+    <div class="space-y-1 pt-1 border-t border-white/[0.06]" x-show="(triggers.log || []).length">
+      <span class="metric-label">Recent notifications</span>
+      <template x-for="(e, i) in (triggers.log || []).slice(0, 8)" :key="i">
+        <div class="flex items-center justify-between gap-2 text-[11px] py-0.5">
+          <span class="truncate" style="color:var(--text-secondary)" x-text="e.message"></span>
+          <span class="shrink-0 flex items-center gap-2">
+            <span class="chip" :class="e.ok === 1 ? 'ok' : (e.ok === 0 ? 'error' : 'muted')"
+                  style="font-size:.55rem" x-text="e.device"></span>
+            <span class="text-slate-500" x-text="fmtNotifyTime(e.ts)"></span>
+          </span>
+        </div>
+      </template>
+    </div>
+
+    <!-- Add-on note -->
+    <div x-show="cfg.notifications && cfg.notifications.supervisor"
+         class="text-xs text-slate-500 rounded px-2 py-1.5" style="background:var(--surface-1)">
+      Running as an HA add-on — the Supervisor token is used automatically; add extra HA
+      instances below only to reach devices on other instances.
+    </div>
+
+    <!-- ── HA Instances ── -->
+    <div class="space-y-2 pt-1">
+      <div class="flex items-center justify-between">
+        <span class="metric-label">HA Instances</span>
+        <button @click="openAddInstance()" class="btn btn-secondary btn-sm">+ Add instance</button>
+      </div>
+      <div x-show="notif.loaded && !notif.instances.length" class="text-xs text-slate-500">
+        No HA instances yet — add one (URL + long-lived token) to send notifications.
+      </div>
+      <template x-for="inst in notif.instances" :key="inst.id">
+        <div class="flex items-center justify-between rounded px-3 py-2 gap-3" style="background:var(--surface-1)">
+          <div class="min-w-0">
+            <div class="text-sm font-medium truncate" style="color:var(--text-primary)">
+              <span x-text="inst.name"></span>
+              <span x-show="inst.is_default" class="chip ok ml-1">default</span>
+            </div>
+            <div class="text-[11px] font-mono truncate text-slate-500" x-text="inst.base_url"></div>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <span class="chip" :class="inst.has_token ? 'ok' : 'muted'"
+                  x-text="inst.has_token ? 'token set' : 'no token'"></span>
+            <button @click="deleteInstance(inst)" class="text-slate-500 hover:text-red-400" title="Remove"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+      </template>
+      <!-- inline add-instance -->
+      <div x-show="notif.addInst" x-cloak class="rounded p-3 space-y-2 border border-white/10" style="background:var(--surface-1)">
+        <template x-if="notif.addInst">
+        <div class="space-y-2">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label class="text-xs text-slate-500">Name
+              <input class="form-control form-control-sm block mt-1 w-full" x-model="notif.addInst.name" placeholder="Primary HA"></label>
+            <label class="text-xs text-slate-500">URL
+              <input class="form-control form-control-sm block mt-1 w-full" x-model="notif.addInst.base_url" placeholder="http://homeassistant.local:8123"></label>
+          </div>
+          <label class="text-xs text-slate-500 block">Long-lived token
+            <input type="password" class="form-control form-control-sm block mt-1 w-full" x-model="notif.addInst.token" placeholder="paste token"></label>
+          <div class="flex items-center justify-between gap-2 text-xs text-slate-500"><span>Default instance</span><button type="button" @click="notif.addInst.is_default = !notif.addInst.is_default" role="switch" :aria-checked="notif.addInst.is_default" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="notif.addInst.is_default ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="notif.addInst.is_default ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
+          <div class="flex justify-end gap-2">
+            <button @click="notif.addInst=null" class="btn btn-secondary btn-sm">Cancel</button>
+            <button @click="saveInstance()" class="btn btn-primary btn-sm">Save</button>
+          </div>
+        </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- ── Companion Devices ── -->
+    <div class="space-y-2 pt-1">
+      <div class="flex items-center justify-between">
+        <span class="metric-label">Companion Devices</span>
+        <div class="flex gap-2">
+          <button @click="openBroadcast()" :disabled="!notif.devices.some(d=>d.enabled)"
+                  class="btn btn-secondary btn-sm" title="Send a message to all enabled devices">Broadcast</button>
+          <button @click="openAddDevice()" :disabled="!notif.instances.length"
+                  class="btn btn-secondary btn-sm"
+                  :title="notif.instances.length ? 'Add a device' : 'Add an HA instance first'">+ Add device</button>
+        </div>
+      </div>
+      <div x-show="notif.loaded && !notif.devices.length" class="text-xs text-slate-500">
+        No companion devices yet — Add device, Discover its notify service, Test, then Save.
+      </div>
+      <template x-for="dev in notif.devices" :key="dev.id">
+        <div class="flex items-center justify-between rounded px-3 py-2 gap-3" style="background:var(--surface-1)">
+          <div class="min-w-0 flex items-center gap-3">
+            <button @click="toggleDevice(dev)" role="switch" :aria-checked="dev.enabled"
+                    class="relative inline-flex h-5 w-9 items-center rounded-full transition shrink-0"
+                    :class="dev.enabled ? 'bg-emerald-500' : 'bg-slate-600'" :title="dev.enabled ? 'Mute' : 'Unmute'">
+              <span class="inline-block h-4 w-4 rounded-full bg-white transition"
+                    :class="dev.enabled ? 'translate-x-4' : 'translate-x-0.5'"></span>
+            </button>
+            <div class="min-w-0">
+              <div class="text-sm font-medium truncate" style="color:var(--text-primary)" x-text="dev.alias"></div>
+              <div class="text-[11px] font-mono truncate text-slate-500">
+                <span x-text="dev.service"></span> · <span x-text="dev.instance"></span>
+                <span x-show="dev.instance_missing" class="chip warn ml-1">instance missing</span>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button @click="editDevice(dev)" class="btn btn-secondary btn-sm">Edit</button>
+            <button @click="testDevice(dev)" :disabled="notif.busy" class="btn btn-secondary btn-sm">Test</button>
+            <button @click="deleteDevice(dev)" class="text-slate-500 hover:text-red-400" title="Remove"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Add-device modal: Discover + Test-before-save -->
+  <div x-show="notif.addDev" x-cloak class="fixed inset-0 z-[110] flex items-center justify-center p-4"
+       @keydown.escape.window="notif.addDev=null">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="notif.addDev=null"></div>
+    <div class="relative w-full max-w-md rounded-xl border shadow-2xl max-h-[90vh] overflow-auto"
+         style="background:var(--surface-0,#0f172a);border-color:var(--border)">
+      <div class="px-5 py-3 border-b flex items-center justify-between" style="border-color:var(--border)">
+        <div class="text-sm font-semibold" style="color:var(--text-primary)" x-text="notif.addDev && notif.addDev.id ? 'Edit companion device' : 'Add companion device'"></div>
+        <button class="text-slate-400 hover:text-slate-200" @click="notif.addDev=null"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <template x-if="notif.addDev">
+      <div class="px-5 py-4 space-y-3">
+        <label class="text-xs text-slate-500 block">Alias
+          <input class="form-control form-control-sm block mt-1 w-full" x-model="notif.addDev.alias" placeholder="David's iPhone"></label>
+        <label class="text-xs text-slate-500 block">HA instance
+          <select class="form-control form-control-sm block mt-1 w-full" x-model="notif.addDev.instance_id">
+            <template x-for="inst in notif.instances" :key="inst.id">
+              <option :value="inst.id" x-text="inst.name"></option>
+            </template>
+          </select></label>
+        <div>
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-slate-500">Notify service</span>
+            <button @click="discover()" :disabled="notif.busy" class="btn btn-secondary btn-sm">Discover</button>
+          </div>
+          <input class="form-control form-control-sm block mt-1 w-full font-mono" x-model="notif.addDev.service" placeholder="notify.mobile_app_...">
+          <!-- picker -->
+          <div x-show="notif.pickerOpen" x-cloak class="mt-2 rounded border border-white/10 max-h-52 overflow-auto" style="background:var(--surface-1)">
+            <input class="form-control form-control-sm w-full" x-model="notif.pickerSearch" placeholder="filter services…">
+            <template x-for="opt in notifyPicker" :key="opt.service">
+              <button @click="chooseService(opt.service)"
+                      class="w-full text-left px-3 py-1.5 text-xs hover:bg-white/5 flex justify-between gap-2">
+                <span x-text="opt.label"></span>
+                <span class="font-mono text-slate-500 truncate" x-text="opt.service"></span>
+              </button>
+            </template>
+          </div>
+        </div>
+        <div class="flex justify-between gap-2 pt-1">
+          <button @click="testNewDevice()" :disabled="notif.busy" class="btn btn-secondary btn-sm">Send test</button>
+          <div class="flex gap-2">
+            <button @click="notif.addDev=null" class="btn btn-secondary btn-sm">Cancel</button>
+            <button @click="saveDevice()" class="btn btn-primary btn-sm">Save</button>
+          </div>
+        </div>
+      </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Broadcast modal -->
+  <div x-show="notif.bc" x-cloak class="fixed inset-0 z-[110] flex items-center justify-center p-4"
+       @keydown.escape.window="notif.bc=null">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="notif.bc=null"></div>
+    <div class="relative w-full max-w-md rounded-xl border shadow-2xl"
+         style="background:var(--surface-0,#0f172a);border-color:var(--border)">
+      <div class="px-5 py-3 border-b flex items-center justify-between" style="border-color:var(--border)">
+        <div class="text-sm font-semibold" style="color:var(--text-primary)">Broadcast notification</div>
+        <button class="text-slate-400 hover:text-slate-200" @click="notif.bc=null"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <template x-if="notif.bc">
+      <div class="px-5 py-4 space-y-3">
+        <div class="text-xs text-slate-500">Sends to all
+          <span x-text="notif.devices.filter(d=>d.enabled).length"></span> enabled device(s).</div>
+        <label class="text-xs text-slate-500 block">Title
+          <input class="form-control form-control-sm block mt-1 w-full" x-model="notif.bc.title"></label>
+        <label class="text-xs text-slate-500 block">Message
+          <textarea rows="3" class="form-control form-control-sm block mt-1 w-full" x-model="notif.bc.message" placeholder="Your message…"></textarea></label>
+        <div class="flex justify-end gap-2">
+          <button @click="notif.bc=null" class="btn btn-secondary btn-sm">Cancel</button>
+          <button @click="sendBroadcast()" :disabled="notif.bc.sending" class="btn btn-primary btn-sm"
+                  x-text="notif.bc.sending ? 'Sending…' : 'Send'"></button>
+        </div>
+      </div>
+      </template>
+    </div>
+  </div>
+
+  </div>
+  <div x-show="sub==='integrations'" x-cloak class="space-y-6">
+  <!-- ══ Location & Solar ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Location &amp; Solar</span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+  </div>
+  <div class="card space-y-3">
+    <div class="flex items-center justify-between gap-2">
+      <span class="text-xs" style="color:var(--text-faint)">Set from your gateway, or enter manually.</span>
+      <button @click="syncLocation()" class="btn btn-secondary btn-sm">⟳ Sync from gateway</button>
+    </div>
+    <p class="text-xs" style="color:var(--text-faint)">
+      Powers the Solar Forecast card + weather/solar sensors (Open-Meteo, free). Auto-saves on change.
+    </p>
+    <div class="grid grid-cols-2 gap-3">
+      <label class="text-xs text-slate-500">Latitude
+        <input type="number" step="0.0001" class="form-control form-control-sm w-full mt-1" x-model="form.pv_latitude"
+               @change="saveOne({pv_latitude: form.pv_latitude === '' ? null : Number(form.pv_latitude)})"
+               placeholder="-33.8688"></label>
+      <label class="text-xs text-slate-500">Longitude
+        <input type="number" step="0.0001" class="form-control form-control-sm w-full mt-1" x-model="form.pv_longitude"
+               @change="saveOne({pv_longitude: form.pv_longitude === '' ? null : Number(form.pv_longitude)})"
+               placeholder="151.2093"></label>
+    </div>
+    <div class="grid grid-cols-3 gap-3">
+      <label class="text-xs text-slate-500">PV size (kWp)
+        <input type="number" step="0.1" class="form-control form-control-sm w-full mt-1" x-model="form.pv_kwp"
+               @change="saveOne({pv_kwp: Number(form.pv_kwp) || 0})" placeholder="6.6"></label>
+      <label class="text-xs text-slate-500">Wholesale region (AEMO NEM)
+        <div class="relative mt-1" x-data="{ open:false }" @click.outside="open=false">
+          <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
+            <span :style="form.nem_region ? '' : 'color:var(--text-faint)'" x-text="form.nem_region || 'Off'"></span>
+            <span style="color:var(--text-faint)">&#9662;</span>
+          </button>
+          <div x-show="open" x-cloak class="absolute z-40 mt-1 rounded-lg border shadow-xl py-1 max-h-56 overflow-y-auto" style="background:var(--surface-0);border-color:var(--border);left:0;right:0">
+            <button type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="!form.nem_region ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="form.nem_region=''; saveOne({nem_region:''}); loadNemSpot(); open=false">Off</button>
+            <template x-for="rg in (nemSpot && nemSpot.regions) || ['NSW1','QLD1','SA1','TAS1','VIC1']" :key="rg">
+              <button type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="form.nem_region===rg ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="form.nem_region=rg; saveOne({nem_region:rg}); loadNemSpot(); open=false" x-text="rg"></button>
+            </template>
+          </div>
+        </div>
+        <span class="text-[11px] mt-1 block" style="color:var(--text-faint)" x-show="form.nem_region">
+          <template x-if="nemSpot && nemSpot.spot">
+            <span>spot now <span class="font-semibold" :style="nemSpot.spot.price_c_kwh < 0 ? 'color:#34d399' : 'color:var(--text-primary)'" x-text="nemSpot.spot.price_c_kwh + ' c/kWh'"></span> · <span x-text="nemSpot.spot.settlement"></span> · exposes scheduler sensor <span class="font-mono">tariff.spot_price</span></span>
+          </template>
+          <template x-if="form.nem_region && !(nemSpot && nemSpot.spot)"><span>fetching AEMO spot…</span></template>
+        </span>
+      </label>
+      <label class="text-xs text-slate-500">Tilt°
+        <input type="number" step="1" class="form-control form-control-sm w-full mt-1" x-model="form.pv_tilt"
+               @change="saveOne({pv_tilt: Number(form.pv_tilt) || 0})" placeholder="22"></label>
+      <label class="text-xs text-slate-500">Azimuth°
+        <input type="number" step="1" class="form-control form-control-sm w-full mt-1" x-model="form.pv_azimuth"
+               @change="saveOne({pv_azimuth: Number(form.pv_azimuth) || 0})" placeholder="180"></label>
+    </div>
+    <p class="text-[11px]" style="color:var(--text-faint)">
+      Azimuth (Open-Meteo convention): 0=south · −90=east · 90=west · ±180=north. Tilt = degrees
+      from horizontal (roof pitch is typically ~20–25°).
+    </p>
+  </div>
+
+  <!-- ══ Dynamic price (wholesale) ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Dynamic price (wholesale)</span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+  </div>
+  <div class="card space-y-3">
+    <div class="flex items-center justify-between gap-2">
+      <p class="text-xs" style="color:var(--text-faint)">
+        Feeds <span class="font-mono">tariff.spot_price</span> (buy) + <span class="font-mono">tariff.feed_in_price</span> (sell)
+        for the scheduler. Two sources — the AusNEM region above, or a Home Assistant price entity. HA wins when set.
+      </p>
+      <span class="text-[11px] px-2 py-0.5 rounded-full shrink-0"
+            x-show="nemSpot && nemSpot.active && nemSpot.active.source"
+            :style="'background:var(--surface-2);color:var(--text-secondary)'"
+            x-text="nemSpot && nemSpot.active ? ('source: ' + (nemSpot.active.source==='ha-entity' ? 'HA entity' : 'AusNEM')) : ''"></span>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div class="text-xs text-slate-500">Buy price entity (Home Assistant)
+        <div class="relative mt-1" x-data="{ open:false, q:'' }" @click.outside="open=false; q=''">
+          <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
+            <span class="truncate" :style="form.tariff_price_entity ? '' : 'color:var(--text-faint)'" x-text="haPriceLabel(form.tariff_price_entity) || 'Off (use AusNEM if set)'"></span>
+            <span style="color:var(--text-faint)">&#9662;</span>
+          </button>
+          <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.gbq && $refs.gbq.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);left:0;right:0">
+            <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="gbq" x-model="q" @click.stop type="text" placeholder="Filter&#8230;" class="form-control form-control-sm w-full"></div>
+            <div class="max-h-56 overflow-y-auto py-1">
+              <button type="button" class="w-full text-left px-3 py-1.5 text-xs" style="color:var(--text-faint)" @click="form.tariff_price_entity=''; saveOne({tariff_price_entity:''}); loadNemSpot(); open=false; q=''">&#8212; Off (use AusNEM if set) &#8212;</button>
+              <template x-for="it in haPriceItems(q)" :key="'gb'+it.key"><div>
+                <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
+                <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="form.tariff_price_entity===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="form.tariff_price_entity=it.id; saveOne({tariff_price_entity:it.id}); loadNemSpot(); open=false; q=''" x-text="it.label"></button>
+              </div></template>
+              <div x-show="!haPriceItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No exposed price entities (HA &#8594; Browse entities).</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="text-xs text-slate-500">Feed-in (sell) entity — optional
+        <div class="relative mt-1" x-data="{ open:false, q:'' }" @click.outside="open=false; q=''">
+          <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
+            <span class="truncate" :style="form.tariff_feedin_entity ? '' : 'color:var(--text-faint)'" x-text="haPriceLabel(form.tariff_feedin_entity) || 'None'"></span>
+            <span style="color:var(--text-faint)">&#9662;</span>
+          </button>
+          <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.gfq && $refs.gfq.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);left:0;right:0">
+            <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="gfq" x-model="q" @click.stop type="text" placeholder="Filter&#8230;" class="form-control form-control-sm w-full"></div>
+            <div class="max-h-56 overflow-y-auto py-1">
+              <button type="button" class="w-full text-left px-3 py-1.5 text-xs" style="color:var(--text-faint)" @click="form.tariff_feedin_entity=''; saveOne({tariff_feedin_entity:''}); loadNemSpot(); open=false; q=''">&#8212; None &#8212;</button>
+              <template x-for="it in haPriceItems(q)" :key="'gf'+it.key"><div>
+                <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
+                <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="form.tariff_feedin_entity===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="form.tariff_feedin_entity=it.id; saveOne({tariff_feedin_entity:it.id}); loadNemSpot(); open=false; q=''" x-text="it.label"></button>
+              </div></template>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="text-[11px] pt-1" style="color:var(--text-faint)">
+      This is the <span class="font-medium">scheduler sensor</span> source (<span class="font-mono">tariff.spot_price</span>)
+      for wholesale-aware automations. To <span class="font-medium">bill</span> at the live rate, set a
+      <span class="font-medium">Utilities &amp; Tariffs</span> plan's rate type to <span class="font-medium">Dynamic (live)</span>
+      with its own provider — that drives billing while it is the active tariff.
+    </p>
+    <div class="text-[11px]" style="color:var(--text-faint)" x-show="nemSpot && nemSpot.ha && (nemSpot.ha.buy_c_kwh != null || nemSpot.ha.sell_c_kwh != null)">
+      live —
+      <template x-if="nemSpot && nemSpot.ha && nemSpot.ha.buy_c_kwh != null">
+        <span>buy <span class="font-semibold" :style="nemSpot.ha.buy_c_kwh < 0 ? 'color:#34d399' : 'color:var(--text-primary)'" x-text="nemSpot.ha.buy_c_kwh + ' c/kWh'"></span></span>
+      </template>
+      <template x-if="nemSpot && nemSpot.ha && nemSpot.ha.sell_c_kwh != null">
+        <span> · sell <span class="font-semibold" x-text="nemSpot.ha.sell_c_kwh + ' c/kWh'"></span></span>
+      </template>
+    </div>
+    <p class="text-[11px]" style="color:var(--text-faint)">
+      Only <span class="font-medium">exposed</span> HA entities appear here (expose them under HA → Browse entities).
+      Units auto-detect: a <span class="font-mono">$/kWh</span> entity is scaled to cents; <span class="font-mono">c/kWh</span> is used as-is.
+      Works with Amber, Amber&nbsp;Express, ConEd, Localvolts — any retailer that publishes a price sensor.
+    </p>
+  </div>
+
+  </div>
+  <div x-show="sub==='automation'" x-cloak class="space-y-6">
+  <!-- ══ Battery dispatch ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Battery dispatch</span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+  </div>
+  <div class="card space-y-3">
+    <label class="block text-xs" style="color:var(--text-secondary)">
+      If a scheduled force dispatch is interrupted (the bridge restarts mid-window)
+      <select class="form-control form-control-sm w-full mt-1"
+              x-model="form.dispatch_interrupt_policy"
+              @change="saveOne({dispatch_interrupt_policy: form.dispatch_interrupt_policy})">
+        <option value="none">None — record only (no alert, no battery action)</option>
+        <option value="notify">Notify — alert me, never touch the battery</option>
+        <option value="release">Release — clear the force if its window has ended</option>
+        <option value="resume">Resume — re-arm for the remaining window (else release)</option>
+      </select>
+    </label>
+    <p class="text-[11px]" style="color:var(--text-faint)">
+      On startup the bridge checks for a scheduled dispatch it left in-flight and applies this
+      policy. <strong>Notify</strong> (the default) is safest — it only alerts your notification
+      devices and never commands the battery on boot. <strong>Release</strong> and
+      <strong>Resume</strong> let the bridge act autonomously: Release clears a force whose
+      window has passed; Resume re-forces for whatever time is left in the window. Interruptions
+      are always logged (Schedule → activity log, battery-dispatch filter).
+    </p>
+  </div>
+
+  </div>
+  <div x-show="sub==='integrations'" x-cloak class="space-y-6">
+  <!-- ══ Cloud API ══════════════════════════════════════════════
+       Credentials for the writes the local protocol cannot do — reserve SoC, TOU
+       schedules, force charge/discharge. Probed, not assumed: the gateway accepts
+       and discards all three locally. Without valid credentials those features are
+       disabled rather than offered and failing. -->
+  <div class="card p-4 space-y-3">
+    <div class="flex items-center justify-between">
+      <div class="card-label" style="margin-bottom:0">FranklinWH Cloud API</div>
+      <span class="chip" :class="cloudOk ? 'ok' : 'muted'"
+            x-text="cloudOk ? 'connected' : 'not connected'"></span>
+    </div>
+
+    <div class="text-[11px] text-slate-500">
+      Enables reserve SoC, TOU schedules and force charge/discharge. The local protocol
+      accepts those writes and silently discards them, so they can only run through the
+      cloud. Stored on the bridge's data volume; the password is never returned by the API.
+    </div>
+
+    <div class="space-y-2.5">
+      <div class="flex items-center justify-between text-sm gap-3">
+        <span class="text-slate-500 shrink-0">Email</span>
+        <input type="text" x-model="form.fwh_cloud_email"
+               :placeholder="cfg.cloud?.email || 'you@example.com'"
+               class="form-control text-right" style="max-width:16rem">
+      </div>
+      <div class="flex items-center justify-between text-sm gap-3">
+        <span class="text-slate-500 shrink-0">Password
+          <span class="chip" :class="cfg.cloud?.password_set ? 'ok' : 'muted'"
+                x-text="cfg.cloud?.password_set ? 'set' : 'unset'"></span>
+        </span>
+        <input type="password" x-model="form.fwh_cloud_password"
+               :placeholder="cfg.cloud?.password_set ? '•••••••• (leave blank to keep)' : 'cloud password'"
+               class="form-control text-right" style="max-width:16rem">
+      </div>
+      <div class="flex items-center justify-between text-sm gap-3">
+        <span class="text-slate-500 shrink-0">Gateway serial</span>
+        <input type="text" x-model="form.fwh_cloud_gateway"
+               :placeholder="cfg.cloud?.gateway || 'aGate serial'"
+               class="form-control text-right" style="max-width:16rem">
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between text-sm pt-1 gap-3">
+      <span class="text-[11px]"
+            :style="cloudOk ? 'color:#34d399' : 'color:var(--text-secondary)'"
+            x-text="cloudMessage()"></span>
+      <button @click="testCloud()" class="btn btn-secondary btn-sm shrink-0"
+              :disabled="cloudTesting" x-text="cloudTesting ? 'Testing…' : 'Test'"></button>
+    </div>
+  </div>
+
+  <!-- Everything editable here auto-saves on change (persisted across restarts). -->
+  <p class="text-xs pt-1" style="color:var(--text-faint)">
+    Changes here apply and persist immediately — no separate Save step.
+  </p>
+
+  <p class="text-xs text-slate-500">
+    All other settings are read-only here — restart to change (set via env / the add-on
+    Configuration tab).
+  </p>
+  <p class="text-xs text-slate-500" x-show="cfg.environment.is_ha_addon" x-cloak>
+    In the Home Assistant add-on, broker / host / poll-interval settings are managed in the
+    add-on's Configuration tab.
+  </p>
+
+  </div>
+</div>
