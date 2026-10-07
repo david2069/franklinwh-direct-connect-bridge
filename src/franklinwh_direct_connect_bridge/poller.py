@@ -33,20 +33,27 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
     free. MQTT is optional: if it's off (or fails to connect) the loop still runs to collect
     metrics. Crash-proof — a read/DB/MQTT error never kills the loop."""
     node, serial, fw = "agate", "", None
-    try:
-        fwb = await asyncio.to_thread(client.firmware, settings, gw.active_host)
-        serial = str(fwb.get("IBG_SN", ""))
-        node = (serial or "agate").lower()
-        fw = fwb.get("IBG_VER")
-        gw.serial = serial or gw.serial
-        gw.firmware = fw or gw.firmware
-        _hw = fwb.get("SyHdVersion")
-        if _hw is not None:
-            gw.sy_hd_version = _hw
-    except Exception as e:  # noqa: BLE001 — never crash the loop on a read
-        log.warning("[%s] firmware read failed (using defaults): %s", gw.id, e)
 
-    gw.node = node
+    async def _resolve_identity() -> None:
+        """Read the firmware manifest for this gateway's serial — which is the MQTT
+        node id, and therefore the Home Assistant device identity. Leaves the
+        ``"agate"`` fallback in place if the read fails; never raises."""
+        nonlocal node, serial, fw
+        try:
+            fwb = await asyncio.to_thread(client.firmware, settings, gw.active_host)
+            serial = str(fwb.get("IBG_SN", ""))
+            node = (serial or "agate").lower()
+            fw = fwb.get("IBG_VER")
+            gw.serial = serial or gw.serial
+            gw.firmware = fw or gw.firmware
+            _hw = fwb.get("SyHdVersion")
+            if _hw is not None:
+                gw.sy_hd_version = _hw
+        except Exception as e:  # noqa: BLE001 — never crash the loop on a read
+            log.warning("[%s] firmware read failed (using defaults): %s", gw.id, e)
+        gw.node = node
+
+    await _resolve_identity()
 
     def _start_mqtt():
         """Create + start an MqttPublisher (blocking connect). Raises on failure."""
@@ -75,7 +82,18 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
     pub = None
     last_mqtt_try = 0.0
     _MQTT_RETRY_S = 60          # don't hammer a down broker — retry at most once a minute
-    if settings.mqtt_enabled and getattr(gw, 'publish_ha', True):
+    if settings.mqtt_enabled and getattr(gw, 'publish_ha', True) and not serial:
+        # Do NOT publish discovery under the "agate" fallback. The node id IS the
+        # Home Assistant device identity, so publishing it would:
+        #   (a) leave a retained config for a device that never exists again once the
+        #       real serial arrives — an orphan HA has no way to expire; and
+        #   (b) in a multi-gateway install make EVERY unidentified gateway publish as
+        #       the same node, merging them into one device.
+        # The self-heal block below retries the identity read and starts MQTT then.
+        log.warning("[%s] serial unknown — deferring MQTT discovery until the firmware "
+                    "manifest reads (retrying every %ds)", gw.id, _MQTT_RETRY_S)
+        last_mqtt_try = time.time()
+    elif settings.mqtt_enabled and getattr(gw, 'publish_ha', True):
         try:
             pub = await asyncio.to_thread(_start_mqtt)
             gw.published_entities = len(pub.configs)
@@ -101,12 +119,18 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
             # instead of staying dead until a bridge restart.
             if settings.mqtt_enabled and pub is None and (time.time() - last_mqtt_try) >= _MQTT_RETRY_S:
                 last_mqtt_try = time.time()
-                try:
-                    pub = await asyncio.to_thread(_start_mqtt)
-                    log.info("[%s] MQTT reconnected for node=%s", gw.id, node)
-                except Exception as e:  # noqa: BLE001 — quiet on repeated failures
-                    log.debug("[%s] MQTT still unreachable: %s", gw.id, e)
-                    pub = None
+                if not serial:
+                    await _resolve_identity()
+                    if not serial:
+                        log.debug("[%s] serial still unknown — discovery stays deferred", gw.id)
+                if serial:                       # never publish under the fallback node
+                    try:
+                        pub = await asyncio.to_thread(_start_mqtt)
+                        gw.published_entities = len(pub.configs)
+                        log.info("[%s] MQTT publisher started for node=%s", gw.id, node)
+                    except Exception as e:  # noqa: BLE001 — quiet on repeated failures
+                        log.debug("[%s] MQTT still unreachable: %s", gw.id, e)
+                        pub = None
             # Honor UI-requested (re-)publish / clear of HA discovery. Never crash the loop.
             if pub:
                 try:
