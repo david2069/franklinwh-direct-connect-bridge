@@ -1,6 +1,6 @@
 {
-  "name": "FranklinWH Local Bridge",
-  "short_name": "FWH Local",
+  "name": "FranklinWH Direct Connect Bridge",
+  "short_name": "Direct Connect",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#ffffff",

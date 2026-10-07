@@ -530,7 +530,7 @@ class NotifyTestReq(BaseModel):
     device_id: str | None = None
     instance_id: str | None = None
     service: str | None = None
-    title: str = "FranklinWH Local Bridge"
+    title: str = "FranklinWH Direct Connect Bridge"
     message: str = "Test notification — if you can read this, this device works."
 
 
@@ -553,7 +553,7 @@ class ConditionEvalReq(BaseModel):
 class NotifyBroadcastReq(BaseModel):
     # Send one message to many saved devices at once. device_ids=None → every
     # ENABLED device; an explicit list targets exactly those (enabled or not).
-    title: str = "FranklinWH Local Bridge"
+    title: str = "FranklinWH Direct Connect Bridge"
     message: str
     device_ids: list[str] | None = None
 
@@ -3798,7 +3798,7 @@ def create_app() -> FastAPI:
                     "detail": "No notification target configured (HA add-on Supervisor "
                               "token, or ha_url + ha_token for standalone)."}
         try:
-            notifier.notify("FranklinWH Local Bridge",
+            notifier.notify("FranklinWH Direct Connect Bridge",
                             "Test notification from the bridge.")
             return {"ok": True, "detail": "Test notification sent to Home Assistant."}
         except Exception as e:  # noqa: BLE001 — notify already swallows, belt-and-braces

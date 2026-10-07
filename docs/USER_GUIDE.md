@@ -1,4 +1,4 @@
-# FranklinWH Local Bridge — User Guide
+# FranklinWH Direct Connect Bridge — User Guide
 
 How to navigate and use the bridge's web UI. This covers every tab and the
 everyday tasks; for installation and configuration see the

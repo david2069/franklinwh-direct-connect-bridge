@@ -74,7 +74,7 @@ function settingsTab() {
       if (!d) return '';
       const L = [];
       const m = d.meta || {};
-      L.push('FranklinWH Local Bridge — support info (redacted)');
+      L.push('FranklinWH Direct Connect Bridge — support info (redacted)');
       L.push(`generated: ${new Date((m.generated_at||0)*1000).toISOString()}`);
       L.push(`version: ${m.software_version}  build: ${m.build}  platform: ${m.platform}`);
       L.push(`installed: ${m.install_date||'?'}  last update: ${m.last_updated?new Date(m.last_updated*1000).toISOString().slice(0,10):'?'}  uptime: ${m.bridge_uptime_s!=null?Math.round(m.bridge_uptime_s)+'s':'?'}`);

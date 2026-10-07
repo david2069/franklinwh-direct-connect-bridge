@@ -1,6 +1,14 @@
-# franklinwh-local-bridge
+# FranklinWH Direct Connect Bridge
 
 This integration is a proof-of-concept demonstration of how to integrate with a FranklinWH aGate gateway over the (undocumented, unofficial) FranklinWH Direct Connect local API.
+
+> **On the names.** **Direct Connect** is FranklinWH's own term for the gateway's local
+> protocol, implemented by the library
+> [`franklinwh-direct-connect-api`](https://github.com/david2069/franklinwh-direct-connect-api).
+> **This** is the application built on top of it. The repo, the Python package and the CLI are
+> still called `franklinwh-local-bridge`, and the Home Assistant add-on slug is still
+> `franklinwh_local_bridge` — renaming those would break existing installs, so only the
+> display names changed.
 
 It is not intended for production use, and there is no guarantee it is compatible with your FranklinWH gateway(s), aPower(s) or connectivity — now or in the future. FranklinWH may block or deprecate this interface at any time. It has been tested on a local area network against my own single aGate X and aPower X.
 
@@ -123,7 +131,7 @@ is a documented open standard. FranklinWH's implementation is published by the S
 1. In Home Assistant, go to **Settings → Add-ons → Add-on Store**.
 2. Open the **⋮** menu (top-right) → **Repositories**, add
    `https://github.com/david2069/franklinwh-local-bridge`, then close.
-3. Find **FranklinWH Local Bridge** in the store and click **Install**.
+3. Find **FranklinWH Direct Connect Bridge** in the store and click **Install**.
 4. On the **Configuration** tab set `fwh_host` to your aGate's IP, and enable
    `mqtt_enabled` to publish the battery as Home Assistant entities. **Save.**
 5. **Start** the add-on, then open its sidebar panel (served over HA ingress).
