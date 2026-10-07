@@ -3699,6 +3699,59 @@ def create_app() -> FastAPI:
         own_node = getattr(gw, "node", None) or (getattr(gw, "serial", "") or "agate").lower()
         return mqtt_scan.scan_conflicts(s, own_node)
 
+    def _live_nodes() -> list[str]:
+        """Every node id this bridge currently publishes — the keep-list for a purge.
+        Covers all gateways, not just the selected one, so a multi-gateway install
+        cannot have one gateway's purge delete another's entities."""
+        out = []
+        for g in get_gateways():
+            n = getattr(g, "node", None) or (getattr(g, "serial", "") or "")
+            if n:
+                out.append(str(n).lower())
+        return out
+
+    @app.get("/api/mqtt/orphans")
+    def api_mqtt_orphans():
+        """DRY RUN — what a purge would clear, and what it would leave alone.
+
+        Retained discovery configs never expire, so a node this bridge no longer
+        publishes (a changed serial, a torn-down mock, the old "agate" fallback)
+        leaves Home Assistant re-creating dead entities on every restart. This
+        reports them. Publishes NOTHING; ~2.5s broker sniff."""
+        from .publish import mqtt_scan
+        s = get_settings()
+        if not s.mqtt_enabled:
+            return {"ok": False, "error": "MQTT publishing is disabled — enable it to scan the broker"}
+        return mqtt_scan.scan_orphans(s, _live_nodes())
+
+    @app.post("/api/mqtt/orphans/purge")
+    def api_mqtt_orphans_purge(
+        expect: int = Query(..., description="orphan count from the dry run; a mismatch refuses"),
+        confirm: bool = Query(False, description="must be true — this deletes retained topics"),
+    ):
+        """Clear this bridge's orphaned discovery configs. Destructive and audited.
+
+        Two guards, because the broker is shared and a wrong ownership test would
+        delete the Modbus bridge's or FWHAI's entities:
+          * ``confirm=true`` must be passed explicitly;
+          * ``expect`` must equal the orphan count a fresh scan finds, so the
+            operator cannot confirm one set and have a different set deleted.
+        Only configs whose device sw_version carries this bridge's own prefix are
+        ever touched."""
+        from .publish import mqtt_scan
+        s = get_settings()
+        if not s.mqtt_enabled:
+            return {"ok": False, "error": "MQTT publishing is disabled"}
+        if not confirm:
+            return {"ok": False, "error": "refused: pass confirm=true — this clears retained "
+                                          "discovery topics and cannot be undone from here"}
+        res = mqtt_scan.purge_orphans(s, _live_nodes(), expect=expect)
+        _audit("mqtt_purge_orphans",
+               detail=f"expect={expect} cleared={res.get('cleared', 0)}",
+               result=res.get("detail") or res.get("error", ""),
+               ok=bool(res.get("ok")))
+        return res
+
     def _mqtt_groups(store) -> list:
         """Enabled MQTT publish groups (global preference). Defaults when unset."""
         if store is None:
