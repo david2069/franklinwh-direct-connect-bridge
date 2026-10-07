@@ -4,37 +4,57 @@ This integration is a proof-of-concept demonstration of how to integrate with a 
 
 It is not intended for production use, and there is no guarantee it is compatible with your FranklinWH gateway(s), aPower(s) or connectivity — now or in the future. FranklinWH may block or deprecate this interface at any time. It has been tested on a local area network against my own single aGate X and aPower X.
 
-You can connect to your own FranklinWH Gateway and/or you can optionally simply add one or more emulated (mock) gateway(s). This allows you to see how the integration works before connecting your real Gateway.
+Point it at your own gateway, or add one or more **emulated (mock) gateways** and see the
+whole thing work before you connect real hardware.
 
-It can be installed and run as follows:
-- Under Home Assistant as an Application Add-on
-- Under Docker (or similar environments) in a container
-- Standalone in a Python virtual environment, on any platform that supports Python
+## Running it
 
-You interact with it through any of:
-- a web browser interface via rich customisable dynamic desktop, tablet and mobile compatible dashboards
-- the built-in REST API
-- MQTT Home Assistant Entities
+- As a **Home Assistant add-on** (served through ingress, MQTT auto-configured)
+- In **Docker**, or any container runtime
+- **Standalone** in a Python virtual environment, on any platform with Python 3.11+
 
-What it does:
-- Discover FranklinWH Gateways available
-- Support multiple gateways
-- Emulate (mock) one or more FranklinWH gateways, each with one or more aPower batteries
-- Gateway metrics
-- Gateway accessories
-- Gateway controls
-- Gateway local historical data
-- Automation Schedules - with large built-in rich functions
-- Built-in weather integration (Open-Meteo)
-- Optional: utility billing and tariff setup for informational tracking
-- Optional Home Assistant Entities access
-- Optional Home Assistant Notifications for events
-- Various charting options for historical and real-time monitoring
-- Optional: Modbus TCP and/or the FranklinWH Cloud API alongside Direct Connect, to reach
-  what the local API cannot:
-  - Set reserved state-of-charge (SoC) — Cloud API
-  - Force charge or discharge, with optional power and target-SoC — Modbus TCP
-  - Metrics and controls no local API exposes — Cloud API
+## Interfaces
+
+- A **web UI** — responsive for desktop, tablet and phone, with show/hide and reorder on
+  the dashboard cards and the topbar
+- The built-in **REST API** (`/docs` for the live OpenAPI inventory)
+- **MQTT**, as Home Assistant entities via discovery
+
+## What it does
+
+**Monitor**
+- Discovers gateways on the LAN and runs **several at once** from one install
+- Live power flow, state of charge, operating mode and run status
+- **Per-cell BMS telemetry** — cell voltages and temperatures per aPower, with recorded
+  sessions you can replay and compare
+- Local history in a SQLite store, with charts for both real-time and historical views,
+  an Analytics tab and CSV export
+
+**Control** — all writes gated off until you enable them
+- Operating mode, off-grid / reconnect, reboot
+- **Generator**: enable, mode, exercise schedule, start SoC
+- **Smart circuits**: switch a circuit, set its schedule
+- **Battery dispatch**: force charge or discharge at a given power, with an optional
+  target SoC (over Modbus — see [Transports](#transports))
+- Reserved SoC (over the Cloud API, which is the only path that works — see
+  [Transports](#transports))
+
+**Automate**
+- A **scheduler** with daily, interval and cron triggers; entry and exit conditions over
+  any sensor; priority and conflict policy; templates; and an explain view for why a
+  window did or did not fire
+- **Home Assistant actions** — fire a notification or call a service
+- **Solar forecast** and weather from Open-Meteo, including forecast-vs-actual
+
+**Account for it** (optional)
+- Sites, meters, utilities and tariffs as first-class records, with effective dates
+- Billing periods with cost tracking, and tariff import/export shared with the Modbus
+  bridge. Informational only — it does not bill anyone
+
+**Administer**
+- Database backup, restore and storage metrics
+- An audit trail of every control write
+- Home Assistant notifications on events
 
 This integration requires the unofficial FranklinWH Direct Connect API library:
 [`franklinwh-direct-connect-api`](https://github.com/david2069/franklinwh-direct-connect-api) 
