@@ -1,39 +1,40 @@
 # franklinwh-local-bridge
 
-This integration is designed as proof-of-concept demonstration on how to integrate to a FranklinWH aGate gateway via the (undocumented/unofficial) FranklinWH Direct Connect local API.
+This integration is a proof-of-concept demonstration of how to integrate with a FranklinWH aGate gateway over the (undocumented, unofficial) FranklinWH Direct Connect local API.
 
-It ia not intended for production use and there no guarantee it is compatible with your FranklinWH Gateway(s) or aPower(a) and/or connectivity - now or in the future. FranklinWH may block or even deprecate this interface at any time. It has been tested on a local area networks with my own FranklinWH single aGate X and aPower X.
+It is not intended for production use, and there is no guarantee it is compatible with your FranklinWH gateway(s), aPower(s) or connectivity — now or in the future. FranklinWH may block or deprecate this interface at any time. It has been tested on a local area network against my own single aGate X and aPower X.
 
 You can connect to your own FranklinWH Gateway and/or you can optionally simply add one or more emulated (mock) gateway(s). This allows you to see how the integration works before connecting your real Gateway.
 
 It can be installed and run as follows:
 - Under Home Assistant as an Application Add-on
 - Under Docker (or similar environments) in a container
-- Run standalone in Python virtual environment on platform that supports Python
+- Standalone in a Python virtual environment, on any platform that supports Python
 
-You interact with this integration via a number of interfaces via:
+You interact with it through any of:
 - a web browser interface via rich customisable dynamic desktop, tablet and mobile compatible dashboards
 - the built-in REST API
 - MQTT Home Assistant Entities
 
-These interfaces expose:
+What it does:
 - Discover FranklinWH Gateways available
 - Support multiple gateways
-- Emulate (or mock) a single or multiple FrankinWH Gateway(s) (with one or more aPower batteries)
+- Emulate (mock) one or more FranklinWH gateways, each with one or more aPower batteries
 - Gateway metrics
 - Gateway accessories
 - Gateway controls
 - Gateway local historical data
 - Automation Schedules - with large built-in rich functions
-- Built-in integration to Weather (Open Metro)
+- Built-in weather integration (Open-Meteo)
 - Optional: utility billing and tariff setup for informational tracking
 - Optional Home Assistant Entities access
 - Optional Home Assistant Notifications for events
 - Various charting options for historical and real-time monitoring
-- Optional: integration to Gateway via Modbus TCP and/or FranklinWH Cloud API in order to:
-- Set reserved state-of-charge (SoC) via Cloud API
-- Force charge or dischange (with optional parameters) via Modbus TCP
-- Get metrics and controls not available by any of the local APIs (Cloud API)
+- Optional: Modbus TCP and/or the FranklinWH Cloud API alongside Direct Connect, to reach
+  what the local API cannot:
+  - Set reserved state-of-charge (SoC) — Cloud API
+  - Force charge or discharge, with optional power and target-SoC — Modbus TCP
+  - Metrics and controls no local API exposes — Cloud API
 
 This integration requires the unofficial FranklinWH Direct Connect API library:
 [`franklinwh-direct-connect-api`](https://github.com/david2069/franklinwh-direct-connect-api) 
@@ -42,9 +43,10 @@ The integration has been modelled on [`energipays-bridge`](https://github.com/da
 Dockerfile (slim standalone / alpine HA base), ingress web UI, `mqtt:want` broker
 auto-discovery, `read_only` by default.
 
-> **Status: in service.** 71 REST paths (73 operations), the full UI, MQTT / Home Assistant
+> **Status: in service.** 180 REST paths (206 operations), the full UI, MQTT / Home Assistant
 > discovery, and a SQLite metrics store are all live and running against real hardware.
-> See `PLAN` in the library repo (`PLAN_docker.md`) and `docs/API_COMPARISON.md`.
+> See [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) for the UI walkthrough and
+> [`docs/API_COMPARISON.md`](docs/API_COMPARISON.md) for how the three transports compare.
 
 ## ⚖️ Disclaimer
 
@@ -133,7 +135,7 @@ tests/
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ../franklinwh-local        # the local API library (editable)
+pip install -e ../franklinwh-direct-connect-api   # the local API library (editable)
 pip install -e ".[test,cloud]"            # cloud extra = the cloud transport
 FWH_HOST=192.0.2.110 franklinwh-local-bridge run   # → http://localhost:8101
 ```
@@ -165,22 +167,27 @@ untouched). `mock-agate-2` is already running and ready for **multi-gateway** te
 
 ## Endpoints
 
-**71 paths / 73 operations.** `/docs` (OpenAPI) is the live inventory; the shape is:
+**180 paths / 206 operations**, as served by the running app. `/docs` (OpenAPI) is the live
+inventory — prefer it over this table, which is a snapshot. The shape:
 
-| Group | Count | What |
+| Group | Paths | What |
 |---|---|---|
-| `/api/cmd/*` | 29 | the library's full local cmdType read surface |
-| `/api/cloud/*` | 14 | cloud reads + the cloud-only writes (reserve, mode, smart-circuit) |
-| `/api/mqtt/*` | 5 | config, entities, discovery, republish / unpublish |
-| `/api/metrics`, `/api/logs` | 3 | SQLite time-series + log tail |
-| `/api/call/{cmd}` | 1 | generic escape hatch onto any catalogued cmdType |
-| rest | ~19 | `/api/health`, `/api/power`, `/api/summary`, `/api/site/status`, `/api/settings`, `/api/der-comms`, `/api/firmware`, `/api/providers`, … |
+| `/api/cmd/*` | 36 | the library's local cmdType read surface, registered 1:1 from it |
+| `/api/cloud/*` | 16 | cloud reads + the cloud-only writes (reserve, mode, smart-circuit) |
+| `/api/ha/*` | 11 | Home Assistant topology, entities and WebSocket status |
+| `/api/schedules/*` | 11 | the automation engine: CRUD, templates, explain, import/export |
+| `/api/generator/*` | 7 | generator config and metrics (hidden when none is installed) |
+| `/api/battery/*` | 7 | BMS telemetry, recorder sessions, direct-Modbus dispatch |
+| `/api/mqtt/*` | 7 | config, entities, discovery, republish / unpublish, broker scan |
+| `/api/admin/*` | 7 | backup / restore, storage metrics, vacuum, exports |
+| `/api/gateways/*`, `/api/tariffs/*`, `/api/billing/*`, `/api/circuits/*` | 5 each | multi-gateway roster, tariffs, billing periods, smart circuits |
+| rest | 58 | `/api/health`, `/api/power`, `/api/summary`, `/api/site/status`, `/api/settings`, `/api/der-comms`, `/api/firmware`, `/api/providers`, `/api/dispatch`, `/api/modbus`, `/api/sites`, `/api/meters`, `/api/utilities`, `/api/solar`, `/api/notify`, `/api/constants`, `/api/metrics`, `/api/logs`, `/api/call/{cmd}`, … |
 
 Plus `/` (UI) and `/api/live` (the watchdog probe that does no gateway I/O).
 
 ## Transports
 
-Two are wired; the third is deliberately someone else's job.
+All three are wired, each used only where it is the right one.
 
 - **Local sendMqtt (TCP/9000)** — the baseline. Everything under `/api/cmd/*`, plus the
   hardware-verified mode / off-grid / der-comms / reboot writes. Gated **off by default**
@@ -189,8 +196,18 @@ Two are wired; the third is deliberately someone else's job.
   write** (the aGate silently discards the local write) and the cloud-native mode /
   smart-circuit setters. `GET /api/providers` reports, per capability, which transport is
   active and why.
-- **Modbus / SunSpec — not a transport here.** `pymodbus` is not installed. What exists is
-  reachability (`modbus_502` in `/api/health`) and the SunSpec **enable toggle**
-  (`/api/der-comms`, cmd 1205) — and both of those ride the *local* API, not Modbus. So
-  battery power dispatch (force charge/discharge, W/%) resolves to `available: false`
-  here; it belongs to the separate **Modbus Bridge**. See `docs/API_COMPARISON.md`.
+- **Modbus TCP (SunSpec)** — used for the one thing neither of the others can do:
+  **battery power dispatch**. `battery_control.py` drives the aGate's WSet setpoint
+  (SunSpec Model 704) over TCP/502 through the `franklinwh-modbus` library, so force
+  charge/discharge with a power and an optional target-SoC runs from this bridge
+  (`POST /api/dispatch`) — it does *not* require the separate Modbus Bridge service.
+  Gated behind a master switch in Settings, with reachability reported as `modbus_502` in
+  `/api/health` and testable at `/api/modbus/test`.
+
+  > **Force writes move the battery.** On this firmware the hardware revert timer
+  > (`WSetRvrtTms`) is cosmetic, so the library's software `duration_s` watchdog is the only
+  > safety — always release when done. The bridge holds its own watchdog and a global
+  > Release so a dropped connection cannot leave the battery dispatched.
+
+  The SunSpec **enable toggle** (`/api/der-comms`, cmd 1205) is a separate thing and rides
+  the *local* API, not Modbus. See [`docs/API_COMPARISON.md`](docs/API_COMPARISON.md).

@@ -1,6 +1,7 @@
 # Backlog — franklinwh-local-bridge
 
-Planned work. Design lives in the library repo's `PLAN_docker.md`.
+Planned work. (The old pointer to the library repo's `PLAN_docker.md` is gone — that file was
+removed from the public library repo; design now lives in each section here and in `docs/`.)
 
 **Conventions.** Every item is a `## <ID> — <title>` section whose first body line is a
 `**Status:**` carrying one of these states, then the detail:
