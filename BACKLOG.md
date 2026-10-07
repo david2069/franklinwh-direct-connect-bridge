@@ -20,6 +20,20 @@ New items are **appended at the end**, not the top. An explicit `` `STATE` `` to
 authoritative — edit it by hand and it sticks. Run `tools/backlog_index.py` after editing to
 regenerate the Index.
 
+**Relationship to GitHub issues.** Since the project went public the work queue lives in
+**GitHub issues**, because the PR lifecycle hangs off issue numbers — a branch per issue,
+`Closes #N`, review, CI. This file is the **design record**: why a thing is shaped the way it
+is, what the hardware actually does, and what was ruled out. Those are long and get revised,
+which issue bodies are bad at.
+
+The two are linked **one way only**, so there is no status to keep in sync:
+
+- An item being worked on gets an issue; its section gains a `**Tracked:** #N` line.
+- The **issue** is authoritative for *is it done, who has it, which PR closes it*.
+- The **section** is authoritative for *why, and how*. Link back to it from the issue body.
+- Items with no issue are not being worked on. Open one when you pick it up — don't
+  pre-migrate the whole queue.
+
 ---
 
 ## Index
@@ -1591,6 +1605,7 @@ actions (currently UNAVAILABLE locally) real, without needing the cloud.
 ## DEF-BROWSER-MEMORY — Safari reloads the tab after long sessions ("significant memory")
 
 **Status:** `OPEN` — open (defect) — **Filed:** 2026-09-18 (user, seen 3×, incl. across a full day)
+**Tracked:** #2 — issue state is authoritative; this section is the design record.
 
 Safari periodically reloads the dashboard tab with "This webpage was reloaded because it
 was using significant memory." after the tab has been open a long time (hours→days). The
@@ -1914,6 +1929,7 @@ you why.
 ## FEAT-RESERVE-SOC-NATIVE — offer the native (local) reserve path as an option
 
 **Status:** `BLOCKED` — blocked on a working local write — **Filed:** 2026-09-14 (user)
+**Tracked:** #3 — issue state is authoritative; this section is the design record.
 
 Reserve SoC is written through the cloud today. The user wants a **native** option
 alongside it, accepting that the local write does not work yet.
@@ -1974,6 +1990,7 @@ Control, which is day-to-day operation.
 ## FEAT-EVENT-LOG — gateway event log viewer (BLOCKED: nothing to display yet)
 
 **Status:** `BLOCKED` — blocked — **Filed:** 2026-09-14 (user: *"do we have something that displays
+**Tracked:** #4 — issue state is authoritative; this section is the design record.
 the event log?"*)
 
 **No, and there is currently nothing to display.** `1829 event_block` is readable through
@@ -2151,6 +2168,7 @@ against one gateway risks exactly the §2 class of bug.
 ## RESEARCH-AHUB — find the aHub commands (BLOCKED: needs an aHub owner)
 
 **Status:** `BLOCKED` — hypothesis **CONFIRMED by the vendor manual**; protocol capture still blocked
+**Tracked:** #5 — issue state is authoritative; this section is the design record.
 on hardware — **Filed:** 2026-09-14 (user)
 
 > "Need a user with aHub. But I suspect it is just a bigger Smart Circuits with Generator,
@@ -3146,6 +3164,7 @@ is a full control surface. Bring ours toward it (respecting local hard walls):
 ## UI-PARITY — Modbus Bridge for LOOK, FWHAI for CONTROLS/functionality
 
 **Status:** `UNTRIAGED`
+**Tracked:** #6 — issue state is authoritative; this section is the design record.
 
 **Overlaps:** [[FEAT-UI-PARITY]] — same ground, written up twice. Merge or supersede one.
 
@@ -5150,6 +5169,7 @@ aGate). NEXT (backlog): run offline `catalog` fully client-side, ANSI colour if 
 ## FEAT-CLOUD-CROSSCHECK — optional cloud-API witness for local writes/reads (when creds present)
 
 **Status:** `UNTRIAGED`
+**Tracked:** #7 — issue state is authoritative; this section is the design record.
 
 **Ask (owner, 2026-09-28):** when cloud credentials are configured, optionally cross-check a
 local action against the cloud API as an independent witness — "optional double-check
