@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Normalise BACKLOG.md statuses and regenerate the Index. Idempotent."""
-import re, collections
+import re, sys, collections, os
 
-PATH = '/Users/davidhona/dev/franklinwh-local-bridge/BACKLOG.md'
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PATH = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, 'BACKLOG.md')
 STATES = ('OPEN', 'UNTRIAGED', 'QUEUED', 'PARTIAL', 'BLOCKED', 'HOLD', 'INFO', 'DONE')
-ITEM   = re.compile(r'^[A-Z][A-Z0-9]*(-[A-Z0-9]+)+\s+[—-]\s')
+ITEM   = re.compile(r'^(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+|[A-Z]{3,})\s+[—-]\s')
 STATUS = re.compile(r'^(?:\*\*Status:\*\*|Status:)[ \t]*(.*)$', re.M)
 TOKEN  = re.compile(r'^`(' + '|'.join(STATES) + r')`[ \t]*(?:—[ \t]*)?')
 DONE   = r'\bdone\b|\bfixed\b|\bshipped\b|\bresolved\b|\bimplemented\b|\bcomplete'
@@ -28,7 +29,10 @@ def classify(s):
     """An explicit `TOKEN` wins, so re-runs are stable and hand-edits stick."""
     m = TOKEN.match(s['st'])
     if m:
-        return m.group(1), s['st'][m.end():].strip()
+        st, prose = m.group(1), s['st'][m.end():].strip()
+        # drop a bare repeat of the state in the prose ("`DONE` — DONE 2026-09-22 — …")
+        prose = re.sub(r'^' + st + r'\b[ \t]*(?:—[ \t]*)?', '', prose).strip()
+        return st, prose
     prose = s['st']
     t = (prose + ' || ' + s['raw']).lower()
     d, q = re.search(DONE, t), re.search(QUEUE, t)
@@ -103,7 +107,7 @@ text = '\n'.join(out)
 cut = text.index('\n---\n') + len('\n---\n')
 open(PATH, 'w').write(text[:cut] + '\n' + '\n'.join(idx) + text[cut:])
 
-print(f'{n_items} items,', sum(1 for s in secs if not s['item']), 'non-item sections')
+print(f'{os.path.basename(PATH)}: {n_items} items,', sum(1 for s in secs if not s['item']), 'non-item sections')
 for st in STATES:
     if groups.get(st):
         print(f'  {len(groups[st]):>4}  {st}')
