@@ -308,6 +308,76 @@ document.addEventListener('alpine:init', () => {
         localStorage.removeItem('fwh-local-dash-order');
       } catch (e) { /**/ }
     },
+
+    // ── topbar customisation (show/hide + reorder; per browser) ──
+    //  Mirrors the Modbus Bridge "Topbar Preferences". The gateway selector and the
+    //  connection status are LOCKED (always shown) and intentionally NOT in these lists.
+    topbarPrefsOpen: false,
+    topbarPrefs: { centre: [], right: [] },
+    _topbarDefaults() {
+      return {
+        centre: [
+          { id: 'mode', label: 'Operating mode', on: true },
+          { id: 'status', label: 'VPP / Force / Off-grid', on: true },
+          { id: 'charge', label: 'Charge state', on: true },
+          { id: 'soc', label: 'State of charge', on: true },
+          { id: 'latency', label: 'Round-trip latency', on: true },
+        ],
+        right: [
+          { id: 'cards', label: 'Cards (dashboard)', on: true },
+          { id: 'rawkeys', label: 'Raw keys </>', on: true },
+          { id: 'refresh', label: 'Refresh', on: true },
+          { id: 'theme', label: 'Theme', on: true },
+          { id: 'release', label: 'Release', on: true },
+        ],
+      };
+    },
+    _loadTopbarPrefs() {
+      let p = null;
+      try { p = JSON.parse(localStorage.getItem('fwh-local-topbar') || 'null'); } catch (e) { /**/ }
+      const def = this._topbarDefaults();
+      // Merge saved on/off + order onto defaults so a new item added in an upgrade still shows.
+      const merge = (group) => {
+        const saved = (p && Array.isArray(p[group])) ? p[group] : [];
+        const byId = Object.fromEntries(def[group].map(d => [d.id, d]));
+        const out = [];
+        saved.forEach(s => { if (byId[s.id]) { out.push({ ...byId[s.id], on: !!s.on }); delete byId[s.id]; } });
+        Object.values(byId).forEach(d => out.push({ ...d }));
+        return out;
+      };
+      this.topbarPrefs = { centre: merge('centre'), right: merge('right') };
+    },
+    _saveTopbarPrefs() {
+      try { localStorage.setItem('fwh-local-topbar', JSON.stringify(this.topbarPrefs)); } catch (e) { /**/ }
+    },
+    _tbItem(id) {
+      const p = this.topbarPrefs;
+      return (p.centre || []).concat(p.right || []).find(x => x.id === id);
+    },
+    topbarShow(id) { const it = this._tbItem(id); return it ? it.on : true; },
+    topbarOrder(id) {
+      let i = (this.topbarPrefs.centre || []).findIndex(x => x.id === id);
+      if (i >= 0) return i;                         // centre indicators: 0..n
+      i = (this.topbarPrefs.right || []).findIndex(x => x.id === id);
+      return i >= 0 ? 100 + i : 999;                // right buttons: always after centre
+    },
+    toggleTopbarItem(group, id) {
+      const arr = this.topbarPrefs[group] || [];
+      const next = arr.map(x => x.id === id ? { ...x, on: !x.on } : x);
+      this.topbarPrefs = { ...this.topbarPrefs, [group]: next };
+      this._saveTopbarPrefs();
+    },
+    moveTopbarItem(group, id, dir) {
+      const arr = this.topbarPrefs[group] || [];
+      const i = arr.findIndex(x => x.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= arr.length) return;
+      const next = [...arr];
+      [next[i], next[j]] = [next[j], next[i]];
+      this.topbarPrefs = { ...this.topbarPrefs, [group]: next };
+      this._saveTopbarPrefs();
+    },
+    resetTopbarPrefs() { this.topbarPrefs = this._topbarDefaults(); this._saveTopbarPrefs(); },
     liveCapDefaults: { dashboard: 60, battery: 30, solar: 30, circuits: 30, logs: 30 },
     liveCapOptions: [5, 15, 30, 60, 0],
     liveCapSurfaces: [
@@ -493,6 +563,7 @@ document.addEventListener('alpine:init', () => {
       }
       this._loadLiveCaps();
       this._loadDashCards();
+      this._loadTopbarPrefs();
       this.initSidebar();
       // Static labelling metadata — fetch once (no device I/O, cheap, cached).
       this.loadFieldSchema();
