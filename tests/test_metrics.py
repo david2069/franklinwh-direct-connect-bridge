@@ -4,9 +4,9 @@ import time
 
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import app as app_module
-from franklinwh_local_bridge import db as db_module
-from franklinwh_local_bridge.db import MetricsStore
+from franklinwh_direct_connect_bridge import app as app_module
+from franklinwh_direct_connect_bridge import db as db_module
+from franklinwh_direct_connect_bridge.db import MetricsStore
 
 
 def _app():

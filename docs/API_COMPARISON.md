@@ -23,7 +23,7 @@ transport selection) and **Modbus** (`pymodbus` is not installed — see §1).
 
 ## The three tiers
 
-| | **franklinwh-local-bridge** (baseline) | **Modbus Bridge** v0.1.0 | **FWHAI** v0.4.7 |
+| | **franklinwh-direct-connect-bridge** (baseline) | **Modbus Bridge** v0.1.0 | **FWHAI** v0.4.7 |
 |---|---|---|---|
 | REST endpoints | **71 paths / 73 ops** | ~96 paths | ~300 |
 | Transport | Local sendMqtt (TCP/9000) **+ Cloud API** | Modbus TCP / SunSpec | FranklinWH **Cloud API** |

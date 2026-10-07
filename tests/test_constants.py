@@ -1,7 +1,7 @@
 """Automation constants (const.* sensors) — KV store, clamp/persist, snapshot."""
-from franklinwh_local_bridge.db import MetricsStore
-from franklinwh_local_bridge import constants as C
-from franklinwh_local_bridge import scheduler
+from franklinwh_direct_connect_bridge.db import MetricsStore
+from franklinwh_direct_connect_bridge import constants as C
+from franklinwh_direct_connect_bridge import scheduler
 
 
 def test_app_config_kv_round_trip(tmp_path):
@@ -54,7 +54,7 @@ def test_spec_shape():
 # ── API: GET/PUT + clamp + sensor group + const.* in evaluate ──
 def _client(tmp_path, monkeypatch, store):
     from fastapi.testclient import TestClient
-    from franklinwh_local_bridge import app as app_module, config, environment, db
+    from franklinwh_direct_connect_bridge import app as app_module, config, environment, db
     monkeypatch.setattr(environment, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(config, "_settings", None)
     monkeypatch.setattr(db, "get_store", lambda s: store)

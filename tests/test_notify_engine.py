@@ -1,9 +1,9 @@
 """FEAT-NOTIFY — the configurable notification trigger engine + delivery log."""
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import notify_engine, ha_instances
-from franklinwh_local_bridge import app as app_module, config, environment, db
-from franklinwh_local_bridge.db import MetricsStore
+from franklinwh_direct_connect_bridge import notify_engine, ha_instances
+from franklinwh_direct_connect_bridge import app as app_module, config, environment, db
+from franklinwh_direct_connect_bridge.db import MetricsStore
 
 
 def _snap(ok=True, off_grid=False, soc=50):

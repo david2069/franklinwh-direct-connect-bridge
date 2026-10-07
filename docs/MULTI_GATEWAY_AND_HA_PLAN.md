@@ -1,6 +1,6 @@
 # Multi-gateway & HA entities — state of play and phased plan
 
-**Filed:** 2026-09-14 · Scope: `franklinwh-local-bridge` only.
+**Filed:** 2026-09-14 · Scope: `franklinwh-direct-connect-bridge` only.
 
 ---
 

@@ -6,8 +6,8 @@ This integration is a proof-of-concept demonstration of how to integrate with a 
 > protocol, implemented by the library
 > [`franklinwh-direct-connect-api`](https://github.com/david2069/franklinwh-direct-connect-api).
 > **This** is the application built on top of it. The repo, the Python package and the CLI are
-> still called `franklinwh-local-bridge`, and the Home Assistant add-on slug is still
-> `franklinwh_local_bridge` — renaming those would break existing installs, so only the
+> still called `franklinwh-direct-connect-bridge`, and the Home Assistant add-on slug is still
+> `franklinwh_direct_connect_bridge` — renaming those would break existing installs, so only the
 > display names changed.
 
 It is not intended for production use, and there is no guarantee it is compatible with your FranklinWH gateway(s), aPower(s) or connectivity — now or in the future. FranklinWH may block or deprecate this interface at any time. It has been tested on a local area network against my own single aGate X and aPower X.
@@ -89,7 +89,7 @@ auto-discovery, `read_only` by default.
 > interruptions, data loss, equipment damage, or any other consequences of using this software.
 >
 > **Do NOT contact FranklinWH support** about this app. Raise issues, defects, or feature requests on
-> GitHub instead: <https://github.com/david2069/franklinwh-local-bridge/issues>
+> GitHub instead: <https://github.com/david2069/franklinwh-direct-connect-bridge/issues>
 >
 > **MIT License.** The disclaimer is also logged once at startup and shown as a one-time
 > acknowledgement modal on first connection (recorded for the audit trail).
@@ -130,7 +130,7 @@ is a documented open standard. FranklinWH's implementation is published by the S
 
 1. In Home Assistant, go to **Settings → Add-ons → Add-on Store**.
 2. Open the **⋮** menu (top-right) → **Repositories**, add
-   `https://github.com/david2069/franklinwh-local-bridge`, then close.
+   `https://github.com/david2069/franklinwh-direct-connect-bridge`, then close.
 3. Find **FranklinWH Direct Connect Bridge** in the store and click **Install**.
 4. On the **Configuration** tab set `fwh_host` to your aGate's IP, and enable
    `mqtt_enabled` to publish the battery as Home Assistant entities. **Save.**
@@ -153,7 +153,7 @@ Notes:
 ```
 config.yaml build.yaml repository.json   # HA add-on manifest + arch bases
 Dockerfile docker-entrypoint.sh docker-compose.yml
-src/franklinwh_local_bridge/
+src/franklinwh_direct_connect_bridge/
   app.py cli.py config.py client.py ha_options.py
   templates/  static/
 tests/
@@ -165,7 +165,7 @@ tests/
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ../franklinwh-direct-connect-api   # the local API library (editable)
 pip install -e ".[test,cloud]"            # cloud extra = the cloud transport
-FWH_HOST=192.0.2.110 franklinwh-local-bridge run   # → http://localhost:8101
+FWH_HOST=192.0.2.110 franklinwh-direct-connect-bridge run   # → http://localhost:8101
 ```
 
 > **Note:** the cloud transport is an **optional extra**. Install without `cloud` and the app

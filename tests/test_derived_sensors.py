@@ -1,6 +1,6 @@
 """Derived battery sensors (FEAT-SCHED-ENTRY-PARITY) — computed from live points +
 user constants (capacity + SoC targets). Ported from the Modbus bridge; fail-closed."""
-from franklinwh_local_bridge import scheduler as sch
+from franklinwh_direct_connect_bridge import scheduler as sch
 
 
 def _snap(**kw):
@@ -56,8 +56,8 @@ def test_eta_already_past_target_is_zero():
 
 def test_derived_group_and_live_evaluate(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
-    from franklinwh_local_bridge import app as app_module, config, environment, db
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge import app as app_module, config, environment, db
+    from franklinwh_direct_connect_bridge.db import MetricsStore
     st = MetricsStore(str(tmp_path / "m.db"))
     monkeypatch.setattr(environment, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(config, "_settings", None)
@@ -76,14 +76,14 @@ def test_eta_at_max_rate_constant_fallback():
     d = _snap(**{"battery.soc_pct": 50, "const.battery_capacity_kwh": 27.2,
                  "const.battery_max_power_kw": 5.0, "const.max_charge_soc": 100,
                  "const.min_discharge_soc": 20})
-    out = __import__("franklinwh_local_bridge.scheduler", fromlist=["scheduler"]).derived_snapshot(d)
+    out = __import__("franklinwh_direct_connect_bridge.scheduler", fromlist=["scheduler"]).derived_snapshot(d)
     assert out["battery.time_to_charge_min"] == 163.2
     # discharge to 20% (5.44 kWh): delta 8.16 / 5 kW = 97.9 min
     assert out["battery.time_to_discharge_min"] == 97.9
 
 
 def test_eta_at_max_rate_prefers_modbus_ratings():
-    from franklinwh_local_bridge import scheduler as sch
+    from franklinwh_direct_connect_bridge import scheduler as sch
     d = _snap(**{"battery.soc_pct": 50, "const.battery_capacity_kwh": 27.2,
                  "const.battery_max_power_kw": 5.0, "const.max_charge_soc": 100,
                  "ratings.max_charge_w": 8000})   # Modbus says 8 kW → overrides the 5 kW constant
@@ -94,7 +94,7 @@ def test_eta_at_max_rate_prefers_modbus_ratings():
 
 def test_solar_tracker_pct_derived():
     """solar_forecast.day_pct + vs_expected_pct from actual (kwh_sun) vs the forecast."""
-    from franklinwh_local_bridge import scheduler
+    from franklinwh_direct_connect_bridge import scheduler
     snap = {
         "solar.today_kwh": 10.0,                # actual so far
         "solar_forecast.today_kwh": 40.0,       # full-day forecast

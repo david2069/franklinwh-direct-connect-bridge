@@ -31,9 +31,9 @@ from . import logbuffer
 
 # ── Legal disclaimer (unofficial app) ─────────────────────────────────────────
 #: One-line audit stamp logged once at startup and on first UI connection.
-DISCLAIMER_ISSUES_URL = "https://github.com/david2069/franklinwh-local-bridge/issues"
+DISCLAIMER_ISSUES_URL = "https://github.com/david2069/franklinwh-direct-connect-bridge/issues"
 DISCLAIMER_LINE = (
-    "franklinwh-local-bridge | UNOFFICIAL software - NOT affiliated with or endorsed by "
+    "franklinwh-direct-connect-bridge | UNOFFICIAL software - NOT affiliated with or endorsed by "
     "FranklinWH | provided AS-IS, no warranty, use at your own risk | may break without notice "
     "from upstream API/firmware changes | do NOT contact FranklinWH support about this app - "
     f"raise issues at {DISCLAIMER_ISSUES_URL} | MIT License."
@@ -44,7 +44,7 @@ _disclaimer_logged = False
 def _log_disclaimer_once() -> None:
     global _disclaimer_logged
     if not _disclaimer_logged:
-        logging.getLogger("franklinwh_local_bridge").info(DISCLAIMER_LINE)
+        logging.getLogger("franklinwh_direct_connect_bridge").info(DISCLAIMER_LINE)
         _disclaimer_logged = True
 from . import bms_record
 from . import providers
@@ -87,7 +87,7 @@ def _resolve_bucket(range_: str, start: int, end: int,
     return _DEFAULT_BUCKETS.get(range_, _DEFAULT_BUCKETS["6h"])
 
 _TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
-log = logging.getLogger("franklinwh_local_bridge")
+log = logging.getLogger("franklinwh_direct_connect_bridge")
 
 
 def _asset_version() -> str:
@@ -731,7 +731,7 @@ def _grid_status_value(status) -> int:
 def create_app() -> FastAPI:
     # Capture the bridge logger's INFO+ records into an in-memory ring buffer so the
     # Logs tab / GET /api/logs can serve them (idempotent — safe across create_app calls).
-    logbuffer.install("franklinwh_local_bridge", level=logging.INFO)
+    logbuffer.install("franklinwh_direct_connect_bridge", level=logging.INFO)
     # Persist logs to the SQLite store (durable, queryable, paginated) rather than a
     # rewritten JSONL file. Import any legacy file once, then hydrate from the DB.
     try:
@@ -970,7 +970,7 @@ def create_app() -> FastAPI:
             mockgw.stop_all()
 
     app = FastAPI(
-        title="franklinwh-local-bridge", version=__version__,
+        title="franklinwh-direct-connect-bridge", version=__version__,
         description=(
             "REST + MQTT bridge for the FranklinWH aGate local API.\n\n"
             "**UNOFFICIAL software — NOT affiliated with or endorsed by FranklinWH.** "
@@ -981,7 +981,7 @@ def create_app() -> FastAPI:
             "unavailable without notice. Provided **AS-IS**, without warranty of any "
             "kind — use entirely at your own risk. **Do NOT contact FranklinWH support** about this app; "
             "raise issues, defects, or feature requests on GitHub: "
-            "https://github.com/david2069/franklinwh-local-bridge/issues . MIT License."
+            "https://github.com/david2069/franklinwh-direct-connect-bridge/issues . MIT License."
         ),
         lifespan=lifespan)
 
@@ -1083,7 +1083,7 @@ def create_app() -> FastAPI:
         app is serving — deliberately does NO device I/O, so an unreachable aGate does
         NOT mark the container unhealthy (the bridge stays up by design when the gateway
         is down). Use /api/health for actual gateway reachability."""
-        return {"status": "ok", "service": "franklinwh-local-bridge", "version": __version__}
+        return {"status": "ok", "service": "franklinwh-direct-connect-bridge", "version": __version__}
 
     @app.get("/api/providers")
     def api_providers():
@@ -2365,10 +2365,10 @@ def create_app() -> FastAPI:
         snap.update(scheduler.tariff_snapshot(st, gateway))
         scheduler.apply_dynamic_pricing(snap, get_settings(), st, gateway)   # per-tariff wholesale override
         snap.update(scheduler.billing_snapshot(st, gateway))
-        snap.update(__import__("franklinwh_local_bridge.billing", fromlist=["billing"]).billing_read(st, gateway))
-        snap.update(__import__("franklinwh_local_bridge.billing", fromlist=["billing"]).fixed_snapshot(st, gateway))
+        snap.update(__import__("franklinwh_direct_connect_bridge.billing", fromlist=["billing"]).billing_read(st, gateway))
+        snap.update(__import__("franklinwh_direct_connect_bridge.billing", fromlist=["billing"]).fixed_snapshot(st, gateway))
         try:
-            snap.update(__import__("franklinwh_local_bridge.system_setup", fromlist=["system_setup"]).snapshot(st, get_settings(), gateway, _gw_host(gateway)))
+            snap.update(__import__("franklinwh_direct_connect_bridge.system_setup", fromlist=["system_setup"]).snapshot(st, get_settings(), gateway, _gw_host(gateway)))
         except Exception:  # noqa: BLE001
             pass
         snap.update(scheduler.const_snapshot(st))
@@ -2400,10 +2400,10 @@ def create_app() -> FastAPI:
         snap.update(scheduler.tariff_snapshot(st, gateway))
         scheduler.apply_dynamic_pricing(snap, get_settings(), st, gateway)   # per-tariff wholesale override
         snap.update(scheduler.billing_snapshot(st, gateway))
-        snap.update(__import__("franklinwh_local_bridge.billing", fromlist=["billing"]).billing_read(st, gateway))
-        snap.update(__import__("franklinwh_local_bridge.billing", fromlist=["billing"]).fixed_snapshot(st, gateway))
+        snap.update(__import__("franklinwh_direct_connect_bridge.billing", fromlist=["billing"]).billing_read(st, gateway))
+        snap.update(__import__("franklinwh_direct_connect_bridge.billing", fromlist=["billing"]).fixed_snapshot(st, gateway))
         try:
-            snap.update(__import__("franklinwh_local_bridge.system_setup", fromlist=["system_setup"]).snapshot(st, get_settings(), gateway, _gw_host(gateway)))
+            snap.update(__import__("franklinwh_direct_connect_bridge.system_setup", fromlist=["system_setup"]).snapshot(st, get_settings(), gateway, _gw_host(gateway)))
         except Exception:  # noqa: BLE001
             pass
         snap.update(scheduler.const_snapshot(st))
@@ -3920,7 +3920,7 @@ def create_app() -> FastAPI:
                         detail=(f"invalid log_level {value!r}; expected one of "
                                 f"{', '.join(_LOG_LEVELS)}"))
                 s.log_level = lvl
-                logging.getLogger("franklinwh_local_bridge").setLevel(_LOG_LEVELS[lvl])
+                logging.getLogger("franklinwh_direct_connect_bridge").setLevel(_LOG_LEVELS[lvl])
                 save_override("log_level", lvl)
             elif key in ("ha_url", "ha_token"):  # standalone HA target — strings
                 val = str(value or "")
@@ -4161,7 +4161,7 @@ def create_app() -> FastAPI:
             ],
             "issues_url": DISCLAIMER_ISSUES_URL,
             "docs_url": "guide/",
-            "terms_url": "https://github.com/david2069/franklinwh-local-bridge/blob/main/LICENSE",
+            "terms_url": "https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/LICENSE",
             "version": __version__,
         }
 

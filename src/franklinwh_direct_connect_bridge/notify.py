@@ -14,7 +14,7 @@ import urllib.request
 
 from .config import Settings
 
-log = logging.getLogger("franklinwh_local_bridge.notify")
+log = logging.getLogger("franklinwh_direct_connect_bridge.notify")
 
 
 class Notifier:

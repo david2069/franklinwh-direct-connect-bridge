@@ -9,8 +9,8 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import circuits
-from franklinwh_local_bridge.app import create_app
+from franklinwh_direct_connect_bridge import circuits
+from franklinwh_direct_connect_bridge.app import create_app
 
 # Real capture: Sw1 named+scheduled, Sw2 renamed+scheduled, Sw3 factory defaults.
 AU_CFG = {
@@ -115,7 +115,7 @@ def test_energy_is_labelled_lifetime_not_today():
 # ── endpoints ────────────────────────────────────────────────────────────────
 @pytest.fixture()
 def client(monkeypatch):
-    from franklinwh_local_bridge import client as c
+    from franklinwh_direct_connect_bridge import client as c
     monkeypatch.setattr(c, "circuits",
                         lambda s, host=None, override="auto":
                         circuits.build(AU_CFG, AU_METER, override))
@@ -131,7 +131,7 @@ def test_api_circuits(client):
 
 def test_cloud_parity_endpoint_still_emits_three(monkeypatch):
     """/api/cloud/* mirrors the cloud shape exactly — detection must not leak in."""
-    from franklinwh_local_bridge import client as c
+    from franklinwh_direct_connect_bridge import client as c
     monkeypatch.setattr(c, "read", lambda s, name, host=None: AU_CFG)
     r = TestClient(create_app()).get("/api/cloud/smart-circuits")
     assert sorted(r.json().keys()) == ["1", "2", "3"]
@@ -207,7 +207,7 @@ def test_schedule_write_does_not_touch_other_circuits(client):
 
 
 def test_schedule_endpoint_422_on_bad_window(monkeypatch):
-    from franklinwh_local_bridge import client as c
+    from franklinwh_direct_connect_bridge import client as c
     monkeypatch.setattr(c, "writes_enabled", lambda s: True)
 
     def boom(s, circuit, windows, today, host=None):
@@ -226,8 +226,8 @@ def test_schedule_write_delegates_to_the_library(monkeypatch):
     check the two-window editor shape becomes the firmware's four slots and that
     the library's verdict is passed through untouched.
     """
-    from franklinwh_local_bridge import client as c
-    from franklinwh_local_bridge.config import Settings
+    from franklinwh_direct_connect_bridge import client as c
+    from franklinwh_direct_connect_bridge.config import Settings
 
     seen = {}
 

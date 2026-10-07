@@ -9,7 +9,7 @@ fi
 
 # HA Add-on mode: convert /data/options.json → env vars for pydantic-settings.
 if [ -f /data/options.json ]; then
-    python3 /app/src/franklinwh_local_bridge/ha_options.py /data/options.json /data/ha_options.env
+    python3 /app/src/franklinwh_direct_connect_bridge/ha_options.py /data/options.json /data/ha_options.env
     set -a
     . /data/ha_options.env
     set +a

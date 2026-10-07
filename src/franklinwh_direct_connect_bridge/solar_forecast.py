@@ -43,7 +43,7 @@ def _fetch(lat: float, lon: float, tilt: float, azimuth: float) -> dict:
         "tilt": tilt, "azimuth": azimuth,
     }
     url = OPEN_METEO + "?" + urllib.parse.urlencode(params)
-    req = urllib.request.Request(url, headers={"User-Agent": "franklinwh-local-bridge"})
+    req = urllib.request.Request(url, headers={"User-Agent": "franklinwh-direct-connect-bridge"})
     with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r:
         return json.loads(r.read())
 

@@ -1,4 +1,4 @@
-# Backlog archive — franklinwh-local-bridge
+# Backlog archive — franklinwh-direct-connect-bridge
 
 Shipped work, moved out of [`BACKLOG.md`](BACKLOG.md) so the active backlog stays readable.
 Nothing here is a work item. It is kept for the **reasoning** — what was built, which fields

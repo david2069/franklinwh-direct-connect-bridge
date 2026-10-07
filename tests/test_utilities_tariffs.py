@@ -1,7 +1,7 @@
 """Utilities + Tariffs roster (Phase 2). DB CRUD + JSON pricing round-trip."""
 import datetime as dt
-from franklinwh_local_bridge.db import MetricsStore
-from franklinwh_local_bridge import rate_model as rm
+from franklinwh_direct_connect_bridge.db import MetricsStore
+from franklinwh_direct_connect_bridge import rate_model as rm
 
 PRICING = {"seasons": [{"name": "All year", "months": [],
     "time_periods": {"on_peak": {"buy": 0.55, "sell": 0.05}, "off_peak": {"buy": 0.20, "sell": 0.05}},
@@ -64,7 +64,7 @@ def test_tiered_rates_persist_and_price_per_tier(tmp_path):
 
 
 def test_tariff_snapshot_from_gateway_meter(tmp_path):
-    from franklinwh_local_bridge import scheduler as sch
+    from franklinwh_direct_connect_bridge import scheduler as sch
     st = MetricsStore(str(tmp_path / "m.db"))
     st.seed_gateways([("h", "gw")]); st.ensure_default_site_meter()
     st.create_utility(uid="u1", name="AGL", battery_export_allowed=0, export_limit_kw=5.0)

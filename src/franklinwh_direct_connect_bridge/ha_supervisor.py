@@ -17,7 +17,7 @@ import urllib.request
 
 from .environment import IS_HA_ADDON
 
-log = logging.getLogger("franklinwh_local_bridge.ha_supervisor")
+log = logging.getLogger("franklinwh_direct_connect_bridge.ha_supervisor")
 
 # Broker hosts that mean "nothing configured yet" (schema default / add-on default).
 _UNSET_HOSTS = {"core-mosquitto", ""}

@@ -1,8 +1,8 @@
 """Cloud features exist only while the cloud is connected."""
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import providers
-from franklinwh_local_bridge.app import create_app
+from franklinwh_direct_connect_bridge import providers
+from franklinwh_direct_connect_bridge.app import create_app
 
 
 def test_local_features_are_always_available():
@@ -35,7 +35,7 @@ def test_what_is_impossible_locally_is_stated_with_the_evidence():
 
 def test_cloud_write_refused_with_a_clear_reason_when_not_connected(monkeypatch):
     """A missing credential must read as 'not connected', not a transport error."""
-    from franklinwh_local_bridge import client as c
+    from franklinwh_direct_connect_bridge import client as c
     monkeypatch.setattr(c, "writes_enabled", lambda s: True)
     monkeypatch.setattr(providers, "cloud_auth_status", lambda: {"state": "unconfigured"})
     r = TestClient(create_app()).post("/api/cloud/reserve", json={"mode": "self", "soc": 20})
@@ -44,7 +44,7 @@ def test_cloud_write_refused_with_a_clear_reason_when_not_connected(monkeypatch)
 
 
 def test_locked_state_explains_how_to_clear_it(monkeypatch):
-    from franklinwh_local_bridge import client as c
+    from franklinwh_direct_connect_bridge import client as c
     monkeypatch.setattr(c, "writes_enabled", lambda s: True)
     monkeypatch.setattr(providers, "cloud_auth_status", lambda: {"state": "locked"})
     r = TestClient(create_app()).post("/api/cloud/reserve", json={"mode": "self", "soc": 20})
@@ -53,7 +53,7 @@ def test_locked_state_explains_how_to_clear_it(monkeypatch):
 
 def test_settings_exposes_cloud_credentials_with_a_test_button():
     import pathlib
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     html = (root / "templates/tabs/settings.html").read_text()
     assert "FranklinWH Cloud API" in html
     assert "testCloud()" in html

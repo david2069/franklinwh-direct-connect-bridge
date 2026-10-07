@@ -1,6 +1,6 @@
 """Rate model — the seasonal TOU/tiered resolver (ported from the Modbus bridge)."""
 import datetime as dt
-from franklinwh_local_bridge import rate_model as rm
+from franklinwh_direct_connect_bridge import rate_model as rm
 
 
 def test_flat_tariff_from_default_rate():

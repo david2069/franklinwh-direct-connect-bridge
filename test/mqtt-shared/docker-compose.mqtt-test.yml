@@ -29,13 +29,13 @@ services:
 
   # ── Local bridge side: a seeded mock aGate (fake serial) + the bridge publishing HA ──
   local-mock:
-    image: franklinwh-local-bridge:dev
+    image: franklinwh-direct-connect-bridge:dev
     container_name: fwhmqtt-local-mock
     command: franklinwh-local emulate --bind 0.0.0.0 --port 9000 --seed 7 --units 2
     restart: unless-stopped
 
   local-bridge:
-    image: franklinwh-local-bridge:dev
+    image: franklinwh-direct-connect-bridge:dev
     container_name: fwhmqtt-local-bridge
     ports:
       - "8110:8101"

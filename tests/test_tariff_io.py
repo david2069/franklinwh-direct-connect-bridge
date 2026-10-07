@@ -3,9 +3,9 @@ import datetime as dt
 
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import tariff_io, rate_model
-from franklinwh_local_bridge import app as app_module, config, environment, db
-from franklinwh_local_bridge.db import MetricsStore
+from franklinwh_direct_connect_bridge import tariff_io, rate_model
+from franklinwh_direct_connect_bridge import app as app_module, config, environment, db
+from franklinwh_direct_connect_bridge.db import MetricsStore
 
 # A trimmed but faithful slice of the user's real "AGL Energy Ausgrid NSW" export.
 AGL = {

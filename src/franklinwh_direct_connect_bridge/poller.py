@@ -22,7 +22,7 @@ from .publish import entities
 from .publish.mqtt_publisher import MqttPublisher
 from .state import GatewayState
 
-log = logging.getLogger("franklinwh_local_bridge.poller")
+log = logging.getLogger("franklinwh_direct_connect_bridge.poller")
 
 
 async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event) -> None:

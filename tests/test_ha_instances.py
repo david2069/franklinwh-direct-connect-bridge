@@ -6,8 +6,8 @@ ever describe one, so a second instance had nowhere to live.
 import pytest
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import ha_instances
-from franklinwh_local_bridge.app import create_app
+from franklinwh_direct_connect_bridge import ha_instances
+from franklinwh_direct_connect_bridge.app import create_app
 
 
 def test_token_is_never_returned():
@@ -97,7 +97,7 @@ def test_published_lists_what_the_bridge_sends_to_ha():
 
 # ── notification devices ─────────────────────────────────────────────────────
 def _store(tmp_path):
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge.db import MetricsStore
     return MetricsStore(str(tmp_path / "t.db"))
 
 
@@ -148,7 +148,7 @@ def test_device_test_needs_a_device_or_an_instance_and_service(monkeypatch):
     """Testing an UNSAVED device is the point, so instance+service is accepted —
     but one of the two forms is required."""
     import inspect
-    from franklinwh_local_bridge import app as app_mod
+    from franklinwh_direct_connect_bridge import app as app_mod
     src = inspect.getsource(app_mod)
     assert "need device_id, or instance_id + service" in src
 
@@ -158,7 +158,7 @@ def test_no_template_uses_the_invented_input_class():
     to the browser default — a white box on a dark page. The real class is
     `.form-control`."""
     import pathlib
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     css = (root / "static/css/design-system.css").read_text()
     assert ".form-control" in css and ".form-control-sm" in css
     for tpl in (root / "templates").rglob("*.html"):
@@ -169,7 +169,7 @@ def test_notify_picker_shows_a_friendly_name_and_the_service():
     """A raw service name is unreadable in a list of 32; HA gives no friendly name
     for a SERVICE, so one is derived. Notifications live in Settings now."""
     import pathlib
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     js = (root / "static/js/settings_tab.js").read_text()
     assert "friendlyService(" in js
     html = (root / "templates/tabs/settings.html").read_text()
@@ -182,7 +182,7 @@ def test_modals_do_not_dereference_a_null_object_under_x_show():
     `form` is null and Alpine stops updating that subtree — the fields then look
     present but do not accept typing. Use x-if, or guard every reference."""
     import pathlib, re
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     # The instances modal is still in the HA tab; the notify-device modal moved to Settings.
     ha = (root / "templates/tabs/ha.html").read_text()
     assert 'x-if="form"' in ha, "instances modal must use x-if"
@@ -195,7 +195,7 @@ def test_discovered_service_list_shows_friendly_names():
     """A column of raw notify.alexa_media_* strings is unreadable; the derived
     name goes above the service, same as in the picker."""
     import pathlib
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     html = (root / "templates/tabs/settings.html").read_text()
     assert 'x-text="opt.label"' in html and 'x-text="opt.service"' in html
 
@@ -204,7 +204,7 @@ def test_notify_devices_can_be_tested():
     """A device can be tested from its row (Test) and before saving (Send test in the
     add-device modal). In Settings now."""
     import pathlib
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     html = (root / "templates/tabs/settings.html").read_text()
     js = (root / "static/js/settings_tab.js").read_text()
     assert '@click="testDevice(dev)"' in html, "each device row has a Test button"
@@ -248,7 +248,7 @@ def test_exposed_only_filter(monkeypatch, tmp_path):
 
 
 def test_call_service_builds_url_and_guards_token(monkeypatch):
-    from franklinwh_local_bridge import ha_instances
+    from franklinwh_direct_connect_bridge import ha_instances
     # No token → refused, no HTTP.
     r = ha_instances.call_service("http://ha:8123", None, "switch", "turn_on", {"entity_id": "switch.x"})
     assert r["ok"] is False and "no token" in r["error"]

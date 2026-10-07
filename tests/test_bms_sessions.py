@@ -5,10 +5,10 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import app as app_module, config, environment
-from franklinwh_local_bridge import bms_record, db
-from franklinwh_local_bridge.bms_record import Recorder
-from franklinwh_local_bridge.db import MetricsStore
+from franklinwh_direct_connect_bridge import app as app_module, config, environment
+from franklinwh_direct_connect_bridge import bms_record, db
+from franklinwh_direct_connect_bridge.bms_record import Recorder
+from franklinwh_direct_connect_bridge.db import MetricsStore
 
 
 def cells(v=3300, t=20.0, soc=50.0):
@@ -174,7 +174,7 @@ def test_sessions_endpoint_empty(api):
 
 def test_sessions_endpoint_lists_and_deletes(api):
     """End-to-end through the API, not just the store."""
-    import franklinwh_local_bridge.db as _db
+    import franklinwh_direct_connect_bridge.db as _db
     store = _db.get_store(None)
     sid = store.start_bms_session(apower_sn="SN1", interval_s=15, planned=3)
     for i in range(3):

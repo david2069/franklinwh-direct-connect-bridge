@@ -3,7 +3,7 @@ import datetime as dt
 
 import pytest
 
-from franklinwh_local_bridge import scheduler as sch
+from franklinwh_direct_connect_bridge import scheduler as sch
 
 SNAP = {"battery.soc_pct": 62, "grid.connected": 1, "mode.name": "Self-Consumption"}
 
@@ -136,7 +136,7 @@ def test_operating_mode_is_a_picker_not_a_text_box():
     Self-Consumption and Emergency Backup. A free-text box let meaningless values
     like 0 be typed in; there is no mode 0 (run_status 0 is Standby, a STATUS)."""
     import pathlib
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     js = (root / "static/js/scheduler_tab.js").read_text()
     assert "modeOptions" in js and "paramChoices" in js
     assert "'Time-of-Use'" in js and "'Self-Consumption'" in js and "'Emergency Backup'" in js
@@ -149,7 +149,7 @@ def test_operating_mode_is_a_picker_not_a_text_box():
 
 # ── exposed HA entities as scheduler conditions ──────────────────────────────
 def _store_with_exposed(tmp_path):
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge.db import MetricsStore
     st = MetricsStore(str(tmp_path / "t.db"))
     st.create_ha_instance(ha_id="i1", name="HA Live", base_url="http://x", token="t")
     st.set_ha_exposed("i1", "sensor.amber_price", True)
@@ -193,7 +193,7 @@ def test_ha_binary_state_coerces_for_numeric_conditions():
 
 
 def test_no_exposed_entities_means_no_ha_reads(tmp_path, monkeypatch):
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge.db import MetricsStore
     st = MetricsStore(str(tmp_path / "t.db"))
     called = {"n": 0}
     monkeypatch.setattr(sch.ha_instances, "states",
@@ -202,7 +202,7 @@ def test_no_exposed_entities_means_no_ha_reads(tmp_path, monkeypatch):
 
 
 def test_schedule_carries_a_gateway_binding(tmp_path):
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge.db import MetricsStore
     st = MetricsStore(str(tmp_path / "t.db"))
     st.create_schedule(sid="s1", name="Shed evening",
                        spec={"gateway_id": "gw-shed", "fire_at": "18:00"})
@@ -213,7 +213,7 @@ def test_bound_schedule_fires_only_on_its_gateway(tmp_path, monkeypatch):
     """A battery action must target the aGate it was bound to, not whichever
     gateway's poll tick happens to run it."""
     import datetime as dt
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge.db import MetricsStore
     st = MetricsStore(str(tmp_path / "t.db"))
     st.create_schedule(sid="s1", name="Shed",
                        spec={"gateway_id": "gw-shed", "fire_at": "18:00",
@@ -233,7 +233,7 @@ def test_bound_schedule_fires_only_on_its_gateway(tmp_path, monkeypatch):
 def test_gateway_roster_uses_real_gatewaystate_fields():
     """Regression: the roster used g.name, which GatewayState does not have, so
     /api/schedules 500'd. GatewayState has label/serial/id — never name."""
-    from franklinwh_local_bridge.state import GatewayState
+    from franklinwh_direct_connect_bridge.state import GatewayState
     g = GatewayState(id="10.0.0.5", label="Shed", configured_host="10.0.0.5")
     # the exact expression the endpoint builds
     row = {"id": g.id, "name": g.label or g.serial or g.id,
@@ -271,7 +271,7 @@ def test_import_validation_catches_bad_and_warns_on_missing_refs():
 
 
 def test_export_import_round_trip(tmp_path):
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge.db import MetricsStore
     st = MetricsStore(str(tmp_path / "t.db"))
     st.create_schedule(sid="s1", name="Evening",
                        spec={"fire_at": "18:00", "action": {"kind": "set_mode", "mode": "tou"}})
@@ -283,7 +283,7 @@ def test_export_import_round_trip(tmp_path):
 
 # ── log + timeline ───────────────────────────────────────────────────────────
 def test_fire_history_is_logged_and_filterable(tmp_path):
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge.db import MetricsStore
     st = MetricsStore(str(tmp_path / "t.db"))
     st.log_schedule_event("s1", "Evening", "fired", "mode -> tou: ok", now=100)
     st.log_schedule_event("s1", "Evening", "error", "circuit 2: NOT confirmed", now=200)
@@ -295,7 +295,7 @@ def test_fire_history_is_logged_and_filterable(tmp_path):
 
 
 def test_log_is_capped(tmp_path):
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge.db import MetricsStore
     st = MetricsStore(str(tmp_path / "t.db"))
     for i in range(2100):
         st.log_schedule_event("s", "x", "fired", str(i), now=float(i))
@@ -307,7 +307,7 @@ def test_log_is_capped(tmp_path):
 
 def test_a_fire_that_did_nothing_still_logs_why(tmp_path, monkeypatch):
     import datetime as dt
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge.db import MetricsStore
     st = MetricsStore(str(tmp_path / "t.db"))
     st.create_schedule(sid="s1", name="Empty",
                        spec={"fire_at": "18:00", "duration_min": 90,
@@ -342,8 +342,8 @@ def test_exit_condition_ends_window_early_and_releases(tmp_path, monkeypatch):
     """An exit-condition tree closes the window early: it fires the exit edge, RELEASES a
     force dispatch, logs 'exit condition met', and does not re-fire the same day."""
     import datetime as dt
-    from franklinwh_local_bridge import battery_control as bc
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge import battery_control as bc
+    from franklinwh_direct_connect_bridge.db import MetricsStore
 
     seen = []
     monkeypatch.setattr(bc, "execute",
@@ -381,8 +381,8 @@ def test_exit_condition_ends_window_early_and_releases(tmp_path, monkeypatch):
 def test_exit_condition_blocks_firing_when_already_true(tmp_path, monkeypatch):
     """If the exit condition already holds when the window opens, the dispatch never starts."""
     import datetime as dt
-    from franklinwh_local_bridge import battery_control as bc
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge import battery_control as bc
+    from franklinwh_direct_connect_bridge.db import MetricsStore
     seen = []
     monkeypatch.setattr(bc, "execute", lambda cmd, **kw: (seen.append(cmd), {"ok": True, "result": "ok", "active": "x"})[1])
     st = MetricsStore(str(tmp_path / "m.db"))
@@ -399,7 +399,7 @@ def test_exit_condition_blocks_firing_when_already_true(tmp_path, monkeypatch):
 def test_schedule_req_model_carries_exit_conditions():
     """Regression guard: the create/update model must declare exit_conditions/exit_match,
     or the API silently drops them (as it first did)."""
-    from franklinwh_local_bridge.app import ScheduleReq
+    from franklinwh_direct_connect_bridge.app import ScheduleReq
     r = ScheduleReq(name="x", exit_conditions=[{"sensor": "battery.soc_pct", "op": "<=", "value": 20}],
                     exit_match="any")
     dumped = r.model_dump()
@@ -419,7 +419,7 @@ class _InstStore:
 
 
 def test_ha_service_action_calls_the_service(monkeypatch):
-    from franklinwh_local_bridge import ha_instances
+    from franklinwh_direct_connect_bridge import ha_instances
     cap = {}
     monkeypatch.setattr(ha_instances, "call_service",
                         lambda base, token, domain, service, data: (cap.update(
@@ -457,7 +457,7 @@ def test_ha_service_requires_instance_and_fields():
 
 
 def test_fire_ha_phase_dispatches_service_kind(monkeypatch):
-    from franklinwh_local_bridge import ha_instances
+    from franklinwh_direct_connect_bridge import ha_instances
     calls = []
     monkeypatch.setattr(ha_instances, "call_service", lambda *a, **k: (calls.append(a), {"ok": True})[1])
     entry = {"ha_actions": [{"ha_kind": "service", "when": "fire", "instance_id": "x",
@@ -523,7 +523,7 @@ def test_due_reports_recurrence_reason():
 
 def test_schedule_req_model_carries_recurrence():
     """Regression guard: the create/update model must declare the recurrence fields."""
-    from franklinwh_local_bridge.app import ScheduleReq
+    from franklinwh_direct_connect_bridge.app import ScheduleReq
     r = ScheduleReq(name="x", days=[0, 2, 4], months=[1, 7], day_of_month=15,
                     start_date="2026-01-01", end_date="2026-12-31")
     d = r.model_dump()
@@ -562,8 +562,8 @@ def test_priority_resolution_defers_lower_on_same_target(tmp_path, monkeypatch):
     """Two schedules firing the same tick for the same gateway: the higher priority runs,
     the lower is deferred for the day (marked fired + logged 'deferred')."""
     import datetime as _d
-    from franklinwh_local_bridge import battery_control as bc
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge import battery_control as bc
+    from franklinwh_direct_connect_bridge.db import MetricsStore
     ran = []
     monkeypatch.setattr(bc, "execute", lambda cmd, **kw: (ran.append(cmd), {"ok": True, "result": "ok", "active": cmd})[1])
     monkeypatch.setattr(bc, "current", lambda: {"active": "Not Active"})
@@ -588,8 +588,8 @@ def test_priority_resolution_defers_lower_on_same_target(tmp_path, monkeypatch):
 def test_priority_single_entry_unaffected(tmp_path, monkeypatch):
     """A lone gateway action fires normally (no behaviour change without contention)."""
     import datetime as _d
-    from franklinwh_local_bridge import battery_control as bc
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge import battery_control as bc
+    from franklinwh_direct_connect_bridge.db import MetricsStore
     monkeypatch.setattr(bc, "execute", lambda cmd, **kw: {"ok": True, "result": "ok", "active": cmd})
     monkeypatch.setattr(bc, "current", lambda: {"active": "Not Active"})
     st = MetricsStore(str(tmp_path / "m.db"))
@@ -611,8 +611,8 @@ def _mk_force_sched(st, sid, name, conflict="override", prio=0):
 
 def test_conflict_defer_skips_when_battery_busy(tmp_path, monkeypatch):
     import datetime as _d
-    from franklinwh_local_bridge import battery_control as bc
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge import battery_control as bc
+    from franklinwh_direct_connect_bridge.db import MetricsStore
     ran = []
     monkeypatch.setattr(bc, "execute", lambda cmd, **kw: (ran.append(cmd), {"ok": True, "result": "ok", "active": cmd})[1])
     monkeypatch.setattr(bc, "current", lambda: {"active": "Not Active"})
@@ -631,8 +631,8 @@ def test_conflict_defer_skips_when_battery_busy(tmp_path, monkeypatch):
 
 def test_conflict_override_takes_control(tmp_path, monkeypatch):
     import datetime as _d
-    from franklinwh_local_bridge import battery_control as bc
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge import battery_control as bc
+    from franklinwh_direct_connect_bridge.db import MetricsStore
     ran = []
     monkeypatch.setattr(bc, "execute", lambda cmd, **kw: (ran.append(cmd), {"ok": True, "result": "ok", "active": cmd})[1])
     monkeypatch.setattr(bc, "current", lambda: {"active": "Not Active"})
@@ -649,8 +649,8 @@ def test_conflict_override_takes_control(tmp_path, monkeypatch):
 
 def test_conflict_wait_retries_not_fired(tmp_path, monkeypatch):
     import datetime as _d
-    from franklinwh_local_bridge import battery_control as bc
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge import battery_control as bc
+    from franklinwh_direct_connect_bridge.db import MetricsStore
     monkeypatch.setattr(bc, "execute", lambda cmd, **kw: {"ok": True, "result": "ok", "active": cmd})
     monkeypatch.setattr(bc, "current", lambda: {"active": "Not Active"})
     st = MetricsStore(str(tmp_path / "m.db"))
@@ -668,8 +668,8 @@ def test_conflict_wait_retries_not_fired(tmp_path, monkeypatch):
 def test_exit_condition_nested_group_ends_window(tmp_path, monkeypatch):
     """Exit conditions now support nested ALL/ANY groups (same builder as entry)."""
     import datetime as _d
-    from franklinwh_local_bridge import battery_control as bc
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge import battery_control as bc
+    from franklinwh_direct_connect_bridge.db import MetricsStore
     seen = []
     monkeypatch.setattr(bc, "execute", lambda cmd, **kw: (seen.append(cmd), {"ok": True, "result": "ok", "active": cmd})[1])
     monkeypatch.setattr(bc, "current", lambda: {"active": "Force Discharge"})
@@ -730,8 +730,8 @@ def test_trigger_always_fires_on_rising_edge(tmp_path, monkeypatch):
     """'always' dispatches when entry conditions become true and releases when false —
     firing once on the rising edge, not every tick."""
     import datetime as _d
-    from franklinwh_local_bridge import battery_control as bc
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge import battery_control as bc
+    from franklinwh_direct_connect_bridge.db import MetricsStore
     seen = []
     monkeypatch.setattr(bc, "execute", lambda cmd, **kw: (seen.append(cmd), {"ok": True, "result": "ok", "active": cmd})[1])
     monkeypatch.setattr(bc, "current", lambda: {"active": "Force Discharge"})
@@ -760,7 +760,7 @@ def test_trigger_always_fires_on_rising_edge(tmp_path, monkeypatch):
 def test_ha_guided_entity_action_calls_domain_service(monkeypatch):
     """A guided entity action (data as an object) executes exactly like the Modbus
     bridge: POST /api/services/<domain>/<service> with {entity_id, **data}."""
-    from franklinwh_local_bridge import ha_instances
+    from franklinwh_direct_connect_bridge import ha_instances
     cap = {}
     monkeypatch.setattr(ha_instances, "call_service",
                         lambda base, token, domain, service, data: (cap.update(
@@ -780,8 +780,8 @@ def test_import_only_rejects_truly_unknown_types(tmp_path, monkeypatch):
     """The Modbus 'franklinwh-automations' bundle is now accepted (mapped); only an
     unrecognised type is rejected, with a message naming both supported types."""
     from fastapi.testclient import TestClient
-    from franklinwh_local_bridge import app as app_module, config, environment, db
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge import app as app_module, config, environment, db
+    from franklinwh_direct_connect_bridge.db import MetricsStore
     store = MetricsStore(str(tmp_path / "m.db"))
     monkeypatch.setattr(environment, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(config, "_settings", None)
@@ -804,8 +804,8 @@ def test_import_maps_modbus_automations_bundle(tmp_path, monkeypatch):
     {kind:force,direction:charge}, trigger_spec→fire_at, duration_s→min, nested conditions,
     HA actions passed through — and it validates + imports (disabled for review)."""
     from fastapi.testclient import TestClient
-    from franklinwh_local_bridge import app as app_module, config, environment, db
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge import app as app_module, config, environment, db
+    from franklinwh_direct_connect_bridge.db import MetricsStore
     store = MetricsStore(str(tmp_path / "m.db"))
     monkeypatch.setattr(environment, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(config, "_settings", None)

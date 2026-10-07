@@ -8,7 +8,7 @@ Stands up an isolated stack (own compose project `fwh-mqtt-test`, own broker on 
 touches the real `:8101`/`:8100` stacks:
 
 - a shared `eclipse-mosquitto:2` broker,
-- the **Local bridge** (`franklinwh-local-bridge:dev`) with a seeded mock aGate, MQTT on,
+- the **Local bridge** (`franklinwh-direct-connect-bridge:dev`) with a seeded mock aGate, MQTT on,
 - the **real Modbus bridge** image (`franklinwh-modbus-bridge-app:latest`), mock gateway
   registered post-boot via its API.
 
@@ -16,7 +16,7 @@ Then it enumerates the retained discovery + live state topics and prints a verdi
 
 ## Prerequisites (local images + the modbus source)
 
-- `franklinwh-local-bridge:dev` — build with `tools/build_image.sh`.
+- `franklinwh-direct-connect-bridge:dev` — build with `tools/build_image.sh`.
 - `franklinwh-modbus-bridge-app:latest` — the Modbus bridge image.
 - `MODBUS_SRC` — path to your `franklinwh-modbus-bridge/src` (the Modbus service live-mounts
   it for import parity). `run.sh` auto-detects `~/dev/Claude/Projects/franklinwh-modbus-bridge/src`

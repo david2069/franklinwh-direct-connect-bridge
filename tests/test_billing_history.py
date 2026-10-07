@@ -5,8 +5,8 @@ import datetime as dt
 
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import app as app_module, config, environment, db, billing
-from franklinwh_local_bridge.db import MetricsStore
+from franklinwh_direct_connect_bridge import app as app_module, config, environment, db, billing
+from franklinwh_direct_connect_bridge.db import MetricsStore
 
 
 def _setup(tmp_path):

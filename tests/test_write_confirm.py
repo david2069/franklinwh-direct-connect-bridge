@@ -3,8 +3,8 @@ consequential actions (operating-mode change, off-grid) instead require an expli
 ``confirm`` (HTTP 428). Reversible writes just work; the UI reports writes open."""
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import app as app_module, config, environment, db
-from franklinwh_local_bridge.db import MetricsStore
+from franklinwh_direct_connect_bridge import app as app_module, config, environment, db
+from franklinwh_direct_connect_bridge.db import MetricsStore
 
 
 def _client(tmp_path, monkeypatch):

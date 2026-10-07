@@ -1,7 +1,7 @@
 """AEMO NEM wholesale spot — module + snapshot + endpoint (FEAT-BILLING-WHOLESALE)."""
 import io, json
 from fastapi.testclient import TestClient
-from franklinwh_local_bridge import aemo_nem, scheduler, app as app_module
+from franklinwh_direct_connect_bridge import aemo_nem, scheduler, app as app_module
 
 
 class _Resp(io.BytesIO):
@@ -42,7 +42,7 @@ def test_spot_endpoint(monkeypatch):
 
 def test_settings_put_nem_region_is_string(tmp_path, monkeypatch):
     """Regression: nem_region must persist as a STRING (the generic PUT branch bool-coerced it)."""
-    from franklinwh_local_bridge import environment, config, providers
+    from franklinwh_direct_connect_bridge import environment, config, providers
     monkeypatch.setattr(environment, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(config, "_settings", None)
     # Driving the app under a tmp DATA_DIR triggers the once-only cloud-breaker load against
@@ -68,7 +68,7 @@ def test_settings_put_nem_region_is_string(tmp_path, monkeypatch):
 
 def test_ha_price_snapshot_units_and_mapping(monkeypatch):
     """HA price entity -> tariff.spot_price / feed_in_price, with $/kWh auto-scaled to cents."""
-    from franklinwh_local_bridge import scheduler, ha_instances
+    from franklinwh_direct_connect_bridge import scheduler, ha_instances
 
     class S:
         tariff_price_entity = "ha:h1:sensor.buy"
@@ -89,7 +89,7 @@ def test_ha_price_snapshot_units_and_mapping(monkeypatch):
 
 
 def test_ha_price_snapshot_empty_when_unset():
-    from franklinwh_local_bridge import scheduler
+    from franklinwh_direct_connect_bridge import scheduler
 
     class S:
         tariff_price_entity = ""
@@ -101,7 +101,7 @@ def test_ha_price_snapshot_empty_when_unset():
 def test_settings_put_tariff_entities_are_strings(tmp_path, monkeypatch):
     """Regression: the tariff HA-entity settings must persist as STRINGS (the generic PUT
     branch would bool-coerce them, like nem_region did)."""
-    from franklinwh_local_bridge import environment, config, providers
+    from franklinwh_direct_connect_bridge import environment, config, providers
     monkeypatch.setattr(environment, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(config, "_settings", None)
     _auth = dict(providers._cloud_auth)

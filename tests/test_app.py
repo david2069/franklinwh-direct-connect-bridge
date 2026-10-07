@@ -2,8 +2,8 @@
 
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import app as app_module
-from franklinwh_local_bridge import client as client_module
+from franklinwh_direct_connect_bridge import app as app_module
+from franklinwh_direct_connect_bridge import client as client_module
 
 
 def _app():
@@ -177,7 +177,7 @@ def test_cloud_reserve_503_without_provider(monkeypatch):
     # HYBRID Phase 3: with no cloud provider configured, the reserve write reports 503
     # (503 = no provider; 501 is now reserved for the FWHAI-not-wired path).
     monkeypatch.setattr(client_module, "writes_enabled", lambda s: True)
-    from franklinwh_local_bridge import providers
+    from franklinwh_direct_connect_bridge import providers
     import time as _t
     monkeypatch.setattr(providers, "_probe_url", lambda base, *a, **k: False)
     monkeypatch.setattr(providers, "_lib_available", lambda m: False)
@@ -211,13 +211,13 @@ def test_live_endpoint_no_device_io():
     c = _app()
     r = c.get("/api/live")
     assert r.status_code == 200
-    assert r.json()["status"] == "ok" and r.json()["service"] == "franklinwh-local-bridge"
+    assert r.json()["status"] == "ok" and r.json()["service"] == "franklinwh-direct-connect-bridge"
 
 
 def test_summary_served_from_poller_cache_not_device(monkeypatch):
     """When the poller is caching (metrics on by default in dev), /api/summary must serve
     the cached last-good summary and NOT hit the device — this is the flicker/slow-load fix."""
-    from franklinwh_local_bridge import state as state_module
+    from franklinwh_direct_connect_bridge import state as state_module
     cached = {"ok": True, "power": {"soc": 77},
               "mode": {"modes": [{"name": "Self-Consumption", "active": True}]}}
     monkeypatch.setattr(state_module.get_state(), "last_summary", cached)
@@ -235,7 +235,7 @@ def test_summary_served_from_poller_cache_not_device(monkeypatch):
 
 
 def test_summary_falls_back_to_device_when_cache_empty(monkeypatch):
-    from franklinwh_local_bridge import state as state_module
+    from franklinwh_direct_connect_bridge import state as state_module
     monkeypatch.setattr(state_module.get_state(), "last_summary", {})
     monkeypatch.setattr(client_module, "summary",
                         lambda s, host=None: {"ok": True, "power": {"soc": 42},
@@ -371,7 +371,7 @@ def test_version_endpoint_reports_the_asset_token():
 
 def test_ui_offers_a_reload_when_the_build_changes():
     import pathlib
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     js = (root / "static/js/app.js").read_text()
     assert "checkBuild" in js and "newBuild" in js
     assert "api/version" in js
@@ -384,7 +384,7 @@ def test_ui_offers_a_reload_when_the_build_changes():
 
 def test_reboot_button_exists_and_is_gated():
     import pathlib
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     html = (root / "templates/tabs/control.html").read_text()
     assert "rebootGateway()" in html
     assert "writes_enabled" in html.split("Gateway</div>")[1][:900]
@@ -402,7 +402,7 @@ def test_reboot_requires_confirm_flag():
 def test_mode_field_is_not_labelled_tou():
     """The 1301 `mode`/`name` fields are the OPERATING (work) mode, not TOU — the
     Device-tab labels must say so (user-reported mislabel)."""
-    from franklinwh_local_bridge import fieldschema
+    from franklinwh_direct_connect_bridge import fieldschema
     import pathlib
     labels = fieldschema.FIELD_LABELS if hasattr(fieldschema, "FIELD_LABELS") else None
     src = (pathlib.Path(fieldschema.__file__)).read_text()

@@ -2,11 +2,11 @@
 Ported from the FranklinWH Modbus Bridge; the decomposition module is verbatim."""
 import pathlib
 from fastapi.testclient import TestClient
-from franklinwh_local_bridge import app as app_module
-from franklinwh_local_bridge import energy_flow as ef
-from franklinwh_local_bridge import environment, db
+from franklinwh_direct_connect_bridge import app as app_module
+from franklinwh_direct_connect_bridge import energy_flow as ef
+from franklinwh_direct_connect_bridge import environment, db
 
-ROOT = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+ROOT = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
 
 
 def test_split_sample_merit_order():

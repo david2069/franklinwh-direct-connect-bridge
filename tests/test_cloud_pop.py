@@ -4,8 +4,8 @@ The franklinwh-cloud EdgeTracker snapshot shape (verified against the real libra
 current_pop, total_cf_requests, cache_hits, cache_misses, last_cf_trace_id. We persist one
 sample per poll and aggregate; these tests use synthetic snapshots (no cloud creds needed).
 """
-from franklinwh_local_bridge import cloud_pop
-from franklinwh_local_bridge.db import MetricsStore
+from franklinwh_direct_connect_bridge import cloud_pop
+from franklinwh_direct_connect_bridge.db import MetricsStore
 
 
 def _snap(pop, req=2, hits=1, misses=1):

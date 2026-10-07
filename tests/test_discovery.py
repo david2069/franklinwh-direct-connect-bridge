@@ -2,9 +2,9 @@
 
 from types import SimpleNamespace as NS
 
-from franklinwh_local_bridge import client
-from franklinwh_local_bridge.config import Settings
-from franklinwh_local_bridge.state import get_state
+from franklinwh_direct_connect_bridge import client
+from franklinwh_direct_connect_bridge.config import Settings
+from franklinwh_direct_connect_bridge.state import get_state
 
 
 def _reset_state():

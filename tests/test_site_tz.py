@@ -1,9 +1,9 @@
 """/api/site/timezone — the aGate's site timezone, so charts read in aGate-local time."""
 import datetime as dt
 from fastapi.testclient import TestClient
-from franklinwh_local_bridge import (app as app_module, client as client_mod, config,
+from franklinwh_direct_connect_bridge import (app as app_module, client as client_mod, config,
                                      environment, db)
-from franklinwh_local_bridge.db import MetricsStore
+from franklinwh_direct_connect_bridge.db import MetricsStore
 
 
 def _client(tmp_path, monkeypatch, time_location):

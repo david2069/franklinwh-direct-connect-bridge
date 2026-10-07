@@ -2,8 +2,8 @@
 
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import app as app_module
-from franklinwh_local_bridge import fieldschema as fs
+from franklinwh_direct_connect_bridge import app as app_module
+from franklinwh_direct_connect_bridge import fieldschema as fs
 
 
 def _app():

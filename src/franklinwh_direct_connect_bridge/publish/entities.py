@@ -113,6 +113,11 @@ def build_state(power: dict, health: dict) -> dict[str, Any]:
 
 def device_info(node: str, serial: str, firmware: str | None = None) -> dict[str, Any]:
     from .. import __version__
+    # DO NOT RENAME the "Local Bridge" wording here. It is identity, not a label:
+    # mqtt_scan.is_self matches on this prefix to tell our own published entities
+    # from the Modbus bridge's and FWHAI's on a shared broker, and `name` below is
+    # Home Assistant's DEVICE identity — changing it creates a second device and
+    # orphans every entity already discovered. Renaming it needs a migration.
     # sw_version clearly identifies THIS integration ("Local Bridge vX.Y.Z") so its HA
     # device is distinguishable from the Modbus bridge's on a shared broker; the aGate's
     # own firmware is appended when known.

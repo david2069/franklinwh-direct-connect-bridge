@@ -36,4 +36,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD ["python", "-c", "import os,sys,urllib.request; p=os.environ.get('HTTP_PORT','8101'); sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:'+p+'/api/live', timeout=4).status==200 else 1)"]
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
-CMD ["franklinwh-local-bridge", "run"]
+CMD ["franklinwh-direct-connect-bridge", "run"]

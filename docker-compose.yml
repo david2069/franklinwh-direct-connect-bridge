@@ -1,9 +1,9 @@
 # Standalone run. Build the image first with `tools/build_image.sh` (bundles the
 # franklinwh-direct-connect-api wheel), then `docker compose up -d`.
 services:
-  franklinwh-local-bridge:
-    image: franklinwh-local-bridge:dev
-    container_name: franklinwh-local-bridge
+  franklinwh-direct-connect-bridge:
+    image: franklinwh-direct-connect-bridge:dev
+    container_name: franklinwh-direct-connect-bridge
     ports:
       - "8101:8101"
     volumes:

@@ -2,8 +2,8 @@
 
 import pytest
 
-from franklinwh_local_bridge import environment as env
-from franklinwh_local_bridge.config import Settings, metrics_active
+from franklinwh_direct_connect_bridge import environment as env
+from franklinwh_direct_connect_bridge.config import Settings, metrics_active
 
 
 def test_metrics_explicit_wins_over_auto(monkeypatch):

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build the franklinwh-local-bridge Docker image. Builds the franklinwh-direct-connect-api wheel
+# Build the franklinwh-direct-connect-bridge Docker image. Builds the franklinwh-direct-connect-api wheel
 # from the sibling repo and drops it in ./wheels/ so the image installs it auth-free
 # (the library isn't on PyPI while private). Usage: tools/build_image.sh [tag]
 set -euo pipefail
@@ -7,7 +7,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 LIB="${FWH_LOCAL_API_SRC:-$HERE/../franklinwh-local}"
 CLOUD_LIB="${FWH_CLOUD_SRC:-$HERE/../franklinwh-cloud}"   # HYBRID Phase 3 reserve writes
-TAG="${1:-franklinwh-local-bridge:dev}"
+TAG="${1:-franklinwh-direct-connect-bridge:dev}"
 
 echo "==> building bundled wheels"
 rm -rf "$HERE/wheels"; mkdir -p "$HERE/wheels"

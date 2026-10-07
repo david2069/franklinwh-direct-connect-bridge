@@ -14,7 +14,7 @@ import re
 import pytest
 
 JS_DIR = pathlib.Path(__file__).resolve().parents[1] / \
-    "src/franklinwh_local_bridge/static/js"
+    "src/franklinwh_direct_connect_bridge/static/js"
 
 #: Endpoints that do NOT reach a gateway, so a gateway parameter would be
 #: meaningless. Each must stay justified — this list is the exemption, not a
