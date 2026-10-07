@@ -1,6 +1,6 @@
 """MQTT entities — richer catalogue + opt-in groups + multi-gateway-complete endpoint."""
-from franklinwh_local_bridge.publish import entities
-from franklinwh_local_bridge.db import MetricsStore
+from franklinwh_direct_connect_bridge.publish import entities
+from franklinwh_direct_connect_bridge.db import MetricsStore
 
 
 def test_entities_grouped_and_controls_included():
@@ -36,7 +36,7 @@ def test_build_state_adds_run_and_battery_status():
 
 def test_api_entities_and_groups(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
-    from franklinwh_local_bridge import app as app_module, config, environment, db
+    from franklinwh_direct_connect_bridge import app as app_module, config, environment, db
     st = MetricsStore(str(tmp_path / "m.db"))
     monkeypatch.setattr(environment, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(config, "_settings", None)
@@ -56,7 +56,7 @@ def test_poller_mqtt_path_uses_defined_names():
     undefined `_pub_entities`, so every publish crashed with NameError and HA discovery
     never went out. Guard that the module binds every name it loads to an import/def."""
     import ast
-    from franklinwh_local_bridge import poller
+    from franklinwh_direct_connect_bridge import poller
 
     src = ast.parse(open(poller.__file__).read())
     imported = {a.asname or a.name for n in ast.walk(src)

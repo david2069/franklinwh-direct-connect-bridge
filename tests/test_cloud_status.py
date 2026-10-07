@@ -1,4 +1,4 @@
-from franklinwh_local_bridge import cloud_status as cs
+from franklinwh_direct_connect_bridge import cloud_status as cs
 
 
 def test_programme_label_variants():

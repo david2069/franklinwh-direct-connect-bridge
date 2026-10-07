@@ -13,5 +13,5 @@ labels:
   io.hass.version: "{version}"
   maintainer: "David Hona <david.hona@gmail.com>"
   org.opencontainers.image.title: "FranklinWH Direct Connect Bridge"
-  org.opencontainers.image.source: "https://github.com/david2069/franklinwh-local-bridge"
+  org.opencontainers.image.source: "https://github.com/david2069/franklinwh-direct-connect-bridge"
   org.opencontainers.image.licenses: "MIT"

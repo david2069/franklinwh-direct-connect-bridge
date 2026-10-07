@@ -1,8 +1,8 @@
 """Billing engine Phase 1 — tariff.*_window_active sensors. Window matcher + snapshot.
 Informational (express-don't-enforce): None when a window isn't configured."""
 import datetime as dt
-from franklinwh_local_bridge.db import MetricsStore
-from franklinwh_local_bridge import scheduler as sch
+from franklinwh_direct_connect_bridge.db import MetricsStore
+from franklinwh_direct_connect_bridge import scheduler as sch
 
 
 def test_in_window_same_day_and_wrap():
@@ -67,7 +67,7 @@ def test_billing_snapshot_empty_without_tariff(tmp_path):
 
 def test_billing_sensors_in_picker(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
-    from franklinwh_local_bridge import app as app_module, config, environment, db
+    from franklinwh_direct_connect_bridge import app as app_module, config, environment, db
     st = _store_with_tariff(tmp_path, demand_window={"start": "15:00", "end": "21:00"})
     monkeypatch.setattr(environment, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(config, "_settings", None)

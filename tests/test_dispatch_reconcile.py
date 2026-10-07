@@ -3,7 +3,7 @@ logic. Modbus is monkeypatched so nothing touches real hardware; a fake store re
 the DB transitions."""
 import time
 import pytest
-from franklinwh_local_bridge import battery_control as bc
+from franklinwh_direct_connect_bridge import battery_control as bc
 
 
 class FakeStore:
@@ -104,8 +104,8 @@ def test_release_does_not_reforce_when_battery_dropped(modbus):
 # ── widget-initiated dispatches are persisted too (covered by the reconcile) ──
 def test_widget_force_is_persisted_and_release_closes_it(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
-    from franklinwh_local_bridge import app as app_module, config, environment, db
-    from franklinwh_local_bridge.db import MetricsStore
+    from franklinwh_direct_connect_bridge import app as app_module, config, environment, db
+    from franklinwh_direct_connect_bridge.db import MetricsStore
     store = MetricsStore(str(tmp_path / "m.db"))
     monkeypatch.setattr(environment, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(config, "_settings", None)

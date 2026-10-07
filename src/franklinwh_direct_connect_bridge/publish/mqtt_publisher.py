@@ -23,7 +23,7 @@ class MqttPublisher:
             node, device, settings.mqtt_prefix, settings.ha_discovery_prefix, groups
         )
         self.client = mqtt.Client(
-            mqtt.CallbackAPIVersion.VERSION2, client_id=f"franklinwh-local-bridge-{node}"
+            mqtt.CallbackAPIVersion.VERSION2, client_id=f"franklinwh-direct-connect-bridge-{node}"
         )
         if settings.mqtt_username:
             self.client.username_pw_set(settings.mqtt_username, settings.mqtt_password)

@@ -2,7 +2,7 @@
 _energy_today_from_power_flow) — pure extraction from a single power_flow (1301) payload.
 No device I/O: the helpers take a raw dict fixture."""
 
-from franklinwh_local_bridge import client
+from franklinwh_direct_connect_bridge import client
 
 
 # A representative real-aGate power_flow (1301) payload subset — the fields the

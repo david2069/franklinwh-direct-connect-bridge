@@ -4,7 +4,7 @@ SyHdVersion is FWHAI's sysHdVersionInt and arrives free in every 1101 login
 manifest, so the region question that circuit detection previously answered by
 inference has an authoritative source.
 """
-from franklinwh_local_bridge import circuits, devicedb
+from franklinwh_direct_connect_bridge import circuits, devicedb
 from tests.test_circuits import AU_CFG, AU_METER
 
 AU_MANIFEST = {"SyHdVersion": 102, "IBG_SN": "10060006A02F24170091",

@@ -1,7 +1,7 @@
 """HA notification transition logic + no-op safety (no HA API)."""
 
-from franklinwh_local_bridge.config import Settings
-from franklinwh_local_bridge.notify import Notifier, transitions
+from franklinwh_direct_connect_bridge.config import Settings
+from franklinwh_direct_connect_bridge.notify import Notifier, transitions
 
 
 def test_transitions_only_on_change():
@@ -33,8 +33,8 @@ def test_target_attributes_readable_before_notify():
     AttributeError and the endpoint 500'd (seen in production logs 2026-08-23:
     "'Notifier' object has no attribute 'enabled'").
     """
-    from franklinwh_local_bridge.config import Settings
-    from franklinwh_local_bridge.notify import Notifier
+    from franklinwh_direct_connect_bridge.config import Settings
+    from franklinwh_direct_connect_bridge.notify import Notifier
 
     n = Notifier(Settings())
     assert isinstance(n.enabled, bool)     # no AttributeError
@@ -45,8 +45,8 @@ def test_target_attributes_readable_before_notify():
 def test_notify_test_endpoint_does_not_500_without_a_target(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 
-    from franklinwh_local_bridge import app as app_module
-    from franklinwh_local_bridge import config, environment
+    from franklinwh_direct_connect_bridge import app as app_module
+    from franklinwh_direct_connect_bridge import config, environment
 
     monkeypatch.setattr(environment, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(config, "_settings", None)
@@ -60,8 +60,8 @@ def test_notify_test_endpoint_does_not_500_without_a_target(monkeypatch, tmp_pat
 
 def test_target_reflects_live_settings_edits():
     """The properties must stay live — that was the reason for the original design."""
-    from franklinwh_local_bridge.config import Settings
-    from franklinwh_local_bridge.notify import Notifier
+    from franklinwh_direct_connect_bridge.config import Settings
+    from franklinwh_direct_connect_bridge.notify import Notifier
 
     s = Settings()
     s.ha_url, s.ha_token, s.ha_notify = "", "", True

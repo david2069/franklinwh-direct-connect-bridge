@@ -1,8 +1,11 @@
 name: "FranklinWH Direct Connect Bridge"
 description: "REST + MQTT bridge and web UI for the FranklinWH aGate over the Direct Connect local API"
 version: "0.2.0"
+# DO NOT RENAME. The slug is the add-on's identity to the Supervisor: change it and
+# Home Assistant treats this as a different add-on, losing the existing configuration.
+# It keeps the pre-rename spelling deliberately. See the display `name` above.
 slug: "franklinwh_local_bridge"
-url: "https://github.com/david2069/franklinwh-local-bridge"
+url: "https://github.com/david2069/franklinwh-direct-connect-bridge"
 init: false
 arch:
   - aarch64

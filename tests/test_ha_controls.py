@@ -1,7 +1,7 @@
 """Writable HA entities — the controls that make the bridges functionally equivalent."""
 import pytest
 
-from franklinwh_local_bridge.publish import entities, handle_command
+from franklinwh_direct_connect_bridge.publish import entities, handle_command
 
 
 def test_controls_are_published_with_command_topics():

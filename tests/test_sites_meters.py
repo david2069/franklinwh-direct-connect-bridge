@@ -1,6 +1,6 @@
 """Sites + Meters roster (Phase 1 of the multi-site model). DB layer + default seeding
 + gateway attachment. No live gateway needed."""
-from franklinwh_local_bridge.db import MetricsStore
+from franklinwh_direct_connect_bridge.db import MetricsStore
 
 
 def _store(tmp_path):

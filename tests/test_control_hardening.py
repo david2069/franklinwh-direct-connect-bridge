@@ -4,9 +4,9 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import app as app_module, config, environment, db
-from franklinwh_local_bridge import battery_control
-from franklinwh_local_bridge.db import MetricsStore
+from franklinwh_direct_connect_bridge import app as app_module, config, environment, db
+from franklinwh_direct_connect_bridge import battery_control
+from franklinwh_direct_connect_bridge.db import MetricsStore
 
 
 def _client(tmp_path, monkeypatch):
@@ -84,7 +84,7 @@ def test_dispatch_kind_force_vs_cloud_vpp():
 
 
 def test_cloud_programme_label_parses_strings_and_dicts():
-    from franklinwh_local_bridge import cloud_status
+    from franklinwh_direct_connect_bridge import cloud_status
     assert cloud_status._programme_label(["Ausgrid VPP", "  "]) == "Ausgrid VPP"
     assert cloud_status._programme_label([{"partnerName": "Amber", "programName": "P"}]) == "Amber"
     assert cloud_status._programme_label([{"programName": "Solar Sponge"}]) == "Solar Sponge"

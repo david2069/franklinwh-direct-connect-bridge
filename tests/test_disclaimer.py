@@ -2,15 +2,15 @@
 
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import app as app_module, db, logbuffer
-from franklinwh_local_bridge.config import get_settings
+from franklinwh_direct_connect_bridge import app as app_module, db, logbuffer
+from franklinwh_direct_connect_bridge.config import get_settings
 
 
 def test_disclaimer_text_and_links():
     c = TestClient(app_module.create_app())
     d = c.get("/api/disclaimer").json()
     assert d["title"] and isinstance(d["lines"], list) and len(d["lines"]) >= 3
-    assert "franklinwh-local-bridge" in d["issues_url"]
+    assert "franklinwh-direct-connect-bridge" in d["issues_url"]
     assert d["docs_url"] == "guide/"
     assert d["agreed"] is False   # no client_id -> not agreed
 

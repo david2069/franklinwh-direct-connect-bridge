@@ -1,7 +1,7 @@
 """FEAT-BILLING-WHOLESALE: dynamic (wholesale) rate overrides the static tariff in billing."""
 
 import datetime as dt
-from franklinwh_local_bridge import billing
+from franklinwh_direct_connect_bridge import billing
 
 
 def test_rate_prefers_dynamic_over_static():
@@ -31,7 +31,7 @@ def test_dynamic_import_cost_uses_live_rate():
 
 
 def test_resolve_dynamic_price_nem(monkeypatch):
-    from franklinwh_local_bridge import scheduler, aemo_nem
+    from franklinwh_direct_connect_bridge import scheduler, aemo_nem
     monkeypatch.setattr(aemo_nem, "spot_price",
                         lambda r: {"price_c_kwh": 6.72} if r == "NSW1" else None)
     buy, sell = scheduler.resolve_dynamic_price({"source": "nem", "region": "NSW1"}, None)
@@ -40,7 +40,7 @@ def test_resolve_dynamic_price_nem(monkeypatch):
 
 
 def test_resolve_dynamic_price_ha(monkeypatch):
-    from franklinwh_local_bridge import scheduler
+    from franklinwh_direct_connect_bridge import scheduler
     monkeypatch.setattr(scheduler, "_ha_prices_c",
                         lambda store, ids: {"ha:h:sensor.buy": 12.4, "ha:h:sensor.sell": 5.5})
     buy, sell = scheduler.resolve_dynamic_price(
@@ -53,7 +53,7 @@ def test_resolve_dynamic_price_ha(monkeypatch):
 
 
 def test_apply_dynamic_pricing_overrides_sensors(monkeypatch):
-    from franklinwh_local_bridge import scheduler
+    from franklinwh_direct_connect_bridge import scheduler
     monkeypatch.setattr(scheduler, "tariff_dynamic_provider",
                         lambda store, gw: {"source": "nem", "region": "NSW1"})
     monkeypatch.setattr(scheduler, "resolve_dynamic_price", lambda dyn, store: (17.0, 8.0))

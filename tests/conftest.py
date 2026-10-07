@@ -13,7 +13,7 @@ A test that specifically needs the real defaults can opt out with
 
 import pytest
 
-from franklinwh_local_bridge import environment, config, db, logbuffer
+from franklinwh_direct_connect_bridge import environment, config, db, logbuffer
 
 
 def pytest_configure(config):  # noqa: ARG001 — pytest hook

@@ -1,7 +1,7 @@
 """System Setup — derived + override resolution + system.* sensors. Derivation from
 the device is mocked (no live aGate in tests); focus on the store/override/snapshot logic."""
-from franklinwh_local_bridge import system_setup as ss
-from franklinwh_local_bridge.db import MetricsStore
+from franklinwh_direct_connect_bridge import system_setup as ss
+from franklinwh_direct_connect_bridge.db import MetricsStore
 
 
 def test_defaults_when_nothing_set(tmp_path):
@@ -47,7 +47,7 @@ def test_snapshot_keys(tmp_path):
 
 def test_api_get_put_and_sensor_group(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
-    from franklinwh_local_bridge import app as app_module, config, environment, db
+    from franklinwh_direct_connect_bridge import app as app_module, config, environment, db
     st = MetricsStore(str(tmp_path / "m.db"))
     monkeypatch.setattr(environment, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(config, "_settings", None)

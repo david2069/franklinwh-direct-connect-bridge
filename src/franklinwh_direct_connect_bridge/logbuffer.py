@@ -128,7 +128,7 @@ class RingBufferHandler(logging.Handler):
 _installed = False
 
 
-def install(logger_name: str = "franklinwh_local_bridge",
+def install(logger_name: str = "franklinwh_direct_connect_bridge",
             level: int = logging.INFO) -> None:
     """Attach a single ``RingBufferHandler`` to ``logger_name`` (idempotent), hydrating the
     buffer from the persisted file first. Lowers the logger's own level to ``level`` when it

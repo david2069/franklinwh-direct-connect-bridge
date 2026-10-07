@@ -7,7 +7,7 @@ when a non-self producer has overwritten OUR identifier's retained metadata.
 """
 import json
 
-from franklinwh_local_bridge.publish import mqtt_scan
+from franklinwh_direct_connect_bridge.publish import mqtt_scan
 
 
 def _cfg(ident, name, sw):

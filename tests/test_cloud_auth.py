@@ -5,8 +5,8 @@ import time
 
 import pytest
 
-from franklinwh_local_bridge import config, environment, providers
-from franklinwh_local_bridge.config import Settings
+from franklinwh_direct_connect_bridge import config, environment, providers
+from franklinwh_direct_connect_bridge.config import Settings
 
 
 @pytest.fixture(autouse=True)
@@ -160,7 +160,7 @@ def test_validate_records_the_failure_reason(monkeypatch):
 def _api(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 
-    from franklinwh_local_bridge import app as app_module
+    from franklinwh_direct_connect_bridge import app as app_module
     monkeypatch.setattr(environment, "DATA_DIR", str(tmp_path))
     return TestClient(app_module.create_app())
 

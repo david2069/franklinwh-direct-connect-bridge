@@ -32,7 +32,7 @@ def spot_price(region: str | None) -> dict[str, Any] | None:
         return hit[1]
     try:
         req = urllib.request.Request(
-            _URL, headers={"Accept": "application/json", "User-Agent": "franklinwh-local-bridge"})
+            _URL, headers={"Accept": "application/json", "User-Agent": "franklinwh-direct-connect-bridge"})
         with urllib.request.urlopen(req, timeout=12) as r:
             data = json.load(r)
         for row in (data.get("ELEC_NEM_SUMMARY") or []):

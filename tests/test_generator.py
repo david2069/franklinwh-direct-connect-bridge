@@ -7,8 +7,8 @@ regardless and the tab must not present stored defaults as a live generator.
 import pytest
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import generator
-from franklinwh_local_bridge.app import create_app
+from franklinwh_direct_connect_bridge import generator
+from franklinwh_direct_connect_bridge.app import create_app
 
 NO_GEN = {
     "opt": 0, "result": 0, "reason": 0,
@@ -69,7 +69,7 @@ def test_maintenance_block():
 # ── endpoints ────────────────────────────────────────────────────────────────
 @pytest.fixture()
 def client(monkeypatch):
-    from franklinwh_local_bridge import client as c
+    from franklinwh_direct_connect_bridge import client as c
     monkeypatch.setattr(c, "generator", lambda s, host=None: generator.build(NO_GEN))
     return TestClient(create_app())
 
@@ -81,7 +81,7 @@ def test_api_generator(client):
 
 def test_mode_write_refuses_when_no_generator(monkeypatch):
     """An unexercised write must not be fired at hardware that isn't there."""
-    from franklinwh_local_bridge import client as c
+    from franklinwh_direct_connect_bridge import client as c
     monkeypatch.setattr(c, "writes_enabled", lambda s: True)
 
     def boom(s, mode, host=None):
@@ -92,15 +92,15 @@ def test_mode_write_refuses_when_no_generator(monkeypatch):
 
 
 def test_invalid_mode_rejected():
-    from franklinwh_local_bridge import client as c
-    from franklinwh_local_bridge.config import Settings
+    from franklinwh_direct_connect_bridge import client as c
+    from franklinwh_direct_connect_bridge.config import Settings
     with pytest.raises(ValueError):
         c.set_generator_mode(Settings(), "turbo")
 
 
 # ── config write endpoints (1901, hardware-verified) ─────────────────────────
 def test_window_endpoint_delegates(monkeypatch):
-    from franklinwh_local_bridge import client as c
+    from franklinwh_direct_connect_bridge import client as c
     monkeypatch.setattr(c, "writes_enabled", lambda s: True)
     seen = {}
 
@@ -115,7 +115,7 @@ def test_window_endpoint_delegates(monkeypatch):
 
 
 def test_soc_endpoint_rejects_inverted_thresholds(monkeypatch):
-    from franklinwh_local_bridge import client as c
+    from franklinwh_direct_connect_bridge import client as c
     monkeypatch.setattr(c, "writes_enabled", lambda s: True)
 
     def fake(s, start_below, stop_above, host=None):
@@ -128,7 +128,7 @@ def test_soc_endpoint_rejects_inverted_thresholds(monkeypatch):
 
 def test_exercise_endpoint_drops_unset_fields(monkeypatch):
     """Only the fields the user actually edited are sent."""
-    from franklinwh_local_bridge import client as c
+    from franklinwh_direct_connect_bridge import client as c
     monkeypatch.setattr(c, "writes_enabled", lambda s: True)
     seen = {}
 
@@ -143,7 +143,7 @@ def test_exercise_endpoint_drops_unset_fields(monkeypatch):
 
 def test_circuits_raw_endpoint_exists(monkeypatch):
     """Smart Circuits gained the Raw JSON button Generator already had."""
-    from franklinwh_local_bridge import client as c
+    from franklinwh_direct_connect_bridge import client as c
     monkeypatch.setattr(c, "read", lambda s, name, host=None: {"SwMerge": 0})
     r = TestClient(create_app()).get("/api/circuits/raw")
     assert r.status_code == 200 and r.json() == {"SwMerge": 0}
@@ -171,7 +171,7 @@ def test_hardware_present_but_disabled_is_still_not_editable():
 
 
 def test_enable_endpoint_delegates(monkeypatch):
-    from franklinwh_local_bridge import client as c
+    from franklinwh_direct_connect_bridge import client as c
     monkeypatch.setattr(c, "writes_enabled", lambda s: True)
     seen = {}
 
@@ -187,5 +187,5 @@ def test_enable_succeeds_without_hardware_by_design():
     """Unlike set_generator_mode, enabling must NOT refuse when nothing is fitted —
     that is what the official app does, and refusing would block a real install."""
     import inspect
-    from franklinwh_local_bridge import client as c
+    from franklinwh_direct_connect_bridge import client as c
     assert "NotInstalledError" not in inspect.getsource(c.set_generator_enabled)

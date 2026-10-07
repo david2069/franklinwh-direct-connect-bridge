@@ -1,4 +1,4 @@
-# Backlog — franklinwh-local-bridge
+# Backlog — franklinwh-direct-connect-bridge
 
 Planned work. (The old pointer to the library repo's `PLAN_docker.md` is gone — that file was
 removed from the public library repo; design now lives in each section here and in `docs/`.)
@@ -428,7 +428,7 @@ Split it by concern — this is the standard best practice:
 
 ## FEAT-LEGAL-DISCLAIMER — unofficial-app disclaimer (startup log + first-connect + docs + GH links) (CORE DONE 2026-09-29)
 
-> **CORE DONE 2026-09-29:** startup log line (`DISCLAIMER_LINE`, logged once, lands in the durable log); first-connection **modal** with the unofficial/AS-IS/no-warranty/‘do NOT contact FranklinWH support’ text + Documentation (`guide/`) + **GitHub Issues** links; an **‘I have read and agree’ checkbox** that, when ticked, persists agreement to the DB (`disclaimer_acks`, keyed by a per-browser client_id — the authoritative don’t-show-again, survives a localStorage clear) and writes the agreement to the log. Issues URL = `github.com/david2069/franklinwh-local-bridge/issues` (owner will make the repo public). REMAINING: add the disclaimer to the FastAPI OpenAPI `description` (`/docs`) + README; optional server-side ‘first UI connection’ line; consider upstreaming the ‘do-not-contact-support’ wording to franklinwh-cloud.
+> **CORE DONE 2026-09-29:** startup log line (`DISCLAIMER_LINE`, logged once, lands in the durable log); first-connection **modal** with the unofficial/AS-IS/no-warranty/‘do NOT contact FranklinWH support’ text + Documentation (`guide/`) + **GitHub Issues** links; an **‘I have read and agree’ checkbox** that, when ticked, persists agreement to the DB (`disclaimer_acks`, keyed by a per-browser client_id — the authoritative don’t-show-again, survives a localStorage clear) and writes the agreement to the log. Issues URL = `github.com/david2069/franklinwh-direct-connect-bridge/issues` (owner will make the repo public). REMAINING: add the disclaimer to the FastAPI OpenAPI `description` (`/docs`) + README; optional server-side ‘first UI connection’ line; consider upstreaming the ‘do-not-contact-support’ wording to franklinwh-cloud.
 
 **Status:** `PARTIAL` — queued — **Filed:** 2026-09-29 (user). **Source of truth:** copy from franklinwh-cloud
 (README "Disclaimer" + `franklinwh_cloud/metrics.py::DISCLAIMER`, logged once at Client init via
@@ -446,7 +446,7 @@ with links to the **issues** and **docs** in the UI. Docs link: https://david206
    `DISCLAIMER` constant + a `_disclaimer_logged` guard, `log.info(DISCLAIMER)` at app startup (in the
    bridge's lifespan/create_app, alongside the existing startup lines). It then also lands in the durable
    Logs DB (audit trail) automatically. Bridge-flavoured one-liner, e.g.:
-   > `franklinwh-local-bridge vX.Y | UNOFFICIAL · NOT AFFILIATED WITH FRANKLINWH | NO WARRANTY · AS-IS ·
+   > `franklinwh-direct-connect-bridge vX.Y | UNOFFICIAL · NOT AFFILIATED WITH FRANKLINWH | NO WARRANTY · AS-IS ·
    > USE AT YOUR OWN RISK | May break without notice from upstream API/firmware changes | Do NOT contact
    > FranklinWH support for this app — file issues on GitHub | MIT — see LICENSE.`
 2. **First-connection disclaimer (UI)** — a modal/banner shown on the first web connection (persist
@@ -457,12 +457,12 @@ with links to the **issues** and **docs** in the UI. Docs link: https://david206
 4. **UI links (currently absent)** — an About/footer (or Settings → About) with: Docs
    (https://david2069.github.io/franklinwh-cloud/) and **GitHub Issues**. NB confirm the correct issues
    repo for THIS app — the local bridge/local API is a separate project from franklinwh-cloud; issues for
-   the bridge should point at the bridge's own repo (franklinwh-local-bridge / franklinwh-local), not the
+   the bridge should point at the bridge's own repo (franklinwh-direct-connect-bridge / franklinwh-local), not the
    cloud repo. Decide: one funnel (the given cloud docs URL) vs per-repo issues.
 5. **"Do NOT call FranklinWH support" line** — not present in the cloud disclaimer today; add it here (and
    consider upstreaming it to franklinwh-cloud for consistency).
 
-### Verbatim disclaimer to copy (from franklinwh-cloud README) — adapt the name to franklinwh-local-bridge
+### Verbatim disclaimer to copy (from franklinwh-cloud README) — adapt the name to franklinwh-direct-connect-bridge
 > **UNOFFICIAL SOFTWARE — NOT AFFILIATED WITH FRANKLINWH**
 >
 > By using this software, you confirm that you have read and understood the LICENSE and its Additional Terms.
@@ -1995,7 +1995,7 @@ each container has its own clock view. Observed:
 | | timezone | started |
 |---|---|---|
 | host | **host-local zone** | — |
-| `franklinwh-local-bridge` | **UTC** | 2026-08-29 |
+| `franklinwh-direct-connect-bridge` | **UTC** | 2026-08-29 |
 | `fwhbridge-app` (Modbus Bridge) | **UTC** | 2026-09-04 |
 | `fwhhai-app` (FWHAI) | **host-local** | 2026-09-12 |
 
@@ -2689,7 +2689,7 @@ automation rulebooks, security/users, multi-gateway.
 **Status:** `INFO` — ongoing practice (GitHub live; iCloud to set up)
 **Filed:** 2026-08-02
 
-Applies to all FranklinWH repos (`franklinwh-local`, `franklinwh-local-bridge`,
+Applies to all FranklinWH repos (`franklinwh-local`, `franklinwh-direct-connect-bridge`,
 `franklinwh-hybrid`, the modbus/cloud bridges).
 
 - **Primary — GitHub (private):** commit + `git push origin main` after every meaningful

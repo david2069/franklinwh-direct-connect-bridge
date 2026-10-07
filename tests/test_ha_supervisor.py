@@ -4,9 +4,9 @@ These never touch the network in the test env (not an add-on), so they exercise 
 graceful-failure paths without a live Supervisor.
 """
 
-from franklinwh_local_bridge import environment as env
-from franklinwh_local_bridge import ha_supervisor as hs
-from franklinwh_local_bridge.config import Settings
+from franklinwh_direct_connect_bridge import environment as env
+from franklinwh_direct_connect_bridge import ha_supervisor as hs
+from franklinwh_direct_connect_bridge.config import Settings
 
 
 def test_discover_not_addon(monkeypatch):

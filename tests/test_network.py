@@ -5,8 +5,8 @@ raw interfaces into the cloud get_network_info shape, and REDACT cloud credentia
 """
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import app as app_module, client as client_mod, config, environment, db
-from franklinwh_local_bridge.db import MetricsStore
+from franklinwh_direct_connect_bridge import app as app_module, client as client_mod, config, environment, db
+from franklinwh_direct_connect_bridge.db import MetricsStore
 
 FIXTURE = {
     "host": "1.2.3.4",

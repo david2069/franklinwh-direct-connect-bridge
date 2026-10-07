@@ -4,10 +4,10 @@ endpoints, and single-gateway parity of /api/summary."""
 import pytest
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import app as app_module
-from franklinwh_local_bridge import client as client_module
-from franklinwh_local_bridge import state as state_module
-from franklinwh_local_bridge.config import Settings, gateway_list
+from franklinwh_direct_connect_bridge import app as app_module
+from franklinwh_direct_connect_bridge import client as client_module
+from franklinwh_direct_connect_bridge import state as state_module
+from franklinwh_direct_connect_bridge.config import Settings, gateway_list
 
 
 @pytest.fixture(autouse=True)

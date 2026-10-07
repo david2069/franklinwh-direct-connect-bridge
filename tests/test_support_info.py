@@ -2,7 +2,7 @@
 
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import app as app_module, client as client_module, state
+from franklinwh_direct_connect_bridge import app as app_module, client as client_module, state
 
 
 def test_support_info_maps_model_and_redacts_serials(monkeypatch):
@@ -10,7 +10,7 @@ def test_support_info_maps_model_and_redacts_serials(monkeypatch):
     gw = state.GatewayState(id="gw1", configured_host="192.168.0.110",
                             serial="10060006A02F24170091", is_mock=False)
     monkeypatch.setattr(app_module, "get_gateways", lambda: [gw], raising=False)
-    monkeypatch.setattr("franklinwh_local_bridge.state.gateways", lambda: [gw])
+    monkeypatch.setattr("franklinwh_direct_connect_bridge.state.gateways", lambda: [gw])
     # firmware carries serials + SyHdVersion — the endpoint must map the model but drop serials
     monkeypatch.setattr(client_module, "firmware", lambda s, host=None: {
         "SyHdVersion": 102, "protocolVer": "V1.11.03", "IBG_VER": "V12R02",

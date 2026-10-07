@@ -1,6 +1,6 @@
 """MetricsStore unit tests — insert / query (raw + bucketed) / prune / info."""
 
-from franklinwh_local_bridge.db import MetricsStore
+from franklinwh_direct_connect_bridge.db import MetricsStore
 
 
 def _seed(store, base):
@@ -209,7 +209,7 @@ def test_stored_shape_feeds_tier_transitions():
 def test_retention_default_is_a_year():
     """365d ~= 130 MB at a 30s poll (measured 0.35 MB/day). The old 30d default was
     the only reason the gateway's ~105-day history looked like the longer record."""
-    from franklinwh_local_bridge.config import Settings
+    from franklinwh_direct_connect_bridge.config import Settings
     assert Settings().metrics_retention_days == 365
 
 

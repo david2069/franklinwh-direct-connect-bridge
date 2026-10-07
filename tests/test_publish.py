@@ -1,6 +1,6 @@
 """Phase 2 — MQTT/HA discovery payload builders (pure, no broker)."""
 
-from franklinwh_local_bridge.publish import entities
+from franklinwh_direct_connect_bridge.publish import entities
 
 
 def test_build_state_maps_power_flow_fields():

@@ -14,7 +14,7 @@ from .config import Settings
 from .poller import run_gateway
 from .state import GatewayState
 
-log = logging.getLogger("franklinwh_local_bridge.supervisor")
+log = logging.getLogger("franklinwh_direct_connect_bridge.supervisor")
 
 _pollers: dict[str, tuple[asyncio.Task, asyncio.Event]] = {}
 _reaping: set[asyncio.Task] = set()   # tasks winding down after stop, kept referenced

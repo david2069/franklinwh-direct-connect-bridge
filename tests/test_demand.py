@@ -1,8 +1,8 @@
 """Billing Phases 2-3 — BillingTracker (power-integration): demand, energy cost,
 bonus + export charge. Fed synthetic (grid_w, now) samples; prices via rate_model."""
 import datetime as dt
-from franklinwh_local_bridge import billing
-from franklinwh_local_bridge.db import MetricsStore
+from franklinwh_direct_connect_bridge import billing
+from franklinwh_direct_connect_bridge.db import MetricsStore
 
 DAY = {"start": "00:00", "end": "24:00"}            # explicit all-day window
 CFG = {"pricing": {}, "cycle_day": 1, "bonus": None, "charge": None,

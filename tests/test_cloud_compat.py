@@ -9,9 +9,9 @@ shape tests below run regardless.
 
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import app as app_module
-from franklinwh_local_bridge import client as client_module
-from franklinwh_local_bridge import cloud_compat
+from franklinwh_direct_connect_bridge import app as app_module
+from franklinwh_direct_connect_bridge import client as client_module
+from franklinwh_direct_connect_bridge import cloud_compat
 
 
 # A representative local power_flow (1301) payload, cloud-style raw keys.
@@ -472,7 +472,7 @@ def test_network_matches_real_get_network_info():
 def test_mode_from_reads_active_requested_and_index_safety():
     """Cloud get_mode flat dict from local reads; also pins workMode->name (index safety:
     workMode 1 is TOU not Backup)."""
-    from franklinwh_local_bridge import cloud_compat
+    from franklinwh_direct_connect_bridge import cloud_compat
     pf = {"run_status": 2, "soc": 44.3, "name": "Self-Consumption"}
     ml = {"current_id": 85232, "list": [
         {"id": 85232, "name": "Self-Consumption", "scheduling_type": 2, "reserved_soc": 5, "electricity_type": 1},

@@ -1,4 +1,4 @@
-"""Entrypoint: `franklinwh-local-bridge run` → serve the FastAPI app via uvicorn."""
+"""Entrypoint: `franklinwh-direct-connect-bridge run` → serve the FastAPI app via uvicorn."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from .config import get_settings
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="franklinwh-local-bridge")
+    p = argparse.ArgumentParser(prog="franklinwh-direct-connect-bridge")
     p.add_argument("command", nargs="?", default="run", choices=["run"])
     p.parse_args(argv)
 
@@ -20,7 +20,7 @@ def main(argv: list[str] | None = None) -> int:
         level=getattr(logging, s.log_level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
     )
-    uvicorn.run("franklinwh_local_bridge.app:create_app", factory=True,
+    uvicorn.run("franklinwh_direct_connect_bridge.app:create_app", factory=True,
                 host=s.http_host, port=s.http_port, log_level=s.log_level)
     return 0
 

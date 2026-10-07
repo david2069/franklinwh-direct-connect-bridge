@@ -19,7 +19,7 @@ from franklinwh_local.transport import TransportError
 from .config import Settings
 from .state import get_state
 
-log = logging.getLogger("franklinwh_local_bridge.client")
+log = logging.getLogger("franklinwh_direct_connect_bridge.client")
 
 
 def active_host(s: Settings) -> str:

@@ -9,11 +9,11 @@ import logging
 import pytest
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import app as app_module
-from franklinwh_local_bridge import client as client_module
-from franklinwh_local_bridge import config, environment, logbuffer
+from franklinwh_direct_connect_bridge import app as app_module
+from franklinwh_direct_connect_bridge import client as client_module
+from franklinwh_direct_connect_bridge import config, environment, logbuffer
 
-BRIDGE_LOGGER = "franklinwh_local_bridge"
+BRIDGE_LOGGER = "franklinwh_direct_connect_bridge"
 
 
 # -- P6: logs endpoint + ring buffer ----------------------------------------
@@ -64,7 +64,7 @@ def test_logs_endpoint_level_filter():
 def test_logs_persist_across_restart(tmp_path):
     """Lines persist across a 'restart' via the DB (not a rewritten file) — the durable
     Logs history. Uses an explicit tmp store so it never touches real data."""
-    from franklinwh_local_bridge import db as _db
+    from franklinwh_direct_connect_bridge import db as _db
     store = _db.MetricsStore(str(tmp_path / "m.db"))
     logbuffer.install(BRIDGE_LOGGER)
     logbuffer.set_store(store)
@@ -146,12 +146,12 @@ def test_put_settings_log_level_sets_logger(tmp_overrides):
 def test_put_ha_url_and_token(monkeypatch, tmp_path):
     """Standalone HA target is now UI-editable: PUT ha_url + ha_token persists, /api/settings
     exposes ha_url + ha_token_set (never the token itself)."""
-    from franklinwh_local_bridge import config as config_module
+    from franklinwh_direct_connect_bridge import config as config_module
     monkeypatch.setattr(config_module, "overrides_path", lambda: tmp_path / "overrides.json")
     # fresh settings singleton so overrides apply cleanly
     config_module._settings = None
     from fastapi.testclient import TestClient
-    from franklinwh_local_bridge import app as app_module
+    from franklinwh_direct_connect_bridge import app as app_module
     c = TestClient(app_module.create_app())
     r = c.put("/api/settings", json={"ha_url": "http://ha.local:8123", "ha_token": "secret-xyz"})
     assert r.status_code == 200
@@ -170,7 +170,7 @@ def test_logs_since_filter_and_pagination(tmp_path):
     """DB-backed logs: `since` bounds the window, and offset pagination returns totals —
     newest-first. Explicit tmp store, so real data is never touched."""
     import time
-    from franklinwh_local_bridge import db as _db
+    from franklinwh_direct_connect_bridge import db as _db
     store = _db.MetricsStore(str(tmp_path / "m.db"))
     logbuffer.install(BRIDGE_LOGGER)
     logbuffer.set_store(store)

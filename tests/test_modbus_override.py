@@ -1,6 +1,6 @@
 """Modbus host/port override + effective_target (Control-tab connection setup)."""
 
-from franklinwh_local_bridge import battery_control as bc
+from franklinwh_direct_connect_bridge import battery_control as bc
 
 
 def _reset():

@@ -8,7 +8,7 @@ agate_serial, energy_history) — the same drift the library itself hit.
 from franklinwh_local import catalog
 from franklinwh_local.client import LocalClient
 
-from franklinwh_local_bridge.client import READ_METHODS
+from franklinwh_direct_connect_bridge.client import READ_METHODS
 
 
 def test_every_catalog_read_with_a_client_method_is_exposed():

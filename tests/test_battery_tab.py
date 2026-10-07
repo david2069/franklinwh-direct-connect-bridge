@@ -7,7 +7,7 @@ against the markup or a controller member being renamed out from under it.
 import pytest
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import app as app_module
+from franklinwh_direct_connect_bridge import app as app_module
 
 
 @pytest.fixture(scope="module")
@@ -44,7 +44,7 @@ def test_battery_endpoint_returns_a_shape_even_with_no_device(client):
 
 def test_partial_reads_do_not_fail_the_whole_view():
     """A marginal link should still yield whatever blocks came back."""
-    import franklinwh_local_bridge.client as cl
+    import franklinwh_direct_connect_bridge.client as cl
 
     class FakeClient:
         def __enter__(self): return self
@@ -56,7 +56,7 @@ def test_partial_reads_do_not_fail_the_whole_view():
         def device_firmware(self, i): return {"bms_ver": "V1"}
         def device_check(self): return {"devNum": 1}
 
-    from franklinwh_local_bridge.config import Settings
+    from franklinwh_direct_connect_bridge.config import Settings
     orig = cl._client
     cl._client = lambda s, h: FakeClient()
     try:
@@ -123,7 +123,7 @@ def test_multi_apower_chart_overlay(client):
     """Multi-battery sites can overlay aPowers: per-unit sample store, a units
     multi-select, and a draw() branch that plots one line per selected unit."""
     js = client.get("/static/js/battery_tab.js").text
-    root = __import__("pathlib").Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = __import__("pathlib").Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     html = (root / "templates/tabs/battery.html").read_text()
     for m in ("samplesByUnit", "chartUnits", "selectedUnits", "toggleChartUnit(", "_fetchUnit("):
         assert m in js, f"battery_tab.js missing {m}"
@@ -153,7 +153,7 @@ def test_no_bare_alpine_magics_in_tab_javascript():
     import re
 
     js_dir = pathlib.Path(__file__).resolve().parents[1] / \
-        "src/franklinwh_local_bridge/static/js"
+        "src/franklinwh_direct_connect_bridge/static/js"
     magic = re.compile(r"(?<![.\w'\"])\$(store|watch|nextTick|el|refs)\b")
     offenders = []
     for path in js_dir.glob("*_tab.js"):
@@ -196,7 +196,7 @@ def test_recording_runs_server_side_not_in_the_browser(client):
 def test_topbar_titles_every_sidebar_tab(client):
     """The old ternary chain fell through to 'Health' for battery/device/logs."""
     import pathlib, re
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     tabs = {p.stem for p in (root / "templates/tabs").glob("*.html")}
     titles = (root / "static/js/app.js").read_text()
     block = re.search(r"tabTitles:\s*\{(.*?)\}", titles, re.S).group(1)
@@ -209,7 +209,7 @@ def test_battery_tab_has_live_watch_modal():
     """The 'Watch live' realtime modal: button, modal, canvas, and the JS that
     drives its own poll and draws into its own chart."""
     import pathlib
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     html = (root / "templates/tabs/battery.html").read_text()
     js = (root / "static/js/battery_tab.js").read_text()
     assert 'openLive()' in html and 'Watch live' in html
@@ -233,7 +233,7 @@ def test_cell_charts_have_average_median_series_toggle():
     """The 16 per-cell lines can be collapsed to an Average / Median aggregate
     (with a min–max band) via a series-mode toggle on the recorded-session charts."""
     import pathlib
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     html = (root / "templates/tabs/battery.html").read_text()
     js = (root / "static/js/battery_tab.js").read_text()
     assert "setSeriesMode(" in html and "All cells" in html and "Average" in html and "Median" in html
@@ -247,7 +247,7 @@ def test_trend_chart_toggles_to_per_cell_metrics():
     """The originally-displayed Trend chart (spread/SoC/temp) can be switched to BMS
     per-cell voltages, or their average / median, via a mode toggle on the Trend card."""
     import pathlib
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     html = (root / "templates/tabs/battery.html").read_text()
     js = (root / "static/js/battery_tab.js").read_text()
     assert "setTrendMode(" in html and "Per-cell" in html and "Trend" in html
@@ -264,7 +264,7 @@ def test_dcdc_status_is_decoded_live_verified():
     Standby/Charging/Discharging. The bridge injects DCDCStatus_desc and the UI
     shows it; runMode/inverterStatus stay raw (not charge states)."""
     import pathlib
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     client_src = (root / "client.py").read_text()
     html = (root / "templates/tabs/battery.html").read_text()
     assert "DCDCStatus_desc" in client_src and "DCDC_STATE.get" in client_src
@@ -277,7 +277,7 @@ def test_apower_selector_uses_serials():
     """The aPower picker is labelled by serial (units.devMap[].devSN), not a bare
     index, and is a real chooser on a multi-battery site."""
     import pathlib
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     html = (root / "templates/tabs/battery.html").read_text()
     assert "u.devSN" in html and "data.units.devMap" in html
     assert "'aPower ' + u.id + ' · ' + u.devSN" in html
@@ -287,7 +287,7 @@ def test_legend_deselect_persists_across_redraw():
     """The Trend chart is destroyed+recreated each poll; a series the user hides
     from the legend must stay hidden (was being re-selected every refresh)."""
     import pathlib
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     js = (root / "static/js/battery_tab.js").read_text()
     assert "_hidden" in js
     assert "self._hidden[d.label]" in js and "d.hidden = true" in js  # re-applied on redraw
@@ -298,7 +298,7 @@ def test_apower_selector_gated_to_multi_unit():
     """The serial dropdown only shows for 2+ aPowers — a single-unit dropdown is
     redundant (serial is in the BMS card) and jammed the controls row."""
     import pathlib
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     html = (root / "templates/tabs/battery.html").read_text()
     assert "(data.units.devMap || []).length > 1" in html
 
@@ -307,7 +307,7 @@ def test_per_apower_table_for_multi_battery():
     """A 2+ aPower site shows a per-aPower table (one row per battery) instead of
     the single BMS identity card; load() gathers each unit's summary."""
     import pathlib
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     html = (root / "templates/tabs/battery.html").read_text()
     js = (root / "static/js/battery_tab.js").read_text()
     assert 'x-if="unitRows.length > 1"' in html      # table only for multi
@@ -320,7 +320,7 @@ def test_percell_stack_per_apower():
     """Per-cell mode with 2+ selected aPowers renders a STACK — one small per-cell
     chart per aPower — instead of one canvas."""
     import pathlib
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     html = (root / "templates/tabs/battery.html").read_text()
     js = (root / "static/js/battery_tab.js").read_text()
     assert "bmsCellChart-" in html and 'x-show="showStack"' in html
@@ -332,7 +332,7 @@ def test_battery_reloads_on_gateway_switch():
     """Switching the topbar gateway must re-read the battery (it used to keep showing
     the previous gateway's data — the '4 aPowers didn't appear on Mock GW' bug)."""
     import pathlib
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     js = (root / "static/js/battery_tab.js").read_text()
     assert "$store.app.selectedGateway" in js and "this.samplesByUnit = {}" in js
     # gateway param isn't doubled anymore

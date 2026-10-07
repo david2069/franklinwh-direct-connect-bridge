@@ -9,7 +9,7 @@ or a store member being removed or renamed out from under the template.
 import pytest
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import app as app_module
+from franklinwh_direct_connect_bridge import app as app_module
 
 
 @pytest.fixture(scope="module")

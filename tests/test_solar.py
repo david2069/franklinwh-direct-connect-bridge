@@ -7,8 +7,8 @@ groupings and the two scaling traps.
 import pytest
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import solar
-from franklinwh_local_bridge.app import create_app
+from franklinwh_direct_connect_bridge import solar
+from franklinwh_direct_connect_bridge.app import create_app
 
 CFG = {
     "remoteSolarEn": 0, "remoteSolarMode": 0, "solarRatedPower": 0,
@@ -152,7 +152,7 @@ def test_undecoded_field_is_labelled_not_guessed():
 
 # ── endpoints ────────────────────────────────────────────────────────────────
 def test_api_solar(monkeypatch):
-    from franklinwh_local_bridge import client as c
+    from franklinwh_direct_connect_bridge import client as c
     monkeypatch.setattr(c, "solar", lambda s, host=None: solar.build(CFG, FLOW))
     body = TestClient(create_app()).get("/api/solar").json()
     assert body["inputs"]["total_rated_kw"] == 6.6
@@ -163,7 +163,7 @@ def test_api_device_model_regression(monkeypatch):
 
     No test covered the endpoint, so the suite stayed green. This pins it.
     """
-    from franklinwh_local_bridge import client as c
+    from franklinwh_direct_connect_bridge import client as c
     assert hasattr(c, "device_model")
     monkeypatch.setattr(c, "device_model",
                         lambda s, host=None: {"known": True, "model": "aGate X-01-AU"})

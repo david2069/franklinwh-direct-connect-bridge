@@ -5,9 +5,9 @@ import tempfile
 import pytest
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import app as app_module
-from franklinwh_local_bridge import db, supervisor, mockgw
-from franklinwh_local_bridge import client as client_module
+from franklinwh_direct_connect_bridge import app as app_module
+from franklinwh_direct_connect_bridge import db, supervisor, mockgw
+from franklinwh_direct_connect_bridge import client as client_module
 
 
 def _store(tmp):
@@ -77,12 +77,12 @@ def test_api_roster_merge_and_toggle(gw_client):
 def test_supervisor_start_stop_tracks_running():
     # Unit test the supervisor registry with a dummy coroutine instead of run_gateway.
     import asyncio
-    from franklinwh_local_bridge.state import GatewayState
+    from franklinwh_direct_connect_bridge.state import GatewayState
 
     async def scenario():
         gw = GatewayState(id="g1", label="G1")
         # monkeypatch run_gateway via the module ref used by start_poller
-        import franklinwh_local_bridge.supervisor as sup
+        import franklinwh_direct_connect_bridge.supervisor as sup
 
         async def fake_run(settings, gw, stop):
             await stop.wait()
@@ -129,7 +129,7 @@ def test_gateway_scan_endpoint(gw_client, monkeypatch):
 def test_mock_emulator_read_through_split():
     """An in-process mock gateway is reachable via 127.0.0.1:<port> using the client's
     host:port split — summary + battery return synthetic data for N aPowers."""
-    from franklinwh_local_bridge import mockgw, client, config
+    from franklinwh_direct_connect_bridge import mockgw, client, config
     host = mockgw.start_mock("itest", seed=7, units=3)
     assert host.startswith("127.0.0.1:")
     try:
@@ -154,7 +154,7 @@ def test_gateway_restart_endpoint(gw_client):
 
 def test_edit_gateway_modal_wired():
     import pathlib
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_local_bridge"
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     html = (root / "templates/tabs/settings.html").read_text()
     js = (root / "static/js/settings_tab.js").read_text()
     assert 'x-show="gwEdit.open"' in html and "openEditGateway(gw)" in html

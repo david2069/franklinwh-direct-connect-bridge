@@ -1,11 +1,11 @@
-# franklinwh-local-bridge — HA add-on + standalone REST/MQTT bridge for the
+# franklinwh-direct-connect-bridge — HA add-on + standalone REST/MQTT bridge for the
 # FranklinWH LOCAL API. Depends on the franklinwh-direct-connect-api library; NO hybrid.
 [build-system]
 requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "franklinwh-local-bridge"
+name = "franklinwh-direct-connect-bridge"
 version = "0.2.0"
 description = "Home Assistant add-on / REST + MQTT bridge for the FranklinWH aGate local (sendMqtt) API"
 readme = "README.md"
@@ -35,13 +35,13 @@ test = ["pytest>=8.0", "httpx>=0.27"]
 cloud = ["franklinwh-cloud>=0.4.9"]
 
 [project.scripts]
-franklinwh-local-bridge = "franklinwh_local_bridge.cli:main"
+franklinwh-direct-connect-bridge = "franklinwh_direct_connect_bridge.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-franklinwh_local_bridge = ["static/*", "templates/*"]
+franklinwh_direct_connect_bridge = ["static/*", "templates/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

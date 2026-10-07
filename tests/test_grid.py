@@ -5,9 +5,9 @@ job is to structure them and apply the -1=unlimited convention + the 702-not-170
 """
 from fastapi.testclient import TestClient
 
-from franklinwh_local_bridge import (app as app_module, client as client_mod, config,
+from franklinwh_direct_connect_bridge import (app as app_module, client as client_mod, config,
                                      environment, db, battery_control)
-from franklinwh_local_bridge.db import MetricsStore
+from franklinwh_direct_connect_bridge.db import MetricsStore
 
 PROFILE = {
     "opt": 0, "result": 0, "reason": 0,

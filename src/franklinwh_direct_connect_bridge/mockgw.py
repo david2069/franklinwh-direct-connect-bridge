@@ -13,7 +13,7 @@ import logging
 
 from franklinwh_local.emulator import Emulator
 
-log = logging.getLogger("franklinwh_local_bridge.mockgw")
+log = logging.getLogger("franklinwh_direct_connect_bridge.mockgw")
 
 _mocks: dict[str, Emulator] = {}
 
