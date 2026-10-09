@@ -1106,6 +1106,17 @@
   </div>
   <div class="card space-y-2.5">
     <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Theme
+        <span class="block text-[11px]" style="color:var(--text-faint)">Same preference as the sun/moon button in the top bar.</span></span>
+      <select class="form-control" style="width:auto"
+              x-model="$store.app.theme"
+              x-init="$nextTick(() => { $el.value = $store.app.theme })"
+              @change="$store.app.setTheme($store.app.theme)">
+        <option value="dark">Dark</option>
+        <option value="light">Light</option>
+      </select>
+    </div>
+    <div class="flex items-center justify-between text-sm">
       <span class="text-slate-500">Power unit</span>
       <select class="form-control" style="width:auto"
               x-model="$store.app.powerUnit"
@@ -1152,6 +1163,18 @@
       </button>
     </div>
     <div class="flex items-center justify-between text-sm">
+      <span class="text-slate-500">Advanced tools
+        <span class="block text-[11px]" style="color:var(--text-faint)">Shows the Terminal console and
+          Reboot gateway. Off by default — these issue raw commands to the aGate.</span></span>
+      <button type="button" @click="$store.app.setAdvancedTools(!$store.app.advancedTools)" role="switch"
+              :aria-checked="$store.app.advancedTools"
+              class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0"
+              :class="$store.app.advancedTools ? 'bg-emerald-500' : 'bg-slate-500/60'">
+        <span class="inline-block h-5 w-5 rounded-full bg-white shadow transition"
+              :class="$store.app.advancedTools ? 'translate-x-5' : 'translate-x-0.5'"></span>
+      </button>
+    </div>
+    <div class="flex items-center justify-between text-sm">
       <span class="text-slate-500">Accent colour</span>
       <div class="flex items-center gap-1.5">
         <template x-for="a in $store.app.accents" :key="a.color">
@@ -1165,7 +1188,8 @@
       </div>
     </div>
     <p class="text-xs text-slate-500 pt-1">
-      Display preference only — stored in this browser, applied live. Navigation: Auto uses the
+      Display preferences only — stored in this browser, applied live. Theme and accent are the same
+      settings the top-bar sun/moon button and the terminal header expose. Navigation: Auto uses the
       sidebar on tablets/desktop (≥ 768 px) and the bottom bar on phones; override to force either. Accent recolours the whole UI; a very pale custom colour can reduce contrast.
     </p>
   </div>
@@ -1224,12 +1248,12 @@
       <div class="text-sm" style="color:var(--text-primary)">Guide &amp; docs</div>
       <div class="text-xs text-slate-500">How the bridge works, the local / cloud / Modbus APIs, and setup.</div>
     </div>
-    <a href="guide/" target="_blank" rel="noopener" class="btn btn-secondary btn-sm inline-flex items-center gap-1.5">
+    <button @click="$store.app.openGuide()" class="btn btn-secondary btn-sm inline-flex items-center gap-1.5">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.5A2.5 2.5 0 0114.5 4H20v14h-6a2 2 0 00-2 2M12 6.5A2.5 2.5 0 009.5 4H4v14h6a2 2 0 012 2M12 6.5V20"/>
       </svg>
       Open Guide
-    </a>
+    </button>
   </div>
 
   <!-- Support info (redacted bundle for GitHub issues) -->

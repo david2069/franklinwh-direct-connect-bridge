@@ -212,13 +212,114 @@
         </svg>
       </button>
       <div x-show="$store.app.topbarPrefsOpen" x-cloak x-transition
-           class="absolute right-0 mt-1 w-64 rounded-lg border shadow-xl z-[120] overflow-hidden"
+           class="absolute right-0 mt-1 w-80 max-w-[calc(100vw-1rem)] rounded-lg border shadow-xl z-[120] overflow-hidden"
            style="background:var(--surface-1);border-color:var(--border)">
         <div class="px-3 py-2 flex items-center justify-between border-b" style="border-color:var(--border)">
-          <span class="text-[10px] uppercase tracking-wide font-semibold" style="color:var(--text-secondary)">Topbar Preferences</span>
-          <button class="text-[10px] hover:text-cyan-400 transition" style="color:var(--text-faint)" @click="$store.app.resetTopbarPrefs()">Reset</button>
+          <span class="text-[10px] uppercase tracking-wide font-semibold" style="color:var(--text-secondary)">Preferences</span>
+          <button class="text-[10px] hover:text-cyan-400 transition" style="color:var(--text-faint)"
+                  @click="$store.app.prefsTab === 'nav' ? $store.app.resetNavPrefs() : ($store.app.prefsTab === 'topbar' ? $store.app.resetTopbarPrefs() : ($store.app.setTheme('dark'), $store.app.setAccent('')))"
+                  title="Reset this view to defaults">Reset</button>
         </div>
 
+        <!-- View switcher -->
+        <div class="flex text-[11px] border-b" style="border-color:var(--border)">
+          <template x-for="v in [['appearance','Theme'],['nav','Navbar'],['topbar','Top bar']]" :key="v[0]">
+            <button @click="$store.app.prefsTab = v[0]" x-text="v[1]"
+                    class="flex-1 py-1.5 transition border-b-2"
+                    :style="$store.app.prefsTab === v[0]
+                      ? 'border-color:var(--accent);color:var(--text-primary)'
+                      : 'border-color:transparent;color:var(--text-secondary)'"></button>
+          </template>
+        </div>
+
+        <div class="max-h-[60vh] overflow-y-auto">
+
+        <!-- Appearance: the cog is reachable from every tab and in bottom-nav mode,
+             so theme and accent live here rather than only in Settings. -->
+        <div x-show="$store.app.prefsTab === 'appearance'">
+        <div class="px-3 py-1.5 flex items-center justify-between gap-2">
+          <span class="text-sm" style="color:var(--text-primary)">Theme</span>
+          <div class="inline-flex rounded-md overflow-hidden border shrink-0" style="border-color:var(--border)">
+            <button @click="$store.app.setTheme('dark')" class="px-2 py-0.5 text-[11px] transition"
+                    :style="$store.app.theme === 'dark' ? 'background:var(--accent);color:#fff' : 'color:var(--text-secondary)'">Dark</button>
+            <button @click="$store.app.setTheme('light')" class="px-2 py-0.5 text-[11px] transition"
+                    :style="$store.app.theme === 'light' ? 'background:var(--accent);color:#fff' : 'color:var(--text-secondary)'">Light</button>
+          </div>
+        </div>
+        <div class="px-3 py-1.5 flex items-center justify-between gap-2">
+          <span class="text-sm" style="color:var(--text-primary)">Accent</span>
+          <div class="flex items-center gap-1 shrink-0">
+            <template x-for="a in $store.app.accents" :key="a.color">
+              <button @click="$store.app.setAccent(a.color)" :title="a.name"
+                      class="w-4 h-4 rounded-full transition"
+                      :style="'background:'+a.color+';box-shadow:'+(($store.app.accent||'#22c55e')===a.color ? '0 0 0 2px var(--surface-1),0 0 0 3px '+a.color : '0 0 0 1px var(--border)')"></button>
+            </template>
+            <input type="color" :value="$store.app.accent || '#22c55e'" @input="$store.app.setAccent($event.target.value)"
+                   title="Custom colour" class="w-5 h-5 rounded cursor-pointer" style="border:1px solid var(--border);background:transparent">
+            <button @click="$store.app.setAccent('')" class="chip muted" style="font-size:.55rem" title="Reset to default green">reset</button>
+          </div>
+        </div>
+
+        <p class="px-3 pt-1 pb-2 text-[10px]" style="color:var(--text-faint)">
+          Stored in this browser and applied live. The same two settings appear in
+          Settings &rarr; Display and in the terminal header.
+        </p>
+        </div>
+
+        <!-- Navigation: ONE order for the sidebar and the bottom bar. -->
+        <div x-show="$store.app.prefsTab === 'nav'" x-cloak>
+          <template x-for="(it, idx) in $store.app.navOrdered" :key="it.key">
+            <div class="px-3 py-1.5 flex items-center justify-between gap-2">
+              <label class="flex items-center gap-2 text-sm min-w-0"
+                     :class="$store.app.navPinned(it.key) ? 'opacity-60' : 'cursor-pointer'"
+                     style="color:var(--text-primary)">
+                <input type="checkbox" class="shrink-0" :checked="it.on || !!$store.app.navPinned(it.key)"
+                       :disabled="!!$store.app.navPinned(it.key)"
+                       @change="$store.app.toggleNavItem(it.key)">
+                <span class="truncate" x-text="$store.app.navLabel(it.key)"></span>
+                <span x-show="$store.app.navPinned(it.key)" class="chip muted shrink-0" style="font-size:.5rem"
+                      x-text="$store.app.navPinned(it.key) === 'both' ? 'pinned' : 'sidebar 2nd'"></span>
+              </label>
+              <div class="flex items-center gap-0.5 shrink-0">
+                <button @click="$store.app.moveNavItem(it.key, -1)"
+                        :disabled="idx === 0 || $store.app.navPinned(it.key) === 'both'"
+                        class="p-0.5 disabled:opacity-25 hover:text-slate-200" style="color:var(--text-faint)" title="Move up">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18 15l-6-6-6 6"/></svg>
+                </button>
+                <button @click="$store.app.moveNavItem(it.key, 1)"
+                        :disabled="idx === $store.app.navOrdered.length - 1 || $store.app.navPinned(it.key) === 'both'"
+                        class="p-0.5 disabled:opacity-25 hover:text-slate-200" style="color:var(--text-faint)" title="Move down">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
+                </button>
+              </div>
+            </div>
+          </template>
+          <!-- Not tabs: Terminal opens the console drawer, Guide the docs panel. Shown
+               as locked rows so it is obvious why they occupy slots in the bar. -->
+          <div class="px-3 py-1.5 flex items-center justify-between gap-2 opacity-60">
+            <label class="flex items-center gap-2 text-sm min-w-0" style="color:var(--text-primary)">
+              <input type="checkbox" class="shrink-0" :checked="$store.app.advancedTools" disabled>
+              <span class="truncate">Terminal</span>
+              <span class="chip muted shrink-0" style="font-size:.5rem"
+                    x-text="$store.app.advancedTools ? 'console drawer' : 'advanced tools off'"></span>
+            </label>
+          </div>
+          <div class="px-3 py-1.5 flex items-center justify-between gap-2 opacity-60">
+            <label class="flex items-center gap-2 text-sm min-w-0" style="color:var(--text-primary)">
+              <input type="checkbox" class="shrink-0" checked disabled>
+              <span class="truncate">Guide</span>
+              <span class="chip muted shrink-0" style="font-size:.5rem">docs panel</span>
+            </label>
+          </div>
+          <p class="px-3 py-2 text-[10px] border-t" style="color:var(--text-faint);border-color:var(--border)">
+            One order for both navs. The bottom bar shows as many as fit
+            (<span x-text="$store.app.barMax"></span> here) and puts the rest under More;
+            Terminal and Guide are fixed extras, not tabs.
+          </p>
+        </div>
+
+        <!-- Top bar -->
+        <div x-show="$store.app.prefsTab === 'topbar'" x-cloak>
         <div class="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wide" style="color:var(--text-faint)">Centre indicators</div>
         <template x-for="(it, idx) in $store.app.topbarPrefs.centre" :key="it.id">
           <div class="px-3 py-1.5 flex items-center justify-between gap-2">
@@ -261,6 +362,8 @@
 
         <div class="px-3 py-2 text-[10px] border-t" style="color:var(--text-faint);border-color:var(--border)">
           Gateway selector &amp; connection status are always shown.
+        </div>
+        </div>
         </div>
       </div>
     </div>

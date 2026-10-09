@@ -113,6 +113,9 @@ function terminalConsole() {
       return t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT' || el.isContentEditable;
     },
     onGlobalKey(e) {
+      // The hotkey is a shortcut to an advanced tool, not a way around the gate.
+      const adv = window.Alpine && Alpine.store('app') && Alpine.store('app').advancedTools;
+      if (!adv) return;
       if (e.key === '`' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); this.toggle(); return; }
       if (e.key === '`' && !this.open && !this._isEditable(e.target)) { e.preventDefault(); this.toggle(); }
     },
