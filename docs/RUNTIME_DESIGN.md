@@ -1,6 +1,7 @@
 # Runtime design — components, supervision and work
 
-Status: **draft for decision.** Supersedes nothing yet. Not yet shared with the Modbus
+Status: **accepted 2026-10-09.** The five open decisions in §6 are settled; phase 0 is
+ready to build. Not yet shared with the Modbus
 bridge — the supervision requirements (BR-35–38) apply to both, but there is no point
 syncing a design that is still moving. Tell them once phases 0–1 have landed and survived
 contact. `BRIDGE_BASELINE.md` states *what*
@@ -208,21 +209,20 @@ The drift line is the part with teeth, and two things from 2026-10-09 argue for 
 
 Drift becomes a `selfcheck` finding (L3), so it is reported rather than merely available.
 
-## 6 · Decisions needed — these are yours, not mine
+## 6 · Decisions — settled 2026-10-09
 
-1. **Threads → tasks.** Convert the four daemon threads to supervised async workers, or
-   wrap them in a thread-aware supervisor? *Recommendation: convert.* One supervision model
-   is the point; two is how this started.
-2. **Scheduler cadence.** Fixed 10 s tick, or derived from the finest window in use?
-   *Recommendation: fixed, configurable, default 15 s.* Predictable beats clever.
-3. **Crash-loop ceiling.** What counts as a loop — 5 restarts in 10 minutes? And then:
-   stay failed, or keep trying slowly? *Recommendation: 5 in 10 min → `failed`, needs a
-   manual restart, loudly notified.*
-4. **Does a failed worker fail the container?** Should `/api/live` go unhealthy when a
-   critical worker is `failed`, so the Supervisor restarts the add-on? *Recommendation:
-   no — restarting the world hides the cause. Notify and surface instead.*
-5. **Scope of L2 now.** Occurrences for schedules only, or all deferred work?
-   *Recommendation: schedules only; generalise later if a second case appears.*
+| # | Decision | Consequence |
+| --- | --- | --- |
+| 1 | **Convert the daemon threads to supervised async workers.** One supervision model, not two — two models is how this started. | `vpp-monitor`, `cloud-status`, `dispatch-watchdog` and the BMS recorder become workers. The watchdog is the delicate one: it is `guarded` (§5.4), so its conversion must preserve re-adoption of an in-flight force, not just move the loop. |
+| 2 | **Fixed scheduler cadence, configurable, default 15 s.** Predictable beats clever. | A new setting; scheduling resolution stops being an accident of `poll_interval`. Windows shorter than the cadence need a stated minimum rather than silently never firing. |
+| 3 | **Crash-loop ceiling: 5 restarts in 10 minutes → `failed`**, needs a manual restart, notified loudly. | A worker that cannot stay up stops and says so. Deliberately not "keep trying slowly": a slow silent loop is the failure mode this whole document exists to remove. |
+| 4 | **A failed worker does NOT fail the container.** Notify and surface instead. | `/api/live` stays exactly as it is — a liveness probe that does no gateway I/O — and must **not** be made worker-aware. Restarting the world hides the cause, and a crash loop at container level destroys the evidence. The worker monitor and notifications carry this instead. |
+| 5 | **L2 covers schedules only for now.** | One `occurrences` table for scheduled work. Generalise to other deferred work only when a second real case appears, not in anticipation of one. |
+
+Decision 4 is the one with the sharpest trade-off, so state it plainly: this bridge chooses
+**visible degradation over automatic recovery**. A dead worker stays dead, loudly, until
+someone looks. That is the right call for a system whose writes move a battery — an
+automatic restart that silently re-arms a force is worse than an outage that is reported.
 
 ## 7 · Migration — each phase leaves a working system
 
