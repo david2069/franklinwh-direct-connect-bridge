@@ -444,6 +444,11 @@ The existing endpoints stay as the detailed drill-downs they already are.
 
 ## 6.5 · Why not APScheduler — and what to take from it anyway
 
+> Plain-English version of this section, for anyone who does not live in the code:
+> [`WHAT_THE_ENGINE_IS.md`](WHAT_THE_ENGINE_IS.md). Short version — a job scheduler is an
+> alarm clock, this is a thermostat.
+
+
 Asked, fairly, after spotting APScheduler installed in the FranklinWH HA Integrator.
 
 **Decision: keep ours, for one reason — it is not a scheduler.** `scheduler.py` is 1,916
