@@ -92,6 +92,11 @@ def test_supervisor_start_stop_tracks_running():
             await sup.start_poller(None, gw)
             assert sup.is_running("g1") is True
             await sup.stop_poller("g1")
+            # is_running now means "live OR still winding down" (BR-40): a stop that
+            # has been requested is not a stop that finished, and the name stays
+            # reserved until the task actually ends — otherwise a quick re-enable
+            # starts a second poller alongside the first.
+            assert sup.is_running("g1") is True, "still winding down"
             await asyncio.sleep(0.05)
             assert sup.is_running("g1") is False
         finally:

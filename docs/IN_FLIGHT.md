@@ -1,6 +1,6 @@
 # In-flight work — handover
 
-**Updated:** 2026-10-09 (phase 0 started) · **Session:** `01WCWytg6NQWQ5fPnCZiSAf5`
+**Updated:** 2026-10-09 (phase 0b) · **Session:** `01WCWytg6NQWQ5fPnCZiSAf5`
 
 Written so this work survives a crashed session. If you are picking this up cold, read
 §1 and §2, then §6 for the gotchas that cost time to learn. The design documents are the
@@ -31,34 +31,31 @@ polling, metrics, MQTT and all scheduling for a gateway while the container repo
 
 ## 2 · Next action
 
-**Phase 0 is part-done** on `feat/phase0-worker-supervision`. What landed:
+`RUNTIME_DESIGN.md` is **FROZEN v1.0** — decisions settled (§7), questions closed (§10),
+phase scope fixed (§8). Work follows the phase order.
 
-* `workers.py` — `Worker`, `Registry`, heartbeat, crash-loop ceiling, `_supervise_once`
-  (BR-35/36/37). 21 tests.
-* Pollers registered by `supervisor.start_poller`; the three daemon threads registered at
-  startup as `kind="thread"`.
-* **`except` added around `run_gateway`'s loop** — the silent-death hole is closed. A crash
-  now logs "polling, metrics and publishing have STOPPED for this gateway" and marks the
-  worker FAILED.
-* Heartbeat per poll cycle, `DEGRADED` while `fail_streak` is non-zero (BR-38).
-* Supervisor loop in the app lifespan, auditing every worker transition.
-* `GET /api/health/workers` (BR-38). Verified live: 7 workers running.
+**Phase 0a — done, merged (PR #16).** Registry, heartbeat, supervisor, `/api/health/workers`,
+and the `except` around `run_gateway` that closed the silent-death hole.
 
-**What is left in phase 0:**
+**Phase 0b — on `feat/phase0b-lifecycle-restart`.** Done:
 
-1. **Restart actions.** Every worker currently reports `restartable: false`, which is
-   truthful — no worker has a `factory` yet, so there is nothing to restart *with*. Wiring
-   it for pollers is small (`supervisor.start_poller` already is the restart path); the
-   `guarded` class must refuse while a force is in flight, or re-adopt it through
-   `battery_control.reconcile_interrupted`.
-2. **The Process card** in the UI over that endpoint.
-3. The supervisor detects and reports failures but does **not yet restart** anything.
+* Ten lifecycle states (BR-39). `unresponsive` ≠ `crashed` (cancel-then-restart vs restart),
+  `paused` ≠ `stopped`, and `stopping` is a state with a duration that can itself fail.
+* **The zombie window is closed** (BR-40). `stop_poller` marks `STOPPING` and keeps the name
+  reserved; a done-callback frees it when the task actually ends, with the supervisor as
+  backstop. `is_running` now consults the registry, so it means "live **or** winding down".
+  `register` marks a superseded-but-still-running worker `ZOMBIE` rather than losing it.
+* `POST /api/health/workers/{name}/restart`, gated by `restart_block()` — refuses while
+  winding down, during a crash loop, for thread-backed workers, and (GUARDED) while a force
+  is in flight, each with the reason. Audited either way.
+* Pollers carry a restart factory; banded ordering and `family` for grouping.
 
-Then **phase 1**: the scheduler leaves the poller. Copy
-`franklinwh-modbus-bridge/src/franklinwh_bridge/gateway/scheduler.py`, which is already the
-right shape — own task, own tick interval, inner guard.
+**Left in 0b:** the Process card in the UI over `/api/health/workers`.
 
-**Do not** build scheduler retry/resume before phase 1 — see `RUNTIME_DESIGN.md` §8.
+Then **phase 1** — the scheduler leaves the poller. Copy
+`franklinwh-modbus-bridge/src/franklinwh_bridge/gateway/scheduler.py`, already the right shape.
+
+**Do not** build scheduler retry/resume before phase 1 (`RUNTIME_DESIGN.md` §9).
 
 ## 3 · Branches and PRs
 
