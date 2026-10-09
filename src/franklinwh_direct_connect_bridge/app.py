@@ -569,6 +569,15 @@ class ScheduleReq(BaseModel):
     # Which gateway a battery action targets. "" / None = the default gateway.
     # Ignored for a notify-only schedule, which touches no gateway at all.
     gateway_id: str = ""
+    # One-or-all targeting (BR-45). "one" honours gateway_id (or the default when it is
+    # blank); "all" runs the rule on EVERY enabled gateway, as its own run per gateway
+    # with its own resource claim — so a site-wide rule is one rule, not N copies to
+    # keep in step. Anything unrecognised is read as "one": the narrower claim.
+    gateway_scope: str = "one"
+    # BR-50: put the overridden setting back when the window closes. Opt-in — "leave it
+    # where the rule left it" is a legitimate intent, and flipping it under existing
+    # rules would change behaviour silently. Today this covers the operating mode.
+    restore_on_exit: bool = False
     conditions: list[dict] = Field(default_factory=list)
     # Optional "end early when…" gate: a (flat) condition list that closes the window
     # early when it becomes true — releasing a force dispatch + firing exit HA actions.
@@ -2437,14 +2446,18 @@ def create_app() -> FastAPI:
     @app.get("/api/schedules/log")
     def api_schedule_log(limit: int = Query(100, ge=1, le=500),
                          schedule_id: str | None = Query(None),
-                         status: str | None = Query(None)):
-        """Recent schedule fires, newest first — the history view.
+                         status: str | None = Query(None),
+                         severity: str | None = Query(None)):
+        """Recent schedule events, newest first — the history view.
 
-        Filter by ``schedule_id`` (one entry's runs) or ``status`` (fired/error).
-        A schedule that fired and did nothing still appears, with the reason.
+        Filter by ``schedule_id`` (one entry's runs), ``status`` (fired/error), or
+        ``severity``: ``event`` (routine narrative), ``error`` (a run that did not do
+        what it said) or ``exception`` (the bridge itself misbehaved — a bug, not a
+        condition). Each class is capped separately, so routine chatter cannot evict
+        a failure. A schedule that fired and did nothing still appears, with the reason.
         """
         return {"events": _ha_store().schedule_log(
-            limit=limit, schedule_id=schedule_id, status=status)}
+            limit=limit, schedule_id=schedule_id, status=status, severity=severity)}
 
     @app.get("/api/schedules/timeline")
     def api_schedule_timeline(gateway: str | None = Query(None)):

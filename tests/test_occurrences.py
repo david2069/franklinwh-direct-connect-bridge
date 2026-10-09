@@ -285,3 +285,115 @@ def test_claiming_survives_a_broken_store(monkeypatch):
     assert SCH._claim_run({"id": "x", "name": "n", "_wkey": "k", "_wend": None},
                           store=Broken(), gateway_id="gw1",
                           now=dt.datetime(2026, 10, 9, 18, 0)) is None
+
+
+# ── coalesce: a backlog is collapsed, not replayed ────────────────────────────
+def test_an_older_open_run_is_collapsed_into_the_newer_one(store):
+    """Downtime leaves slots open; coming back must do the work ONCE."""
+    t0 = time.time()
+    old = _claim(store, key="2026-10-08", due=t0 - 3600, now=t0 - 3600)
+    new = _claim(store, key="2026-10-09", due=t0, now=t0)
+    collapsed = store.coalesce_occurrences(
+        schedule_id="s1", gateway_id="gw1", keep_id=new["id"],
+        keep_due_ts=float(new["due_ts"]), now=t0)
+    assert [c["id"] for c in collapsed] == [old["id"]]
+    rows = {r["id"]: r for r in store.occurrences_for("s1")}
+    assert rows[old["id"]]["status"] == "skipped"
+    assert "coalesced into" in rows[old["id"]]["reason"]
+    assert rows[new["id"]]["status"] == "pending", "the newest run still proceeds"
+
+
+def test_coalesce_never_rewrites_a_run_that_reached_a_verdict(store):
+    t0 = time.time()
+    done = _claim(store, key="2026-10-08", due=t0 - 3600, now=t0 - 3600)
+    store.finish_occurrence(done["id"], status="ok", outcome="ok")
+    new = _claim(store, key="2026-10-09", due=t0, now=t0)
+    assert store.coalesce_occurrences(
+        schedule_id="s1", gateway_id="gw1", keep_id=new["id"],
+        keep_due_ts=float(new["due_ts"]), now=t0) == []
+    rows = {r["id"]: r for r in store.occurrences_for("s1")}
+    assert rows[done["id"]]["status"] == "ok"
+
+
+def test_coalesce_does_not_reach_across_gateways(store):
+    """Two gateways running the same rule are two independent runs (BR-45)."""
+    t0 = time.time()
+    other = _claim(store, key="2026-10-08", gw="gw2", due=t0 - 3600, now=t0 - 3600)
+    new = _claim(store, key="2026-10-09", gw="gw1", due=t0, now=t0)
+    assert store.coalesce_occurrences(
+        schedule_id="s1", gateway_id="gw1", keep_id=new["id"],
+        keep_due_ts=float(new["due_ts"]), now=t0) == []
+    rows = {r["id"]: r for r in store.occurrences_for("s1")}
+    assert rows[other["id"]]["status"] == "pending"
+
+
+def test_a_later_run_is_not_collapsed_by_an_earlier_one(store):
+    """Only a BACKLOG collapses — a future slot is not absorbed by the present."""
+    t0 = time.time()
+    later = _claim(store, key="2026-10-10", due=t0 + 3600, now=t0)
+    now_occ = _claim(store, key="2026-10-09", due=t0, now=t0)
+    assert store.coalesce_occurrences(
+        schedule_id="s1", gateway_id="gw1", keep_id=now_occ["id"],
+        keep_due_ts=float(now_occ["due_ts"]), now=t0) == []
+    rows = {r["id"]: r for r in store.occurrences_for("s1")}
+    assert rows[later["id"]]["status"] == "pending"
+
+
+# ── BR-50: restore what a rule overrode ──────────────────────────────────────
+def test_the_prior_setting_is_recorded_against_the_run(store):
+    occ = _claim(store)
+    store.set_prior_state(occ["id"], {"kind": "set_mode", "key": "mode.name",
+                                      "value": "Self-Consumption"})
+    got = store.prior_state(schedule_id="s1", gateway_id="gw1",
+                            occurrence_key="2026-10-09")
+    assert got["value"] == "Self-Consumption"
+
+
+def test_a_retry_cannot_overwrite_the_captured_prior_state(store):
+    """Otherwise the second attempt captures what the FIRST one set, and 'restore'
+    puts back the override instead of undoing it."""
+    occ = _claim(store)
+    store.set_prior_state(occ["id"], {"value": "Self-Consumption"})
+    store.set_prior_state(occ["id"], {"value": "Time-of-Use"})
+    assert store.prior_state(schedule_id="s1", gateway_id="gw1",
+                             occurrence_key="2026-10-09")["value"] == "Self-Consumption"
+
+
+def test_no_prior_state_recorded_reads_as_none(store):
+    _claim(store)
+    assert store.prior_state(schedule_id="s1", gateway_id="gw1",
+                             occurrence_key="2026-10-09") is None
+
+
+# ── schedule_log split: event / error / exception ────────────────────────────
+def test_a_status_is_classified_without_being_told(store):
+    store.log_schedule_event("s1", "n", "gated", "conditions not met")
+    store.log_schedule_event("s1", "n", "error", "write failed")
+    store.log_schedule_event("s1", "n", "missed", "window closed")
+    by = {r["status"]: r["severity"] for r in store.schedule_log(limit=10)}
+    assert by["gated"] == "event"
+    assert by["error"] == "error" and by["missed"] == "error"
+
+
+def test_an_unknown_status_does_not_claim_the_error_budget(store):
+    store.log_schedule_event("s1", "n", "something_new", "x")
+    assert store.schedule_log(limit=1)[0]["severity"] == "event"
+
+
+def test_routine_chatter_can_no_longer_evict_a_failure(store):
+    """The measurement that forced the split: gated was 76% of rows, execution 2.2%.
+    Under one shared cap the errors go first."""
+    store.log_schedule_event("s1", "n", "error", "the failure that must survive")
+    cap = store.LOG_CAP["event"]
+    for i in range(cap + 50):
+        store.log_schedule_event("s1", "n", "gated", f"noise {i}")
+    errors = store.schedule_log(limit=10, severity="error")
+    assert len(errors) == 1 and "must survive" in errors[0]["result"]
+    assert len(store.schedule_log(limit=500, severity="event")) <= cap
+
+
+def test_each_class_can_be_read_on_its_own(store):
+    store.log_schedule_event("s1", "n", "fired", "ok")
+    store.log_schedule_event("s1", "n", "exception", "boom", severity="exception")
+    assert [r["status"] for r in store.schedule_log(limit=10, severity="exception")] == ["exception"]
+    assert [r["status"] for r in store.schedule_log(limit=10, severity="event")] == ["fired"]

@@ -936,32 +936,73 @@ class MetricsStore:
                    status TEXT,
                    result TEXT)"""
         )
+        # The stream was one undifferentiated list, and the measurement that forced
+        # this split is worth keeping: execution was 2.2% of rows (9 of 405) while
+        # `gated` alone was 76%. Under ONE 2000-row cap, routine chatter evicts the
+        # errors long before they age out — the records that matter are the first to
+        # go. `severity` gives each class its own budget.
+        cols = [r[1] for r in self._conn.execute("PRAGMA table_info(schedule_log)")]
+        if "severity" not in cols:
+            self._conn.execute(
+                "ALTER TABLE schedule_log ADD COLUMN severity TEXT NOT NULL DEFAULT 'event'")
+            # Backfill: classify what is already there rather than calling it all 'event'.
+            self._conn.execute(
+                "UPDATE schedule_log SET severity='error' WHERE status IN "
+                "('error','failed','missed')")
+            self._conn.execute(
+                "UPDATE schedule_log SET severity='exception' WHERE status='exception'")
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS ix_sched_log ON schedule_log(ts DESC)")
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_sched_log_sev ON schedule_log(severity, ts DESC)")
         self._conn.commit()
 
+    #: Which class each status belongs to. `event` is the routine narrative, `error` is
+    #: a run that did not do what it said, `exception` is the bridge itself misbehaving
+    #: — a bug, not a condition. Anything unlisted is an event: a new status should not
+    #: silently claim the scarce error budget.
+    LOG_SEVERITY: dict[str, str] = {
+        "error": "error", "failed": "error", "missed": "error",
+        "exception": "exception",
+    }
+
+    #: Rows kept per class. The error and exception budgets are small in absolute terms
+    #: and enormous relative to how often they should occur — which is the point: a
+    #: chatty `gated` stream can no longer push a failure out of the record.
+    LOG_CAP: dict[str, int] = {"event": 2000, "error": 1000, "exception": 500}
+
     def log_schedule_event(self, schedule_id: str, name: str, status: str,
-                           result: str, now: float | None = None) -> None:
+                           result: str, now: float | None = None,
+                           severity: str | None = None) -> None:
+        """Record one schedule event, capped WITHIN its class (see LOG_CAP)."""
+        sev = severity or self.LOG_SEVERITY.get(status, "event")
+        if sev not in self.LOG_CAP:
+            sev = "event"
         with self._lock:
             self._conn.execute(
-                "INSERT INTO schedule_log(ts, schedule_id, name, status, result) "
-                "VALUES (?,?,?,?,?)",
+                "INSERT INTO schedule_log(ts, schedule_id, name, status, result, severity) "
+                "VALUES (?,?,?,?,?,?)",
                 (float(now if now is not None else time.time()),
-                 schedule_id, name, status, result))
-            # Cap the log so it cannot grow without bound.
+                 schedule_id, name, status, result, sev))
+            # Per-class cap: pruning only within the class that just grew means routine
+            # chatter cannot evict an error, which a single shared cap guaranteed.
             self._conn.execute(
-                "DELETE FROM schedule_log WHERE id NOT IN "
-                "(SELECT id FROM schedule_log ORDER BY ts DESC LIMIT 2000)")
+                "DELETE FROM schedule_log WHERE severity=? AND id NOT IN "
+                "(SELECT id FROM schedule_log WHERE severity=? ORDER BY ts DESC LIMIT ?)",
+                (sev, sev, self.LOG_CAP[sev]))
             self._conn.commit()
 
     def schedule_log(self, *, limit: int = 100, schedule_id: str | None = None,
-                     status: str | None = None) -> list[dict]:
-        q = "SELECT ts, schedule_id, name, status, result FROM schedule_log"
+                     status: str | None = None,
+                     severity: str | None = None) -> list[dict]:
+        q = "SELECT ts, schedule_id, name, status, result, severity FROM schedule_log"
         clauses, args = [], []
         if schedule_id:
             clauses.append("schedule_id=?"); args.append(schedule_id)
         if status:
             clauses.append("status=?"); args.append(status)
+        if severity:
+            clauses.append("severity=?"); args.append(severity)
         if clauses:
             q += " WHERE " + " AND ".join(clauses)
         q += " ORDER BY ts DESC LIMIT ?"
@@ -1412,7 +1453,37 @@ class MetricsStore:
             "CREATE INDEX IF NOT EXISTS ix_occ_status ON occurrences(status, window_end_ts)")
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS ix_occ_schedule ON occurrences(schedule_id, due_ts)")
+        # BR-50: what the device was set to BEFORE this run overrode it, so exit can put
+        # it back. Stored on the run rather than in memory because the thing that has to
+        # survive is a restart — an override the bridge forgets is an override that
+        # becomes permanent.
+        cols = [r[1] for r in self._conn.execute("PRAGMA table_info(occurrences)")]
+        if "prior_state" not in cols:
+            self._conn.execute("ALTER TABLE occurrences ADD COLUMN prior_state TEXT")
         self._conn.commit()
+
+    def set_prior_state(self, occ_id: int, prior: dict) -> None:
+        """Record what to put back. Written once, at the moment of override."""
+        with self._lock:
+            self._conn.execute(
+                "UPDATE occurrences SET prior_state=COALESCE(prior_state,?) WHERE id=?",
+                (json.dumps(prior), int(occ_id)))
+            self._conn.commit()
+
+    def prior_state(self, *, schedule_id: str, gateway_id: str,
+                    occurrence_key: str) -> dict | None:
+        """The captured pre-override state for one run, if any."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT prior_state FROM occurrences WHERE schedule_id=? AND gateway_id=? "
+                "AND occurrence_key=?",
+                (schedule_id, gateway_id or "", occurrence_key)).fetchone()
+        if not row or not row[0]:
+            return None
+        try:
+            return json.loads(row[0])
+        except (ValueError, TypeError):
+            return None
 
     def _migrate_dispatches(self) -> None:
         """One row per force dispatch a schedule starts. Left 'active' if the bridge
@@ -1471,6 +1542,44 @@ class MetricsStore:
             if row is None:
                 return None
             return dict(zip([c[0] for c in cur.description], row))
+
+    def coalesce_occurrences(self, *, schedule_id: str, gateway_id: str,
+                             keep_id: int, keep_due_ts: float, now=None) -> list[dict]:
+        """Collapse an older backlog into the run about to happen (`coalesce`).
+
+        A bridge that was down for two hours comes back to find several of a rule's
+        slots still open. APScheduler's `coalesce` says: do the work ONCE, not once per
+        slot missed — replaying a backlog of battery setpoints is worse than skipping
+        it, because every one of those windows was decided against conditions that have
+        since moved on.
+
+        Older OPEN runs for the same rule on the same gateway are therefore closed as
+        `skipped`, naming the run that absorbed them, and the newest proceeds. Runs
+        already terminal are left alone; nothing that recorded a verdict is rewritten.
+        Returns what was collapsed so the caller can say so out loud.
+        """
+        ts = float(now if now is not None else time.time())
+        marks = ",".join("?" * len(self.OCC_TERMINAL))
+        with self._lock:
+            cur = self._conn.execute(
+                f"SELECT * FROM occurrences WHERE schedule_id=? AND gateway_id=? "
+                f"AND id<>? AND due_ts<=? AND status NOT IN ({marks})",
+                (schedule_id, gateway_id or "", int(keep_id), float(keep_due_ts),
+                 *self.OCC_TERMINAL))
+            cols = [c[0] for c in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+            if not rows:
+                return []
+            keep_key = self._conn.execute(
+                "SELECT occurrence_key FROM occurrences WHERE id=?", (int(keep_id),)
+            ).fetchone()
+            label = keep_key[0] if keep_key else str(keep_id)
+            self._conn.executemany(
+                "UPDATE occurrences SET status='skipped', outcome='skipped', "
+                "reason=?, ended_ts=? WHERE id=?",
+                [(f"coalesced into the run for {label}", ts, r["id"]) for r in rows])
+            self._conn.commit()
+        return rows
 
     def occurrence_attempt(self, occ_id: int, *, now=None) -> None:
         """Record that an attempt is starting. Counting attempts is what separates

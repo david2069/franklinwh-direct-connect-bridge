@@ -163,6 +163,16 @@ def tick_once(settings: Settings, *, client, now: float | None = None) -> list[d
                 settings=settings, client=client, store=store, **_context(gw))]
         except Exception as e:  # noqa: BLE001 — one gateway must not stop the rest
             log.warning("[%s] scheduler tick failed: %s", gw.id, e)
+            # An unhandled failure in the tick is the bridge misbehaving, not a rule
+            # being gated — it belongs in the `exception` class, which has its own
+            # budget and cannot be evicted by routine chatter.
+            try:
+                store.log_schedule_event(
+                    "_scheduler", "scheduler", "exception",
+                    f"tick for gateway {gw.id} raised {type(e).__name__}: {e}",
+                    severity="exception")
+            except Exception:  # noqa: BLE001
+                pass
     return fired
 
 
