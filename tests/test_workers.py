@@ -359,3 +359,36 @@ def test_restart_refuses_a_thread_backed_worker_with_a_reason():
             assert "thread-backed" in r.json()["detail"]
     finally:
         W.registry.unregister("vpp-monitor-test")
+
+
+# ── v1.1 · aborted is not stopped (design §5.6) ───────────────────────────────
+def test_aborted_is_distinct_from_stopped(reg):
+    a = reg.register(_w("a")); a.mark_stopped()
+    b = reg.register(_w("b")); b.mark_aborted()
+    assert a.state is W.WorkerState.STOPPED
+    assert b.state is W.WorkerState.ABORTED
+    assert "cancelled" in b.last_error
+
+
+def test_aborted_counts_as_broken_so_it_is_not_mistaken_for_a_clean_stop(reg):
+    w = reg.register(_w("a")); w.mark_aborted("did not wind down")
+    assert w.is_broken, "a forced stop may have skipped a cleanup — say so"
+    assert reg.snapshot()["ok"] is False
+    assert "a" in reg.snapshot()["broken"]
+
+
+def test_a_clean_stop_is_not_broken(reg):
+    w = reg.register(_w("a")); w.mark_stopped()
+    assert not w.is_broken and reg.snapshot()["ok"] is True
+
+
+def test_aborted_sorts_with_the_things_needing_attention(reg):
+    reg.register(_w("zzz-running")).state = W.WorkerState.RUNNING
+    reg.register(_w("aaa-stopped")).mark_stopped()
+    reg.register(_w("mmm-aborted")).mark_aborted()
+    assert [w.name for w in reg.all()][0] == "mmm-aborted"
+
+
+def test_aborted_is_terminal_and_not_supervised(reg):
+    w = reg.register(_w("a")); w.mark_aborted()
+    assert W._supervise_once(reg) == []

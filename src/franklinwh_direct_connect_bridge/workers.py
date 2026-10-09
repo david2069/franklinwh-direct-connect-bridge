@@ -50,18 +50,20 @@ class WorkerState(str, Enum):
     DEGRADED = "degraded"          # doing its job; a dependency is unavailable
     PAUSED = "paused"              # deliberately idle, state retained, resumable
     STOPPING = "stopping"          # winding down — a state with a duration, not an instant
-    STOPPED = "stopped"            # intentional, terminal
+    STOPPED = "stopped"            # stopped cleanly; released what it held
+    ABORTED = "aborted"            # stop FORCED — may never have released what it held
     UNRESPONSIVE = "unresponsive"  # task alive, beat stale — cancel, then restart
     CRASHED = "crashed"            # exited with an exception — restart per policy
     ZOMBIE = "zombie"              # superseded but STILL EXECUTING — cancel, never restart
 
 
 #: States that are terminal for supervision: no restart, no staleness check.
-_TERMINAL = frozenset({WorkerState.STOPPED, WorkerState.ZOMBIE})
+_TERMINAL = frozenset({WorkerState.STOPPED, WorkerState.ABORTED, WorkerState.ZOMBIE})
 #: States in which a worker is expected to be beating.
 _BEATING = frozenset({WorkerState.RUNNING, WorkerState.DEGRADED})
 #: States that mean something went wrong and a remedy is owed.
-BROKEN = frozenset({WorkerState.UNRESPONSIVE, WorkerState.CRASHED, WorkerState.ZOMBIE})
+BROKEN = frozenset({WorkerState.UNRESPONSIVE, WorkerState.CRASHED, WorkerState.ZOMBIE,
+                    WorkerState.ABORTED})
 
 #: A stop that never completes is its own failure. `stop_all` already allows 35s before
 #: cancelling, so a worker stuck STOPPING past this is escalated rather than waited on.
@@ -75,6 +77,9 @@ _BAND = {
     WorkerState.DEGRADED: 1, WorkerState.STOPPING: 1,
     WorkerState.RUNNING: 2, WorkerState.READY: 2, WorkerState.INIT: 2,
     WorkerState.PAUSED: 3, WorkerState.STOPPED: 3,
+    # aborted sits with the broken: it did not shut down cleanly, so something it
+    # owned may never have been released, and that is the operator's problem now.
+    WorkerState.ABORTED: 0,
 }
 
 
@@ -168,8 +173,17 @@ class Worker:
         self.stopping_since = time.time()
 
     def mark_stopped(self) -> None:
+        """Wound down cleanly, having released whatever it held."""
         self.state = WorkerState.STOPPED
         self.stopping_since = None
+
+    def mark_aborted(self, reason: str = "") -> None:
+        """Stop was FORCED. Distinct from stopped on purpose: a cancelled worker may
+        never have released a force, closed a session or finished a write, and that
+        difference is the only evidence a cleanup was skipped."""
+        self.state = WorkerState.ABORTED
+        self.stopping_since = None
+        self.last_error = reason or "cancelled before it wound down"
 
     @property
     def restartable(self) -> bool:
