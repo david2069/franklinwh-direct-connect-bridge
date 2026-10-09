@@ -172,6 +172,7 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                 st = dict(summ.get("power", {}))
                 st["latency_ms"] = summ.get("latency_ms")
                 gw.last_state = st
+                gw.state_ts = time.time()
                 # Cache the full summary for /api/summary + /api/gateways/{id}/summary so the
                 # dashboard reads the poller's copy instead of a fresh device session on every
                 # browser poll (fixes flicker + slow load). Keep last-GOOD values but reflect
@@ -238,26 +239,10 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                 except Exception as e:  # noqa: BLE001 — never kill the loop over this
                     log.debug("cloud revalidation skipped: %s", e)
 
-                # Schedules run on the poll tick, so they inherit the poll interval —
-                # a schedule cannot react faster than the bridge reads the gateway.
-                # A scheduler fault must never stop polling.
-                if store is not None and summ.get("ok"):
-                    try:
-                        from . import scheduler as _sched
-                        # Reach the gateway by the host we KNOW (rediscovered active_host,
-                        # else the configured IP) — not a bare active_host that may still be
-                        # None. Mocks have no Modbus, so pass "" to skip the 702 ratings read.
-                        _known_host = gw.active_host or gw.configured_host
-                        _mb_host = "" if getattr(gw, "is_mock", False) else _known_host
-                        fired = await asyncio.to_thread(
-                            _sched.tick, settings=settings, client=client, store=store,
-                            state=gw.last_state or {}, host=_known_host,
-                            modbus_host=_mb_host, gateway_id=gw.id)
-                        for f in fired:
-                            log.info("[%s] schedule '%s' fired: %s",
-                                     gw.id, f["name"], f["result"])
-                    except Exception as e:  # noqa: BLE001
-                        log.warning("[%s] scheduler tick failed: %s", gw.id, e)
+                # The scheduler no longer runs here. It was a passenger on this loop,
+                # which meant it inherited the poll interval as its resolution and died
+                # with its host — one gateway's failure stopped ALL scheduling. It is now
+                # its own worker (scheduler_worker.py) reading the snapshot stamped above.
 
                 if summ.get("ok"):
                     fwb2 = summ.get("firmware") or {}

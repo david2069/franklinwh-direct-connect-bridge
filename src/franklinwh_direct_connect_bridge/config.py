@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     http_host: str = "0.0.0.0"
     http_port: int = 8101
     poll_interval: int = 30
+    #: Scheduler cadence (RUNTIME_DESIGN decision 2): fixed and configurable, not derived
+    #: from poll_interval. Predictable beats clever — and a schedule window shorter than
+    #: this cannot be guaranteed to fire, which is validated rather than left to chance.
+    scheduler_tick_s: int = 15
     # Smart circuits: "auto" detects from the payload (see circuits.py), or pin the
     # count — "0" none installed, "2" AU, "3" US. The firmware always returns three
     # Sw* blocks, so detection is evidence-based and always overridable.

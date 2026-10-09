@@ -37,14 +37,23 @@ phase scope fixed (§8).
 **Phase 0a ✅ (PR #16)** · **Phase 0b ✅ (PR #17)** — both merged. The supervisor recovers,
 the zombie window is closed, aborts are confirmed rather than assumed.
 
-**Phase 1 — in progress** on `feat/phase1-scheduler-worker`: the scheduler stops being a
+**Phase 1 — built, in PR** on `feat/phase1-scheduler-worker`: the scheduler stops being a
 passenger on the gateway poll loop and becomes its own worker on its own cadence, reading a
 per-gateway snapshot. Copy the shape from
 `franklinwh-modbus-bridge/src/franklinwh_bridge/gateway/scheduler.py` — own task, own
 `_tick_s`, inner guard so a bad tick cannot kill the loop.
 
-Cadence is a fixed, configurable 15 s (decision 2). Windows shorter than the cadence need a
-stated minimum rather than silently never firing.
+Done: `scheduler_worker.py` runs the tick on a fixed 15 s cadence (`scheduler_tick_s`),
+registered and supervised like any other worker; the poller no longer calls it; `state_ts`
+stamps each snapshot so freshness is measurable.
+
+**Freshness guard matters here.** Decoupling created a hazard the coupled version could not
+have: a scheduler outliving its poller would evaluate conditions against a snapshot that
+stopped updating hours ago. A gateway whose snapshot is older than `max(90s, 3 × poll
+interval)` is **skipped with a reason**, never evaluated.
+
+**Still to do in phase 1:** validate that a schedule window shorter than the cadence is
+rejected at save time rather than silently never firing (decision 2).
 
 Then phase 2 (`occurrences`) and phase 3 (wire `resilience.call`) — that is where retry,
 resume and `missed` become expressible. **Do not build those before phase 1** (§9).

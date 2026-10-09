@@ -28,6 +28,9 @@ class GatewayState:
     mqtt_connected: bool = False        # last-known broker connection state
     node: str = ""                      # resolved device node (serial or "agate")
     last_state: dict = field(default_factory=dict)   # last published power/state dict
+    state_ts: float = 0.0               # when last_state was written — the scheduler
+                                        # reads this snapshot, so its AGE decides whether
+                                        # a schedule may be evaluated against it at all
     last_summary: dict = field(default_factory=dict) # last-good full /api/summary (poller-cached)
     republish_requested: bool = False   # UI → poller: re-publish HA discovery
     unpublish_requested: bool = False   # UI → poller: clear entities from HA
