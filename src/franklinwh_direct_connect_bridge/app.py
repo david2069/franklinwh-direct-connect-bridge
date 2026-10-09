@@ -2296,6 +2296,81 @@ def create_app() -> FastAPI:
         st.log_schedule_event(sid, entry["name"], "stopped", "no active dispatch to stop")
         return {"stopped": False, "result": "no active dispatch for this schedule"}
 
+    def _open_run(st, sid: str):
+        """This schedule's run for the window currently open, if any."""
+        for o in st.due_occurrences():
+            if o["schedule_id"] == sid:
+                return o
+        return None
+
+    @app.post("/api/schedules/{sid}/pause")
+    def api_schedule_pause(sid: str):
+        """Release control but KEEP this run, so Resume can re-enter it.
+
+        Distinct from Stop, which ends the run (BR-18). One verb cannot mean both
+        "I am finished with this" and "hold my place" without the operator having to
+        guess which they got."""
+        _guard_writes()
+        st = _ha_store()
+        entry = st.schedule(sid)
+        if entry is None:
+            raise HTTPException(404, f"no schedule '{sid}'")
+        occ = _open_run(st, sid)
+        if occ is None:
+            return {"paused": False, "detail": "no run is open for this schedule"}
+        from . import battery_control
+        host = _modbus_host()
+        released = ""
+        mine = [d for d in st.active_dispatches() if d.get("schedule_id") == sid]
+        if mine and host:
+            released = battery_control.execute("Release", host=host).get("result", "")
+            for d in mine:
+                st.end_dispatch(d["id"], status="paused")
+        st.pause_occurrence(occ["id"], reason="paused by user")
+        st.log_schedule_event(sid, entry["name"], "paused",
+                              f"paused by user — control released, run kept{'; ' + released if released else ''}")
+        _audit("schedule_pause", detail=sid, result="paused", ok=True)
+        return {"paused": True, "occurrence_id": occ["id"], "released": released}
+
+    @app.post("/api/schedules/{sid}/resume")
+    def api_schedule_resume(sid: str):
+        """Re-enter a paused run — only while its window is still open.
+
+        Refusing afterwards is deliberate: a resume that silently did nothing would be
+        worse than an error, because the operator would believe the rule was running."""
+        _guard_writes()
+        st = _ha_store()
+        entry = st.schedule(sid)
+        if entry is None:
+            raise HTTPException(404, f"no schedule '{sid}'")
+        # Paused runs are deliberately absent from due_occurrences (they are not
+        # claimable), so look the row up directly.
+        rows = st.occurrences_for(sid, status="paused")
+        occ = rows[0] if rows else None
+        if occ is None:
+            raise HTTPException(409, "nothing paused for this schedule")
+        ok, why = st.resume_occurrence(occ["id"])
+        if not ok:
+            _audit("schedule_resume", detail=sid, result=f"refused: {why}", ok=False)
+            raise HTTPException(409, why)
+        st.log_schedule_event(sid, entry["name"], "resumed",
+                              "resumed by user — window still open")
+        _audit("schedule_resume", detail=sid, result="resumed", ok=True)
+        return {"resumed": True, "occurrence_id": occ["id"]}
+
+    @app.get("/api/schedules/stats")
+    def api_schedule_stats(sid: str | None = Query(None)):
+        """Per-rule execution history: runs, first, last, last failure.
+
+        Read from the occurrence queue rather than schedule_log, where execution was
+        about 2% of rows and a FIFO cap evicted it before it aged out."""
+        return {"schedules": _ha_store().occurrence_stats(sid)}
+
+    @app.get("/api/schedules/runs")
+    def api_schedule_runs(sid: str | None = Query(None), limit: int = Query(50)):
+        """The execution queue itself — what ran, what is pending, what was missed."""
+        return {"runs": _ha_store().occurrences_recent(schedule_id=sid, limit=limit)}
+
     @app.get("/api/schedules/presets")
     def api_schedule_presets():
         """Built-in schedule templates for the Load Preset dialog. Every action is

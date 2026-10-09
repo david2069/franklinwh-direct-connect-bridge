@@ -1618,6 +1618,35 @@ class MetricsStore:
             cols = [c[0] for c in cur.description]
             return [dict(zip(cols, r)) for r in cur.fetchall()]
 
+    def occurrences_for(self, schedule_id: str, *, status: str | None = None) -> list[dict]:
+        """Rows for one schedule, newest first. Used to find a paused run, which
+        `due_occurrences` deliberately excludes — paused work is not claimable."""
+        q = "SELECT * FROM occurrences WHERE schedule_id=?"
+        args: list = [schedule_id]
+        if status:
+            q += " AND status=?"
+            args.append(status)
+        q += " ORDER BY due_ts DESC"
+        with self._lock:
+            cur = self._conn.execute(q, args)
+            cols = [c[0] for c in cur.description]
+            return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+    def occurrences_recent(self, *, schedule_id: str | None = None,
+                           limit: int = 50) -> list[dict]:
+        """The execution queue as a feed: pending, running and finished, newest first."""
+        q = "SELECT * FROM occurrences"
+        args: list = []
+        if schedule_id:
+            q += " WHERE schedule_id=?"
+            args.append(schedule_id)
+        q += " ORDER BY due_ts DESC LIMIT ?"
+        args.append(max(1, min(int(limit), 500)))
+        with self._lock:
+            cur = self._conn.execute(q, args)
+            cols = [c[0] for c in cur.description]
+            return [dict(zip(cols, r)) for r in cur.fetchall()]
+
     def occurrence_stats(self, schedule_id: str | None = None) -> list[dict]:
         """Per-rule execution history: runs, first, last, last failure.
 

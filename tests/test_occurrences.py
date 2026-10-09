@@ -228,3 +228,60 @@ def test_backoff_blocks_the_very_next_tick_after_a_failure():
     occ = {"attempts": 1, "last_attempt_ts": 1000.0}
     assert not SCH.retry_due(occ, 1015.0), "15s later — still backing off"
     assert SCH.retry_due(occ, 1000.0 + SCH.RETRY_BASE_S)
+
+
+# ── end-to-end against a REAL store: claim -> attempt -> finish ───────────────
+def test_the_full_path_records_a_run_against_real_sql(store, monkeypatch):
+    """Drives _claim_run + occurrence_attempt + _fire_entry against actual SQLite,
+    rather than a stand-in, so the schema and the code agree."""
+    import datetime as dt
+    now = dt.datetime(2026, 10, 9, 18, 0)
+    entry = {"id": "s-e2e", "name": "evening export", "action": {"kind": "set_mode"},
+             "_wkey": "2026-10-09", "_wend": now.timestamp() + 3600, "duration_min": 60}
+
+    occ = SCH._claim_run(entry, store=store, gateway_id="gw1", now=now)
+    assert occ is not None and occ["status"] == "pending"
+    store.occurrence_attempt(occ["id"], now=now.timestamp())
+    entry["_occ_id"], entry["_occ_attempts"] = occ["id"], 1
+
+    monkeypatch.setattr(SCH, "run_action", lambda *a, **k: "mode -> self: ok")
+    monkeypatch.setattr(SCH, "_fire_ha_phase", lambda *a, **k: [])
+    out = SCH._fire_entry(entry, settings=None, client=None, store=store,
+                          snapshot={}, host="h", gateway_id="gw1", now=now)
+
+    assert out["ok"] is True
+    row = store.occurrences_for("s-e2e")[0]
+    assert row["status"] == "ok" and row["attempts"] == 1
+    assert row["outcome"] and row["started_ts"] and row["ended_ts"]
+
+
+def test_a_failure_leaves_the_run_retryable_against_real_sql(store, monkeypatch):
+    import datetime as dt
+    now = dt.datetime(2026, 10, 9, 18, 0)
+    entry = {"id": "s-fail", "name": "evening export", "action": {"kind": "force"},
+             "_wkey": "2026-10-09", "_wend": now.timestamp() + 3600, "duration_min": 60}
+    occ = SCH._claim_run(entry, store=store, gateway_id="gw1", now=now)
+    store.occurrence_attempt(occ["id"], now=now.timestamp())
+    entry["_occ_id"], entry["_occ_attempts"] = occ["id"], 1
+
+    monkeypatch.setattr(SCH, "run_action", lambda *a, **k: "force: failed — refused")
+    monkeypatch.setattr(SCH, "_fire_ha_phase", lambda *a, **k: [])
+    SCH._fire_entry(entry, settings=None, client=None, store=store, snapshot={},
+                    host="h", gateway_id="gw1", now=now)
+
+    row = store.occurrences_for("s-fail")[0]
+    assert row["status"] == "failed", "still claimable — the window is open"
+    assert row["id"] in [o["id"] for o in store.due_occurrences(now=now.timestamp())]
+
+
+def test_claiming_survives_a_broken_store(monkeypatch):
+    """A bookkeeping fault must not become an outage."""
+    import datetime as dt
+
+    class Broken:
+        def claim_occurrence(self, **kw):
+            raise RuntimeError("disk full")
+
+    assert SCH._claim_run({"id": "x", "name": "n", "_wkey": "k", "_wend": None},
+                          store=Broken(), gateway_id="gw1",
+                          now=dt.datetime(2026, 10, 9, 18, 0)) is None

@@ -20,12 +20,15 @@ unavailable actions are listed with the reason instead of being hidden or faked.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import fnmatch
 import re
 from typing import Any
 
 from . import ha_instances
 
+
+log = logging.getLogger(__name__)
 #: Local actions that are hardware-verified. Anything not here is not offered.
 ACTIONS: dict[str, dict[str, Any]] = {
     "set_mode": {

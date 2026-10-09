@@ -33,6 +33,11 @@ log = logging.getLogger(__name__)
 
 WORKER_NAME = "scheduler"
 
+#: How late is still worth running (APScheduler calls this `misfire_grace_time`). A
+#: window that shut moments ago may still be catchable; one that shut an hour ago is a
+#: missed run, and pretending otherwise fires a rule into conditions that have moved on.
+MISFIRE_GRACE_S = 120.0
+
 #: Schedule windows are MINUTE-resolution — `_window_phase` compares
 #: `hour * 60 + minute`, and a zero duration means "inside for exactly that minute".
 #: So the shortest window a user can express is 60s, and the cadence must be at most
@@ -111,12 +116,42 @@ def _context(gw) -> dict:
     }
 
 
+def sweep(settings: Settings, *, now: float | None = None) -> list[dict]:
+    """Close out runs whose window shut without success, and report them.
+
+    Runs on every tick rather than on a timer of its own, because the condition it
+    detects is the ABSENCE of an event: there is nothing to hook, so it has to be
+    looked for. Never raises — detection failing must not stop dispatching.
+    """
+    store = get_store(settings)
+    if store is None:
+        return []
+    try:
+        missed = store.sweep_missed(grace_s=MISFIRE_GRACE_S, now=now)
+    except Exception as e:  # noqa: BLE001
+        log.warning("missed-run sweep failed: %s", e)
+        return []
+    for m in missed:
+        # WARNING, not info: a schedule that did not run is the thing the owner wanted
+        # to be told about, and it has no other voice.
+        log.warning("[%s] schedule %r MISSED its window — %d attempt(s), no success",
+                    m.get("gateway_id") or "-", m.get("name"), m.get("attempts") or 0)
+        try:
+            store.log_schedule_event(
+                m["schedule_id"], m.get("name") or "", "missed",
+                f"window closed with {m.get('attempts') or 0} attempt(s) and no success")
+        except Exception:  # noqa: BLE001
+            pass
+    return missed
+
+
 def tick_once(settings: Settings, *, client, now: float | None = None) -> list[dict]:
     """Evaluate every eligible gateway once. Never raises: one gateway's failure must
     not stop the others, which was the whole problem with the coupled version."""
     store = get_store(settings)
     if store is None:
         return []
+    sweep(settings, now=now)
     fired: list[dict] = []
     for gw in get_gateways():
         ok, why = eligible(gw, settings, now)
@@ -142,6 +177,17 @@ async def run(settings: Settings, stop: asyncio.Event, *, client) -> None:
         kind="task",
     ))
     w.state = _workers.WorkerState.READY
+    # A pause is intent held by a running process. This process is new, so nobody is
+    # holding those places any more (BR-18) — resolve them before the first tick, or a
+    # paused run would sit forever as an occurrence nobody can account for.
+    try:
+        store = get_store(settings)
+        if store is not None:
+            for r in store.resolve_paused_on_boot():
+                log.warning("schedule %r was paused when the bridge stopped — "
+                            "resolved to stopped", r.get("name"))
+    except Exception as e:  # noqa: BLE001
+        log.warning("could not resolve paused runs at startup: %s", e)
     log.info("scheduler worker started (every %ds, independent of poll interval)", cadence)
     try:
         while not stop.is_set():
