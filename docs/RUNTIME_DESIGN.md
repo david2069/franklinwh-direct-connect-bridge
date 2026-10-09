@@ -1,6 +1,6 @@
 # Runtime design — components, supervision and work
 
-Status: **FROZEN v1.3, 2026-10-09.** (v1.3 moves the Process card from phase 0b to phase 6,
+Status: **FROZEN v1.4, 2026-10-09.** (v1.4 records §6.5 — why not APScheduler, and the misfire/coalesce vocabulary phase 2 adopts. v1.3 moves the Process card from phase 0b to phase 6,
 where it becomes part of a whole Monitoring section rather than a card built twice. v1.2
 redefined `zombie`; v1.1 added `aborted`.) (v1.1 added the `aborted` state and the transition
 rules. v1.2 redefines `zombie` as *uncontrollable* rather than *superseded*, and adds the
@@ -442,6 +442,58 @@ retried as though it were transient.
 `/api/providers` and `/api/health/workers` report rather than adding another partial view.
 The existing endpoints stay as the detailed drill-downs they already are.
 
+## 6.5 · Why not APScheduler — and what to take from it anyway
+
+Asked, fairly, after spotting APScheduler installed in the FranklinWH HA Integrator.
+
+**Decision: keep ours, for one reason — it is not a scheduler.** `scheduler.py` is 1,916
+lines and 68 functions, and the bulk of them (`_coerce_number`, `_as_ranges`, `_like`,
+`_apply_op`, `substitute`, `_eval_tree`, `evaluate`) are a **condition expression
+evaluator**. APScheduler answers "run this job at this time". Ours answers "is this window
+open, and do the conditions hold *right now*".
+
+| We have | APScheduler |
+| --- | --- |
+| **windows** — start + duration, `inside`/`before`/`after`, midnight wrap | fires at a point in time |
+| entry conditions over live telemetry, re-evaluated each tick | — |
+| exit conditions that close a window early | — |
+| priority / conflict policy between competing schedules | — |
+| per-gateway targeting, dispatch reconciliation | — |
+
+Adopting it would replace the ~30-line tick loop and none of the other 1,900 lines. We are
+also not pure-NIH: `croniter` already does the cron date maths, which is the part genuinely
+worth not writing.
+
+The honest gap is that this was never *stated*. When phase 1 decoupled the tick, "should
+APScheduler own the cadence?" was a legitimate question and went unasked. The answer is
+still no — the tick must be a supervised worker with a heartbeat (BR-35/36), which
+APScheduler does not provide, and trading a dependency for thirty lines of loop is a poor
+deal — but it should have been a decision rather than a default.
+
+**What to take anyway.** APScheduler has settled vocabulary for exactly what phase 2 is
+about to build, and the names are already widely understood:
+
+| Borrow | Means | Phase 2 use |
+| --- | --- | --- |
+| `misfire_grace_time` | how late is still worth running | the boundary between a late catch-up and `missed` |
+| `coalesce` | missed five runs → do one, not five | a reconnecting bridge must not replay a backlog of windows |
+| `max_instances` | never overlap with yourself | one occurrence per schedule in flight |
+
+Use those names rather than inventing synonyms.
+
+### The Execution Queue, independently confirmed
+
+The HA Integrator's Automations screen splits into **Automation Rules · Execution Queue ·
+History Log · Audit Ledger** — which is the phase 2 model reached independently. Its
+*Execution Queue* is the `occurrences` table: work materialised **before** it runs, which is
+what makes "missed" detectable at all.
+
+Its History/Audit split is also the fix for a measured problem here. Our `schedule_log` is
+one undifferentiated stream in which **execution history is 2.2% of rows** (9 of 405);
+`gated` alone is 76%, and the 2000-row FIFO cap will evict real history long before it ages
+out. Phase 2 separates them: occurrences carry execution, `schedule_log` reverts to CRUD and
+operator actions.
+
 ## 7 · Decisions — settled 2026-10-09
 
 | # | Decision | Consequence |
@@ -468,7 +520,7 @@ a new revision of this document and a note saying what moved and why; discoverin
 | **0a** ✅ | Worker registry, heartbeat, supervisor, `/api/health/workers`, `except` around `run_gateway` | BR-35, 36, 37, 38 | nothing dies unnoticed |
 | **0b** ✅ | Full lifecycle states; deregister only when work has ended; `start` refuses a name still `stopping` (the zombie fix); confirmed aborts; restart actions with `free`/`handoff`/`guarded`, `guarded` going through `reconcile_interrupted`; banded ordering and family grouping in the API | BR-39, 40 | the supervisor **recovers**, not just reports; two pollers can no longer run for one gateway |
 | **1** | Scheduler becomes its own worker on its own cadence, reading per-gateway snapshots. Copy `franklinwh-modbus-bridge/gateway/scheduler.py` | BR-35 | scheduling survives a gateway failure; resolution untied from `poll_interval` |
-| **2** | `occurrences` table; the scheduler claims and updates rows | BR-15–19 | `missed`, retry-within-window and resume become expressible |
+| **2** | `occurrences` table (the "execution queue"); the scheduler claims and updates rows, using `misfire_grace`/`coalesce`/`max_instances` semantics. `schedule_log` reverts to CRUD + operator actions. | BR-15–19 | `missed`, retry-within-window and resume become expressible; execution history stops being 2% of a log the cap will evict |
 | **3** | Wire `resilience.call` into scheduler actions and bridge writes; `POST /api/dispatch` takes a gateway | BR-3, 6–13, 34 | outcomes structured; `unknown` surfaced; dispatch targets the right battery |
 | **4** | Capability + impact health: dependency graph, freshness, schedule pre-flight, `/api/health` rollup | BR-41, 42, 43 | "will my schedule fire tonight" is answerable |
 | **5** | `selfcheck` worker + findings endpoint | BR-14, 26, 28 | standing conditions detected |
