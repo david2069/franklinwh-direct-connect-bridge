@@ -1,8 +1,10 @@
 # Runtime design — components, supervision and work
 
-Status: **FROZEN v1.1, 2026-10-09.** (v1.1 amends §5.6 only: adds the `aborted` state and
-documents the transition rules. Rationale in §5.6 — a forced stop and a clean stop are not
-the same event, and the difference is the only evidence that a cleanup was skipped.) Decisions settled (§7), questions closed (§10), scope
+Status: **FROZEN v1.2, 2026-10-09.** (v1.1 added the `aborted` state and the transition
+rules. v1.2 redefines `zombie` as *uncontrollable* rather than *superseded*, and adds the
+control verbs with deadlines — because a cancel is a request, not an outcome, and an abort
+that is never confirmed is a zombie wearing an abort's name. Both amendments are scoped to
+§5.6.) Decisions settled (§7), questions closed (§10), scope
 fixed (§8). Implementation follows the phase order; discovering work inside a phase is
 expected, but moving work between phases or adding one needs a v1.1 with a note saying what
 changed and why. The point of a freeze is that the next surprise gets absorbed by the plan
@@ -254,7 +256,7 @@ they are one state wearing two names.
 | `aborted` | stop **forced** — cancelled, did not wind down cleanly | no | yes | restart, **and check for state it never got to release** |
 | `unresponsive` | alive, not beating — wedged | no | no | **cancel first**, then restart |
 | `crashed` | exited with an exception | no | yes | restart per policy; read `last_error` |
-| `zombie` | superseded but **still executing** | no | yes | cancel; never restart |
+| `zombie` | **uncontrollable** — failed a control verb within its deadline, typically survived `abort`; still executing | no | yes | nothing from inside the process: restart the bridge |
 
 #### Transitions
 
@@ -275,7 +277,8 @@ they are one state wearing two names.
                                          │                                 │
                                          └──→ (restart per policy) → init ←┘
 
-   any state ──→ zombie   (a replacement registered while this one still executes)
+   any state ──→ zombie   (fails a control verb within its deadline: abort did not
+                           kill it, or it was superseded and is now unaddressable)
 ```
 
 #### The rules that are not obvious from the diagram
@@ -292,10 +295,51 @@ they are one state wearing two names.
   Restarting it cannot reach the aGate that is offline, and doing so repeatedly turns a
   device outage into a crash loop.
 * **`zombie` is reachable from any state** and is always terminal. It is not a failure of
-  the worker but of the thing that replaced it.
+  the worker's *work* but of its *controllability* — and it is the only state whose remedy
+  lies outside the runtime.
 * **A restart is a new lifecycle**, re-entering at `init`. It is not a transition back to
   `running`, because the start may itself fail.
 * `init → stopping` is legal: a worker can be stopped before it ever runs.
+
+#### Control verbs, and what `zombie` actually means
+
+A worker is controllable or it is not, and that is the sharpest health signal there is.
+Six verbs, each with a deadline, each **verified rather than assumed**:
+
+| Verb | Means | Deadline | Success |
+| --- | --- | --- | --- |
+| `status` | report your state | 1 s | a current answer |
+| `start` | begin work | 30 s | reaches `ready`/`running` |
+| `pause` | stop working, keep state | 10 s | reaches `paused` |
+| `resume` | work again | 10 s | reaches `running` |
+| `stop` | **graceful** — finish the cycle, release what you hold, exit | 35 s | reaches `stopped` |
+| `abort` | **ungraceful** — terminate now, cleanup not guaranteed | 10 s | reaches `aborted` |
+
+**`zombie` is the state of a worker that fails to answer a control verb within its
+deadline — canonically, one that survives `abort`.** That is the honest definition,
+because abort is the last resort: if it does not work, nothing else will. The worker keeps
+consuming resources and producing side effects, and the process can no longer do anything
+about it.
+
+So the pair is exact:
+
+* **`aborted`** — we forced it and it died. Ungraceful, cleanup possibly skipped, but it
+  is gone and its name is free.
+* **`zombie`** — we forced it and it did not die. Still running, uncontrollable, name
+  **never** reusable while it lives.
+
+And the implementation rule that follows, which is easy to get wrong: **a cancel is a
+request, not an outcome.** `task.cancel()` returns immediately and guarantees nothing — a
+task that catches `CancelledError`, or sits in a thread or a non-cancellable call, survives
+it. Every abort must therefore be *confirmed* within its deadline, and an unconfirmed abort
+is a zombie, not an abort.
+
+Being superseded while still running (§5.7) is a *path into* zombie rather than a separate
+condition: the old worker is no longer addressable, so no verb can ever reach it again.
+
+**What an operator does about one:** nothing, from inside the process — that is the whole
+point. A zombie means the bridge must be restarted to clear it, and it is reported that
+loudly. It is the one state whose remedy is outside the runtime.
 
 #### Cadence by kind
 

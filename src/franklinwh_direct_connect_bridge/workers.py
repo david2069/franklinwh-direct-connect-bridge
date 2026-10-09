@@ -54,7 +54,7 @@ class WorkerState(str, Enum):
     ABORTED = "aborted"            # stop FORCED — may never have released what it held
     UNRESPONSIVE = "unresponsive"  # task alive, beat stale — cancel, then restart
     CRASHED = "crashed"            # exited with an exception — restart per policy
-    ZOMBIE = "zombie"              # superseded but STILL EXECUTING — cancel, never restart
+    ZOMBIE = "zombie"              # UNCONTROLLABLE — survived abort, or now unaddressable
 
 
 #: States that are terminal for supervision: no restart, no staleness check.
@@ -64,6 +64,12 @@ _BEATING = frozenset({WorkerState.RUNNING, WorkerState.DEGRADED})
 #: States that mean something went wrong and a remedy is owed.
 BROKEN = frozenset({WorkerState.UNRESPONSIVE, WorkerState.CRASHED, WorkerState.ZOMBIE,
                     WorkerState.ABORTED})
+
+#: How long an abort has to actually kill the task before we stop pretending it worked.
+#: `task.cancel()` is a request, not an outcome: a task that catches CancelledError, or
+#: sits in a thread or a non-cancellable call, survives it. An unconfirmed abort is a
+#: zombie wearing an abort's name.
+ABORT_CONFIRM_S = 10.0
 
 #: A stop that never completes is its own failure. `stop_all` already allows 35s before
 #: cancelling, so a worker stuck STOPPING past this is escalated rather than waited on.
@@ -178,12 +184,23 @@ class Worker:
         self.stopping_since = None
 
     def mark_aborted(self, reason: str = "") -> None:
-        """Stop was FORCED. Distinct from stopped on purpose: a cancelled worker may
-        never have released a force, closed a session or finished a write, and that
-        difference is the only evidence a cleanup was skipped."""
+        """Abort succeeded: forced, and it died. Distinct from `stopped` on purpose —
+        a cancelled worker may never have released a force, closed a session or
+        finished a write, and that difference is the only evidence a cleanup was
+        skipped. Only call this once termination is CONFIRMED."""
         self.state = WorkerState.ABORTED
         self.stopping_since = None
         self.last_error = reason or "cancelled before it wound down"
+
+    def mark_zombie(self, reason: str = "") -> None:
+        """Uncontrollable: it failed a control verb within its deadline — typically it
+        survived an abort. Terminal, never restarted, and the name is never freed while
+        it lives. Nothing inside this process can clear it; the bridge must restart."""
+        self.state = WorkerState.ZOMBIE
+        self.stopping_since = None
+        self.last_error = reason or "did not respond to control"
+
+
 
     @property
     def restartable(self) -> bool:
@@ -234,6 +251,38 @@ class Worker:
             "detail": self.detail, "broken": self.is_broken, "band": self.band,
             "family": self.name.split(":", 1)[0],
         }
+
+
+async def abort(worker: Worker, *, timeout: float = ABORT_CONFIRM_S) -> WorkerState:
+    """Ungracefully terminate a worker and **confirm** it died.
+
+    Returns ABORTED if it is gone, ZOMBIE if it survived. Never raises: the whole point
+    is to end with a truthful state rather than an optimistic one.
+    """
+    task = worker._task
+    if task is None or task.done():
+        worker.mark_aborted("already finished")
+        return worker.state
+    task.cancel()
+    try:
+        await asyncio.wait_for(asyncio.shield(_await_quietly(task)), timeout=timeout)
+    except (asyncio.TimeoutError, Exception):  # noqa: BLE001
+        pass
+    if task.done():
+        worker.mark_aborted(f"cancelled, confirmed within {timeout:.0f}s")
+    else:
+        worker.mark_zombie(
+            f"survived abort — still running {timeout:.0f}s after cancel; "
+            "restart the bridge to clear it")
+        log.error("worker %s is a ZOMBIE: %s", worker.name, worker.last_error)
+    return worker.state
+
+
+async def _await_quietly(task: asyncio.Task) -> None:
+    try:
+        await task
+    except BaseException:  # noqa: BLE001 — we only care THAT it ended
+        pass
 
 
 class Registry:
