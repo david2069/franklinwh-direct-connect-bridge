@@ -150,11 +150,63 @@ One loop, itself a worker, that every few seconds:
   silent restart loop is worse than a stopped worker;
 * records every transition.
 
-### 5.4 Observable surface
+### 5.4 Observable surface — the worker monitor
 
 `GET /api/health/workers` → name, scope, state, uptime, last beat, restarts, last error.
-A Process card renders it with per-worker Restart. The FranklinWH HA Integrator's Process
-Control Center is the reference for what "good" looks like here.
+A Process card renders it with per-worker actions. The FranklinWH HA Integrator's Process
+Control Center is the reference for what this is *for*; two things we do differently, both
+deliberate.
+
+**List declared workers, not discovered tasks.** FWHAI's panel enumerates raw asyncio
+tasks, so it carries two rows of
+`starlette.middleware.base.BaseHTTPMiddleware.__call__.<locals>.call_next.<locals>.coro`
+beside the real ones. Framework plumbing drowns the signal, and a reader cannot tell which
+rows matter. BR-35 says *registered*, not *discovered*, precisely so this cannot happen:
+if it is not a declared worker it does not appear, and if it does background work and is
+not declared, that is the bug.
+
+**Restart is not uniformly safe.** A Restart button on every row is wrong here, because
+restarting the dispatch watchdog removes the only thing that ends an active force — this
+firmware's hardware revert timer is cosmetic. So each worker declares a restart class:
+
+| Class | Workers | Behaviour |
+| --- | --- | --- |
+| `free` | `selfcheck`, `maintenance`, `cloud-status`, `vpp-monitor` | restart any time |
+| `handoff` | `poller:<gw>`, mqtt publisher | restart, then re-publish current state so consumers are not left stale |
+| `guarded` | `dispatch-watchdog` | **refuse** while a force is in flight, unless the restart re-adopts it |
+
+`guarded` is not a special case to invent: `battery_control.reconcile_interrupted` already
+re-adopts active dispatch rows on boot, against a stated policy. A restart must go through
+that same path rather than starting clean, so the watchdog resumes owning the force it was
+already responsible for. A restart that silently drops an in-flight force is a safety
+regression wearing a convenience button.
+
+The UI shows the class, so "why can I not restart this right now" is answerable without
+reading source.
+
+### 5.5 Dependency and drift panel — related, and deliberately separate
+
+Different question, different layer: **what is actually installed in this container?**
+Nothing to do with liveness, so it does not belong in the worker monitor and does not block
+on L0 — it can land independently.
+
+`/api/support-info` already carries configuration (gateways, billing, integration, solar)
+and `meta.software_version`. It gains:
+
+* Python version and platform;
+* installed distributions with versions;
+* **declared-versus-installed drift** for the pinned few — `franklinwh-direct-connect-api`,
+  `franklinwh-modbus`, `franklinwh-cloud`, `croniter`, `paho-mqtt`.
+
+The drift line is the part with teeth, and two things from 2026-10-09 argue for it:
+
+1. The running container carries `franklinwh-direct-connect-api` **0.4.0 built from an
+   unreleased branch wheel** — correct for a dev rebuild, and invisible everywhere in the
+   UI. "Which library is this actually running?" should not require `docker exec`.
+2. `croniter` is a declared core dependency that was **missing from the dev venv**, which
+   surfaced as a failing cron test rather than as "your environment is incomplete".
+
+Drift becomes a `selfcheck` finding (L3), so it is reported rather than merely available.
 
 ## 6 · Decisions needed — these are yours, not mine
 
@@ -176,12 +228,13 @@ Control Center is the reference for what "good" looks like here.
 
 | Phase | Change | Leaves behind |
 | --- | --- | --- |
-| 0 | Worker registry, heartbeat, supervisor, `/api/health/workers`, `except` around `run_gateway`. Existing work is *registered*, not rewritten. | Nothing dies unnoticed. |
+| 0 | Worker registry, heartbeat, supervisor, `/api/health/workers` + Process card with restart classes, `except` around `run_gateway`. Existing work is *registered*, not rewritten. | Nothing dies unnoticed; restarting cannot drop an in-flight force. |
 | 1 | Scheduler becomes its own worker, reading per-gateway snapshots. | Scheduling survives a gateway failure; resolution no longer tied to poll interval. |
 | 2 | Occurrences table; the scheduler claims and updates rows. | `missed`, retry-within-window and resume become expressible (BR-16/18/19). |
 | 3 | Wire `resilience.call` into scheduler actions and bridge writes. | Outcomes structured; `unknown` surfaced (BR-6–13). |
 | 4 | `selfcheck` worker + findings endpoint. | Standing conditions detected. |
 | 5 | Health cards, `bridge_health` notifications, HA `problem` sensor. | Someone is told. |
+| — | **Dependency + drift panel** in `/api/support-info`. Independent of L0; schedule it whenever. | "Which library is this actually running?" answerable without `docker exec`. |
 
 Phase 0 is small and changes no behaviour. It is also the one that would have caught every
 silent failure found so far.
