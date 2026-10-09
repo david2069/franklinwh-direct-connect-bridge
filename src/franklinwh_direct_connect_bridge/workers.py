@@ -36,11 +36,46 @@ log = logging.getLogger(__name__)
 
 
 class WorkerState(str, Enum):
-    STARTING = "starting"
-    RUNNING = "running"
-    DEGRADED = "degraded"      # doing its job; a dependency is unavailable
-    STOPPED = "stopped"        # asked to stop
-    FAILED = "failed"          # died, or exceeded the crash-loop ceiling
+    """Lifecycle (design §5.6). Each state exists because it implies a different remedy.
+
+    ``UNRESPONSIVE`` and ``CRASHED`` are deliberately separate: a crashed worker is
+    already gone, so restart it; a wedged one still exists, probably blocked on a
+    socket, still holds its resources, and must be **cancelled before** anything
+    replaces it — restarting without cancelling is how you get a ``ZOMBIE``.
+    """
+
+    INIT = "init"                  # constructed; dependencies not resolved
+    READY = "ready"                # able to work, not yet working
+    RUNNING = "running"            # steady state, beating
+    DEGRADED = "degraded"          # doing its job; a dependency is unavailable
+    PAUSED = "paused"              # deliberately idle, state retained, resumable
+    STOPPING = "stopping"          # winding down — a state with a duration, not an instant
+    STOPPED = "stopped"            # intentional, terminal
+    UNRESPONSIVE = "unresponsive"  # task alive, beat stale — cancel, then restart
+    CRASHED = "crashed"            # exited with an exception — restart per policy
+    ZOMBIE = "zombie"              # superseded but STILL EXECUTING — cancel, never restart
+
+
+#: States that are terminal for supervision: no restart, no staleness check.
+_TERMINAL = frozenset({WorkerState.STOPPED, WorkerState.ZOMBIE})
+#: States in which a worker is expected to be beating.
+_BEATING = frozenset({WorkerState.RUNNING, WorkerState.DEGRADED})
+#: States that mean something went wrong and a remedy is owed.
+BROKEN = frozenset({WorkerState.UNRESPONSIVE, WorkerState.CRASHED, WorkerState.ZOMBIE})
+
+#: A stop that never completes is its own failure. `stop_all` already allows 35s before
+#: cancelling, so a worker stuck STOPPING past this is escalated rather than waited on.
+STOPPING_GRACE_S = 45.0
+
+#: Display order: whatever needs a human first, then stable alphabetical within the band.
+#: Sorting "active to top" is arbitrary when everything is running, and a list that
+#: reorders between refreshes is one people stop trusting (design §5.4).
+_BAND = {
+    WorkerState.ZOMBIE: 0, WorkerState.CRASHED: 0, WorkerState.UNRESPONSIVE: 0,
+    WorkerState.DEGRADED: 1, WorkerState.STOPPING: 1,
+    WorkerState.RUNNING: 2, WorkerState.READY: 2, WorkerState.INIT: 2,
+    WorkerState.PAUSED: 3, WorkerState.STOPPED: 3,
+}
 
 
 class RestartClass(str, Enum):
@@ -75,12 +110,13 @@ class Worker:
     kind: str = "task"                         # "task" | "thread"
     factory: Callable[[], Awaitable[Any]] | None = None   # None = not restartable here
 
-    state: WorkerState = WorkerState.STARTING
+    state: WorkerState = WorkerState.INIT
     started_ts: float = field(default_factory=time.time)
     last_beat_ts: float = field(default_factory=time.time)
     restarts: int = 0
     last_error: str = ""
     detail: str = ""
+    stopping_since: float | None = None
     _restart_times: list[float] = field(default_factory=list, repr=False)
     _task: asyncio.Task | None = field(default=None, repr=False)
 
@@ -103,13 +139,62 @@ class Worker:
 
     @property
     def beat_is_stale(self) -> bool:
-        """Alive-but-wedged looks exactly like this, and like nothing else."""
-        return (self.state in (WorkerState.RUNNING, WorkerState.DEGRADED)
-                and self.beat_age_s > self.beat_grace_s)
+        """Alive-but-wedged looks exactly like this, and like nothing else.
+
+        Only checked while the worker is expected to beat. An event-driven worker beats
+        "alive and waiting" rather than "did work", so an idle watchdog is not stale —
+        but one that has stopped beating entirely still is.
+        """
+        return self.state in _BEATING and self.beat_age_s > self.beat_grace_s
+
+    @property
+    def stopping_too_long(self) -> bool:
+        """A stop is a state with a duration. One that never completes is invisible
+        today, and is exactly what leaves a predecessor running under a reused name."""
+        return (self.state is WorkerState.STOPPING
+                and self.stopping_since is not None
+                and (time.time() - self.stopping_since) > STOPPING_GRACE_S)
+
+    @property
+    def is_broken(self) -> bool:
+        return self.state in BROKEN
+
+    @property
+    def band(self) -> int:
+        return _BAND.get(self.state, 2)
+
+    def mark_stopping(self) -> None:
+        self.state = WorkerState.STOPPING
+        self.stopping_since = time.time()
+
+    def mark_stopped(self) -> None:
+        self.state = WorkerState.STOPPED
+        self.stopping_since = None
 
     @property
     def restartable(self) -> bool:
+        """Can this be restarted *at all*? Whether it is safe *right now* is
+        ``restart_block``, because the two questions have different answers."""
         return self.factory is not None and self.kind == "task"
+
+    def restart_block(self, *, guard: Callable[[], str] | None = None) -> str:
+        """Empty string = safe to restart now; otherwise the reason it is not.
+
+        The GUARDED class is the point: restarting the dispatch watchdog while a force
+        is in flight removes the only thing that ends it, since this firmware's hardware
+        revert timer is cosmetic. Such a restart must re-adopt the force, not start clean.
+        """
+        if not self.restartable:
+            return ("not restartable: thread-backed (convert to a worker in phase 1)"
+                    if self.kind == "thread" else "not restartable: no factory registered")
+        if self.state is WorkerState.STOPPING:
+            return "winding down — wait for it to finish"
+        if self.in_crash_loop():
+            return (f"crash loop: {CRASH_LOOP_RESTARTS} restarts within "
+                    f"{CRASH_LOOP_WINDOW_S / 60:.0f} min — fix the cause, then restart")
+        if self.restart_class is RestartClass.GUARDED and guard is not None:
+            return guard()
+        return ""
 
     def in_crash_loop(self, now: float | None = None) -> bool:
         now = now if now is not None else time.time()
@@ -132,7 +217,8 @@ class Worker:
             "last_beat_s": round(self.beat_age_s, 1),
             "beat_stale": self.beat_is_stale,
             "restarts": self.restarts, "last_error": self.last_error,
-            "detail": self.detail,
+            "detail": self.detail, "broken": self.is_broken, "band": self.band,
+            "family": self.name.split(":", 1)[0],
         }
 
 
@@ -143,9 +229,34 @@ class Registry:
         self._workers: dict[str, Worker] = {}
         self._lock = threading.RLock()
 
+    def name_in_use(self, name: str) -> Worker | None:
+        """A name is in use while any predecessor is still winding down or wedged.
+
+        This is the zombie fix (BR-40). Previously `is_running()` consulted a dict of
+        tasks that `stop_poller` had already popped, so a quick disable→enable started a
+        second poller while the first was still mid-cycle — both polling, both writing
+        metrics, both publishing MQTT for the same node, and the older one invisible
+        because it had been deregistered. The registry, not a task dict, decides.
+        """
+        with self._lock:
+            w = self._workers.get(name)
+            if w is None:
+                return None
+            if w.state in (WorkerState.STOPPING, WorkerState.UNRESPONSIVE, WorkerState.ZOMBIE):
+                return w
+            if w._task is not None and not w._task.done():
+                return w
+            return None
+
     def register(self, worker: Worker) -> Worker:
         with self._lock:
             existing = self._workers.get(worker.name)
+            if existing is not None and existing._task is not None and not existing._task.done():
+                # Replacing a live worker would orphan it: still executing, no longer
+                # listed, still producing side effects. Name it for what it is.
+                existing.state = WorkerState.ZOMBIE
+                existing.last_error = "superseded while still running"
+                log.error("worker %s superseded while still running — ZOMBIE", existing.name)
             if existing is not None:
                 # Re-registering after a restart keeps the history that makes a crash
                 # loop visible; dropping it would reset the evidence each time.
@@ -164,7 +275,8 @@ class Registry:
 
     def all(self) -> list[Worker]:
         with self._lock:
-            return sorted(self._workers.values(), key=lambda w: (w.scope, w.name))
+            return sorted(self._workers.values(),
+                          key=lambda w: (w.band, w.name.split(':', 1)[0], w.name))
 
     def beat(self, name: str, *, state: WorkerState | None = None, detail: str = "") -> None:
         """Beat by name, so a worker need not hold a reference to its own record."""
@@ -174,11 +286,12 @@ class Registry:
 
     def snapshot(self) -> dict:
         ws = self.all()
-        unhealthy = [w for w in ws if w.state is WorkerState.FAILED or w.beat_is_stale]
+        unhealthy = [w for w in ws if w.is_broken or w.beat_is_stale]
         return {
             "ok": not unhealthy,
             "counts": {s.value: sum(1 for w in ws if w.state is s) for s in WorkerState},
             "stale": [w.name for w in ws if w.beat_is_stale],
+            "broken": [w.name for w in ws if w.is_broken],
             "workers": [w.as_dict() for w in ws],
         }
 
@@ -208,32 +321,48 @@ async def supervise(reg: Registry, *, stop: asyncio.Event, interval_s: float = 5
 
 
 def _supervise_once(reg: Registry, *, on_transition=None) -> list[Worker]:
-    """One pass. Pure enough to test without a loop; returns workers needing a restart."""
-    needs_restart: list[Worker] = []
+    """One pass. Pure enough to test without a loop; returns workers needing a remedy."""
+    needs: list[Worker] = []
     for w in reg.all():
-        if w.state in (WorkerState.STOPPED, WorkerState.FAILED):
+        if w.state in _TERMINAL:
             continue
 
         task = w._task
+
+        # A stop that completed: finish the deregistration the stop only began. Doing
+        # this here — rather than at the moment stop was *requested* — is what stops a
+        # replacement starting alongside a predecessor that is still running.
+        if w.state is WorkerState.STOPPING:
+            if task is None or task.done():
+                w.mark_stopped()
+                reg.unregister(w.name)
+            elif w.stopping_too_long:
+                _transition(w, WorkerState.UNRESPONSIVE,
+                            f"still stopping after {STOPPING_GRACE_S:.0f}s", on_transition)
+                needs.append(w)
+            continue
+
         if task is not None and task.done():
-            # A worker never exits unreported: retrieve the exception or Python merely
-            # logs "Task exception was never retrieved" into the void, which is how
+            # Never exit unreported: retrieve the exception, or Python merely logs
+            # "Task exception was never retrieved" into the void — which is how
             # run_gateway could die silently.
             err = ""
             if not task.cancelled():
                 exc = task.exception()
                 if exc is not None:
                     err = f"{type(exc).__name__}: {exc}"
-            _transition(w, WorkerState.FAILED, err or "exited", on_transition)
-            needs_restart.append(w)
+            _transition(w, WorkerState.CRASHED, err or "exited without error", on_transition)
+            needs.append(w)
             continue
 
         if w.beat_is_stale:
-            _transition(w, WorkerState.FAILED,
+            # Alive but wedged. NOT crashed: the task still exists and holds its
+            # resources, so the remedy is cancel-then-restart, not restart.
+            _transition(w, WorkerState.UNRESPONSIVE,
                         f"no heartbeat for {w.beat_age_s:.0f}s "
                         f"(cadence {w.cadence_s:.0f}s)", on_transition)
-            needs_restart.append(w)
-    return needs_restart
+            needs.append(w)
+    return needs
 
 
 def _transition(w: Worker, state: WorkerState, reason: str, on_transition) -> None:

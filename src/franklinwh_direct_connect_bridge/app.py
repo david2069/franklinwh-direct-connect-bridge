@@ -3771,6 +3771,46 @@ def create_app() -> FastAPI:
         (RUNTIME_DESIGN decision 4), because restarting the world hides the cause."""
         return _workers.registry.snapshot()
 
+    def _dispatch_guard() -> str:
+        """Why restarting the dispatch watchdog is unsafe right now, or "" if it is not.
+
+        This firmware's hardware revert timer is cosmetic, so the software watchdog is
+        the only thing that ends a force. Restarting it while one is in flight would
+        drop the force's owner — a safety regression wearing a convenience button.
+        """
+        try:
+            cur = battery_control.current()
+        except Exception:  # noqa: BLE001 — never let the guard itself fail open
+            return "cannot determine dispatch state — refusing"
+        if cur and cur.get("command"):
+            return (f"force active ({cur.get('command')}) — release it first, or restart "
+                    "the bridge so boot reconcile re-adopts it")
+        return ""
+
+    @app.post("/api/health/workers/{name:path}/restart")
+    def api_worker_restart(name: str):
+        """Restart one worker, if that is safe *right now* (BR-37, design §5.4).
+
+        Restartability and restart-safety are different questions: a worker may be
+        restartable in principle and blocked at this moment because it is winding down,
+        in a crash loop, or holding an in-flight force."""
+        _guard_writes()
+        w = _workers.registry.get(name)
+        if w is None:
+            raise HTTPException(404, f"no worker '{name}'")
+        block = w.restart_block(guard=_dispatch_guard)
+        if block:
+            _audit("worker_restart", detail=name, result=f"refused: {block}", ok=False)
+            raise HTTPException(409, block)
+        try:
+            w.note_restart()
+            w.factory()
+        except Exception as e:  # noqa: BLE001
+            _audit("worker_restart", detail=name, result=str(e), ok=False)
+            raise HTTPException(500, f"restart failed: {e}")
+        _audit("worker_restart", detail=name, result="restarted", ok=True)
+        return {"ok": True, "name": name, "restarts": w.restarts}
+
     @app.get("/api/mqtt/orphans")
     def api_mqtt_orphans():
         """DRY RUN — what a purge would clear, and what it would leave alone.

@@ -316,7 +316,7 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
         # supervisor now sees it, but it must also be stated plainly in the log.
         log.exception("[%s] poller crashed — polling, metrics and publishing have STOPPED "
                       "for this gateway until it is restarted", gw.id)
-        _workers.registry.beat(_wname, state=_workers.WorkerState.FAILED,
+        _workers.registry.beat(_wname, state=_workers.WorkerState.CRASHED,
                                detail=f"{type(exc).__name__}: {exc}")
         raise
     finally:
