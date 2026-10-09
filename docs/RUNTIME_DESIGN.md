@@ -1,7 +1,10 @@
 # Runtime design — components, supervision and work
 
-Status: **accepted 2026-10-09.** The decisions in §7 are settled; phase 0 is
-ready to build. Not yet shared with the Modbus
+Status: **FROZEN v1.0, 2026-10-09.** Decisions settled (§7), questions closed (§10), scope
+fixed (§8). Implementation follows the phase order; discovering work inside a phase is
+expected, but moving work between phases or adding one needs a v1.1 with a note saying what
+changed and why. The point of a freeze is that the next surprise gets absorbed by the plan
+instead of restarting it. Not yet shared with the Modbus
 bridge — the supervision requirements (BR-35–38) apply to both, but there is no point
 syncing a design that is still moving. Tell them once phases 0–1 have landed and survived
 contact. `BRIDGE_BASELINE.md` states *what*
@@ -367,18 +370,26 @@ automatic restart that silently re-arms a force is worse than an outage that is 
 
 ## 8 · Migration — each phase leaves a working system
 
-| Phase | Change | Leaves behind |
-| --- | --- | --- |
-| 0 | Worker registry, heartbeat, supervisor, `/api/health/workers` + Process card with restart classes, `except` around `run_gateway`. Existing work is *registered*, not rewritten. | Nothing dies unnoticed; restarting cannot drop an in-flight force. |
-| 1 | Scheduler becomes its own worker, reading per-gateway snapshots. | Scheduling survives a gateway failure; resolution no longer tied to poll interval. |
-| 2 | Occurrences table; the scheduler claims and updates rows. | `missed`, retry-within-window and resume become expressible (BR-16/18/19). |
-| 3 | Wire `resilience.call` into scheduler actions and bridge writes. | Outcomes structured; `unknown` surfaced (BR-6–13). |
-| 4 | `selfcheck` worker + findings endpoint. | Standing conditions detected. |
-| 5 | Health cards, `bridge_health` notifications, HA `problem` sensor. | Someone is told. |
-| — | **Dependency + drift panel** in `/api/support-info`. Independent of L0; schedule it whenever. | "Which library is this actually running?" answerable without `docker exec`. |
+**Frozen 2026-10-09.** Scope below is the whole of it. Changing a phase's *contents* needs
+a new revision of this document and a note saying what moved and why; discovering work
+*inside* a phase is normal and does not.
 
-Phase 0 is small and changes no behaviour. It is also the one that would have caught every
-silent failure found so far.
+| Phase | Change | Requirements | Leaves behind |
+| --- | --- | --- | --- |
+| **0a** ✅ | Worker registry, heartbeat, supervisor, `/api/health/workers`, `except` around `run_gateway` | BR-35, 36, 37, 38 | nothing dies unnoticed |
+| **0b** | Full lifecycle states; deregister only when work has ended; `start` refuses a name still `stopping` (the zombie fix); restart actions with `free`/`handoff`/`guarded`, `guarded` going through `reconcile_interrupted`; Process card, banded ordering, family grouping | BR-39, 40 | the supervisor **recovers**, not just reports; two pollers can no longer run for one gateway |
+| **1** | Scheduler becomes its own worker on its own cadence, reading per-gateway snapshots. Copy `franklinwh-modbus-bridge/gateway/scheduler.py` | BR-35 | scheduling survives a gateway failure; resolution untied from `poll_interval` |
+| **2** | `occurrences` table; the scheduler claims and updates rows | BR-15–19 | `missed`, retry-within-window and resume become expressible |
+| **3** | Wire `resilience.call` into scheduler actions and bridge writes; `POST /api/dispatch` takes a gateway | BR-3, 6–13, 34 | outcomes structured; `unknown` surfaced; dispatch targets the right battery |
+| **4** | Capability + impact health: dependency graph, freshness, schedule pre-flight, `/api/health` rollup | BR-41, 42, 43 | "will my schedule fire tonight" is answerable |
+| **5** | `selfcheck` worker + findings endpoint | BR-14, 26, 28 | standing conditions detected |
+| **6** | Health cards, `bridge_health` notifications, HA `problem` sensor | BR-29, 30 | someone is told |
+| **7** | Unpublish on gateway delete; pre-uninstall flow; mock isolation | BR-23, 24, 27 | deleting a gateway stops minting orphans |
+| **—** | Dependency + drift panel in `/api/support-info`. Independent of L0 | — | "which library is this actually running?" |
+
+Phases 0a–3 are the spine: supervision, then a scheduler that is a component, then work
+that exists as rows, then calls that fail honestly. Phases 4–7 are what make it visible.
+The drift panel is unordered because nothing depends on it.
 
 ## 9 · What this means for work in flight
 
@@ -387,14 +398,35 @@ can die unobserved, on a cadence borrowed from a poll loop, would encode the cou
 design removes. `resilience.py` stands — it is L1 and independent — but nothing else should
 be built against the current runtime.
 
-## 10 · Open questions
+## 10 · Questions — closed 2026-10-09
 
-* ~~Does the Modbus bridge have the same passenger-scheduler shape?~~ **Answered (§1.1):**
-  no — its scheduler is already a proper component. The supervision gap *is* shared, so
-  L0 belongs beside `BRIDGE_BASELINE.md` as BR-35–38, while the scheduler decoupling is
-  ours alone.
-* Do any workers need to survive a bridge restart mid-action, beyond the dispatch
-  reconcile that already exists?
-* Is single-process still right, or does the dispatch watchdog belong somewhere that a
-  bridge crash cannot take with it? This matters because the software watchdog is the only
-  thing that ends a force.
+* ~~Does the Modbus bridge have the same passenger-scheduler shape?~~ **No** (§1.1). Its
+  scheduler is already a proper component, so the decoupling is ours alone; the supervision
+  gap is shared and became BR-35–43.
+
+* ~~Do any workers need to survive a bridge restart mid-action?~~ **No — durable state
+  does, not workers.** The only genuinely in-flight state is a force dispatch (already
+  recorded in `dispatches`) and, after phase 2, an occurrence. Both are rows, so a restart
+  **reconciles from the database** rather than resuming anything in memory. Keeping worker
+  state across restarts would add a second source of truth next to the rows that already
+  hold it. Rule: *if work must survive a restart, it must exist as a row before it starts.*
+
+* ~~Should the dispatch watchdog live outside this process?~~ **No — accept the exposure,
+  bound it, and make it visible.** The software watchdog is the only thing that ends a
+  force, so a bridge crash leaves the battery dispatched until the bridge returns. The
+  alternatives are worse: a device-side timer is unavailable (`WSetRvrtTms` is cosmetic on
+  this firmware), and a second process needs its own supervision, deployment and failure
+  mode — solving a rare failure by adding a permanent one.
+
+  So the exposure is managed rather than removed:
+  * the window is **restart time + reconcile time**, so `reconcile_interrupted` runs
+    **early** in startup, before anything slower;
+  * every force is written to `dispatches` with its window **before** it is applied, so a
+    crash between write and apply fails safe — reconcile sees a force that may exist and
+    checks the device rather than assuming;
+  * `duration_s` is bounded by policy, because the exposure is bounded by the force itself;
+  * a force found outstanding at boot is reported at `error` and notified, never released
+    silently — the operator learns it happened.
+
+  **This is a deliberate accepted risk, recorded here so it is re-decided rather than
+  rediscovered.** Revisit if a crash ever strands a force in practice.
