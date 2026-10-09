@@ -99,7 +99,81 @@ document.addEventListener('alpine:init', () => {
     generatorInstalled: false,
     //: The registry filtered to what this gateway actually has — feeds barMax/barTabs/
     //  overflowTabs and the bottom nav. Generator drops out when no genset is present.
-    get navTabs() { return this._navTabsAll.filter(t => t.key !== 'generator' || this.generatorInstalled); },
+    //: One ordering drives BOTH navs. The sidebar and the bottom bar used to be two
+    //  hand-maintained lists that had drifted apart in order AND in naming; they now
+    //  read the same registry, differing only in label width (tabTitles = long form
+    //  for the sidebar, tab.title = short form for the 64px bar slots).
+    //  Pinning: 'dashboard' is locked first and always on, everywhere. 'settings' is
+    //  locked on and always second in the SIDEBAR, but floats in the bar order — bar
+    //  slots are scarce (~5 on a phone) and Settings is always reachable under More.
+    NAV_PIN: { dashboard: 'both', settings: 'sidebar' },
+    navPinned(key) { return this.NAV_PIN[key] || ''; },
+    navLabel(key) { return this.tabTitles[key] || key; },
+
+    //: The registry filtered to hardware this gateway actually has.
+    get navAvailable() { return this._navTabsAll.filter(t => t.key !== 'generator' || this.generatorInstalled); },
+
+    navPrefs: [],
+    _navDefaults() {
+      return this._navTabsAll.map(t => ({ id: t.key, on: true }));
+    },
+    _loadNavPrefs() {
+      let p = null;
+      try { p = JSON.parse(localStorage.getItem('fwh-local-nav') || 'null'); } catch (e) { /**/ }
+      const def = this._navDefaults();
+      const byId = Object.fromEntries(def.map(d => [d.id, d]));
+      const out = [];
+      (Array.isArray(p) ? p : []).forEach(s => {
+        if (byId[s.id]) { out.push({ id: s.id, on: !!s.on }); delete byId[s.id]; }
+      });
+      // Tabs added in an upgrade append rather than vanish for anyone with saved prefs.
+      Object.values(byId).forEach(d => out.push({ ...d }));
+      this.navPrefs = out;
+    },
+    _saveNavPrefs() {
+      try { localStorage.setItem('fwh-local-nav', JSON.stringify(this.navPrefs)); } catch (e) { /**/ }
+    },
+    toggleNavItem(id) {
+      if (this.navPinned(id)) return;              // pinned tabs cannot be hidden
+      this.navPrefs = this.navPrefs.map(x => x.id === id ? { ...x, on: !x.on } : x);
+      this._saveNavPrefs();
+    },
+    moveNavItem(id, dir) {
+      if (this.navPinned(id) === 'both') return;   // dashboard is locked first
+      const arr = this.navPrefs;
+      const i = arr.findIndex(x => x.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= arr.length) return;
+      if (this.navPinned(arr[j].id) === 'both') return;
+      const next = [...arr];
+      [next[i], next[j]] = [next[j], next[i]];
+      this.navPrefs = next;
+      this._saveNavPrefs();
+    },
+    resetNavPrefs() { this.navPrefs = this._navDefaults(); this._saveNavPrefs(); },
+
+    //: Every available tab in the user's order, pinned-first — the list the cog edits.
+    get navOrdered() {
+      const by = Object.fromEntries(this.navAvailable.map(t => [t.key, t]));
+      const seen = new Set();
+      const out = [];
+      this.navPrefs.forEach(p => { if (by[p.id] && !seen.has(p.id)) { seen.add(p.id); out.push({ ...by[p.id], on: !!p.on }); } });
+      this.navAvailable.forEach(t => { if (!seen.has(t.key)) out.push({ ...t, on: true }); });
+      const pin = out.filter(t => this.navPinned(t.key) === 'both');
+      return [...pin, ...out.filter(t => this.navPinned(t.key) !== 'both')];
+    },
+
+    //: Bottom bar — visible tabs only, in that order.
+    get navTabs() { return this.navOrdered.filter(t => t.on || this.navPinned(t.key)); },
+
+    //: Sidebar — same list, but Settings is hoisted to second.
+    get sidebarTabs() {
+      const v = this.navTabs;
+      const st = v.find(t => t.key === 'settings');
+      if (!st) return v;
+      const rest = v.filter(t => t.key !== 'settings');
+      return [rest[0], st, ...rest.slice(1)].filter(Boolean);
+    },
     bottomTabKeys: ['dashboard', 'battery', 'solar', 'scheduler'],
     // Live viewport width (horizontal only — stable on iOS URL-bar scroll, so no thrash).
     winW: (typeof window !== 'undefined' ? window.innerWidth : 1024),
@@ -133,7 +207,21 @@ document.addEventListener('alpine:init', () => {
     _mqNarrow: null,
     narrow: false,   // drives sidebar vs bottom-nav (matchMedia + navLayout override)
     terminalOpen: false,   // global terminal drawer (launched from either nav; the drawer syncs)
-    toggleTerminal() { this.terminalOpen = !this.terminalOpen; },
+    toggleTerminal() { if (!this.advancedTools) return; this.terminalOpen = !this.terminalOpen; },
+
+    //: Advanced / admin tools, OFF by default. Gates a CATEGORY, not one button, so
+    //  anything later judged admin-only joins this gate rather than inventing its own.
+    //  Browser-local for now; when user profiles arrive this becomes a server-side
+    //  role and the controls stop depending on which device you happen to be on.
+    advancedTools: false,
+    setAdvancedTools(on) {
+      this.advancedTools = !!on;
+      if (!this.advancedTools) this.terminalOpen = false;   // never leave it open behind the gate
+      try { localStorage.setItem('fwh-local-advanced', this.advancedTools ? '1' : '0'); } catch (e) { /**/ }
+    },
+    _loadAdvancedTools() {
+      try { this.advancedTools = localStorage.getItem('fwh-local-advanced') === '1'; } catch (e) { /**/ }
+    },
     // Nav layout override: 'auto' = by width (< 768 = bottom bar; tablets/desktop = sidebar),
     // 'sidebar' / 'bottom' force one regardless of width. Persisted per-browser.
     navLayout: localStorage.getItem('fwh-nav-layout') || 'auto',
@@ -166,6 +254,13 @@ document.addEventListener('alpine:init', () => {
 
     // ── First-connection legal disclaimer (unofficial app) ──────────────────
     showDisclaimer: false,
+
+    // Guide (bundled mkdocs site). Opened as an in-app panel, never as a plain
+    // navigation: in a home-screen/PWA window there is no browser chrome, so a
+    // link to guide/ strands the user in the docs with no way back to the app.
+    guideOpen: false,
+    openGuide() { this.guideOpen = true },
+    closeGuide() { this.guideOpen = false },
     disclaimer: null,      // { title, lines[], issues_url, docs_url, version, agreed }
     agreedChecked: false,  // the "I have read and agree" checkbox
     _clientId() {
@@ -313,6 +408,7 @@ document.addEventListener('alpine:init', () => {
     //  Mirrors the Modbus Bridge "Topbar Preferences". The gateway selector and the
     //  connection status are LOCKED (always shown) and intentionally NOT in these lists.
     topbarPrefsOpen: false,
+    prefsTab: 'appearance',   // which cog view: appearance | nav | topbar
     topbarPrefs: { centre: [], right: [] },
     _topbarDefaults() {
       return {
@@ -563,7 +659,9 @@ document.addEventListener('alpine:init', () => {
       }
       this._loadLiveCaps();
       this._loadDashCards();
+      this._loadAdvancedTools();
       this._loadTopbarPrefs();
+      this._loadNavPrefs();
       this.initSidebar();
       // Static labelling metadata — fetch once (no device I/O, cheap, cached).
       this.loadFieldSchema();
@@ -949,6 +1047,17 @@ document.addEventListener('alpine:init', () => {
     //: Mode display-name -> set_mode alias (self/tou/backup).
     //: Radial tick on the SoC ring at the ACTIVE mode's reserved SoC (SVG is CSS-rotated -90deg,
     //  so 0deg here = 3 o'clock and the fill/tick share the same origin). Null when unknown.
+    //: The reserved arc, 0 -> reserve, drawn under the fill. A 5% reserve as a bare
+    //: tick sits within a few degrees of where the track meets the fill and reads as a
+    //: rendering seam; as a shaded band it reads as the floor the charge sits above.
+    get socReserveArc() {
+      const m = this.modes.find(x => x.active);
+      const r = (m && m.reserved_soc != null) ? Number(m.reserved_soc) : null;
+      if (r == null || isNaN(r) || r <= 0) return null;
+      const C = 251.3;                                  // 2*pi*40, matches the fill
+      const pct = Math.max(0, Math.min(100, r));
+      return { dash: (pct / 100) * C, gap: C, pct };
+    },
     get socReserveTick() {
       const m = this.modes.find(x => x.active);
       const r = (m && m.reserved_soc != null) ? Number(m.reserved_soc) : null;
@@ -1175,11 +1284,15 @@ document.addEventListener('alpine:init', () => {
     },
 
     // ── UI actions ─────────────────────────────────────────
-    toggleTheme() {
-      this.theme = this.theme === 'dark' ? 'light' : 'dark';
+    setTheme(mode) {
+      this.theme = mode === 'light' ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', this.theme);
       localStorage.setItem('fwh-theme', this.theme);
     },
+
+    // The topbar icon and the terminal chip are shortcuts for the same preference
+    // that Settings -> Display owns; all three go through setTheme.
+    toggleTheme() { this.setTheme(this.theme === 'dark' ? 'light' : 'dark') },
 
     setActiveTab(name) {
       const leaving = this.activeTab === 'dashboard' && name !== 'dashboard';

@@ -72,10 +72,14 @@ def test_partial_reads_do_not_fail_the_whole_view():
 
 # -- UI wiring ---------------------------------------------------------------
 def test_tab_is_registered_and_in_the_sidebar(client):
+    """Both navs now render from one registry, so reachability lives in app.js."""
+    import pathlib
     html = client.get("/").text
     assert "batteryTab()" in html
     assert "activeTab === 'battery'" in html
-    assert "setActiveTab('battery')" in html
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
+    assert "key: 'battery'" in (root / "static/js/app.js").read_text()
+    assert "$store.app.sidebarTabs" in (root / "templates/partials/sidebar.html").read_text()
 
 
 def test_tab_renders_the_key_sections(client):
