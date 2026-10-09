@@ -1,8 +1,10 @@
 # Bridge Baseline — behaviour both FranklinWH bridges must satisfy
 
 **Canonical copy:** `franklinwh-direct-connect-bridge/docs/BRIDGE_BASELINE.md`.
-A verbatim copy lives in `franklinwh-modbus-bridge/docs/`. Edit the canonical one and
-copy it across; `tools/check_baseline_sync.py` fails if the two drift.
+A copy is proposed to `franklinwh-modbus-bridge` in its PR #30, **deliberately not
+refreshed while the runtime work is in flight** — there is no point syncing a contract
+that is still moving. Re-copy it when `RUNTIME_DESIGN.md` phases 0–1 land;
+`tools/check_baseline_sync.py` reports drift in the meantime.
 
 ## Why this exists
 
@@ -164,6 +166,37 @@ credentials, unreachable transport — rather than failing opaquely or being hid
 
 **BR-34** The bridge never presents a control it cannot perform on the selected target.
 
+## 8 · Runtime and supervision
+
+A requirement can only hold while the thing that implements it is running. Both bridges
+create long-running background work and neither supervises any of it: no heartbeat, no
+exception retrieval, no restart policy, no observable worker state. Safety is by
+convention — every author remembering a `try/except` — which is a streak, not an
+architecture, and in the Modbus bridge the streak is already broken in two of five
+long-running loops **including the health component itself**.
+
+**BR-35** Every unit of background work is a named worker with **one** concern, a declared
+restart policy and an owner. No background work exists outside the registry — not a bare
+task, not a daemon thread.
+
+**BR-36** Liveness is **proven, not inferred**. A worker beats on each cycle; a stale
+heartbeat means failed even when the task object is alive and the process is healthy. "The
+task is not done" is not liveness.
+
+**BR-37** A worker that exits never exits unreported: its exception is retrieved and
+recorded. Restarts follow the policy with backoff, bounded by a crash-loop ceiling — on
+exceeding it the worker stops and says so, because a silent restart loop is worse than a
+stopped worker.
+
+**BR-38** Worker state is observable **from outside the worker** — name, scope, state,
+uptime, last beat, restart count, last error — and `degraded` is distinct from `failed`.
+A poller that cannot reach its device is working correctly and reporting a device problem;
+conflating the two makes "gateway unreachable" and "poller crashed" the same silence.
+
+> A corollary of BR-35 that is easy to miss: the health, self-check and notification
+> components are themselves workers, and must be supervised by something other than
+> themselves. Observability cannot live inside the thing it observes.
+
 ---
 
 ## Conformance status
@@ -183,6 +216,7 @@ overall, and both have a working implementation of the other's gap to copy.
 | 5 · Entity lifecycle | BR-22/25/26 pass; **BR-23 fails** — deleting a gateway leaves its retained discovery configs behind. BR-24/27 **fail**. | BR-23 **passes** — `DELETE /api/gateways/{id}` cascades device_points → device_models → gateway_state → metrics → metrics_archive → row, leaving no orphans. BR-27 **passes**: mock data is never recorded. |
 | 6 · Observability | BR-29/31 pass; BR-28/30 arriving with the outcome wiring | BR-29 passes (per-gateway lifecycle events, control_log); BR-26 partial — per-gateway row counts need SQL (§7.2) |
 | 7 · Write gating | BR-32/33 pass; BR-34 **fails** where BR-3 does | — |
+| 8 · Runtime & supervision | **BR-35–38 all fail.** The scheduler is a passenger on the gateway poll loop; `run_gateway` has no `except`, so one exception silently ends polling, metrics, MQTT and all scheduling for that gateway. | **BR-35–38 all fail** for supervision — ~15 `create_task` sites, none watched. But its scheduler **is** a proper component with its own task and tick, and 3 of 5 loops guard themselves. The Direct Connect Bridge should adopt that shape. |
 
 ### Where to copy from, rather than re-solve
 
@@ -190,6 +224,11 @@ overall, and both have a working implementation of the other's gap to copy.
   delete already cascades every artefact a gateway produced, and its mocks never write
   metrics at all. The Direct Connect Bridge deletes the row and leaves retained MQTT
   discovery configs behind, which is how it accumulated orphaned devices.
+* **BR-35–38 (scheduler shape) — the Direct Connect Bridge should copy the Modbus
+  bridge.** Its `gateway/scheduler.py` already owns its own task and tick interval, with
+  an inner guard commented "never let one bad tick kill the loop". That is exactly phase 1
+  of `RUNTIME_DESIGN.md`, already written and running next door. The supervision layer
+  (BR-36–38) is missing from both and has to be built once.
 * **BR-1 / BR-4 — the Modbus bridge should copy the Direct Connect Bridge.** It already
   runs one MQTT publisher per gateway keyed on the gateway's own serial, so two gateways
   cannot merge into one Home Assistant device, and metrics rows are tagged per gateway
