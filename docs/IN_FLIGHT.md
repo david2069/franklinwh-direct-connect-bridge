@@ -1,6 +1,6 @@
 # In-flight work — handover
 
-**Updated:** 2026-10-09 (phase 0b) · **Session:** `01WCWytg6NQWQ5fPnCZiSAf5`
+**Updated:** 2026-10-09 (phase 1) · **Session:** `01WCWytg6NQWQ5fPnCZiSAf5`
 
 Written so this work survives a crashed session. If you are picking this up cold, read
 §1 and §2, then §6 for the gotchas that cost time to learn. The design documents are the
@@ -31,31 +31,23 @@ polling, metrics, MQTT and all scheduling for a gateway while the container repo
 
 ## 2 · Next action
 
-`RUNTIME_DESIGN.md` is **FROZEN v1.0** — decisions settled (§7), questions closed (§10),
-phase scope fixed (§8). Work follows the phase order.
+`RUNTIME_DESIGN.md` is **FROZEN v1.3** — decisions settled (§7), questions closed (§10),
+phase scope fixed (§8).
 
-**Phase 0a — done, merged (PR #16).** Registry, heartbeat, supervisor, `/api/health/workers`,
-and the `except` around `run_gateway` that closed the silent-death hole.
+**Phase 0a ✅ (PR #16)** · **Phase 0b ✅ (PR #17)** — both merged. The supervisor recovers,
+the zombie window is closed, aborts are confirmed rather than assumed.
 
-**Phase 0b — on `feat/phase0b-lifecycle-restart`.** Done:
+**Phase 1 — in progress** on `feat/phase1-scheduler-worker`: the scheduler stops being a
+passenger on the gateway poll loop and becomes its own worker on its own cadence, reading a
+per-gateway snapshot. Copy the shape from
+`franklinwh-modbus-bridge/src/franklinwh_bridge/gateway/scheduler.py` — own task, own
+`_tick_s`, inner guard so a bad tick cannot kill the loop.
 
-* Ten lifecycle states (BR-39). `unresponsive` ≠ `crashed` (cancel-then-restart vs restart),
-  `paused` ≠ `stopped`, and `stopping` is a state with a duration that can itself fail.
-* **The zombie window is closed** (BR-40). `stop_poller` marks `STOPPING` and keeps the name
-  reserved; a done-callback frees it when the task actually ends, with the supervisor as
-  backstop. `is_running` now consults the registry, so it means "live **or** winding down".
-  `register` marks a superseded-but-still-running worker `ZOMBIE` rather than losing it.
-* `POST /api/health/workers/{name}/restart`, gated by `restart_block()` — refuses while
-  winding down, during a crash loop, for thread-backed workers, and (GUARDED) while a force
-  is in flight, each with the reason. Audited either way.
-* Pollers carry a restart factory; banded ordering and `family` for grouping.
+Cadence is a fixed, configurable 15 s (decision 2). Windows shorter than the cadence need a
+stated minimum rather than silently never firing.
 
-**Left in 0b:** the Process card in the UI over `/api/health/workers`.
-
-Then **phase 1** — the scheduler leaves the poller. Copy
-`franklinwh-modbus-bridge/src/franklinwh_bridge/gateway/scheduler.py`, already the right shape.
-
-**Do not** build scheduler retry/resume before phase 1 (`RUNTIME_DESIGN.md` §9).
+Then phase 2 (`occurrences`) and phase 3 (wire `resilience.call`) — that is where retry,
+resume and `missed` become expressible. **Do not build those before phase 1** (§9).
 
 ## 3 · Branches and PRs
 
@@ -99,9 +91,9 @@ From `BRIDGE_BASELINE.md`'s conformance table. These are *known*, not surprises:
 
 ## 5 · Outstanding operational items
 
-* **The MQTT purge has never been run.** 21 stale `agate` discovery configs remain — a
-  duplicate HA device for the real gateway. `GET /api/mqtt/orphans` is a safe dry run;
-  `POST /api/mqtt/orphans/purge?expect=21&confirm=true` clears them. Needs the owner's say-so.
+* ~~The MQTT purge has never been run.~~ **Done 2026-10-09**: 21 stale `agate` configs
+  cleared, 0 orphans remaining, 63 ours-live kept and all 383 foreign configs untouched —
+  the ownership test held in production.
 * **Two mock gateways are registered in the production roster** on :8101, publishing to the
   real broker. Probably unintended. Removing them from the roster is also what would make
   their 42 discovery configs purgeable.

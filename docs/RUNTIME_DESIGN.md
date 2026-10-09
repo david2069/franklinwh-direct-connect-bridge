@@ -1,6 +1,8 @@
 # Runtime design — components, supervision and work
 
-Status: **FROZEN v1.2, 2026-10-09.** (v1.1 added the `aborted` state and the transition
+Status: **FROZEN v1.3, 2026-10-09.** (v1.3 moves the Process card from phase 0b to phase 6,
+where it becomes part of a whole Monitoring section rather than a card built twice. v1.2
+redefined `zombie`; v1.1 added `aborted`.) (v1.1 added the `aborted` state and the transition
 rules. v1.2 redefines `zombie` as *uncontrollable* rather than *superseded*, and adds the
 control verbs with deadlines — because a cancel is a request, not an outcome, and an abort
 that is never confirmed is a zombie wearing an abort's name. Both amendments are scoped to
@@ -464,19 +466,36 @@ a new revision of this document and a note saying what moved and why; discoverin
 | Phase | Change | Requirements | Leaves behind |
 | --- | --- | --- | --- |
 | **0a** ✅ | Worker registry, heartbeat, supervisor, `/api/health/workers`, `except` around `run_gateway` | BR-35, 36, 37, 38 | nothing dies unnoticed |
-| **0b** | Full lifecycle states; deregister only when work has ended; `start` refuses a name still `stopping` (the zombie fix); restart actions with `free`/`handoff`/`guarded`, `guarded` going through `reconcile_interrupted`; Process card, banded ordering, family grouping | BR-39, 40 | the supervisor **recovers**, not just reports; two pollers can no longer run for one gateway |
+| **0b** ✅ | Full lifecycle states; deregister only when work has ended; `start` refuses a name still `stopping` (the zombie fix); confirmed aborts; restart actions with `free`/`handoff`/`guarded`, `guarded` going through `reconcile_interrupted`; banded ordering and family grouping in the API | BR-39, 40 | the supervisor **recovers**, not just reports; two pollers can no longer run for one gateway |
 | **1** | Scheduler becomes its own worker on its own cadence, reading per-gateway snapshots. Copy `franklinwh-modbus-bridge/gateway/scheduler.py` | BR-35 | scheduling survives a gateway failure; resolution untied from `poll_interval` |
 | **2** | `occurrences` table; the scheduler claims and updates rows | BR-15–19 | `missed`, retry-within-window and resume become expressible |
 | **3** | Wire `resilience.call` into scheduler actions and bridge writes; `POST /api/dispatch` takes a gateway | BR-3, 6–13, 34 | outcomes structured; `unknown` surfaced; dispatch targets the right battery |
 | **4** | Capability + impact health: dependency graph, freshness, schedule pre-flight, `/api/health` rollup | BR-41, 42, 43 | "will my schedule fire tonight" is answerable |
 | **5** | `selfcheck` worker + findings endpoint | BR-14, 26, 28 | standing conditions detected |
-| **6** | Health cards, `bridge_health` notifications, HA `problem` sensor | BR-29, 30 | someone is told |
+| **6** | **The Monitoring section, whole** — Overview (impact), Capabilities, Processes — plus `bridge_health` notifications and the HA `problem` sensor. Renames today's Health tab to **Connectivity**, which is what it has always been. | BR-29, 30, 38 | someone is told, and can see why |
 | **7** | Unpublish on gateway delete; pre-uninstall flow; mock isolation | BR-23, 24, 27 | deleting a gateway stops minting orphans |
 | **—** | Dependency + drift panel in `/api/support-info`. Independent of L0 | — | "which library is this actually running?" |
 
 Phases 0a–3 are the spine: supervision, then a scheduler that is a component, then work
 that exists as rows, then calls that fail honestly. Phases 4–7 are what make it visible.
 The drift panel is unordered because nothing depends on it.
+
+### Why Monitoring, and why not "Health"
+
+`/api/health` returns `{host, ping, sendmqtt_9000, modbus_502, latency_ms, ok}` — that is
+**device reachability**, which is one input to health, not health itself. The name has been
+writing cheques the endpoint cannot cash, so phase 6 renames it **Connectivity** and gives
+the section the three views the model actually describes:
+
+| View | Answers | Source |
+| --- | --- | --- |
+| Overview | is anything wrong, and what does it affect? | impact (phase 4) |
+| Capabilities | what can the bridge do right now, and why not? | providers + freshness (phase 4) |
+| Processes | which workers are alive, and can I restart them? | `/api/health/workers` (phase 0a) |
+
+**Monitoring** rather than **Health** on purpose: "health" invites a single green/red
+verdict, and a single verdict is exactly the oversimplification that let a dead worker sit
+behind a healthy container. "Monitoring" implies looking at the thing.
 
 ## 9 · What this means for work in flight
 
