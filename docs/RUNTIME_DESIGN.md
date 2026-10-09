@@ -1,6 +1,6 @@
 # Runtime design — components, supervision and work
 
-Status: **FROZEN v1.6, 2026-10-09.** (v1.6 adds §6.7 — rule authoring, history and sharing, measured against the Modbus Bridge's screen; most already exists, four things do not. v1.5 adds §6.6, the orchestration model adopted from the Modbus Bridge, and widens phase 2 to carry it. v1.4 records §6.5 — why not APScheduler, and the misfire/coalesce vocabulary phase 2 adopts. v1.3 moves the Process card from phase 0b to phase 6,
+Status: **FROZEN v1.7, 2026-10-09.** (v1.7 adds §6.6b — provenance for every cross-bridge claim, after several were taken from screenshots rather than source. v1.6 adds §6.7 — rule authoring, history and sharing, measured against the Modbus Bridge's screen; most already exists, four things do not. v1.5 adds §6.6, the orchestration model adopted from the Modbus Bridge, and widens phase 2 to carry it. v1.4 records §6.5 — why not APScheduler, and the misfire/coalesce vocabulary phase 2 adopts. v1.3 moves the Process card from phase 0b to phase 6,
 where it becomes part of a whole Monitoring section rather than a card built twice. v1.2
 redefined `zombie`; v1.1 added `aborted`.) (v1.1 added the `aborted` state and the transition
 rules. v1.2 redefines `zombie` as *uncontrollable* rather than *superseded*, and adds the
@@ -581,6 +581,37 @@ The Modbus Bridge sets `DEFAULT_TICK_S = 15  # window resolution is per-minute; 
 latency low` — the same cadence, from the same reasoning, reached separately. That is the
 strongest evidence available that the minute-resolution argument in decision 2 is right.
 
+## 6.6b · Provenance — a screenshot is not evidence
+
+Several claims in §6.6 and §6.7 were taken from screenshots of the Modbus Bridge's UI. A
+painted control is not a working feature, and designing against one risks citing vapour as
+prior art. Every cross-bridge claim below was therefore re-checked **in source**, and our
+own claims by **exercising the endpoint**. Verified 2026-10-09.
+
+| Claim | How it was checked | Verdict |
+| --- | --- | --- |
+| our dwell (`entry_hold_s`) | `_dwell_since` start/reset/clear in the tick | real |
+| our `Lookup` operands | `scheduler.py:214` — compare to another sensor's live value | real |
+| our test verification | **exercised** — returns per-row `actual` + `passes` against live data | real |
+| our presets, export | **exercised** — 11 presets; `{type, version, entries}` | real |
+| our timeline | **exercised** — `segments` + `soc`; **planned only, no "actually ran"** | partial |
+| their per-rule missed policy | `_missed_fire_time()`, `catchup()`, `missed_policy`, `late_fire_remaining`, `catchup_duration_s` | real |
+| their restore-prior-mode | `release_policy`; native mode snapshotted at dispatch | real |
+| their lanes / `winner()` / `_render` | read in source | real |
+| **`coalesce`** | **zero hits in either bridge** | **absent everywhere** — borrowed from APScheduler (§6.5), not prior art |
+
+**Rule going forward: cite the code, not the screen.** Where a design claim rests only on a
+UI, say so, and treat it as a requirement to be built rather than a feature to be copied.
+
+### One UI idea worth taking, now that it is confirmed working
+
+Their condition editor renders the verification result **inline, per row** — `live: 99 ✓
+passes now`, `live: false ✗ fails now` — with the row outlined green, red, or **amber when
+there is no value at all, so it cannot be evaluated**. That third state is the good part:
+"no reading" is a different problem from "false", and a user debugging a rule that will not
+fire needs to tell them apart. We already return everything needed for this from
+`/api/schedules/{sid}/test`; it is a rendering change, not new capability.
+
 ## 6.7 · Rule authoring, history and sharing — what we have, what is missing
 
 Measured against the Modbus Bridge's Schedule & Automations screen, which is the reference.
@@ -613,8 +644,9 @@ can" is correct for a discharge window and wrong for a one-shot notification.
 release but do not restore — grep for `restore_prior` returns zero. A rule that overrode
 Self-Consumption should hand it back, not leave the gateway wherever the override left it.
 
-**3 · `coalesce`.** Zero references. After an outage spanning several windows, nothing stops
-a backlog being replayed.
+**3 · `coalesce`.** Zero references **in either bridge** — this one is not prior art, it is
+borrowed vocabulary (§6.5). After an outage spanning several windows, nothing stops a
+backlog being replayed, here or there.
 
 **4 · Planned versus actually-ran.** Their timeline draws *Planned*, *Actually ran* and
 *Automation fire* as separate layers over *Actual mode* and SoC. Ours can only draw what was
