@@ -1,6 +1,9 @@
 # Runtime design — components, supervision and work
 
-Status: **draft for decision.** Supersedes nothing yet. `BRIDGE_BASELINE.md` states *what*
+Status: **draft for decision.** Supersedes nothing yet. Not yet shared with the Modbus
+bridge — the supervision requirements (BR-35–38) apply to both, but there is no point
+syncing a design that is still moving. Tell them once phases 0–1 have landed and survived
+contact. `BRIDGE_BASELINE.md` states *what*
 must hold; `OBSERVABILITY_COVERAGE.md` states how we *notice* when it stops. Neither can
 stand up until the runtime underneath them can be observed and restarted. This is that
 runtime.
@@ -30,6 +33,30 @@ Three consequences, all observed:
 3. **The container watchdog cannot see it.** It probes `/api/live`, which deliberately does
    no gateway I/O so an unreachable aGate will not cause restarts. Correct for its purpose,
    and precisely why it reports a healthy add-on whose every worker is dead.
+
+### 1.1 · How the Modbus bridge compares
+
+Checked 2026-10-09 against `franklinwh-modbus-bridge@main`. The shapes differ, the gap
+does not:
+
+| | Direct Connect Bridge | Modbus Bridge |
+| --- | --- | --- |
+| Scheduler is its own component | **no** — passenger on the gateway poll loop | **yes** — `gateway/scheduler.py:637` owns its task and tick interval |
+| Scheduler survives a bad cycle | n/a — its host can die | **yes** — inner guard, *"never let one bad tick kill the loop"* |
+| Worker registry / heartbeat | no | no |
+| Exception retrieved when a worker exits | no | no |
+| Restart policy for dead work | no | no |
+| Worker state observable | no | no |
+| Long-running loops that guard themselves | — | **3 of 5**; `gateway/health.py` and `publish/mqtt_publisher.py` do not |
+
+So the **passenger problem is ours alone**, and the Modbus bridge is the reference for
+fixing it — phase 1 below is "become what it already is". The **supervision gap is shared**:
+~15 `create_task` sites there, none watched.
+
+And its safety is by convention rather than construction. Two of five loops can die on an
+unhandled exception with nobody noticing — including, pointedly, the health component. That
+is the argument for a worker model in one line: every author remembering `try/except` is a
+streak, not an architecture, and the streak has already broken.
 
 This is also why the same defects appeared independently in both bridges. They are not
 coding mistakes. They are the absence of a component model.
@@ -108,6 +135,10 @@ a snapshot per gateway rather than being hosted by one. This is the single most 
 change in this document: it decouples scheduling resolution from poll interval, and stops
 one gateway's failure from stopping all scheduling.
 
+Do not design this fresh — `franklinwh-modbus-bridge/src/franklinwh_bridge/gateway/scheduler.py`
+is a working implementation of exactly this shape: own task, own `_tick_s`, inner guard so a
+bad tick cannot kill the loop. Read it first.
+
 ### 5.3 Supervisor
 
 One loop, itself a worker, that every few seconds:
@@ -164,8 +195,10 @@ be built against the current runtime.
 
 ## 9 · Open questions
 
-* Does the Modbus bridge have the same passenger-scheduler shape? If so this design is
-  shared, and belongs beside `BRIDGE_BASELINE.md` rather than in one repo.
+* ~~Does the Modbus bridge have the same passenger-scheduler shape?~~ **Answered (§1.1):**
+  no — its scheduler is already a proper component. The supervision gap *is* shared, so
+  L0 belongs beside `BRIDGE_BASELINE.md` as BR-35–38, while the scheduler decoupling is
+  ours alone.
 * Do any workers need to survive a bridge restart mid-action, beyond the dispatch
   reconcile that already exists?
 * Is single-process still right, or does the dispatch watchdog belong somewhere that a
