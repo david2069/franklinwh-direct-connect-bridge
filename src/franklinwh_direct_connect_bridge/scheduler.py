@@ -1856,15 +1856,21 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
             contenders.setdefault(e.get("gateway_id") or "_default", []).append(e)
         else:
             to_fire.append(e)                       # notify-only: never contends
-    # (1) same-tick priority: one winner per target; the rest deferred for the day.
+    # (1) same-tick priority: one winner per target; the rest are skipped WITH A REASON.
     winners: list[dict] = []
     for tgt, group in contenders.items():
         if len(group) > 1:
-            group.sort(key=lambda e: (-int(e.get("priority") or 0), str(e.get("name") or "")))
+            group.sort(key=winner_key)
+            top = group[0]
             for loser in group[1:]:
-                detail = (f"deferred — '{group[0]['name']}' (priority {int(group[0].get('priority') or 0)}) "
-                          f"pre-empts this on the same target (priority {int(loser.get('priority') or 0)})")
-                store.mark_schedule_fired(loser["id"], now.date().isoformat(), "deferred")
+                detail = (f"deferred — '{top['name']}' (priority {int(top.get('priority') or 0)}) "
+                          f"holds {tgt} this occurrence; this rule is priority "
+                          f"{int(loser.get('priority') or 0)}")
+                # Record it on the occurrence rather than only marking the day fired:
+                # "why didn't mine run" must be answerable from the run itself, and a
+                # loser is `skipped`, not `failed` — nothing went wrong, it was outranked.
+                _settle_loser(loser, store=store, gateway_id=gateway_id, now=now,
+                              reason=detail)
                 store.log_schedule_event(loser["id"], loser["name"], "deferred", detail)
         winners.append(group[0])
     # (2) conflict with an ACTIVE dispatch already held by ANOTHER schedule (a force
@@ -1908,6 +1914,40 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
         fired.append(_fire_entry(entry, settings=settings, client=client, store=store,
                                  snapshot=snapshot, host=host, gateway_id=gateway_id, now=now))
     return fired
+
+
+def winner_key(entry: dict):
+    """Sort key for conflict resolution: highest priority, then OLDEST.
+
+    Tie-breaking on `created_at` rather than on name matters more than it looks. Sorting
+    by name meant renaming a rule could change which of two equal-priority rules won the
+    battery — a conflict resolved by a cosmetic edit. Age is stable, and it encodes the
+    right intent: a rule added later does not displace an established one (BR-46).
+    """
+    return (-int(entry.get("priority") or 0),
+            float(entry.get("created_at") or 0.0),
+            str(entry.get("id") or ""))
+
+
+def _settle_loser(entry: dict, *, store, gateway_id, now, reason: str) -> None:
+    """Close out a rule that lost a conflict: skipped, with the winner named.
+
+    The OCCURRENCE status is `skipped` — nothing malfunctioned, it was outranked, and
+    the state set has no `deferred`. The user-facing word stays "deferred" in the log
+    and in `last_result`, because that is what it has always been called here and
+    renaming it would churn vocabulary for no gain. Terminal for this occurrence, which
+    preserves the existing once-per-day behaviour while finally recording WHY.
+
+    Never raises.
+    """
+    try:
+        occ = _claim_run(entry, store=store, gateway_id=gateway_id, now=now)
+        if occ is not None and occ.get("status") not in store.OCC_TERMINAL:
+            store.finish_occurrence(occ["id"], status="skipped", reason=reason)
+        store.mark_schedule_fired(entry["id"], entry.get("_wkey")
+                                  or now.date().isoformat(), "deferred")
+    except Exception as e:  # noqa: BLE001
+        log.warning("could not record the skipped run for %s: %s", entry.get("id"), e)
 
 
 def _claim_run(entry: dict, *, store, gateway_id: str | None, now: dt.datetime):
