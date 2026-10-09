@@ -1,6 +1,6 @@
 # Runtime design — components, supervision and work
 
-Status: **accepted 2026-10-09.** The five open decisions in §6 are settled; phase 0 is
+Status: **accepted 2026-10-09.** The decisions in §7 are settled; phase 0 is
 ready to build. Not yet shared with the Modbus
 bridge — the supervision requirements (BR-35–38) apply to both, but there is no point
 syncing a design that is still moving. Tell them once phases 0–1 have landed and survived
@@ -185,6 +185,25 @@ regression wearing a convenience button.
 The UI shows the class, so "why can I not restart this right now" is answerable without
 reading source.
 
+**Order by attention, not by activity.** FWHAI sorts the active worker to the top, which
+is reaching for the right thing and misses it: when everything is running — the normal
+case — "active first" is just an arbitrary order that shuffles between refreshes, and a
+list that reorders under you is one you stop trusting. Sort into bands instead:
+
+```
+zombie · crashed · unresponsive   →  degraded · stopping  →  running · ready  →  paused · stopped
+```
+
+and stay alphabetical **within** a band. Stable while healthy, and whatever needs a human
+is already at the top when it is not.
+
+**Group by family, do not flatten.** FWHAI shows `gateway-24170091` next to
+`ha_event_listener` and `ha_event_listener:Home Assistant (this instance)` — a parent and
+its per-instance child, side by side as peers. We have the same shape (`poller:<gw>` per
+gateway, one HA listener per configured instance), and `scope` already carries it. Render
+the family once with its instances nested under it, so "three pollers, one degraded" reads
+at a glance instead of as three unrelated rows that happen to share a prefix.
+
 ### 5.5 Dependency and drift panel — related, and deliberately separate
 
 Different question, different layer: **what is actually installed in this container?**
@@ -209,7 +228,129 @@ The drift line is the part with teeth, and two things from 2026-10-09 argue for 
 
 Drift becomes a `selfcheck` finding (L3), so it is reported rather than merely available.
 
-## 6 · Decisions — settled 2026-10-09
+
+### 5.6 Lifecycle — one state machine, honestly enumerated
+
+Five states were not enough, and the gaps are not cosmetic: each missing state is an
+action the operator or the supervisor cannot take.
+
+| State | Means | Entered when | Supervisor does |
+| --- | --- | --- | --- |
+| `init` | constructed; dependencies not yet resolved | registered | nothing — not yet expected to beat |
+| `ready` | able to work, not yet working | init complete, awaiting first cycle or trigger | nothing; a boot that never reaches `ready` is itself a finding |
+| `running` | steady state, beating | first successful cycle | watch the beat |
+| `degraded` | doing its job; a dependency is unavailable | e.g. aGate unreachable, broker down | watch the beat; surface the reason, do **not** restart |
+| `paused` | deliberately idle, state retained, resumable | write gate off, gateway disabled | nothing; it is not expected to beat |
+| `stopping` | asked to stop, winding down | stop requested | **time it** — a stop that never completes is its own failure |
+| `stopped` | intentional, terminal | wind-down complete | nothing; never restart |
+| `unresponsive` | task alive, beat stale — wedged | beat older than grace | **cancel first**, then restart |
+| `crashed` | exited with an exception | task done with exception | restart per policy |
+| `zombie` | deregistered or superseded, **still executing** | detected still running after replacement | **cancel**, loudly; never restart |
+
+Three distinctions that phase 0 collapsed and should not have:
+
+* **`unresponsive` is not `crashed`.** A crashed worker is already gone — restart it. A
+  wedged one still exists, probably blocked on a socket, and still holds its resources:
+  it must be **cancelled before** anything replaces it, or you get a zombie. Phase 0 marks
+  both `failed`, which would prescribe the wrong remedy.
+* **`paused` is not `stopped`.** Paused retains state and resumes; stopped is torn down.
+  Conflating them means a resume has to rebuild what was never lost, and a paused worker
+  looks like an outage.
+* **`stopping` is a state, not an instant.** `stop_all` already allows 35 s before
+  cancelling. A stop that hangs is invisible today.
+
+Cadence means different things by kind, and the beat must respect that: a poller beats
+*per cycle*, the scheduler beats *per tick*, and an event-driven worker such as the
+dispatch watchdog beats **"alive and waiting"** rather than "did work". Without that
+distinction every idle event-driven worker reads as stale.
+
+### 5.7 Zombies are not hypothetical here
+
+`supervisor.stop_poller` pops the gateway from `_pollers`, sets the stop Event and
+**returns immediately** — correct, since a disable toggle must not hang the HTTP response.
+But the poll loop only checks `stop.wait()` at the end of its cycle; mid-cycle it is inside
+`wait_for(..., timeout=max(10, min(poll_interval, 30)))`. The old task therefore keeps
+running for up to ~30 s after the stop returns.
+
+Meanwhile `is_running()` reads `_pollers`, which no longer holds the entry. So a quick
+disable→enable starts a **second poller for the same gateway while the first is still
+polling, writing metrics rows and publishing MQTT state for the same node**. Phase 0 makes
+it less visible, not more: `unregister` removes the old worker from
+`/api/health/workers` while it is still producing side effects.
+
+The fix is a property of the model, not a patch: a worker is removed from the registry
+**only when its task has actually finished**, and `start` refuses — or waits — while a
+predecessor of the same name is still `stopping`. The registry, not a dict of tasks,
+becomes the authority on whether a name is in use.
+
+## 6 · Health model — mechanism, capability, impact
+
+There are three health endpoints today and nothing joins them: `/api/health` (is the device
+reachable), `/api/providers` (is a capability available), `/api/health/workers` (is a
+mechanism alive). None answers the question an operator actually has, which is **"will my
+EV charging schedule fire tonight?"**
+
+These are not detail tiers. They are different questions, and each is derived from the one
+below it:
+
+| Level | Question | Audience |
+| --- | --- | --- |
+| **Impact** | what does this mean for the things I configured? | the owner |
+| **Capability** | what can the bridge do right now? | the UI, HA, automations |
+| **Mechanism** | is this worker alive? | the supervisor, a maintainer |
+
+### 6.1 Criticality is derived, never declared
+
+It is tempting to flag a worker `critical: true`. Do not — the same worker failing means
+different things depending on the architecture around it.
+
+Today, `poller:gw1` dying stops **scheduling** for that gateway, because the scheduler is
+its passenger. After phase 1 the identical failure means gw1's **data goes stale while the
+scheduler keeps evaluating against it** — a schedule firing on a three-hour-old SoC, which
+is arguably worse. A hardcoded criticality label would start lying the moment phase 1 lands.
+
+So impact is computed from a declared dependency graph:
+
+```
+capability "run scheduled dispatch on gateway X" requires:
+    scheduler worker     alive
+    poller:X             FRESH        — not merely alive
+    modbus transport     reachable
+    write gate           enabled
+```
+
+Severity follows from **which capabilities a failure removes**, which is the correlation
+that is missing today. And which capabilities *matter* is the user's to declare: plenty of
+installs never dispatch, and a capability nobody relies on should not page anyone.
+
+### 6.2 Freshness is not liveness
+
+A worker can beat happily while every poll inside it fails — `degraded`, with a rising
+`fail_streak` and data hours old. "Worker alive" hides that completely, and a schedule
+evaluating conditions on stale data is dangerous in a way the worker list cannot show.
+
+Capability health therefore carries **data age**, not just worker state, and a capability
+whose inputs are stale is `degraded` even when every component is `running`.
+
+### 6.3 Schedules get a pre-flight
+
+Each schedule's runnability is computable *before* its window, from things already known:
+its target gateway's freshness, the transport its action needs (local write, Modbus
+dispatch, cloud reserve, HA notify — each with its own availability and reason), the write
+gate, and the scheduler's own liveness.
+
+That turns "it did not fire, here is one log line" into "this will not fire, because X" —
+in advance. It also gives the occurrence a correct terminal state: a pre-flight failure is
+`skipped` **with a reason**, which is a different thing from `failed`, and must not be
+retried as though it were transient.
+
+### 6.4 One rollup, not a fourth endpoint
+
+`/api/health` becomes `summary` → `capabilities` → `components`, folding in what
+`/api/providers` and `/api/health/workers` report rather than adding another partial view.
+The existing endpoints stay as the detailed drill-downs they already are.
+
+## 7 · Decisions — settled 2026-10-09
 
 | # | Decision | Consequence |
 | --- | --- | --- |
@@ -224,7 +365,7 @@ Decision 4 is the one with the sharpest trade-off, so state it plainly: this bri
 someone looks. That is the right call for a system whose writes move a battery — an
 automatic restart that silently re-arms a force is worse than an outage that is reported.
 
-## 7 · Migration — each phase leaves a working system
+## 8 · Migration — each phase leaves a working system
 
 | Phase | Change | Leaves behind |
 | --- | --- | --- |
@@ -239,14 +380,14 @@ automatic restart that silently re-arms a force is worse than an outage that is 
 Phase 0 is small and changes no behaviour. It is also the one that would have caught every
 silent failure found so far.
 
-## 8 · What this means for work in flight
+## 9 · What this means for work in flight
 
 The scheduler retry wiring is **paused until phase 1**. Retrying inside a component that
 can die unobserved, on a cadence borrowed from a poll loop, would encode the coupling this
 design removes. `resilience.py` stands — it is L1 and independent — but nothing else should
 be built against the current runtime.
 
-## 9 · Open questions
+## 10 · Open questions
 
 * ~~Does the Modbus bridge have the same passenger-scheduler shape?~~ **Answered (§1.1):**
   no — its scheduler is already a proper component. The supervision gap *is* shared, so
