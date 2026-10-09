@@ -1,6 +1,8 @@
 # Runtime design — components, supervision and work
 
-Status: **FROZEN v1.0, 2026-10-09.** Decisions settled (§7), questions closed (§10), scope
+Status: **FROZEN v1.1, 2026-10-09.** (v1.1 amends §5.6 only: adds the `aborted` state and
+documents the transition rules. Rationale in §5.6 — a forced stop and a clean stop are not
+the same event, and the difference is the only evidence that a cleanup was skipped.) Decisions settled (§7), questions closed (§10), scope
 fixed (§8). Implementation follows the phase order; discovering work inside a phase is
 expected, but moving work between phases or adding one needs a v1.1 with a note saying what
 changed and why. The point of a freeze is that the next surprise gets absorbed by the plan
@@ -232,40 +234,81 @@ The drift line is the part with teeth, and two things from 2026-10-09 argue for 
 Drift becomes a `selfcheck` finding (L3), so it is reported rather than merely available.
 
 
-### 5.6 Lifecycle — one state machine, honestly enumerated
+### 5.6 Lifecycle — the state machine
 
-Five states were not enough, and the gaps are not cosmetic: each missing state is an
-action the operator or the supervisor cannot take.
+Every state here exists because it implies a **different remedy**. That is the admission
+test: if two states would be handled identically by both the supervisor and the operator,
+they are one state wearing two names.
 
-| State | Means | Entered when | Supervisor does |
-| --- | --- | --- | --- |
-| `init` | constructed; dependencies not yet resolved | registered | nothing — not yet expected to beat |
-| `ready` | able to work, not yet working | init complete, awaiting first cycle or trigger | nothing; a boot that never reaches `ready` is itself a finding |
-| `running` | steady state, beating | first successful cycle | watch the beat |
-| `degraded` | doing its job; a dependency is unavailable | e.g. aGate unreachable, broker down | watch the beat; surface the reason, do **not** restart |
-| `paused` | deliberately idle, state retained, resumable | write gate off, gateway disabled | nothing; it is not expected to beat |
-| `stopping` | asked to stop, winding down | stop requested | **time it** — a stop that never completes is its own failure |
-| `stopped` | intentional, terminal | wind-down complete | nothing; never restart |
-| `unresponsive` | task alive, beat stale — wedged | beat older than grace | **cancel first**, then restart |
-| `crashed` | exited with an exception | task done with exception | restart per policy |
-| `zombie` | deregistered or superseded, **still executing** | detected still running after replacement | **cancel**, loudly; never restart |
+#### States
 
-Three distinctions that phase 0 collapsed and should not have:
+| State | Means | Beats? | Terminal? | Remedy |
+| --- | --- | --- | --- | --- |
+| `init` | registered; dependencies not resolved, not yet started | no | no | wait; a worker that never leaves `init` is itself a finding |
+| `ready` | started and able to work, not yet working | no | no | none — this is the healthy idle of a triggered worker |
+| `running` | steady state, doing its work | **yes** | no | none |
+| `degraded` | doing its work; a dependency is unavailable | **yes** | no | **do not restart** — fix the dependency; surface the reason |
+| `paused` | deliberately idle, state retained, resumable | no | no | resume when the reason clears |
+| `stopping` | stop requested, winding down | no | no | time it; escalate if it overruns |
+| `stopped` | stopped **cleanly**; name free; restartable | no | yes | restart if wanted |
+| `aborted` | stop **forced** — cancelled, did not wind down cleanly | no | yes | restart, **and check for state it never got to release** |
+| `unresponsive` | alive, not beating — wedged | no | no | **cancel first**, then restart |
+| `crashed` | exited with an exception | no | yes | restart per policy; read `last_error` |
+| `zombie` | superseded but **still executing** | no | yes | cancel; never restart |
 
-* **`unresponsive` is not `crashed`.** A crashed worker is already gone — restart it. A
-  wedged one still exists, probably blocked on a socket, and still holds its resources:
-  it must be **cancelled before** anything replaces it, or you get a zombie. Phase 0 marks
-  both `failed`, which would prescribe the wrong remedy.
-* **`paused` is not `stopped`.** Paused retains state and resumes; stopped is torn down.
-  Conflating them means a resume has to rebuild what was never lost, and a paused worker
-  looks like an outage.
-* **`stopping` is a state, not an instant.** `stop_all` already allows 35 s before
-  cancelling. A stop that hangs is invisible today.
+#### Transitions
 
-Cadence means different things by kind, and the beat must respect that: a poller beats
-*per cycle*, the scheduler beats *per tick*, and an event-driven worker such as the
-dispatch watchdog beats **"alive and waiting"** rather than "did work". Without that
-distinction every idle event-driven worker reads as stale.
+```
+                    ┌──────────────────────────────────────────┐
+                    │                                          │
+   (register) → init ──→ ready ──→ running ⇄ degraded          │
+                    │       │         │  │       │             │
+                    │       │         │  └───────┴──→ paused ──┘   (resume)
+                    │       │         │
+                    │       └─────────┴──→ stopping ──→ stopped ──→ (restart) → init
+                    │                         │
+                    │                         └── overruns ──→ unresponsive
+                    │                                              │
+                    │                                    cancel ───┴──→ aborted
+                    │                                                      │
+                    └──────────────── crashed ←── raised                   │
+                                         │                                 │
+                                         └──→ (restart per policy) → init ←┘
+
+   any state ──→ zombie   (a replacement registered while this one still executes)
+```
+
+#### The rules that are not obvious from the diagram
+
+* **`stopped` and `aborted` are both terminal, and the difference matters.** `stopped` wound
+  down cleanly and released what it held. `aborted` was cancelled mid-flight, so anything it
+  owned — a force, an open session, a half-written row — may never have been released. The
+  operator needs to know which happened; collapsing them loses the only evidence that a
+  cleanup was skipped.
+* **`unresponsive` is not terminal.** It is a *diagnosis*, and the remedy has two steps:
+  cancel, which moves it to `aborted`, then restart. Restarting without cancelling leaves
+  the wedged task running and produces a `zombie`.
+* **`degraded` never triggers a restart.** The worker is fine; its dependency is not.
+  Restarting it cannot reach the aGate that is offline, and doing so repeatedly turns a
+  device outage into a crash loop.
+* **`zombie` is reachable from any state** and is always terminal. It is not a failure of
+  the worker but of the thing that replaced it.
+* **A restart is a new lifecycle**, re-entering at `init`. It is not a transition back to
+  `running`, because the start may itself fail.
+* `init → stopping` is legal: a worker can be stopped before it ever runs.
+
+#### Cadence by kind
+
+Beating means different things, and the supervisor must not impose one meaning:
+
+| Kind | Beats | Example |
+| --- | --- | --- |
+| cyclic | once per cycle | `poller:<gw>` — per poll |
+| ticking | once per tick | `scheduler` — per evaluation |
+| triggered | "alive and waiting", on its own idle interval | `dispatch-watchdog` — mostly idle by design |
+
+Without that distinction every idle triggered worker reads as stale, and the first thing
+the operator learns is to ignore the panel.
 
 ### 5.7 Zombies are not hypothetical here
 
