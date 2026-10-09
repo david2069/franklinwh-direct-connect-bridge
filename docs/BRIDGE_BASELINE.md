@@ -1,37 +1,30 @@
-# Bridge Catalogue — failure modes a FranklinWH bridge can have
+# Bridge Catalogue — common behaviour, independent implementation
 
-**This is a catalogue, not a contract.** It names behaviours worth having, gives each a
-stable number so findings can be referenced across repos, and records where each bridge
-stands. **No bridge is obliged to satisfy any of it.** Several entries have more than one
-defensible answer, and where they do, the entry says so rather than picking for you.
+**Design governance for both FranklinWH bridges sits with the owner (david2069).** Neither
+the Direct Connect nor the Modbus bridge decides shared behaviour on its own; both propose,
+the owner decides.
 
-It started life as a conformance contract and that was the wrong shape. The two bridges
-speak different protocols, have different capabilities, and are at different stages — the
-Modbus Bridge is ahead on orchestration, so "conform to the other one's requirements" had
-it backwards. The first real test failed it: BR-18 asserted that a stopped rule must be
-resumable, while the Modbus Bridge deliberately makes Stop terminal, with the reasoning
-written into its own audit message. A contract one party knowingly fails on day one is not
-a contract; it is one team's design imposed on another's product.
+The line this draws, and it is the useful one:
 
-What does work, demonstrably, is narrower and cheaper:
+| | |
+| --- | --- |
+| **What** — behaviour, semantics, the words in the UI | **common.** The goal is one automation language, so a rule means the same thing and is described the same way in both products. |
+| **How** — code, structure, protocol, internals | **each repo's own.** The bridges speak different protocols and are at different stages; identical implementation is neither required nor wanted. |
 
-* **a shared vocabulary**, so one machine is not described two ways —
-  [`WHAT_THE_ENGINE_IS.md`](WHAT_THE_ENGINE_IS.md);
-* **findings that travel**. "We found X — do you have it?" On 2026-10-09 that exchange
-  found a real defect in the Modbus Bridge, which its maintainer then **corrected and
-  sharpened** within the hour: the unguarded task was the child MQTT listener, not the
-  publisher loop, and its failure mode is worse than the one originally reported — inbound
-  commands go deaf while state publishing continues, so nothing looks wrong.
+So entries here state a **recommended common behaviour**. Where a bridge currently differs,
+that is recorded with its reasoning rather than hidden — divergence is a fact to be visible,
+not a right to be exercised. Where a shared behaviour has not yet been decided, the entry
+says **pending** and names the recommendation, rather than listing options and letting the
+two products drift apart while nobody chooses.
 
-**One home, by the other repo's choice.** A copy was proposed to `franklinwh-modbus-bridge`
-and its maintainer **closed it without merging**, on the grounds that a second copy would
-drift and its conformance table would go stale there. That is the right call and settles the
-question: this file lives here, and applicable entries reach the other bridge as ordinary
-issues citing a `BR-` number — which is how #31 and #32 were raised.
+An earlier revision of this file got that wrong twice: first as a conformance *contract*
+one bridge was always going to fail, then as a *catalogue* in which "both answers are
+defensible" quietly licensed the UIs to diverge. Neither serves a common automation
+language. Recommended-and-pending does.
 
-So there is no sync requirement and no drift checker. An earlier revision shipped
-`tools/check_baseline_sync.py` to detect the two copies diverging; building a drift detector
-was itself the clue that the premise was wrong.
+The `BR-` numbers are stable identifiers so a finding can be cited across repos — as issues
+#31 and #32 on `franklinwh-modbus-bridge` were. There is no drift checker and no sync
+obligation; a copy lives in that repo too (its PR #30), and merging it is the owner's call.
 
 ## Why this exists
 
@@ -142,28 +135,27 @@ the occurrence is not marked complete until it succeeds or the window closes.
 **BR-17** A window whose start has passed — because the bridge was down, or busy — is
 still entered if the window is open, for the time remaining.
 
-**BR-18** Stopping a running rule has **two defensible answers, and a bridge should pick
-one deliberately rather than inherit it.**
+**BR-18** Stopping a running rule. **Recommended common behaviour — pending the owner's
+decision:** *Stop is terminal*, and a *separate Pause/Resume pair* is added to both bridges,
+using the same verbs and the same meaning in each UI.
 
-* **Terminal** — Stop ends the occurrence; it will not re-enter this window. Unambiguous,
-  no second state to reason about, and an operator who stopped something probably meant it.
-  *The Modbus Bridge chose this, explicitly: its audit line reads "stopped by user —
-  released; won't re-fire until the next window", with extra code to block a between-ticks
-  re-fire. **Confirmed as a decision 2026-10-09** — Stop stays terminal there, with a
-  separate Pause/Resume pair on its backlog instead.*
-* **Resumable** — Stop pauses; the rule may resume while its window is open. The remaining
-  time is often the valuable part — a four-hour export window stopped after thirty minutes
-  loses three and a half hours of tariff opportunity that does not come back until tomorrow.
+Rationale for terminal Stop: it is unambiguous, there is no second state to reason about,
+and an operator who stopped something almost certainly meant it. Rationale for a distinct
+Pause: the remaining time is often the valuable part — a four-hour export window stopped
+after thirty minutes loses three and a half hours of tariff opportunity that does not return
+until tomorrow. Two verbs state the two meanings instead of overloading one.
 
-What is **not** defensible is neither: the Direct Connect Bridge currently releases the
-dispatch but leaves the "already fired" marker set, so it cannot re-enter *and* nothing
-records the decision. That is not a third choice, it is the absence of one.
+Settled edge case, worth adopting in both: **a restart while paused resolves to terminal.**
+Otherwise a pause that outlives the process becomes an occurrence nobody can account for.
 
-A bridge offering both should make them **separate verbs** — *Stop* (terminal) and *Pause*
-(resumable) — so the meaning is stated rather than inferred. The Modbus Bridge is taking
-exactly that route, and has settled the edge case worth copying: **a restart while paused
-resolves to terminal.** Otherwise a pause that outlives the process becomes an occurrence
-nobody can account for — which is the same silent-state problem in a different costume.
+Where each bridge stands:
+
+* **Modbus Bridge** — Stop is terminal today, deliberately: its audit line reads *"stopped
+  by user — released; won't re-fire until the next window"*, with explicit code blocking a
+  between-ticks re-fire. Pause/Resume is on its backlog.
+* **Direct Connect Bridge** — **neither**, which is a defect rather than a third option. Stop
+  releases the dispatch but leaves the "already fired" marker set, so the rule can neither
+  re-enter nor explain why. Fixed in phase 2.
 
 **BR-19** "Run now" and "resume" are distinct operations with distinct semantics. Run now
 ignores the window; resume honours the time remaining in it.
@@ -352,7 +344,7 @@ overall, and both have a working implementation of the other's gap to copy.
 | 1 · Identity & multi-gateway | BR-3 **fails** — `POST /api/dispatch` takes no gateway and resolves the host from global settings. BR-5 fixed 2026-10-09. MQTT **passes**: one publisher per gateway, node = serial. | BR-1/4 **fail** for publishing — non-default gateways do not publish their own HA devices (their `multi-gateway-and-mock-lifecycle.md` §7.3). BR-4 also fails for metrics: the history chart merges all gateways (§7.1). Serial-collision detection planned (§7.4). |
 | 2 · Outcome semantics | BR-6–10 implemented in `resilience.py`; wiring in progress | — |
 | 3 · Deadlines & retries | BR-11–13 implemented; BR-14 partial (`DEF-POLLER-STALL`) | — |
-| 4 · Scheduler & windows | BR-15/17/20/21 hold; **BR-16, BR-19 do not**. BR-18: **neither answer** — releases without recording, cannot re-enter | BR-18: **terminal — decided 2026-10-09**; Pause/Resume backlogged separately. Others unassessed |
+| 4 · Scheduler & windows | BR-15/17/20/21 hold; **BR-16, BR-19 do not**. BR-18: **neither** — a defect, not a choice; fixed in phase 2 | BR-18: terminal today (deliberate); Pause/Resume backlogged. Matches the recommendation. Others unassessed |
 | 4b · Orchestration | **BR-44–48 fail.** Priority and conflict fields exist but there is no resource exclusivity, no deterministic winner, no templated notifications. Phase 2 adopts the Modbus Bridge's model. | **Passes BR-44–46 and BR-48** — per-resource lanes, one-or-all targeting with stable ownership, `winner()` by priority then age, `%sensor.id%` templating sharing the condition vocabulary. The reference implementation. |
 | 5 · Entity lifecycle | BR-22/25/26 pass; **BR-23 fails** — deleting a gateway leaves its retained discovery configs behind. BR-24/27 **fail**. | BR-23 **passes** — `DELETE /api/gateways/{id}` cascades device_points → device_models → gateway_state → metrics → metrics_archive → row, leaving no orphans. BR-27 **passes**: mock data is never recorded. |
 | 6 · Observability | BR-29/31 pass; BR-28/30 arriving with the outcome wiring | BR-29 passes (per-gateway lifecycle events, control_log); BR-26 partial — per-gateway row counts need SQL (§7.2) |
