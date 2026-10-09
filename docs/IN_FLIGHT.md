@@ -89,7 +89,16 @@ From `BRIDGE_BASELINE.md`'s conformance table. These are *known*, not surprises:
   occurrence. Stop leaves `last_fired_day` set, so a stopped schedule can never resume.
 * **BR-23 / BR-24 / BR-27** — `DELETE /api/gateways/{id}` never unpublishes, so deleting a
   gateway mints orphaned Home Assistant entities.
-* **BR-35–38** — no supervision at all. This is phase 0.
+* **BR-35–43** — no supervision, no lifecycle, no joined health model. Phase 0 covers the
+  first part only.
+* **BR-40 — a real zombie window.** `supervisor.stop_poller` sets the stop Event and
+  returns immediately, but the poll loop only checks it at the end of a cycle and can sit
+  in `wait_for` for up to ~30 s. `is_running()` reads `_pollers`, already popped — so a
+  quick disable→enable starts a **second poller for the same gateway**, both writing
+  metrics and publishing MQTT for the same node. Phase 0's `unregister` hides the older
+  one from `/api/health/workers` while it is still producing side effects. Fix is in
+  `RUNTIME_DESIGN.md` §5.7: deregister only when the task has finished, and make the
+  registry the authority on whether a name is in use.
 
 ## 5 · Outstanding operational items
 

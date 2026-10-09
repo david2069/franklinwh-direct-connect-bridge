@@ -193,6 +193,32 @@ uptime, last beat, restart count, last error — and `degraded` is distinct from
 A poller that cannot reach its device is working correctly and reporting a device problem;
 conflating the two makes "gateway unreachable" and "poller crashed" the same silence.
 
+**BR-39** The lifecycle distinguishes states that imply different remedies: an
+intentional stop from a failure, a **wedged** worker (alive, not beating — cancel, then
+restart) from a **crashed** one (already gone — restart), and **paused** (idle, state
+retained, resumable) from **stopped** (torn down). Stopping is a state with a duration,
+not an instant, so a stop that never completes is itself detectable.
+
+**BR-40** A worker is deregistered only when its work has **actually ended**, and a name
+cannot be reused while a predecessor is still winding down. Otherwise a stop that returns
+before its task exits lets a replacement start alongside it — two components doing the same
+job, the older one invisible because it has already been deregistered.
+
+**BR-41** Health is reported at three levels — **mechanism** (is this worker alive),
+**capability** (what can the bridge do now), **impact** (what does that mean for what the
+user configured) — and impact is **derived from declared dependencies, never from a
+criticality flag on a component**. The same component failing means different things as the
+architecture around it changes; a hardcoded flag silently stops being true.
+
+**BR-42** Capability health includes **data freshness**, not only component liveness. A
+component can beat steadily while every operation inside it fails, and work evaluated
+against stale inputs is a distinct hazard that liveness cannot express.
+
+**BR-43** Scheduled work is **pre-flighted** before its window: a schedule that cannot run
+is reported as such in advance, with the reason. A pre-flight failure is **skipped with a
+reason**, which is not the same as failed and must not be retried as though it were
+transient.
+
 > A corollary of BR-35 that is easy to miss: the health, self-check and notification
 > components are themselves workers, and must be supervised by something other than
 > themselves. Observability cannot live inside the thing it observes.
@@ -216,7 +242,7 @@ overall, and both have a working implementation of the other's gap to copy.
 | 5 · Entity lifecycle | BR-22/25/26 pass; **BR-23 fails** — deleting a gateway leaves its retained discovery configs behind. BR-24/27 **fail**. | BR-23 **passes** — `DELETE /api/gateways/{id}` cascades device_points → device_models → gateway_state → metrics → metrics_archive → row, leaving no orphans. BR-27 **passes**: mock data is never recorded. |
 | 6 · Observability | BR-29/31 pass; BR-28/30 arriving with the outcome wiring | BR-29 passes (per-gateway lifecycle events, control_log); BR-26 partial — per-gateway row counts need SQL (§7.2) |
 | 7 · Write gating | BR-32/33 pass; BR-34 **fails** where BR-3 does | — |
-| 8 · Runtime & supervision | **BR-35–38 all fail.** The scheduler is a passenger on the gateway poll loop; `run_gateway` has no `except`, so one exception silently ends polling, metrics, MQTT and all scheduling for that gateway. | **BR-35–38 all fail** for supervision — ~15 `create_task` sites, none watched. But its scheduler **is** a proper component with its own task and tick, and 3 of 5 loops guard themselves. The Direct Connect Bridge should adopt that shape. |
+| 8 · Runtime, supervision & health | **BR-35–43 all fail.** BR-40 concretely: `stop_poller` returns before its task exits while `is_running()` reads a dict already popped, so a quick disable→enable runs two pollers for one gateway. The scheduler is a passenger on the gateway poll loop; `run_gateway` has no `except`, so one exception silently ends polling, metrics, MQTT and all scheduling for that gateway. | **BR-35–38 all fail** for supervision — ~15 `create_task` sites, none watched. But its scheduler **is** a proper component with its own task and tick, and 3 of 5 loops guard themselves. The Direct Connect Bridge should adopt that shape. |
 
 ### Where to copy from, rather than re-solve
 
