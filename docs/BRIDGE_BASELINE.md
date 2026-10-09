@@ -155,16 +155,31 @@ credentials, unreachable transport — rather than failing opaquely or being hid
 
 ## Conformance status
 
-Honest as of 2026-10-09. "—" means nobody has checked, which is itself a finding.
+Honest as of 2026-10-09, from reading both codebases. "—" means nobody has checked,
+which is itself a finding.
+
+The striking result: **each bridge passes what the other fails.** Neither is ahead
+overall, and both have a working implementation of the other's gap to copy.
 
 | Area | Direct Connect Bridge | Modbus Bridge |
 | --- | --- | --- |
-| 1 · Identity & multi-gateway | BR-3 **fails** (dispatch ignores gateway); BR-5 fixed 2026-10-09 | BR-1/2 reported fixed by owner after the same defect |
+| 1 · Identity & multi-gateway | BR-3 **fails** — `POST /api/dispatch` takes no gateway and resolves the host from global settings. BR-5 fixed 2026-10-09. MQTT **passes**: one publisher per gateway, node = serial. | BR-1/4 **fail** for publishing — non-default gateways do not publish their own HA devices (their `multi-gateway-and-mock-lifecycle.md` §7.3). BR-4 also fails for metrics: the history chart merges all gateways (§7.1). Serial-collision detection planned (§7.4). |
 | 2 · Outcome semantics | BR-6–10 implemented in `resilience.py`; wiring in progress | — |
 | 3 · Deadlines & retries | BR-11–13 implemented; BR-14 partial (`DEF-POLLER-STALL`) | — |
-| 4 · Scheduler & windows | BR-15/17/20/21 pass; **BR-16, BR-18, BR-19 fail** | BR-18 reported failing by owner |
-| 5 · Entity lifecycle | BR-22/25/26 pass; **BR-23, BR-24, BR-27 fail** | — |
-| 6 · Observability | BR-29/31 pass; BR-28/30 arriving with the outcome wiring | — |
+| 4 · Scheduler & windows | BR-15/17/20/21 pass; **BR-16, BR-18, BR-19 fail** | BR-18 reported failing by the owner — a stopped task cannot resume |
+| 5 · Entity lifecycle | BR-22/25/26 pass; **BR-23 fails** — deleting a gateway leaves its retained discovery configs behind. BR-24/27 **fail**. | BR-23 **passes** — `DELETE /api/gateways/{id}` cascades device_points → device_models → gateway_state → metrics → metrics_archive → row, leaving no orphans. BR-27 **passes**: mock data is never recorded. |
+| 6 · Observability | BR-29/31 pass; BR-28/30 arriving with the outcome wiring | BR-29 passes (per-gateway lifecycle events, control_log); BR-26 partial — per-gateway row counts need SQL (§7.2) |
 | 7 · Write gating | BR-32/33 pass; BR-34 **fails** where BR-3 does | — |
+
+### Where to copy from, rather than re-solve
+
+* **BR-23 / BR-27 — the Direct Connect Bridge should copy the Modbus bridge.** Its
+  delete already cascades every artefact a gateway produced, and its mocks never write
+  metrics at all. The Direct Connect Bridge deletes the row and leaves retained MQTT
+  discovery configs behind, which is how it accumulated orphaned devices.
+* **BR-1 / BR-4 — the Modbus bridge should copy the Direct Connect Bridge.** It already
+  runs one MQTT publisher per gateway keyed on the gateway's own serial, so two gateways
+  cannot merge into one Home Assistant device, and metrics rows are tagged per gateway
+  and filtered on query.
 
 Keep this table current. A requirement nobody has assessed is the one that bites.
