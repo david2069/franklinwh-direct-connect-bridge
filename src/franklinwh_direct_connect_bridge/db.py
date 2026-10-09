@@ -57,6 +57,7 @@ class MetricsStore:
         self._migrate_schedules()
         self._migrate_ha_exposed()
         self._migrate_schedule_log()
+        self._migrate_occurrences()
         self._migrate_control_log()
         self._migrate_app_logs()
         self._migrate_disclaimer_acks()
@@ -1370,6 +1371,49 @@ class MetricsStore:
                     for r in cur.fetchall()]
 
     # ── scheduled battery dispatches (for interruption reconcile) ──────────────
+    def _migrate_occurrences(self) -> None:
+        """The execution queue: one row per EXPECTED run of a schedule.
+
+        This is the table that makes silence detectable. Until now a run that never
+        happened left no trace — an outage, a failed action and a schedule nobody
+        enabled were indistinguishable, because the only evidence of a run was the
+        log line written *after* it succeeded. Recording what is expected, before it
+        happens, turns "nothing in the log" from ambiguous into answerable.
+
+        `occurrence_key` identifies one particular run — the date for a daily rule, the
+        slot timestamp for cron/interval. It replaces `schedules.last_fired_day`, which
+        could only say "something happened today" and could not distinguish a success
+        from a user stopping it, nor survive a second gateway.
+
+        UNIQUE(schedule_id, occurrence_key, gateway_id) is `max_instances` expressed in
+        the schema: one run per rule per occurrence per gateway, enforced where it
+        cannot be forgotten.
+        """
+        self._conn.execute(
+            """CREATE TABLE IF NOT EXISTS occurrences(
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   schedule_id TEXT NOT NULL,
+                   name TEXT,
+                   gateway_id TEXT NOT NULL DEFAULT '',
+                   occurrence_key TEXT NOT NULL,
+                   due_ts REAL NOT NULL,
+                   window_end_ts REAL,
+                   status TEXT NOT NULL DEFAULT 'pending',
+                   attempts INTEGER NOT NULL DEFAULT 0,
+                   first_attempt_ts REAL, last_attempt_ts REAL,
+                   started_ts REAL, ended_ts REAL,
+                   outcome TEXT, reason TEXT,
+                   created_ts REAL NOT NULL,
+                   UNIQUE(schedule_id, occurrence_key, gateway_id))"""
+        )
+        # Finding the work to do, and the work that silently did not happen, are the
+        # two hot queries; both filter on status.
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_occ_status ON occurrences(status, window_end_ts)")
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_occ_schedule ON occurrences(schedule_id, due_ts)")
+        self._conn.commit()
+
     def _migrate_dispatches(self) -> None:
         """One row per force dispatch a schedule starts. Left 'active' if the bridge
         stops before a clean release, so a boot reconcile can detect interruptions."""
@@ -1385,6 +1429,231 @@ class MetricsStore:
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS ix_dispatch_active ON dispatches(status)")
         self._conn.commit()
+
+    # ── occurrences: the execution queue ─────────────────────────────────────
+    #: Terminal states. An occurrence in one of these is finished and is never
+    #: retried — `stopped` included, because an operator's decision is not a failure
+    #: to recover from.
+    OCC_TERMINAL = ("ok", "missed", "skipped", "stopped", "unknown")
+
+    #: `paused` is deliberately NOT terminal, and that is the whole difference between
+    #: it and `stopped`. Stop releases control and ends the occurrence; Pause releases
+    #: control and KEEPS it, so Resume can re-enter while the window is still open.
+    #: Overloading one verb with both meanings is what left this bridge unable to
+    #: either resume or explain itself.
+    OCC_RESUMABLE = ("paused", "failed")
+
+    def claim_occurrence(self, *, schedule_id: str, name: str, gateway_id: str,
+                         occurrence_key: str, due_ts: float,
+                         window_end_ts: float | None, now=None) -> dict | None:
+        """Register that this run is EXPECTED, and return it. Idempotent.
+
+        Returns the row whether it was just created or already existed, so a caller
+        can see a run that is already finished and leave it alone. Returns None only
+        if the row cannot be read back.
+
+        The UNIQUE constraint does the work: two ticks racing, or two gateways being
+        evaluated concurrently, cannot produce two runs of the same occurrence.
+        """
+        ts = float(now if now is not None else time.time())
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO occurrences"
+                "(schedule_id, name, gateway_id, occurrence_key, due_ts, window_end_ts,"
+                " status, created_ts) VALUES(?,?,?,?,?,?, 'pending', ?)",
+                (schedule_id, name, gateway_id or "", occurrence_key, float(due_ts),
+                 None if window_end_ts is None else float(window_end_ts), ts))
+            self._conn.commit()
+            cur = self._conn.execute(
+                "SELECT * FROM occurrences WHERE schedule_id=? AND occurrence_key=? "
+                "AND gateway_id=?", (schedule_id, occurrence_key, gateway_id or ""))
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return dict(zip([c[0] for c in cur.description], row))
+
+    def occurrence_attempt(self, occ_id: int, *, now=None) -> None:
+        """Record that an attempt is starting. Counting attempts is what separates
+        'failed once, will retry' from 'tried eleven times and is thrashing'."""
+        ts = float(now if now is not None else time.time())
+        with self._lock:
+            self._conn.execute(
+                "UPDATE occurrences SET status='running', attempts=attempts+1, "
+                "last_attempt_ts=?, first_attempt_ts=COALESCE(first_attempt_ts,?), "
+                "started_ts=COALESCE(started_ts,?) WHERE id=?", (ts, ts, ts, occ_id))
+            self._conn.commit()
+
+    def finish_occurrence(self, occ_id: int, *, status: str, outcome: str = "",
+                          reason: str = "", now=None) -> None:
+        """Close an occurrence with a verdict and, where it matters, a reason.
+
+        `reason` is not decoration: `skipped` without one is indistinguishable from a
+        bug, and 'why did my rule not run' is the question this table exists to answer.
+        """
+        ts = float(now if now is not None else time.time())
+        with self._lock:
+            self._conn.execute(
+                "UPDATE occurrences SET status=?, outcome=?, reason=?, ended_ts=? "
+                "WHERE id=?", (status, outcome or "", reason or "", ts, occ_id))
+            self._conn.commit()
+
+    def reopen_occurrence(self, occ_id: int) -> None:
+        """Return a run to `pending` so the next tick retries it within its window.
+
+        This is the whole of retry-within-window and resume-after-stop: nothing is
+        re-scheduled, the row simply becomes claimable again and the existing tick
+        picks it up. `attempts` is deliberately NOT reset — the history of how hard
+        this has been tried is the evidence a crash loop is visible by.
+        """
+        with self._lock:
+            self._conn.execute(
+                "UPDATE occurrences SET status='pending', ended_ts=NULL WHERE id=?",
+                (occ_id,))
+            self._conn.commit()
+
+    def pause_occurrence(self, occ_id: int, *, reason: str = "", now=None) -> None:
+        """Release control but KEEP the occurrence, so Resume can re-enter it.
+
+        Distinct from `finish_occurrence(status='stopped')`, which ends it. The pair
+        exists because one verb cannot mean both "I am done with this" and "hold my
+        place" without the user guessing which they got.
+        """
+        ts = float(now if now is not None else time.time())
+        with self._lock:
+            self._conn.execute(
+                "UPDATE occurrences SET status='paused', ended_ts=?, "
+                "reason=? WHERE id=?", (ts, reason or "paused by user", occ_id))
+            self._conn.commit()
+
+    def resume_occurrence(self, occ_id: int, *, now=None) -> tuple[bool, str]:
+        """Re-enter a paused occurrence, but only while its window is still open.
+
+        Returns (ok, reason). Refusing after the window has closed is the point: a
+        resume that silently did nothing would be worse than an error, because the
+        operator would believe the rule was running again.
+        """
+        ts = float(now if now is not None else time.time())
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT status, window_end_ts FROM occurrences WHERE id=?", (occ_id,))
+            row = cur.fetchone()
+            if row is None:
+                return False, "no such occurrence"
+            status, wend = row[0], row[1]
+            if status != "paused":
+                return False, f"not paused (is '{status}')"
+            if wend is not None and float(wend) <= ts:
+                return False, "window has closed — resume is only valid inside it"
+            self._conn.execute(
+                "UPDATE occurrences SET status='pending', ended_ts=NULL, reason='' "
+                "WHERE id=?", (occ_id,))
+            self._conn.commit()
+            return True, ""
+
+    def resolve_paused_on_boot(self, *, now=None) -> list[dict]:
+        """A restart while paused resolves to terminal.
+
+        Pause is in-flight intent held by a running process. Once that process is
+        gone, nobody is holding the place any more, and a pause that outlives its
+        process becomes an occurrence nobody can account for — the same silent state
+        this table exists to remove. So on boot they become `stopped`, with the reason
+        recorded rather than inferred.
+        """
+        ts = float(now if now is not None else time.time())
+        with self._lock:
+            cur = self._conn.execute("SELECT * FROM occurrences WHERE status='paused'")
+            cols = [c[0] for c in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+            if rows:
+                self._conn.execute(
+                    "UPDATE occurrences SET status='stopped', ended_ts=?, "
+                    "reason='paused when the bridge restarted — resolved to stopped' "
+                    "WHERE status='paused'", (ts,))
+                self._conn.commit()
+            return rows
+
+    def sweep_missed(self, *, grace_s: float = 0.0, now=None) -> list[dict]:
+        """Close out runs whose window shut while they were still pending.
+
+        This is the detection the whole table is for. A run that never happened
+        produces no event by definition, so it can only be found by comparing what was
+        expected against what completed — which requires the expectation to have been
+        written down first.
+
+        `grace_s` is `misfire_grace_time`: how late is still worth running. Rows inside
+        the grace are left alone for the tick to catch up.
+        """
+        ts = float(now if now is not None else time.time())
+        cutoff = ts - max(0.0, float(grace_s))
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT * FROM occurrences WHERE status IN ('pending','running','failed') "
+                "AND window_end_ts IS NOT NULL AND window_end_ts < ?", (cutoff,))
+            # 'paused' is excluded on purpose: a user holding their place is not a
+            # missed run. It resolves to 'stopped' at the next boot instead.
+            cols = [c[0] for c in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+            for r in rows:
+                self._conn.execute(
+                    "UPDATE occurrences SET status='missed', ended_ts=?, "
+                    "reason=CASE WHEN ifnull(reason,'')='' THEN ? ELSE reason END "
+                    "WHERE id=?",
+                    (ts, f"window closed at {r['window_end_ts']:.0f} with "
+                          f"{r['attempts']} attempt(s) and no success", r["id"]))
+            self._conn.commit()
+            return rows
+
+    def due_occurrences(self, *, gateway_id: str | None = None, now=None) -> list[dict]:
+        """Runs that should be acted on right now: claimed, not finished, window open."""
+        ts = float(now if now is not None else time.time())
+        q = ("SELECT * FROM occurrences WHERE status IN ('pending','failed') "
+             "AND due_ts <= ? AND (window_end_ts IS NULL OR window_end_ts > ?)")
+        args: list = [ts, ts]
+        if gateway_id is not None:
+            q += " AND gateway_id=?"
+            args.append(gateway_id)
+        q += " ORDER BY due_ts"
+        with self._lock:
+            cur = self._conn.execute(q, args)
+            cols = [c[0] for c in cur.description]
+            return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+    def occurrence_stats(self, schedule_id: str | None = None) -> list[dict]:
+        """Per-rule execution history: runs, first, last, last failure.
+
+        Reads off occurrences rather than `schedule_log`, where execution was 2% of
+        rows and a FIFO cap evicted it before it aged out.
+        """
+        q = ("SELECT schedule_id, name, COUNT(*) AS runs, "
+             " SUM(status='ok') AS ok, SUM(status='missed') AS missed, "
+             " SUM(status IN ('failed','unknown')) AS failed, "
+             " SUM(status='skipped') AS skipped, SUM(status='stopped') AS stopped, "
+             " SUM(status='paused') AS paused, "
+             " MIN(due_ts) AS first_ts, MAX(due_ts) AS last_ts, "
+             " MAX(CASE WHEN status IN ('failed','unknown','missed') THEN due_ts END) "
+             "   AS last_failure_ts "
+             "FROM occurrences")
+        args: list = []
+        if schedule_id:
+            q += " WHERE schedule_id=?"
+            args.append(schedule_id)
+        q += " GROUP BY schedule_id ORDER BY runs DESC"
+        with self._lock:
+            cur = self._conn.execute(q, args)
+            cols = [c[0] for c in cur.description]
+            return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+    def prune_occurrences(self, *, keep_days: int = 90, now=None) -> int:
+        """Age out finished runs. Unlike schedule_log's row cap, this prunes by TIME
+        and only terminal rows, so a burst of noise cannot evict real history."""
+        ts = float(now if now is not None else time.time())
+        cutoff = ts - max(1, int(keep_days)) * 86400.0
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM occurrences WHERE due_ts < ? AND status NOT IN "
+                "('pending','running')", (cutoff,))
+            self._conn.commit()
+            return cur.rowcount or 0
 
     def record_dispatch(self, *, schedule_id, name, gateway_id, host, direction,
                         watts, power_mode, target_soc, window_start_ts, window_end_ts,
