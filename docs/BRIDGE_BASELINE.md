@@ -160,6 +160,17 @@ when something has already gone wrong.
 > misbehaved) are three different things with three different audiences, and must not share
 > one undifferentiated stream.
 
+**BR-49** A rule declares **what should happen if it was missed** — resume if the period is
+still open, or record it as missed. Per rule, because "catch up if you can" is right for a
+discharge window and wrong for a one-shot alert. After an outage spanning several periods,
+catch-up runs **once**, never once per period missed.
+
+**BR-50** A rule that overrode a device setting **restores it on exit**, rather than leaving
+the device wherever the override left it.
+
+**BR-51** Rules are **exportable and importable** so they can be shared between installs,
+and a shared rule carries its **definition only** — never its run history or in-flight state.
+
 ## 5 · Entity and integration lifecycle
 
 **BR-22** *Offline* and *removed* are different states. A device that is unreachable goes
