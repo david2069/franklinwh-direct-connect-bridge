@@ -33,6 +33,44 @@ log = logging.getLogger(__name__)
 
 WORKER_NAME = "scheduler"
 
+#: Schedule windows are MINUTE-resolution — `_window_phase` compares
+#: `hour * 60 + minute`, and a zero duration means "inside for exactly that minute".
+#: So the shortest window a user can express is 60s, and the cadence must be at most
+#: that for every expressible window to be observable. Decision 2 anticipated needing a
+#: stated minimum *window*; the window granularity is fixed by the UI, so the constraint
+#: actually belongs on the cadence — which is better, because a user cannot express a
+#: window that is unschedulable, and does not have to understand why.
+MIN_WINDOW_S = 60.0
+MIN_TICK_S = 5
+MAX_TICK_S = 60
+
+
+def cadence_for(settings: Settings) -> int:
+    """The tick interval, clamped so no expressible window can be missed.
+
+    A misconfigured cadence is corrected loudly rather than accepted, because the
+    failure it would cause — a schedule that silently never fires — is exactly the
+    class this work exists to remove.
+    """
+    want = int(getattr(settings, "scheduler_tick_s", 15) or 15)
+    got = max(MIN_TICK_S, min(MAX_TICK_S, want))
+    if got != want:
+        log.warning(
+            "scheduler_tick_s=%ss is outside [%s, %s] and was clamped to %ss. Above %ss a "
+            "one-minute schedule window could be stepped over entirely and never fire.",
+            want, MIN_TICK_S, MAX_TICK_S, got, MAX_TICK_S)
+    return got
+
+
+def window_is_observable(duration_min: int, cadence_s: int) -> bool:
+    """Can a window of this length be seen by a tick at this cadence?
+
+    A zero duration is not an error — it means the window is that single minute, which
+    is still 60s of opportunity.
+    """
+    window_s = MIN_WINDOW_S if int(duration_min or 0) <= 0 else int(duration_min) * 60.0
+    return window_s >= cadence_s
+
 #: A snapshot older than this is not a basis for deciding anything. Generous — three
 #: poll intervals, floored — because a single slow poll is normal and refusing to
 #: schedule is itself a failure.
@@ -95,7 +133,7 @@ def tick_once(settings: Settings, *, client, now: float | None = None) -> list[d
 
 async def run(settings: Settings, stop: asyncio.Event, *, client) -> None:
     """The scheduler worker loop. Registered and supervised like any other worker."""
-    cadence = max(5, int(getattr(settings, "scheduler_tick_s", 15) or 15))
+    cadence = cadence_for(settings)
     w = _workers.registry.register(_workers.Worker(
         name=WORKER_NAME,
         concern="evaluate schedules and run due work",
