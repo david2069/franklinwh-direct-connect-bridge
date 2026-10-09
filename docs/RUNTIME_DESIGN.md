@@ -1,6 +1,6 @@
 # Runtime design — components, supervision and work
 
-Status: **FROZEN v1.7, 2026-10-09.** (v1.7 adds §6.6b — provenance for every cross-bridge claim, after several were taken from screenshots rather than source. v1.6 adds §6.7 — rule authoring, history and sharing, measured against the Modbus Bridge's screen; most already exists, four things do not. v1.5 adds §6.6, the orchestration model adopted from the Modbus Bridge, and widens phase 2 to carry it. v1.4 records §6.5 — why not APScheduler, and the misfire/coalesce vocabulary phase 2 adopts. v1.3 moves the Process card from phase 0b to phase 6,
+Status: **FROZEN v1.8, 2026-10-09.** (v1.8 adds §6.8 — what a rule preview can and cannot prove, plus two dwell defects found while checking it. v1.7 adds §6.6b — provenance for every cross-bridge claim, after several were taken from screenshots rather than source. v1.6 adds §6.7 — rule authoring, history and sharing, measured against the Modbus Bridge's screen; most already exists, four things do not. v1.5 adds §6.6, the orchestration model adopted from the Modbus Bridge, and widens phase 2 to carry it. v1.4 records §6.5 — why not APScheduler, and the misfire/coalesce vocabulary phase 2 adopts. v1.3 moves the Process card from phase 0b to phase 6,
 where it becomes part of a whole Monitoring section rather than a card built twice. v1.2
 redefined `zombie`; v1.1 added `aborted`.) (v1.1 added the `aborted` state and the transition
 rules. v1.2 redefines `zombie` as *uncontrollable* rather than *superseded*, and adds the
@@ -670,6 +670,56 @@ cannot derive. Our presets should carry the same specificity rather than generic
 Export/import already exists both ways, and `FEAT-SCHED-IMPORT-INTEROP` already maps the
 Modbus bridge's bundle to our schema. Phase 2 must not break that: an occurrence is runtime
 state and **must not** be exported — a shared rule carries its definition, never its history.
+
+## 6.8 · Testing a rule — what a preview can and cannot prove
+
+Verified against our `/api/schedules/{sid}/test` on 2026-10-09. It is genuinely wired —
+live per-row actuals — and it has three honest limits that the UI currently hides.
+
+### 1 · A pass is not a prediction
+
+`would_fire: true` means *"the conditions hold at this instant"*. It does **not** mean the
+rule will fire, because:
+
+* a **dwell** may be pending — `entry_hold_s` requires the conditions to stay true
+  continuously, and a test taken at one instant cannot know whether they will;
+* the **window** may not be open.
+
+The result must say which of these it is: *"conditions pass; this rule also requires them
+to hold for 5 minutes, which this test cannot confirm"* beats a green tick that will be
+believed.
+
+### 2 · Flat rows misrepresent groups
+
+`rows` is a flat list of `{sensor, op, value, actual, passes}` with **no group structure and
+no match mode**. Under `MATCH=ANY`, or inside a nested `GROUP=ANY`, a failing row is not a
+failure at all — and nested groups are precisely the feature complex rulesets need.
+
+So the result must mirror the tree: a verdict per group, the match mode that produced it,
+and the overall verdict — otherwise per-row red/green misleads on exactly the rules that
+most need explaining. The third state matters too: **amber for "no value, so it cannot be
+evaluated"**, which is a different problem from false.
+
+### 3 · Scope: one rule, or all of them
+
+Today only `/{sid}/test` exists — one rule at a time. The question people actually have is
+*"why is nothing happening right now?"*, which needs **all** rules evaluated together, since
+the answer is often a priority loss or a conflict rather than anything about the rule being
+inspected. Test should take a scope: this rule, or every enabled rule.
+
+### Two defects found while checking this
+
+**Dwell resets are invisible.** A hold that starts logs `waiting — conditions met, holding
+Ns before firing`, but `_dwell_since.pop()` on a failing gate logs **nothing**. A condition
+that flaps therefore restarts its hold forever, producing repeated "waiting" entries and no
+explanation of why the rule never fired. The reset is the informative half and it is silent.
+
+**Dwell state does not survive a restart.** `_dwell_since` is a module-level in-memory dict.
+A bridge restart resets every hold — so a 30-minute dwell can never complete on a bridge
+that restarts every 20 minutes, and nothing says so. This now matters more than it did:
+phase 0b gave the supervisor the ability to **restart the scheduler worker**, which silently
+discards every in-flight hold. Either the hold becomes durable, or a restart must record
+that it cleared them.
 
 ## 7 · Decisions — settled 2026-10-09
 
