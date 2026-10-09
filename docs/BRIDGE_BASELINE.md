@@ -103,6 +103,11 @@ poll loop bounds its own work.
 
 ## 4 · Scheduler and window semantics
 
+> These requirements only make sense once you know the engine is a *thermostat* rather than
+> an *alarm clock* — see [`WHAT_THE_ENGINE_IS.md`](WHAT_THE_ENGINE_IS.md). BR-15–21 are what
+> that implies, written as obligations.
+
+
 **BR-15** A scheduled occurrence fires at most once on success.
 
 **BR-16** A scheduled action that fails transiently is retried **within its window**, and
