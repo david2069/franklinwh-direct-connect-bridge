@@ -31,23 +31,34 @@ polling, metrics, MQTT and all scheduling for a gateway while the container repo
 
 ## 2 · Next action
 
-**Phase 0 of `RUNTIME_DESIGN.md` §7.** No behaviour change; it is the phase that would have
-caught every silent failure found so far.
+**Phase 0 is part-done** on `feat/phase0-worker-supervision`. What landed:
 
-1. Worker registry + heartbeat (`BR-35`, `BR-36`).
-2. Supervisor loop: retrieve exceptions, restart per policy, crash-loop ceiling 5-in-10-min
-   → `failed` (`BR-37`).
-3. `GET /api/health/workers` + Process card, with **restart classes** `free` / `handoff` /
-   `guarded` (`BR-38`, design §5.4).
-4. `except` around `run_gateway`'s loop so a crash is reported, not vanished.
+* `workers.py` — `Worker`, `Registry`, heartbeat, crash-loop ceiling, `_supervise_once`
+  (BR-35/36/37). 21 tests.
+* Pollers registered by `supervisor.start_poller`; the three daemon threads registered at
+  startup as `kind="thread"`.
+* **`except` added around `run_gateway`'s loop** — the silent-death hole is closed. A crash
+  now logs "polling, metrics and publishing have STOPPED for this gateway" and marks the
+  worker FAILED.
+* Heartbeat per poll cycle, `DEGRADED` while `fail_streak` is non-zero (BR-38).
+* Supervisor loop in the app lifespan, auditing every worker transition.
+* `GET /api/health/workers` (BR-38). Verified live: 7 workers running.
 
-Existing work is **registered, not rewritten**. Phase 1 (scheduler leaves the poller) comes
-after, and should copy `franklinwh-modbus-bridge/src/franklinwh_bridge/gateway/scheduler.py`,
-which is already the right shape.
+**What is left in phase 0:**
 
-**Do not** build scheduler retry/resume before phase 1 — see design §8. Retrying inside a
-component that can die unobserved, on a cadence borrowed from a poll loop, encodes the
-coupling the design removes.
+1. **Restart actions.** Every worker currently reports `restartable: false`, which is
+   truthful — no worker has a `factory` yet, so there is nothing to restart *with*. Wiring
+   it for pollers is small (`supervisor.start_poller` already is the restart path); the
+   `guarded` class must refuse while a force is in flight, or re-adopt it through
+   `battery_control.reconcile_interrupted`.
+2. **The Process card** in the UI over that endpoint.
+3. The supervisor detects and reports failures but does **not yet restart** anything.
+
+Then **phase 1**: the scheduler leaves the poller. Copy
+`franklinwh-modbus-bridge/src/franklinwh_bridge/gateway/scheduler.py`, which is already the
+right shape — own task, own tick interval, inner guard.
+
+**Do not** build scheduler retry/resume before phase 1 — see `RUNTIME_DESIGN.md` §8.
 
 ## 3 · Branches and PRs
 

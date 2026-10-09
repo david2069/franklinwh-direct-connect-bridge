@@ -50,6 +50,7 @@ from . import bms_record
 from . import providers
 from . import energy_flow as _eflow
 from . import state
+from . import workers as _workers
 from .config import get_settings, gateway_list, metrics_active, save_override
 from .ha_supervisor import apply_supervisor_mqtt, discover_mqtt
 from .notify import Notifier
@@ -950,9 +951,56 @@ def create_app() -> FastAPI:
                     return
                 _t.sleep(interval if ok else retry)
         _th.Thread(target=_cloud_status_loop, daemon=True).start()
+
+        # ── L0 supervision (RUNTIME_DESIGN phase 0) ──────────────────────────
+        # Phase 0 REGISTERS existing work rather than rewriting it, so the daemon
+        # threads above appear here too — observable now, convertible to async
+        # workers in phase 1 (decision 1). Until converted they report
+        # restartable=False rather than offering a button that cannot work.
+        for _name, _concern, _cadence, _cls in (
+            ("vpp-monitor", "track VPP / force state", 60.0, _workers.RestartClass.FREE),
+            ("cloud-status", "cloud witness and auth breaker", 300.0, _workers.RestartClass.FREE),
+            ("dispatch-watchdog", "end forces at their deadline", 30.0,
+             _workers.RestartClass.GUARDED),
+        ):
+            _w = _workers.registry.register(_workers.Worker(
+                name=_name, concern=_concern, cadence_s=_cadence,
+                restart_class=_cls, kind="thread"))
+            _w.beat(state=_workers.WorkerState.RUNNING)
+
+        _sup_stop = asyncio.Event()
+
+        def _on_worker_transition(w, reason: str) -> None:
+            # A worker dying is exactly the class of failure that used to pass
+            # unnoticed, so it is audited like a consequential action.
+            _audit("worker_failed", detail=w.name, result=reason, ok=False)
+
+        _sup_worker = _workers.registry.register(_workers.Worker(
+            name="supervisor", concern="watch every worker's liveness",
+            cadence_s=5.0, restart_class=_workers.RestartClass.FREE, kind="task"))
+
+        async def _supervisor_loop() -> None:
+            while not _sup_stop.is_set():
+                _sup_worker.beat(state=_workers.WorkerState.RUNNING)
+                try:
+                    _workers._supervise_once(_workers.registry,
+                                             on_transition=_on_worker_transition)
+                except Exception:  # noqa: BLE001 — must outlive its subjects
+                    log.exception("supervisor pass failed")
+                try:
+                    await asyncio.wait_for(_sup_stop.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    pass
+
+        _sup_task = asyncio.create_task(_supervisor_loop())
+        _sup_worker._task = _sup_task
+        log.info("worker supervision active (%d workers registered)",
+                 len(_workers.registry.all()))
         try:
             yield
         finally:
+            _sup_stop.set()
+            _sup_task.cancel()
             # Release any dispatch WE are holding before the bridge stops — a running
             # bridge is the only thing that can release it (hardware timer is cosmetic).
             try:
@@ -3709,6 +3757,19 @@ def create_app() -> FastAPI:
             if n:
                 out.append(str(n).lower())
         return out
+
+    @app.get("/api/health/workers")
+    def api_health_workers():
+        """Every DECLARED background worker: state, liveness, restart safety (BR-38).
+
+        Declared, not discovered: enumerating raw asyncio tasks would fill this with
+        framework plumbing and bury the three rows that matter. Anything doing
+        background work without appearing here is itself the bug.
+
+        `ok` is false when any worker is failed or has stopped beating. It does NOT
+        feed /api/live — a failed worker deliberately does not fail the container
+        (RUNTIME_DESIGN decision 4), because restarting the world hides the cause."""
+        return _workers.registry.snapshot()
 
     @app.get("/api/mqtt/orphans")
     def api_mqtt_orphans():

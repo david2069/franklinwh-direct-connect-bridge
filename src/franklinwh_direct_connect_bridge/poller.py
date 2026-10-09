@@ -18,6 +18,7 @@ from .config import Settings
 from .db import get_store
 from .notify import Notifier, transitions
 from . import notify_engine
+from . import workers as _workers
 from .publish import entities
 from .publish.mqtt_publisher import MqttPublisher
 from .state import GatewayState
@@ -113,8 +114,17 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
     last_fw = fw
     inserts = 0
     fail_streak = 0   # consecutive failed polls (DEF-POLLER-STALL fix 1)
+    _wname = f"poller:{gw.id}"
     try:
         while not stop.is_set():
+            # Proof of life for this cycle (BR-36). DEGRADED while the aGate is
+            # unreachable: the poller is working correctly and reporting a device
+            # problem, which is not the same as the poller having died (BR-38).
+            _workers.registry.beat(
+                _wname,
+                state=(_workers.WorkerState.DEGRADED if fail_streak
+                       else _workers.WorkerState.RUNNING),
+                detail=(f"{fail_streak} consecutive failed polls" if fail_streak else ""))
             # Self-heal: if MQTT never came up (broker was down at boot), retry — throttled —
             # instead of staying dead until a bridge restart.
             if settings.mqtt_enabled and pub is None and (time.time() - last_mqtt_try) >= _MQTT_RETRY_S:
@@ -296,6 +306,19 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                 await asyncio.wait_for(stop.wait(), timeout=settings.poll_interval)
             except asyncio.TimeoutError:
                 pass
+    except asyncio.CancelledError:
+        raise
+    except BaseException as exc:    # noqa: BLE001
+        # Previously this loop had no `except`, so an unhandled exception ended the task
+        # and nothing retrieved task.exception(). Polling, metrics, MQTT publishing and
+        # (until phase 1) scheduling for this gateway all stopped together, permanently,
+        # while /api/live still reported healthy because it does no gateway I/O. The
+        # supervisor now sees it, but it must also be stated plainly in the log.
+        log.exception("[%s] poller crashed — polling, metrics and publishing have STOPPED "
+                      "for this gateway until it is restarted", gw.id)
+        _workers.registry.beat(_wname, state=_workers.WorkerState.FAILED,
+                               detail=f"{type(exc).__name__}: {exc}")
+        raise
     finally:
         if pub:
             await asyncio.to_thread(pub.stop)
