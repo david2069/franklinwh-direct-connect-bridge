@@ -21,6 +21,19 @@ happens when the behaviour was never written down. This file is that statement: 
 FranklinWH bridge must *do*, independent of whether it speaks Direct Connect, Modbus
 TCP, or the cloud API.
 
+## Detection, not just conformance
+
+A requirement you satisfy today and silently break tomorrow is not satisfied. Every
+requirement here should have something that notices when it stops holding —
+see [`OBSERVABILITY_COVERAGE.md`](OBSERVABILITY_COVERAGE.md), which maps each `BR-n`
+to the check that detects it, the log line it writes, and whether it notifies.
+
+That companion exists because most failures in this list produce **no event**: an
+orphaned entity raises nothing, a wrong version number raises nothing, a burned
+schedule occurrence writes one line and moves on. Notifications are event-driven and
+cannot cover standing conditions, so a periodic self-check is part of the contract,
+not an extra.
+
 ## How to use it
 
 Requirements are numbered `BR-n` and phrased so a test can assert them. Reference the
