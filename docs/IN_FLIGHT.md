@@ -52,8 +52,12 @@ have: a scheduler outliving its poller would evaluate conditions against a snaps
 stopped updating hours ago. A gateway whose snapshot is older than `max(90s, 3 × poll
 interval)` is **skipped with a reason**, never evaluated.
 
-**Still to do in phase 1:** validate that a schedule window shorter than the cadence is
-rejected at save time rather than silently never firing (decision 2).
+Cadence is clamped to [5, 60] s. Windows are minute-resolution, so the shortest expressible
+window is 60 s — the constraint belongs on the cadence, and a user cannot express an
+unschedulable window at all. No per-schedule validation needed.
+
+**Phase 1 is complete.** Next is phase 2: the `occurrences` table, which is where `missed`,
+retry-within-window and resume become expressible (BR-15–19).
 
 Then phase 2 (`occurrences`) and phase 3 (wire `resilience.call`) — that is where retry,
 resume and `missed` become expressible. **Do not build those before phase 1** (§9).

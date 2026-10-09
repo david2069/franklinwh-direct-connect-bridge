@@ -114,3 +114,39 @@ def test_stale_gateways_are_not_passed_to_tick_at_all(monkeypatch):
 def test_no_store_means_no_scheduling_rather_than_a_crash(monkeypatch):
     monkeypatch.setattr(SW, "get_store", lambda s: None)
     assert SW.tick_once(_settings(), client=None) == []
+
+
+# ── the cadence guarantee (decision 2, refined) ───────────────────────────────
+def test_cadence_is_clamped_so_no_expressible_window_can_be_missed():
+    assert SW.cadence_for(_settings(scheduler_tick_s=15)) == 15
+    assert SW.cadence_for(_settings(scheduler_tick_s=600)) == SW.MAX_TICK_S
+    assert SW.cadence_for(_settings(scheduler_tick_s=1)) == SW.MIN_TICK_S
+
+
+def test_zero_means_unset_and_takes_the_default_not_the_floor():
+    # 0 is "not configured", which is different from "configured absurdly low".
+    assert SW.cadence_for(_settings(scheduler_tick_s=0)) == 15
+
+
+def test_a_misconfigured_cadence_is_corrected_loudly(caplog):
+    with caplog.at_level("WARNING"):
+        SW.cadence_for(_settings(scheduler_tick_s=300))
+    assert "clamped" in caplog.text and "never fire" in caplog.text, (
+        "a silently-never-firing schedule is the exact class this work removes")
+
+
+def test_every_expressible_window_is_observable_at_any_allowed_cadence():
+    # Windows are minute-resolution, so the shortest a user can express is 60s.
+    for cadence in range(SW.MIN_TICK_S, SW.MAX_TICK_S + 1):
+        assert SW.window_is_observable(0, cadence), (
+            f"a one-minute window must be observable at {cadence}s")
+
+
+def test_zero_duration_is_a_one_minute_window_not_an_error():
+    assert SW.window_is_observable(0, 60) is True
+    assert SW.window_is_observable(1, 60) is True
+
+
+def test_a_window_shorter_than_the_cadence_would_not_be_observable():
+    # Not reachable through the UI, but the invariant is stated rather than assumed.
+    assert SW.window_is_observable(0, 90) is False
