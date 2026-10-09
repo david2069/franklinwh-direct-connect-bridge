@@ -892,3 +892,114 @@ def test_export_to_automations_and_roundtrip():
     assert back["conditions"][1] == {"match": "any",
                                      "conditions": [{"sensor": "grid.connected", "op": "==", "value": 1}]}
     assert back["ha_actions"][0]["entity_id"] == "switch.x"
+
+
+# ── per-resource exclusivity (RUNTIME_DESIGN §6.6) ───────────────────────────
+def test_a_notify_rule_claims_nothing():
+    """The starvation bug: an entry commanding nothing must not hold the gateway."""
+    assert sch.resource_for({"kind": "notify"}, "gw1") == ""
+    assert sch.resource_for({}, "gw1") == ""
+    assert sch.resource_for(None, "gw1") == ""
+
+
+def test_force_and_mode_claim_the_same_battery():
+    """A mode change during a force dispatch is one fight, not two rules passing."""
+    a = sch.resource_for({"kind": "force"}, "gw1")
+    b = sch.resource_for({"kind": "set_mode"}, "gw1")
+    assert a == b == "gw1/battery"
+    assert sch.resources_contend(a, b)
+
+
+def test_offgrid_is_different_hardware_from_the_battery():
+    assert not sch.resources_contend(
+        sch.resource_for({"kind": "offgrid"}, "gw1"),
+        sch.resource_for({"kind": "force"}, "gw1"))
+
+
+def test_two_circuits_on_one_gateway_do_not_contend():
+    assert not sch.resources_contend(
+        sch.resource_for({"kind": "smart_circuit", "circuit": 1}, "gw1"),
+        sch.resource_for({"kind": "smart_circuit", "circuit": 2}, "gw1"))
+
+
+def test_an_unscoped_circuit_write_claims_every_circuit():
+    """Cannot tell which one, so claim them all — the broader claim is the safe one."""
+    wild = sch.resource_for({"kind": "smart_circuit"}, "gw1")
+    assert wild == "gw1/circuit:*"
+    assert sch.resources_contend(
+        wild, sch.resource_for({"kind": "smart_circuit", "circuit": 3}, "gw1"))
+
+
+def test_the_same_resource_on_two_gateways_is_two_resources():
+    assert not sch.resources_contend(
+        sch.resource_for({"kind": "force"}, "gw1"),
+        sch.resource_for({"kind": "force"}, "gw2"))
+
+
+def test_an_unknown_action_contends_with_itself_not_the_battery():
+    """Guessing wide is what caused the starvation; a new kind blocks only its own."""
+    novel = sch.resource_for({"kind": "future_thing"}, "gw1")
+    assert novel == "gw1/other:future_thing"
+    assert not sch.resources_contend(novel, sch.resource_for({"kind": "force"}, "gw1"))
+    assert sch.resources_contend(novel, sch.resource_for({"kind": "future_thing"}, "gw1"))
+
+
+# ── one-or-all gateway targeting (BR-45) ─────────────────────────────────────
+def test_gateway_scope_travels_across_export_and_import():
+    out = sch.portable({"name": "n", "gateway_scope": "all", "gateway_id": "gw1"})
+    assert out["gateway_scope"] == "all"
+
+
+def test_an_all_scope_rule_claims_each_gateway_separately():
+    """One rule across a site is one rule, not N contending for one resource."""
+    a = sch.resource_for({"kind": "force"}, "gw1")
+    b = sch.resource_for({"kind": "force"}, "gw2")
+    assert a != b and not sch.resources_contend(a, b)
+
+
+# ── BR-50: capture before the override ───────────────────────────────────────
+def test_capture_reads_the_mode_that_is_about_to_be_replaced():
+    prior = sch.capture_prior({"kind": "set_mode", "mode": "Time-of-Use"},
+                              {"mode.name": "Self-Consumption"})
+    assert prior == {"kind": "set_mode", "key": "mode.name",
+                     "value": "Self-Consumption"}
+
+
+def test_nothing_is_captured_when_the_old_value_cannot_be_read():
+    """A guessed restore looks deliberate and is worse than leaving the override."""
+    assert sch.capture_prior({"kind": "set_mode"}, {"mode.name": None}) is None
+    assert sch.capture_prior({"kind": "set_mode"}, {}) is None
+
+
+def test_force_captures_nothing_because_it_releases_itself():
+    assert sch.capture_prior({"kind": "force", "direction": "charge"},
+                             {"mode.name": "Self-Consumption"}) is None
+
+
+# ── templated notifications: the run, not just the sensors ───────────────────
+def _ctx(**kw):
+    import datetime as _dt
+    entry = {"id": "s1", "name": "Overnight charge", "priority": 5,
+             "action": {"kind": "force"}, "_wkey": "2026-10-09",
+             "_occ_attempts": 3, "_resource": "gw1/battery", **kw}
+    return sch.run_context(entry, gateway_id="gw1",
+                           now=_dt.datetime(2026, 10, 9, 23, 30), phase="fire")
+
+
+def test_a_message_can_name_the_run_that_sent_it():
+    c = _ctx()
+    assert c["schedule.name"] == "Overnight charge"
+    assert c["run.attempt"] == 3 and c["run.occurrence"] == "2026-10-09"
+    assert c["run.resource"] == "battery" and c["run.phase"] == "fire"
+
+
+def test_run_variables_substitute_in_the_same_namespace_as_sensors():
+    """One syntax, not two — a message mixes live values and run context freely."""
+    snap = {"battery.soc_pct": 38, **_ctx()}
+    assert sch.substitute(
+        "%schedule.name% attempt %run.attempt%: SoC %battery.soc_pct%%", snap
+    ) == "Overnight charge attempt 3: SoC 38%"
+
+
+def test_an_unknown_variable_renders_as_a_question_mark_not_a_failure():
+    assert sch.substitute("%run.nonsense%", _ctx()) == "?"

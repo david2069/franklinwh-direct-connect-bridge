@@ -135,27 +135,30 @@ the occurrence is not marked complete until it succeeds or the window closes.
 **BR-17** A window whose start has passed — because the bridge was down, or busy — is
 still entered if the window is open, for the time remaining.
 
-**BR-18** Stopping a running rule. **Recommended common behaviour — pending the owner's
-decision:** *Stop is terminal*, and a *separate Pause/Resume pair* is added to both bridges,
-using the same verbs and the same meaning in each UI.
+**BR-18** Stopping a running rule uses **three verbs with three meanings**, the same words
+in both bridges' UIs. Decided by the owner 2026-10-09.
 
-Rationale for terminal Stop: it is unambiguous, there is no second state to reason about,
-and an operator who stopped something almost certainly meant it. Rationale for a distinct
-Pause: the remaining time is often the valuable part — a four-hour export window stopped
-after thirty minutes loses three and a half hours of tariff opportunity that does not return
-until tomorrow. Two verbs state the two meanings instead of overloading one.
+| Verb | Releases control | Keeps the occurrence | Re-enterable |
+| --- | --- | --- | --- |
+| **Stop** | yes | **no** — this occurrence ends; it will not re-fire until the next window | no |
+| **Pause** | yes | **yes** — holds the place | yes, via Resume |
+| **Resume** | — | — | **only while the window is still open** |
 
-Settled edge case, worth adopting in both: **a restart while paused resolves to terminal.**
-Otherwise a pause that outlives the process becomes an occurrence nobody can account for.
+**A restart while paused resolves to terminal.** Pause is in-flight intent held by a running
+process; once that process is gone nobody is holding the place, and a pause that outlives
+its process becomes an occurrence nobody can account for. Each of the three is written to
+the audit log.
+
+Overloading one verb with two meanings is what causes the defect below: a user cannot tell
+whether "stop" ended the thing or merely interrupted it, and neither can the code.
 
 Where each bridge stands:
 
-* **Modbus Bridge** — Stop is terminal today, deliberately: its audit line reads *"stopped
-  by user — released; won't re-fire until the next window"*, with explicit code blocking a
-  between-ticks re-fire. Pause/Resume is on its backlog.
-* **Direct Connect Bridge** — **neither**, which is a defect rather than a third option. Stop
-  releases the dispatch but leaves the "already fired" marker set, so the rule can neither
-  re-enter nor explain why. Fixed in phase 2.
+* **Modbus Bridge** — Stop is terminal today, deliberately. Pause/Resume to be added.
+* **Direct Connect Bridge** — Stop currently releases the dispatch but leaves the "already
+  fired" marker set, so the rule can neither re-enter nor explain why: **neither verb's
+  behaviour, which is a defect rather than a third option.** Pause/Resume and the fix land
+  together in phase 2.
 
 **BR-19** "Run now" and "resume" are distinct operations with distinct semantics. Run now
 ignores the window; resume honours the time remaining in it.
@@ -344,7 +347,7 @@ overall, and both have a working implementation of the other's gap to copy.
 | 1 · Identity & multi-gateway | BR-3 **fails** — `POST /api/dispatch` takes no gateway and resolves the host from global settings. BR-5 fixed 2026-10-09. MQTT **passes**: one publisher per gateway, node = serial. | BR-1/4 **fail** for publishing — non-default gateways do not publish their own HA devices (their `multi-gateway-and-mock-lifecycle.md` §7.3). BR-4 also fails for metrics: the history chart merges all gateways (§7.1). Serial-collision detection planned (§7.4). |
 | 2 · Outcome semantics | BR-6–10 implemented in `resilience.py`; wiring in progress | — |
 | 3 · Deadlines & retries | BR-11–13 implemented; BR-14 partial (`DEF-POLLER-STALL`) | — |
-| 4 · Scheduler & windows | BR-15/17/20/21 hold; **BR-16, BR-19 do not**. BR-18: **neither** — a defect, not a choice; fixed in phase 2 | BR-18: terminal today (deliberate); Pause/Resume backlogged. Matches the recommendation. Others unassessed |
+| 4 · Scheduler & windows | BR-15/17/20/21 hold; **BR-16, BR-19 do not**. BR-18: **neither** — a defect, not a choice; fixed in phase 2 | BR-18: terminal today (deliberate); Pause/Resume to be added. Others unassessed |
 | 4b · Orchestration | **BR-44–48 fail.** Priority and conflict fields exist but there is no resource exclusivity, no deterministic winner, no templated notifications. Phase 2 adopts the Modbus Bridge's model. | **Passes BR-44–46 and BR-48** — per-resource lanes, one-or-all targeting with stable ownership, `winner()` by priority then age, `%sensor.id%` templating sharing the condition vocabulary. The reference implementation. |
 | 5 · Entity lifecycle | BR-22/25/26 pass; **BR-23 fails** — deleting a gateway leaves its retained discovery configs behind. BR-24/27 **fail**. | BR-23 **passes** — `DELETE /api/gateways/{id}` cascades device_points → device_models → gateway_state → metrics → metrics_archive → row, leaving no orphans. BR-27 **passes**: mock data is never recorded. |
 | 6 · Observability | BR-29/31 pass; BR-28/30 arriving with the outcome wiring | BR-29 passes (per-gateway lifecycle events, control_log); BR-26 partial — per-gateway row counts need SQL (§7.2) |

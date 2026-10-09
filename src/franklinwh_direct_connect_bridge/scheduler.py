@@ -20,12 +20,15 @@ unavailable actions are listed with the reason instead of being hidden or faked.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import fnmatch
 import re
 from typing import Any
 
 from . import ha_instances
 
+
+log = logging.getLogger(__name__)
 #: Local actions that are hardware-verified. Anything not here is not offered.
 ACTIONS: dict[str, dict[str, Any]] = {
     "set_mode": {
@@ -623,7 +626,8 @@ def preset(preset_id: str) -> dict | None:
 
 #: Fields carried across an export/import — the whole spec plus name/enabled.
 _PORTABLE_KEYS = ("name", "enabled", "fire_at", "duration_min", "match",
-                  "entry_hold_s", "gateway_id", "conditions", "exit_conditions",
+                  "entry_hold_s", "gateway_id", "gateway_scope", "restore_on_exit",
+                  "conditions", "exit_conditions",
                   "exit_match", "action", "ha_actions",
                   "days", "months", "day_of_month", "start_date", "end_date", "priority", "conflict",
                   "trigger_type", "windows", "interval_min", "anchor", "cron")
@@ -1672,6 +1676,10 @@ _dwell_since: dict[str, dt.datetime] = {}
 #: Whether each entry's window was inside last tick, keyed "gateway:entry". Used
 #: to detect the closing edge so exit-tagged HA actions fire once when a window ends.
 _window_inside: dict[str, bool] = {}
+#: The occurrence key of the window that is currently open. At the exit edge the
+#: clock has usually moved past the window, so `window_now` no longer names the
+#: run that is ending — the key has to be remembered from when it opened.
+_window_key: dict[str, str] = {}
 
 #: Last day a "gated" audit line was logged per entry, so a window that is blocked
 #: by its conditions is recorded once (not every tick).
@@ -1765,7 +1773,12 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
         # empty) fires on the default gateway's tick only, so it is not run once
         # per gateway on a multi-gateway site.
         bound = entry.get("gateway_id") or ""
-        if gateway_id is not None:
+        # "all" means every gateway evaluates this rule on its own tick, producing one
+        # run and one resource claim per gateway (BR-45). Only an exact "all" widens
+        # the scope — an unrecognised value falls through to the narrower behaviour.
+        scope_all = str(entry.get("gateway_scope") or "one").lower() == "all"
+        entry["_scope_all"] = scope_all
+        if gateway_id is not None and not scope_all:
             if bound and bound != gateway_id:
                 continue
             if not bound and not _is_default_gateway(store, gateway_id):
@@ -1796,8 +1809,21 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
         # condition) — fire the exit-tagged HA actions once (guarded), regardless of
         # whether the entry action ran, and release a force dispatch as a safety net.
         if was_inside and not effective_inside:
-            exit_res = _fire_ha_phase(entry, "exit", settings=settings, client=client,
-                                      store=store, snapshot=snapshot, host=host)
+            exit_res = _fire_ha_phase(
+                entry, "exit", settings=settings, client=client, store=store,
+                snapshot={**snapshot, **run_context(entry, gateway_id=gateway_id,
+                                                    now=now, phase="exit")},
+                host=host)
+            # BR-50: put back what this rule overrode. Opt-in, because "leave it where
+            # the rule left it" is a legitimate intent and changing it under existing
+            # rules would be a silent behaviour change.
+            if entry.get("restore_on_exit"):
+                restored = _restore_prior(entry, store=store, settings=settings,
+                                          client=client, snapshot=snapshot, host=host,
+                                          gateway_id=gateway_id,
+                                          wkey=_window_key.get(dkey) or wkey)
+                if restored:
+                    exit_res.append(restored)
             if ((entry.get("action") or {}).get("kind")) == "force":
                 exit_res.append(_force_dispatch(
                     entry["action"], host=host, window_min=0, gateway_id=gateway_id,
@@ -1808,6 +1834,10 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                 store.log_schedule_event(entry["id"], entry["name"], "exit",
                                          (f"{why}: " + "; ".join(exit_res)) if exit_res else why)
         _window_inside[dkey] = effective_inside
+        if effective_inside:
+            _window_key[dkey] = wkey or now.date().isoformat()
+        else:
+            _window_key.pop(dkey, None)
 
         ok, reason = due(entry, now, snapshot, entry.get("last_fired_day"))
         # Do not START a dispatch that the exit gate says should already be closed.
@@ -1849,19 +1879,38 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
     contenders: dict[str, list[dict]] = {}
     to_fire: list[dict] = []
     for e in ready:
-        if (e.get("action") or {}).get("kind"):
-            contenders.setdefault(e.get("gateway_id") or "_default", []).append(e)
+        # An all-scope rule claims THIS tick's gateway, not the one it is nominally
+        # bound to — otherwise every gateway would contend for a single resource and
+        # all but one would be deferred against a battery they were never driving.
+        claim_gw = gateway_id if e.get("_scope_all") else (e.get("gateway_id") or gateway_id)
+        res = resource_for(e.get("action"), claim_gw)
+        if res:
+            e["_resource"] = res
+            contenders.setdefault(res, []).append(e)
         else:
-            to_fire.append(e)                       # notify-only: never contends
-    # (1) same-tick priority: one winner per target; the rest deferred for the day.
+            to_fire.append(e)                       # claims nothing: never contends
+    # A wildcard circuit claim overlaps every specific circuit on its gateway, so those
+    # groups are merged before a winner is picked — otherwise two rules that genuinely
+    # fight would each "win" their own group and both dispatch.
+    for key in sorted(contenders, key=lambda k: (not k.endswith(":*"), k)):
+        if key.endswith(":*"):
+            for other in [k for k in contenders if k != key and resources_contend(key, k)]:
+                contenders[key] += contenders.pop(other)
+    # (1) same-tick priority: one winner per target; the rest are skipped WITH A REASON.
     winners: list[dict] = []
     for tgt, group in contenders.items():
         if len(group) > 1:
-            group.sort(key=lambda e: (-int(e.get("priority") or 0), str(e.get("name") or "")))
+            group.sort(key=winner_key)
+            top = group[0]
             for loser in group[1:]:
-                detail = (f"deferred — '{group[0]['name']}' (priority {int(group[0].get('priority') or 0)}) "
-                          f"pre-empts this on the same target (priority {int(loser.get('priority') or 0)})")
-                store.mark_schedule_fired(loser["id"], now.date().isoformat(), "deferred")
+                detail = (f"deferred — '{top['name']}' (priority {int(top.get('priority') or 0)}) "
+                          f"holds {tgt.partition('/')[2] or tgt} this occurrence; this rule "
+                          f"is priority {int(loser.get('priority') or 0)}")
+                # Record it on the occurrence rather than only marking the day fired:
+                # "why didn't mine run" must be answerable from the run itself, and a
+                # loser is `skipped`, not `failed` — nothing went wrong, it was outranked.
+                _settle_loser(loser, store=store, gateway_id=gateway_id, now=now,
+                              reason=detail)
                 store.log_schedule_event(loser["id"], loser["name"], "deferred", detail)
         winners.append(group[0])
     # (2) conflict with an ACTIVE dispatch already held by ANOTHER schedule (a force
@@ -1888,9 +1937,258 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
         to_fire.append(w)
 
     for entry in to_fire:
+        # Register the run BEFORE attempting it. This is what makes a failure that
+        # never produces a log line still visible afterwards: the row exists whether
+        # or not anything happens next, so "nothing in the history" stops meaning
+        # "we cannot tell".
+        occ = _claim_run(entry, store=store, gateway_id=gateway_id, now=now)
+        if occ is not None:
+            if occ.get("status") in store.OCC_TERMINAL:
+                continue                       # already settled this occurrence
+            now_ts = now.timestamp()
+            if occ.get("status") == "failed" and not retry_due(occ, now_ts):
+                continue                       # backing off; the window is still open
+            entry["_occ_id"] = occ["id"]
+            entry["_occ_attempts"] = int(occ.get("attempts") or 0) + 1
+            store.occurrence_attempt(occ["id"], now=now_ts)
+            # BR-50: capture BEFORE the write, and only on the first attempt — a retry
+            # would otherwise capture the value this rule itself just set, and "restore"
+            # the override instead of undoing it.
+            if entry.get("restore_on_exit") and not occ.get("prior_state"):
+                prior = capture_prior(entry.get("action"), snapshot)
+                if prior is not None:
+                    try:
+                        store.set_prior_state(occ["id"], prior)
+                    except Exception as e:  # noqa: BLE001
+                        log.warning("could not record the prior state for %s: %s",
+                                    entry.get("id"), e)
         fired.append(_fire_entry(entry, settings=settings, client=client, store=store,
                                  snapshot=snapshot, host=host, gateway_id=gateway_id, now=now))
     return fired
+
+
+#: What each action actually DRIVES. Exclusivity is per RESOURCE, not per gateway —
+#: the lesson the Modbus Bridge paid for and wrote down (RUNTIME_DESIGN §6.6): before
+#: this split, an entry that commanded nothing on the battery still held the gateway
+#: and "starved every schedule on that gateway while dispatching nothing itself".
+#:
+#: `force`, `set_mode` and `reserve_soc` are one resource because they are one
+#: behaviour — a mode change during a force dispatch is a genuine fight over the same
+#: battery. `offgrid` throws the transfer switch, which is different hardware.
+#: `smart_circuit` is scoped to the individual circuit, so two rules driving two
+#: different circuits do not contend at all.
+ACTION_RESOURCE: dict[str, str] = {
+    "force": "battery",
+    "set_mode": "battery",
+    "reserve_soc": "battery",
+    "offgrid": "grid",
+    "smart_circuit": "circuit",
+    "notify": "",            # commands nothing on the gateway; never contends
+}
+
+
+def resource_for(action: dict | None, gateway_id: str | None) -> str:
+    """The exclusive resource this action claims, or '' if it claims nothing.
+
+    An unrecognised kind claims a resource named after ITSELF rather than the battery:
+    a future action that drives something new must contend with its own kind, not
+    block the battery by default. Guessing wide here is what caused the starvation.
+    """
+    kind = (action or {}).get("kind") or ""
+    if not kind:
+        return ""
+    res = ACTION_RESOURCE.get(kind, f"other:{kind}")
+    if not res:
+        return ""
+    gw = gateway_id or "_default"
+    if res == "circuit":
+        circuit = (action or {}).get("circuit")
+        # No circuit named = we cannot tell which one, so claim them all rather than
+        # claim none; an unscoped circuit write is the broader claim, not the narrower.
+        res = f"circuit:{circuit}" if circuit not in (None, "") else "circuit:*"
+    return f"{gw}/{res}"
+
+
+def resources_contend(a: str, b: str) -> bool:
+    """Do two resource claims collide? Identical claims do; so does a wildcard
+    circuit claim against any specific circuit on the same gateway."""
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    ga, _, ra = a.partition("/")
+    gb, _, rb = b.partition("/")
+    if ga != gb:
+        return False
+    if ra.startswith("circuit:") and rb.startswith("circuit:"):
+        return ra.endswith(":*") or rb.endswith(":*")
+    return False
+
+
+#: Settings a rule can override and put back (BR-50). A value is captured at the
+#: moment of override and replayed at exit. Only the operating mode is here: it is the
+#: one overridable setting the poller's snapshot carries, so it is the one whose prior
+#: value can be read without an extra gateway round-trip at the worst possible moment.
+#: Smart circuits and off-grid are overridable too but are NOT in the snapshot — see
+#: FEAT-RESTORE-CIRCUIT-OFFGRID. `force` needs none of this: it auto-releases.
+RESTORABLE: dict[str, str] = {"set_mode": "mode.name"}
+
+
+def capture_prior(action: dict | None, snapshot: dict) -> dict | None:
+    """What this action is about to overwrite, or None if nothing restorable.
+
+    Captured BEFORE the write, from the live snapshot. A capture that cannot read the
+    old value returns None rather than a guess — restoring to a guessed setting is
+    worse than leaving the override in place, because it looks deliberate.
+    """
+    kind = (action or {}).get("kind") or ""
+    key = RESTORABLE.get(kind)
+    if not key:
+        return None
+    was = snapshot.get(key)
+    if was in (None, ""):
+        return None
+    return {"kind": kind, "key": key, "value": was}
+
+
+def _restore_prior(entry: dict, *, store, settings, client, snapshot: dict,
+                   host: str | None, gateway_id: str | None, wkey: str) -> str:
+    """Put back what this run overrode. Never raises — a failed restore is reported,
+    not propagated, or one stuck device would stop the whole exit path."""
+    try:
+        prior = store.prior_state(schedule_id=entry["id"],
+                                  gateway_id=gateway_id or "",
+                                  occurrence_key=wkey)
+    except Exception as e:  # noqa: BLE001
+        log.warning("could not read the prior state for %s: %s", entry.get("id"), e)
+        return ""
+    if not prior:
+        return ""
+    want = prior.get("value")
+    if snapshot.get(prior.get("key")) == want:
+        return ""                     # already back where it was; say nothing
+    try:
+        out = run_action({"kind": prior["kind"], "mode": want}, settings=settings,
+                         client=client, store=store, snapshot=snapshot, host=host,
+                         gateway_id=gateway_id, schedule_id=entry["id"],
+                         schedule_name=entry.get("name"))
+        return f"restored {prior['key']} -> {want} ({out})"
+    except Exception as e:  # noqa: BLE001
+        return f"could NOT restore {prior['key']} to {want}: {e}"
+
+
+def winner_key(entry: dict):
+    """Sort key for conflict resolution: highest priority, then OLDEST.
+
+    Tie-breaking on `created_at` rather than on name matters more than it looks. Sorting
+    by name meant renaming a rule could change which of two equal-priority rules won the
+    battery — a conflict resolved by a cosmetic edit. Age is stable, and it encodes the
+    right intent: a rule added later does not displace an established one (BR-46).
+    """
+    return (-int(entry.get("priority") or 0),
+            float(entry.get("created_at") or 0.0),
+            str(entry.get("id") or ""))
+
+
+def _settle_loser(entry: dict, *, store, gateway_id, now, reason: str) -> None:
+    """Close out a rule that lost a conflict: skipped, with the winner named.
+
+    The OCCURRENCE status is `skipped` — nothing malfunctioned, it was outranked, and
+    the state set has no `deferred`. The user-facing word stays "deferred" in the log
+    and in `last_result`, because that is what it has always been called here and
+    renaming it would churn vocabulary for no gain. Terminal for this occurrence, which
+    preserves the existing once-per-day behaviour while finally recording WHY.
+
+    Never raises.
+    """
+    try:
+        occ = _claim_run(entry, store=store, gateway_id=gateway_id, now=now)
+        if occ is not None and occ.get("status") not in store.OCC_TERMINAL:
+            store.finish_occurrence(occ["id"], status="skipped", reason=reason)
+        store.mark_schedule_fired(entry["id"], entry.get("_wkey")
+                                  or now.date().isoformat(), "deferred")
+    except Exception as e:  # noqa: BLE001
+        log.warning("could not record the skipped run for %s: %s", entry.get("id"), e)
+
+
+def _claim_run(entry: dict, *, store, gateway_id: str | None, now: dt.datetime):
+    """Record this run as expected, and return it. Never raises: a scheduler that
+    cannot write its queue must still dispatch, or a bookkeeping fault becomes an
+    outage."""
+    try:
+        wend = entry.get("_wend")
+        if wend is None:
+            wend = _window_end_ts(entry, now)
+        occ = store.claim_occurrence(
+            schedule_id=entry["id"], name=entry.get("name") or "",
+            gateway_id=gateway_id or "",
+            occurrence_key=entry.get("_wkey") or now.date().isoformat(),
+            due_ts=now.timestamp(), window_end_ts=wend, now=now.timestamp())
+        if occ is not None:
+            # `coalesce`: a backlog left by downtime collapses into this run rather
+            # than replaying window by window into conditions that have moved on.
+            for old in store.coalesce_occurrences(
+                    schedule_id=entry["id"], gateway_id=gateway_id or "",
+                    keep_id=occ["id"], keep_due_ts=float(occ["due_ts"]),
+                    now=now.timestamp()):
+                log.info("schedule %r: run %s coalesced into %s",
+                         entry.get("name"), old.get("occurrence_key"),
+                         occ.get("occurrence_key"))
+                try:
+                    store.log_schedule_event(
+                        entry["id"], entry.get("name") or "", "coalesced",
+                        f"run {old.get('occurrence_key')} was still open and was "
+                        f"collapsed into {occ.get('occurrence_key')}")
+                except Exception:  # noqa: BLE001
+                    pass
+        return occ
+    except Exception as e:  # noqa: BLE001
+        log.warning("could not record the run for %s: %s", entry.get("id"), e)
+        return None
+
+
+#: Retry backoff for a failed run, within its own window. The scheduler ticks every
+#: 15s, so retrying on every tick would hammer an unreachable gateway 360 times in a
+#: 90-minute window and fill the history with noise. Grows from half a minute to ten.
+RETRY_BASE_S = 30.0
+RETRY_CAP_S = 600.0
+
+
+def retry_delay_s(attempts: int) -> float:
+    """How long to wait after `attempts` failures before trying again."""
+    if attempts <= 0:
+        return 0.0
+    return min(RETRY_CAP_S, RETRY_BASE_S * (2 ** (attempts - 1)))
+
+
+def retry_due(occ: dict, now_ts: float) -> bool:
+    """Is a previously-failed run ready for another attempt?"""
+    last = occ.get("last_attempt_ts")
+    if not last:
+        return True
+    return (now_ts - float(last)) >= retry_delay_s(int(occ.get("attempts") or 0))
+
+
+def run_context(entry: dict, *, gateway_id: str | None, now: dt.datetime,
+                phase: str) -> dict[str, Any]:
+    """`%run.*%` / `%schedule.*%` variables for a templated message.
+
+    Sensor values alone cannot say what HAPPENED: "SoC is 38%" is not "the overnight
+    charge is on its third attempt". These live in the same `%name%` namespace as the
+    sensors, so a message mixes both without a second syntax to learn.
+    """
+    return {
+        "schedule.name": entry.get("name") or "",
+        "schedule.id": entry.get("id") or "",
+        "schedule.priority": int(entry.get("priority") or 0),
+        "schedule.action": (entry.get("action") or {}).get("kind") or "none",
+        "gateway.id": gateway_id or "",
+        "run.phase": phase,
+        "run.occurrence": entry.get("_wkey") or now.date().isoformat(),
+        "run.attempt": int(entry.get("_occ_attempts") or 1),
+        "run.at": now.strftime("%Y-%m-%d %H:%M"),
+        "run.resource": (entry.get("_resource") or "").partition("/")[2],
+    }
 
 
 def _fire_entry(entry: dict, *, settings, client, store, snapshot: dict,
@@ -1899,6 +2197,10 @@ def _fire_entry(entry: dict, *, settings, client, store, snapshot: dict,
     the outcome. Returns the fired-record for the tick's return list."""
     results: list[str] = []
     action = entry.get("action") or {}
+    # The run's own context joins the sensor namespace for this entry only — a copy,
+    # so one rule's variables can never leak into the next rule's message.
+    snapshot = {**snapshot, **run_context(entry, gateway_id=gateway_id, now=now,
+                                          phase="fire")}
     if action.get("kind"):
         results.append(run_action(action, settings=settings, client=client,
                                   store=store, snapshot=snapshot, host=host,
@@ -1909,8 +2211,28 @@ def _fire_entry(entry: dict, *, settings, client, store, snapshot: dict,
     results += _fire_ha_phase(entry, "fire", settings=settings, client=client,
                               store=store, snapshot=snapshot, host=host)
     summary = "; ".join(results) or "nothing to do"
-    store.mark_schedule_fired(entry["id"], entry.get("_wkey") or now.date().isoformat(), summary)
     ok_all = all("failed" not in r and "NOT confirmed" not in r for r in results)
-    store.log_schedule_event(entry["id"], entry["name"],
-                             "fired" if ok_all else "error", summary)
-    return {"id": entry["id"], "name": entry["name"], "result": summary}
+
+    # Mark the occurrence fired ONLY on success. This is the fix for the defect that
+    # started this work: the old code called mark_schedule_fired unconditionally, and
+    # due() then refused to re-enter ("already fired this occurrence") — so a two-second
+    # Wi-Fi blip at the moment a window opened burned the whole occurrence silently.
+    # Leaving it unmarked is the entire retry mechanism: the next tick re-evaluates it,
+    # bounded by the window, and sweep_missed closes it out if the window shuts first.
+    occ_id = entry.get("_occ_id")
+    if ok_all:
+        store.mark_schedule_fired(
+            entry["id"], entry.get("_wkey") or now.date().isoformat(), summary)
+        if occ_id is not None:
+            store.finish_occurrence(occ_id, status="ok", outcome=summary)
+        store.log_schedule_event(entry["id"], entry["name"], "fired", summary)
+    else:
+        if occ_id is not None:
+            store.finish_occurrence(occ_id, status="failed", reason=summary)
+        attempts = int(entry.get("_occ_attempts") or 1)
+        store.log_schedule_event(
+            entry["id"], entry["name"], "error",
+            f"{summary} — attempt {attempts}; retrying in "
+            f"{retry_delay_s(attempts):.0f}s while the window is open")
+    return {"id": entry["id"], "name": entry["name"], "result": summary,
+            "ok": ok_all}

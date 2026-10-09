@@ -1,6 +1,6 @@
 # In-flight work — handover
 
-**Updated:** 2026-10-09 (phase 1) · **Session:** `01WCWytg6NQWQ5fPnCZiSAf5`
+**Updated:** 2026-10-09 (phase 2 complete) · **Session:** `01WCWytg6NQWQ5fPnCZiSAf5`
 
 Written so this work survives a crashed session. If you are picking this up cold, read
 §1 and §2, then §6 for the gotchas that cost time to learn. The design documents are the
@@ -56,8 +56,57 @@ Cadence is clamped to [5, 60] s. Windows are minute-resolution, so the shortest 
 window is 60 s — the constraint belongs on the cadence, and a user cannot express an
 unschedulable window at all. No per-schedule validation needed.
 
-**Phase 1 is complete.** Next is phase 2: the `occurrences` table, which is where `missed`,
-retry-within-window and resume become expressible (BR-15–19).
+**Phase 1 is complete.**
+
+## 2b · Phase 2 — complete, on `feat/phase2-occurrences`
+
+Scope per §8 is finished. 842 tests pass. Not yet merged; the branch also carries an
+unrelated batch of UI work (see §2c).
+
+| Piece | Where | Note |
+| --- | --- | --- |
+| `occurrences` table (the execution queue) | `db.py` | `UNIQUE(schedule_id, occurrence_key, gateway_id)` **is** `max_instances`, enforced in the schema |
+| `misfire_grace_time` | `scheduler_worker.MISFIRE_GRACE_S` | 120 s — the boundary between a late catch-up and `missed` |
+| `coalesce` | `db.coalesce_occurrences` → `_claim_run` | a backlog left by downtime collapses into ONE run; older open runs close as `skipped` naming the run that absorbed them |
+| Per-resource exclusivity (§6.6) | `scheduler.ACTION_RESOURCE`, `resource_for`, `resources_contend` | the starvation fix — see below |
+| One-or-all targeting (BR-45) | `gateway_scope` | an all-scope rule claims **this tick's** gateway, not the one it is bound to |
+| Priority + deterministic tie-break | `winner_key` | `(-priority, created_at, id)` — renaming a rule cannot change who wins |
+| Symmetric entry/exit + restore (BR-50) | `capture_prior`, `_restore_prior`, `occurrences.prior_state` | opt-in via `restore_on_exit` |
+| Templated notifications | `run_context` | `%run.*%` / `%schedule.*%` in the same namespace as the sensors |
+| `schedule_log` split | `LOG_SEVERITY`, `LOG_CAP` | event / error / exception, **capped per class** |
+
+### The three decisions worth not re-deriving
+
+**Exclusivity is per resource, and an unknown action claims itself.** `force`, `set_mode`
+and `reserve_soc` all claim `<gw>/battery` — they are one behaviour, and a mode change
+during a force dispatch is a genuine fight. `offgrid` claims `<gw>/grid` (different
+hardware), `smart_circuit` claims `<gw>/circuit:<id>` (so two circuits never contend), and
+`notify` claims nothing. An **unrecognised** kind claims `<gw>/other:<kind>` rather than
+defaulting to the battery: guessing wide is precisely what caused the Modbus Bridge's
+starvation bug. A circuit write with no circuit named claims `circuit:*`, and those groups
+are merged before a winner is picked — otherwise two rules that genuinely fight would each
+win their own group and both dispatch.
+
+**The prior state lives on the run, not in memory.** An override the bridge forgets across
+a restart is an override that becomes permanent. It is captured on the **first attempt
+only**: a retry would otherwise capture what the rule itself just set and "restore" the
+override instead of undoing it. If the old value cannot be read, nothing is captured —
+restoring to a guess looks deliberate and is worse than a visible override. Covers the
+operating mode only; circuits and off-grid are not in the snapshot (`FEAT-RESTORE-CIRCUIT-OFFGRID`).
+
+**The log cap is per class because the measurement said so.** Execution was 2.2% of rows
+(9 of 405) and `gated` alone 76%. Under one shared 2000-row cap, routine chatter evicts
+failures long before they age out. Budgets are now event 2000 / error 1000 / exception 500,
+pruned only within the class that just grew.
+
+## 2c · What is uncommitted
+
+The working tree also carries UI work that is **not** phase 2 and should land separately:
+dashboard card overflow + equal heights, the in-app Guide panel, the Advanced-tools gate
+(Terminal + Reboot, default off), one shared nav registry driving both the sidebar and the
+bottom bar, and the cog split into Theme / Navbar / Top bar.
+
+Next: phase 3 — wire `resilience.call` into scheduler actions and bridge writes.
 
 Then phase 2 (`occurrences`) and phase 3 (wire `resilience.call`) — that is where retry,
 resume and `missed` become expressible. **Do not build those before phase 1** (§9).
