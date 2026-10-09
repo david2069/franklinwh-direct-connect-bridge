@@ -392,3 +392,74 @@ def test_aborted_sorts_with_the_things_needing_attention(reg):
 def test_aborted_is_terminal_and_not_supervised(reg):
     w = reg.register(_w("a")); w.mark_aborted()
     assert W._supervise_once(reg) == []
+
+
+# ── v1.2 · abort is confirmed, not assumed (design §5.6) ──────────────────────
+def test_abort_that_kills_the_task_is_aborted(reg):
+    async def main():
+        w = reg.register(_w("a"))
+        w._task = asyncio.create_task(asyncio.sleep(30))
+        return await W.abort(w, timeout=1.0)
+
+    assert asyncio.run(main()) is W.WorkerState.ABORTED
+
+
+def test_a_task_that_survives_cancel_is_a_zombie_not_an_abort(reg):
+    """The bug this guards: `task.cancel()` is a REQUEST, not an outcome.
+
+    A real uncancellable coroutine is deliberately NOT used here — one would hang the
+    test process at loop teardown, which is exactly why this failure mode is dangerous
+    in production. A stand-in that reports `done() is False` after cancel exercises the
+    same decision without leaving an unkillable task behind.
+    """
+    class _SurvivesCancel:
+        def __init__(self):
+            self.cancelled_calls = 0
+
+        def done(self):
+            return False          # it ignored us
+
+        def cancel(self):
+            self.cancelled_calls += 1
+
+        def __await__(self):
+            async def _never():
+                await asyncio.sleep(3600)
+            return _never().__await__()
+
+    async def main():
+        w = reg.register(_w("stubborn"))
+        w._task = _SurvivesCancel()
+        state = await W.abort(w, timeout=0.2)
+        return state, w.last_error, w._task.cancelled_calls
+
+    state, err, cancels = asyncio.run(main())
+    assert state is W.WorkerState.ZOMBIE, "an unconfirmed abort is not an abort"
+    assert cancels == 1, "it must actually have been asked to stop"
+    assert "survived abort" in err and "restart the bridge" in err
+
+
+def test_aborting_an_already_finished_task_is_not_a_zombie(reg):
+    async def main():
+        w = reg.register(_w("done"))
+
+        async def quick():
+            return None
+
+        w._task = asyncio.create_task(quick())
+        await asyncio.sleep(0.01)
+        return await W.abort(w, timeout=0.5)
+
+    assert asyncio.run(main()) is W.WorkerState.ABORTED
+
+
+def test_a_zombie_name_is_never_free(reg):
+    w = reg.register(_w("poller:gw1")); w.mark_zombie()
+    assert reg.name_in_use("poller:gw1") is w, (
+        "it is still executing, so the name must never be reused while it lives")
+
+
+def test_zombie_is_terminal_and_unsupervised(reg):
+    w = reg.register(_w("z")); w.mark_zombie()
+    assert W._supervise_once(reg) == []
+    assert w.is_broken and reg.snapshot()["ok"] is False

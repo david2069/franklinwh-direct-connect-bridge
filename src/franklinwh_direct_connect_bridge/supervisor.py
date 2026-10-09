@@ -14,6 +14,7 @@ from .config import Settings
 from .poller import run_gateway
 from .state import GatewayState
 from .workers import RestartClass, Worker, WorkerState, registry
+from .workers import abort as workers_abort
 
 log = logging.getLogger("franklinwh_direct_connect_bridge.supervisor")
 
@@ -117,18 +118,24 @@ async def stop_all() -> None:
         try:
             await asyncio.wait_for(task, timeout=35)
         except asyncio.TimeoutError:
-            # Forced, not clean: record it as ABORTED so a skipped cleanup is visible
-            # afterwards rather than looking like an orderly shutdown.
-            task.cancel()
+            # Graceful stop overran, so escalate to abort — and CONFIRM it, because a
+            # cancel is a request, not an outcome. If it survives, it is a zombie and
+            # saying "aborted" would be a lie that hides a running poller.
             w = registry.get(worker_name(gw_id))
-            if w is not None:
-                w.mark_aborted("did not wind down within 35s — cancelled")
-            log.warning("poller for %s did not stop in time — cancelled", gw_id)
+            if w is None:
+                task.cancel()
+            else:
+                state = await workers_abort(w)
+                log.warning("poller for %s did not stop in 35s — abort -> %s",
+                            gw_id, state.value)
             continue
         except Exception:  # noqa: BLE001
             pass
     for gw_id, _ in ents:
         w = registry.get(worker_name(gw_id))
-        if w is not None and w.state is not WorkerState.ABORTED:
+        if w is not None and w.state not in (WorkerState.ABORTED, WorkerState.ZOMBIE):
             w.mark_stopped()
-        registry.unregister(worker_name(gw_id))
+        # A zombie keeps its name forever: it is still executing, so the name must
+        # never be reused while it lives.
+        if w is None or w.state is not WorkerState.ZOMBIE:
+            registry.unregister(worker_name(gw_id))
