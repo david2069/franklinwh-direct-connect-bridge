@@ -50,6 +50,7 @@ from . import bms_record
 from . import providers
 from . import energy_flow as _eflow
 from . import state
+from . import scheduler_worker
 from . import workers as _workers
 from .config import get_settings, gateway_list, metrics_active, save_override
 from .ha_supervisor import apply_supervisor_mqtt, discover_mqtt
@@ -992,6 +993,11 @@ def create_app() -> FastAPI:
                 except asyncio.TimeoutError:
                     pass
 
+        # ── the scheduler, now a component rather than a passenger (phase 1) ──
+        _sched_stop = asyncio.Event()
+        _sched_task = asyncio.create_task(
+            scheduler_worker.run(get_settings(), _sched_stop, client=client))
+
         _sup_task = asyncio.create_task(_supervisor_loop())
         _sup_worker._task = _sup_task
         log.info("worker supervision active (%d workers registered)",
@@ -999,6 +1005,7 @@ def create_app() -> FastAPI:
         try:
             yield
         finally:
+            _sched_stop.set()
             _sup_stop.set()
             _sup_task.cancel()
             # Release any dispatch WE are holding before the bridge stops — a running
