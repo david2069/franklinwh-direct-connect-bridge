@@ -1,6 +1,6 @@
 # In-flight work — handover
 
-**Updated:** 2026-10-09 · **Session:** `01WCWytg6NQWQ5fPnCZiSAf5`
+**Updated:** 2026-10-09 (phase 0 started) · **Session:** `01WCWytg6NQWQ5fPnCZiSAf5`
 
 Written so this work survives a crashed session. If you are picking this up cold, read
 §1 and §2, then §6 for the gotchas that cost time to learn. The design documents are the
@@ -51,17 +51,20 @@ coupling the design removes.
 
 ## 3 · Branches and PRs
 
-Stacked; merge bottom-up. If the stack is already merged, ignore this section.
+**Merged to `main` 2026-10-09** — the stack is gone, nothing is waiting:
 
-| PR | Branch | Contains |
-| --- | --- | --- |
-| #10 | `rename/direct-connect-bridge` | package rename `franklinwh_local_bridge` → `franklinwh_direct_connect_bridge` |
-| #11 | `fix/mqtt-orphan-prevention` | never publish discovery under the `agate` fallback node; single-source `__version__` |
-| #12 | `feat/mqtt-orphan-purge` | dry-run orphan scan + guarded purge |
-| — | `feat/resilience-pattern` | `resilience.py` (L1, 26 tests) **+ all four design docs** |
+| PR | What landed |
+| --- | --- |
+| #10 | package rename `franklinwh_local_bridge` → `franklinwh_direct_connect_bridge` |
+| #14 | never publish discovery under the `agate` fallback node; single-source `__version__` (originally #11, auto-closed when its base branch was deleted — re-opened against `main`) |
+| #12 | dry-run orphan scan + guarded purge |
+| #15 | the four design documents + `resilience.py` |
 
-`feat/resilience-pattern` carries the documents. Get them onto `main` early even if the
-code waits — they are the expensive part.
+In flight: `feat/phase0-worker-supervision` — see §2.
+
+> Lesson for the next stack: merging a PR with `--delete-branch` **closes** any PR based on
+> that branch rather than retargeting it, and a closed PR cannot be reopened once its base
+> is gone. Retarget dependent PRs to `main` *before* merging their base.
 
 ## 4 · Known-failing requirements
 
