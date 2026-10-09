@@ -171,6 +171,26 @@ the device wherever the override left it.
 **BR-51** Rules are **exportable and importable** so they can be shared between installs,
 and a shared rule carries its **definition only** — never its run history or in-flight state.
 
+**BR-52** A rule preview states **what it cannot prove**. "Conditions hold now" is not
+"this will run": a continuous-hold requirement cannot be confirmed from a single instant,
+and the window may not be open. A green verdict that will be trusted must name its own
+limits.
+
+**BR-53** Condition results are reported **with the structure that produced them** — a
+verdict per group, the match mode, and the overall result — not a flat list. Under an ANY
+match a failing row is not a failure, so flat per-row pass/fail misleads on exactly the
+nested rulesets that need explaining. A value that cannot be read is reported as its own
+third state, distinct from false.
+
+**BR-54** A preview can be scoped to **one rule or all of them**, because "why is nothing
+happening?" is usually answered by a conflict or a priority loss elsewhere, not by the rule
+being inspected.
+
+**BR-55** Continuous-hold state either **survives a restart**, or a restart **records that
+it was discarded**. A hold silently reset by a restart can never complete on a system that
+restarts more often than the hold is long. Starting a hold and *abandoning* one are both
+events; the abandonment is the informative one.
+
 ## 5 · Entity and integration lifecycle
 
 **BR-22** *Offline* and *removed* are different states. A device that is unreachable goes
