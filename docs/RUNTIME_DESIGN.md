@@ -1,6 +1,6 @@
 # Runtime design — components, supervision and work
 
-Status: **FROZEN v1.5, 2026-10-09.** (v1.5 adds §6.6, the orchestration model adopted from the Modbus Bridge, and widens phase 2 to carry it. v1.4 records §6.5 — why not APScheduler, and the misfire/coalesce vocabulary phase 2 adopts. v1.3 moves the Process card from phase 0b to phase 6,
+Status: **FROZEN v1.6, 2026-10-09.** (v1.6 adds §6.7 — rule authoring, history and sharing, measured against the Modbus Bridge's screen; most already exists, four things do not. v1.5 adds §6.6, the orchestration model adopted from the Modbus Bridge, and widens phase 2 to carry it. v1.4 records §6.5 — why not APScheduler, and the misfire/coalesce vocabulary phase 2 adopts. v1.3 moves the Process card from phase 0b to phase 6,
 where it becomes part of a whole Monitoring section rather than a card built twice. v1.2
 redefined `zombie`; v1.1 added `aborted`.) (v1.1 added the `aborted` state and the transition
 rules. v1.2 redefines `zombie` as *uncontrollable* rather than *superseded*, and adds the
@@ -580,6 +580,64 @@ Phase 2 separates them.
 The Modbus Bridge sets `DEFAULT_TICK_S = 15  # window resolution is per-minute; 15s keeps
 latency low` — the same cadence, from the same reasoning, reached separately. That is the
 strongest evidence available that the minute-resolution argument in decision 2 is right.
+
+## 6.7 · Rule authoring, history and sharing — what we have, what is missing
+
+Measured against the Modbus Bridge's Schedule & Automations screen, which is the reference.
+Most of this already exists here; recording it stops us rebuilding what we have.
+
+### Already present
+
+| Capability | Where |
+| --- | --- |
+| Entry **and** exit conditions, nested groups, `ALL`/`ANY` | `scheduler.evaluate` |
+| **Dwell** — "conditions must hold continuously for N before firing" | present |
+| **Lookup** operands — compare a sensor to another sensor, not only a literal | present |
+| **Test verification** — evaluate the conditions now and show the result before saving | `POST /api/schedules/{sid}/test`, `/evaluate` |
+| Templates / presets | `GET /api/schedules/presets` |
+| **Export / import** for sharing rules between installs | `/api/schedules/export`, `/import` |
+| Activity history | `/api/schedules/log` |
+| Timeline | `/api/schedules/timeline` |
+| Priority, conflict policy fields | `priority`, `conflict` |
+| Entry/exit HA actions with `%sensor.id%` templating | `_fire_ha_phase`, phase 2 adds the renderer |
+
+### Genuinely missing
+
+**1 · Per-rule outage policy.** Their editor has *"If missed during an outage: resume if
+window still open, else log missed"* as a field on the rule. We have no `missed` concept at
+all — grep returns zero. This is the single most important gap, because it is the thing the
+owner originally complained about, and making it **per rule** is right: "catch up if you
+can" is correct for a discharge window and wrong for a one-shot notification.
+
+**2 · Exit release semantics.** Theirs has *"On exit / release: restore prior mode"*. We
+release but do not restore — grep for `restore_prior` returns zero. A rule that overrode
+Self-Consumption should hand it back, not leave the gateway wherever the override left it.
+
+**3 · `coalesce`.** Zero references. After an outage spanning several windows, nothing stops
+a backlog being replayed.
+
+**4 · Planned versus actually-ran.** Their timeline draws *Planned*, *Actually ran* and
+*Automation fire* as separate layers over *Actual mode* and SoC. Ours can only draw what was
+planned, because nothing records what was *expected* — which is the same gap the occurrences
+table closes. The visualisation is a consequence of the data model, not a separate feature.
+
+**5 · Log separation.** Their activity log filters by `fired · executed · ha action · gated ·
+waiting · missed · exit condition met`, which makes one stream usable. Ours has the same
+mixing without the filters, and 2.2% signal.
+
+### Template content is a deliverable, not a stub
+
+Theirs ships *Peak-demand shaving*, *Battery export bonus*, **Ausgrid — Evening discharge
+(4–9pm)** and **Ausgrid — Solar sponge (10am–3pm)** — named for a real network, with the
+window and the caveat ("check your retailer") written in. A template that encodes local
+tariff knowledge is worth more than the editor it fills, because it is the part a user
+cannot derive. Our presets should carry the same specificity rather than generic examples.
+
+### Sharing
+
+Export/import already exists both ways, and `FEAT-SCHED-IMPORT-INTEROP` already maps the
+Modbus bridge's bundle to our schema. Phase 2 must not break that: an occurrence is runtime
+state and **must not** be exported — a shared rule carries its definition, never its history.
 
 ## 7 · Decisions — settled 2026-10-09
 
