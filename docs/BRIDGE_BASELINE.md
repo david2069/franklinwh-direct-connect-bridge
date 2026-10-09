@@ -128,6 +128,38 @@ policy, and a dispatch stopped deliberately is never resurrected by that reconci
 **BR-21** Every force carries a watchdog owned by the bridge, independent of any
 device-side revert timer, because the device-side timer may be cosmetic.
 
+## 4b · Orchestration
+
+**BR-44** Exclusivity is claimed on the **resource a rule drives**, never on the device as a
+whole. A rule that only notifies, or that commands equipment the bridge does not arbitrate,
+contends for nothing — otherwise a constantly-evaluating notify-only rule holds the device
+and starves every other rule on it while doing no work itself.
+
+**BR-45** A rule targets **one device or all of them**, and ownership is keyed per device so
+it stays stable when the member set changes. Adding a device to a group must not silently
+transfer or void an existing claim.
+
+**BR-46** Conflicts resolve by **priority with a deterministic tie-break**, so identical
+inputs always choose the same winner. A rule added later never displaces an established one
+at equal priority. Losers are recorded as skipped **with the reason and the winner named** —
+"why didn't mine run" must be answerable without reading logs.
+
+**BR-47** Entry and exit are **symmetric**: a rule may act on entry and on exit, and the
+exit action runs even when the period is cut short — by a stop, a lost conflict, an
+exception or a shutdown. An exit action that only runs on the happy path is worse than none,
+because it will be trusted.
+
+**BR-48** Notification text may be **templated from the same vocabulary as conditions** —
+whatever a rule can be gated on can be quoted in its message, with no second alias table to
+drift. A value that cannot be resolved renders as a placeholder rather than failing the
+send: a message with a gap beats no message, because notifications are what you reach for
+when something has already gone wrong.
+
+> Logging obligation that runs through all of these: **event** (it ran, was skipped, lost,
+> was stopped), **error** (it tried and failed) and **exception** (the engine itself
+> misbehaved) are three different things with three different audiences, and must not share
+> one undifferentiated stream.
+
 ## 5 · Entity and integration lifecycle
 
 **BR-22** *Offline* and *removed* are different states. A device that is unreachable goes
@@ -244,6 +276,7 @@ overall, and both have a working implementation of the other's gap to copy.
 | 2 · Outcome semantics | BR-6–10 implemented in `resilience.py`; wiring in progress | — |
 | 3 · Deadlines & retries | BR-11–13 implemented; BR-14 partial (`DEF-POLLER-STALL`) | — |
 | 4 · Scheduler & windows | BR-15/17/20/21 pass; **BR-16, BR-18, BR-19 fail** | BR-18 reported failing by the owner — a stopped task cannot resume |
+| 4b · Orchestration | **BR-44–48 fail.** Priority and conflict fields exist but there is no resource exclusivity, no deterministic winner, no templated notifications. Phase 2 adopts the Modbus Bridge's model. | **Passes BR-44–46 and BR-48** — per-resource lanes, one-or-all targeting with stable ownership, `winner()` by priority then age, `%sensor.id%` templating sharing the condition vocabulary. The reference implementation. |
 | 5 · Entity lifecycle | BR-22/25/26 pass; **BR-23 fails** — deleting a gateway leaves its retained discovery configs behind. BR-24/27 **fail**. | BR-23 **passes** — `DELETE /api/gateways/{id}` cascades device_points → device_models → gateway_state → metrics → metrics_archive → row, leaving no orphans. BR-27 **passes**: mock data is never recorded. |
 | 6 · Observability | BR-29/31 pass; BR-28/30 arriving with the outcome wiring | BR-29 passes (per-gateway lifecycle events, control_log); BR-26 partial — per-gateway row counts need SQL (§7.2) |
 | 7 · Write gating | BR-32/33 pass; BR-34 **fails** where BR-3 does | — |

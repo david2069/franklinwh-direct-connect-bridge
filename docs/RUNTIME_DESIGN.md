@@ -1,6 +1,6 @@
 # Runtime design — components, supervision and work
 
-Status: **FROZEN v1.4, 2026-10-09.** (v1.4 records §6.5 — why not APScheduler, and the misfire/coalesce vocabulary phase 2 adopts. v1.3 moves the Process card from phase 0b to phase 6,
+Status: **FROZEN v1.5, 2026-10-09.** (v1.5 adds §6.6, the orchestration model adopted from the Modbus Bridge, and widens phase 2 to carry it. v1.4 records §6.5 — why not APScheduler, and the misfire/coalesce vocabulary phase 2 adopts. v1.3 moves the Process card from phase 0b to phase 6,
 where it becomes part of a whole Monitoring section rather than a card built twice. v1.2
 redefined `zombie`; v1.1 added `aborted`.) (v1.1 added the `aborted` state and the transition
 rules. v1.2 redefines `zombie` as *uncontrollable* rather than *superseded*, and adds the
@@ -499,6 +499,88 @@ one undifferentiated stream in which **execution history is 2.2% of rows** (9 of
 out. Phase 2 separates them: occurrences carry execution, `schedule_log` reverts to CRUD and
 operator actions.
 
+## 6.6 · Orchestration — what transfers from the Modbus Bridge
+
+Phase 2 adopts the Modbus Bridge's orchestration model rather than inventing one. It is
+further along, and more importantly it has already been wrong once in a way worth not
+repeating.
+
+### Exclusivity is per RESOURCE, not per gateway
+
+The subtle part, and the reason to copy rather than re-derive. From its own comment:
+
+> *"Only a battery command is exclusive — one gateway can run one setpoint at a time — so
+> only those entries contend for the target. HA-actions-only entries command other devices
+> entirely … Before this split, an 'always evaluate' HA-only entry held the target
+> permanently and **starved every schedule on that gateway while dispatching nothing
+> itself**."*
+
+So a rule claims the **resource it actually drives**, not the gateway. The battery setpoint
+is exclusive — one at a time, genuinely contended. A rule that only sends a notification or
+pokes a solar inverter contends for nothing and must never hold the gateway. Lock the
+gateway instead and a notify-only rule evaluating constantly starves everything on it while
+doing no work at all.
+
+Lanes for us: **battery setpoint** (exclusive) · **operating mode** (exclusive) ·
+**notify / HA actions** (not exclusive) · **off-grid** (exclusive).
+
+### Targeting: one gateway, or all of them
+
+`(target_type, target_id) -> [(gateway_id, handler)]`. A `gateway` target yields one pair; a
+`site`/`service` target fans out to every member gateway. Ownership is keyed on
+`gateway_id`, so it stays stable when the member set changes — a gateway joining a site does
+not silently transfer someone else's claim.
+
+### Priority, and a deterministic tie-break
+
+`winner()`: priority descending, `created_at` ascending as tie-break, so **a rule added
+later never displaces an established one at equal priority**. Deterministic matters more
+than clever: the same inputs must always pick the same winner, or a conflict becomes a
+coin-toss nobody can reproduce.
+
+Losers are *recorded* as skipped-with-reason, not silently dropped — "why didn't mine run"
+must be answerable.
+
+### Entry and exit, for both conditions and actions
+
+We already have entry/exit *conditions* and `_fire_ha_phase(entry, "fire" | "exit")` for HA
+actions. Phase 2 makes the pair symmetric and explicit: a rule may act **on entry** and
+**on exit**, and the exit action runs even when the window is cut short by a stop, a losing
+conflict, or an exception. An exit action that only runs on the happy path is worse than
+none, because it is trusted.
+
+### Notifications: templated from the same vocabulary as conditions
+
+Its `_render` substitutes `%sensor.id%` from the live snapshot, and the principle is the
+one to copy:
+
+> *"the SAME sensor ids conditions use … One vocabulary: whatever you can gate a rule on,
+> you can quote in its message, and there is no alias table to drift out of step with the
+> catalog."*
+
+And the failure rule, which is right: an unknown sensor renders `?` rather than failing the
+send — *"a notification is what you reach for when something has gone wrong; a message with
+a gap still beats no message."*
+
+Static text stays valid; templating is opt-in by writing a placeholder.
+
+### Logging: event, error and exception are three different things
+
+* **event** — it ran, it was skipped, it lost a conflict, it was stopped. Expected, and the
+  history people read.
+* **error** — it tried and failed. Actionable.
+* **exception** — the engine itself misbehaved. A bug, not a user problem, and it must never
+  be filed where a user is expected to interpret it.
+
+Today all three land in one `schedule_log` stream where execution history is 2.2% of rows.
+Phase 2 separates them.
+
+### One independent confirmation
+
+The Modbus Bridge sets `DEFAULT_TICK_S = 15  # window resolution is per-minute; 15s keeps
+latency low` — the same cadence, from the same reasoning, reached separately. That is the
+strongest evidence available that the minute-resolution argument in decision 2 is right.
+
 ## 7 · Decisions — settled 2026-10-09
 
 | # | Decision | Consequence |
@@ -525,7 +607,7 @@ a new revision of this document and a note saying what moved and why; discoverin
 | **0a** ✅ | Worker registry, heartbeat, supervisor, `/api/health/workers`, `except` around `run_gateway` | BR-35, 36, 37, 38 | nothing dies unnoticed |
 | **0b** ✅ | Full lifecycle states; deregister only when work has ended; `start` refuses a name still `stopping` (the zombie fix); confirmed aborts; restart actions with `free`/`handoff`/`guarded`, `guarded` going through `reconcile_interrupted`; banded ordering and family grouping in the API | BR-39, 40 | the supervisor **recovers**, not just reports; two pollers can no longer run for one gateway |
 | **1** | Scheduler becomes its own worker on its own cadence, reading per-gateway snapshots. Copy `franklinwh-modbus-bridge/gateway/scheduler.py` | BR-35 | scheduling survives a gateway failure; resolution untied from `poll_interval` |
-| **2** | `occurrences` table (the "execution queue"); the scheduler claims and updates rows, using `misfire_grace`/`coalesce`/`max_instances` semantics. `schedule_log` reverts to CRUD + operator actions. | BR-15–19 | `missed`, retry-within-window and resume become expressible; execution history stops being 2% of a log the cap will evict |
+| **2** | `occurrences` table (the "execution queue") with `misfire_grace`/`coalesce`/`max_instances` semantics; **orchestration per §6.6** — per-resource exclusivity, one-or-all targeting, priority with deterministic tie-break, symmetric entry/exit actions, templated notifications; `schedule_log` split into event / error / exception. | BR-15–19, 44–48 | `missed`, retry and resume become expressible; two rules can no longer fight over a battery; "why didn't mine run" is answerable |
 | **3** | Wire `resilience.call` into scheduler actions and bridge writes; `POST /api/dispatch` takes a gateway | BR-3, 6–13, 34 | outcomes structured; `unknown` surfaced; dispatch targets the right battery |
 | **4** | Capability + impact health: dependency graph, freshness, schedule pre-flight, `/api/health` rollup | BR-41, 42, 43 | "will my schedule fire tonight" is answerable |
 | **5** | `selfcheck` worker + findings endpoint | BR-14, 26, 28 | standing conditions detected |
