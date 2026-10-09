@@ -1888,9 +1888,63 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
         to_fire.append(w)
 
     for entry in to_fire:
+        # Register the run BEFORE attempting it. This is what makes a failure that
+        # never produces a log line still visible afterwards: the row exists whether
+        # or not anything happens next, so "nothing in the history" stops meaning
+        # "we cannot tell".
+        occ = _claim_run(entry, store=store, gateway_id=gateway_id, now=now)
+        if occ is not None:
+            if occ.get("status") in store.OCC_TERMINAL:
+                continue                       # already settled this occurrence
+            now_ts = now.timestamp()
+            if occ.get("status") == "failed" and not retry_due(occ, now_ts):
+                continue                       # backing off; the window is still open
+            entry["_occ_id"] = occ["id"]
+            entry["_occ_attempts"] = int(occ.get("attempts") or 0) + 1
+            store.occurrence_attempt(occ["id"], now=now_ts)
         fired.append(_fire_entry(entry, settings=settings, client=client, store=store,
                                  snapshot=snapshot, host=host, gateway_id=gateway_id, now=now))
     return fired
+
+
+def _claim_run(entry: dict, *, store, gateway_id: str | None, now: dt.datetime):
+    """Record this run as expected, and return it. Never raises: a scheduler that
+    cannot write its queue must still dispatch, or a bookkeeping fault becomes an
+    outage."""
+    try:
+        wend = entry.get("_wend")
+        if wend is None:
+            wend = _window_end_ts(entry, now)
+        return store.claim_occurrence(
+            schedule_id=entry["id"], name=entry.get("name") or "",
+            gateway_id=gateway_id or "",
+            occurrence_key=entry.get("_wkey") or now.date().isoformat(),
+            due_ts=now.timestamp(), window_end_ts=wend, now=now.timestamp())
+    except Exception as e:  # noqa: BLE001
+        log.warning("could not record the run for %s: %s", entry.get("id"), e)
+        return None
+
+
+#: Retry backoff for a failed run, within its own window. The scheduler ticks every
+#: 15s, so retrying on every tick would hammer an unreachable gateway 360 times in a
+#: 90-minute window and fill the history with noise. Grows from half a minute to ten.
+RETRY_BASE_S = 30.0
+RETRY_CAP_S = 600.0
+
+
+def retry_delay_s(attempts: int) -> float:
+    """How long to wait after `attempts` failures before trying again."""
+    if attempts <= 0:
+        return 0.0
+    return min(RETRY_CAP_S, RETRY_BASE_S * (2 ** (attempts - 1)))
+
+
+def retry_due(occ: dict, now_ts: float) -> bool:
+    """Is a previously-failed run ready for another attempt?"""
+    last = occ.get("last_attempt_ts")
+    if not last:
+        return True
+    return (now_ts - float(last)) >= retry_delay_s(int(occ.get("attempts") or 0))
 
 
 def _fire_entry(entry: dict, *, settings, client, store, snapshot: dict,
@@ -1909,8 +1963,28 @@ def _fire_entry(entry: dict, *, settings, client, store, snapshot: dict,
     results += _fire_ha_phase(entry, "fire", settings=settings, client=client,
                               store=store, snapshot=snapshot, host=host)
     summary = "; ".join(results) or "nothing to do"
-    store.mark_schedule_fired(entry["id"], entry.get("_wkey") or now.date().isoformat(), summary)
     ok_all = all("failed" not in r and "NOT confirmed" not in r for r in results)
-    store.log_schedule_event(entry["id"], entry["name"],
-                             "fired" if ok_all else "error", summary)
-    return {"id": entry["id"], "name": entry["name"], "result": summary}
+
+    # Mark the occurrence fired ONLY on success. This is the fix for the defect that
+    # started this work: the old code called mark_schedule_fired unconditionally, and
+    # due() then refused to re-enter ("already fired this occurrence") — so a two-second
+    # Wi-Fi blip at the moment a window opened burned the whole occurrence silently.
+    # Leaving it unmarked is the entire retry mechanism: the next tick re-evaluates it,
+    # bounded by the window, and sweep_missed closes it out if the window shuts first.
+    occ_id = entry.get("_occ_id")
+    if ok_all:
+        store.mark_schedule_fired(
+            entry["id"], entry.get("_wkey") or now.date().isoformat(), summary)
+        if occ_id is not None:
+            store.finish_occurrence(occ_id, status="ok", outcome=summary)
+        store.log_schedule_event(entry["id"], entry["name"], "fired", summary)
+    else:
+        if occ_id is not None:
+            store.finish_occurrence(occ_id, status="failed", reason=summary)
+        attempts = int(entry.get("_occ_attempts") or 1)
+        store.log_schedule_event(
+            entry["id"], entry["name"], "error",
+            f"{summary} — attempt {attempts}; retrying in "
+            f"{retry_delay_s(attempts):.0f}s while the window is open")
+    return {"id": entry["id"], "name": entry["name"], "result": summary,
+            "ok": ok_all}

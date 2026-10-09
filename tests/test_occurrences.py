@@ -192,3 +192,39 @@ def test_pruning_is_by_age_and_spares_live_work(store):
     _claim(store, key="live", due=now - 60, end=now + 600, now=now)
     assert store.prune_occurrences(keep_days=90, now=now) == 1
     assert [o["occurrence_key"] for o in store.due_occurrences(now=now)] == ["live"]
+
+
+# ── retry backoff (scheduler-side) ────────────────────────────────────────────
+from franklinwh_direct_connect_bridge import scheduler as SCH  # noqa: E402
+
+
+def test_backoff_grows_and_is_capped():
+    assert SCH.retry_delay_s(0) == 0.0
+    assert SCH.retry_delay_s(1) == SCH.RETRY_BASE_S
+    assert SCH.retry_delay_s(2) == SCH.RETRY_BASE_S * 2
+    assert SCH.retry_delay_s(99) == SCH.RETRY_CAP_S
+
+
+def test_a_window_of_ticks_does_not_become_a_window_of_attempts():
+    # The scheduler ticks every 15s. Without backoff a rule failing against an
+    # unreachable gateway would attempt ~360 times in a 90-minute window and bury the
+    # history in noise.
+    window_s, tick_s = 90 * 60, 15
+    t, attempts, elapsed = 0.0, 0, 0.0
+    while elapsed < window_s:
+        if SCH.retry_due({"attempts": attempts, "last_attempt_ts": t}, elapsed):
+            attempts += 1
+            t = elapsed
+        elapsed += tick_s
+    assert attempts < 15, f"{attempts} attempts in 90 minutes is still too hot"
+    assert attempts >= 5, "but it must keep trying while the window is open"
+
+
+def test_a_never_attempted_run_is_due_immediately():
+    assert SCH.retry_due({"attempts": 0, "last_attempt_ts": None}, 1000.0)
+
+
+def test_backoff_blocks_the_very_next_tick_after_a_failure():
+    occ = {"attempts": 1, "last_attempt_ts": 1000.0}
+    assert not SCH.retry_due(occ, 1015.0), "15s later — still backing off"
+    assert SCH.retry_due(occ, 1000.0 + SCH.RETRY_BASE_S)
