@@ -13,9 +13,10 @@ function networkTab() {
     pinging: false,
     pop: null,
 
-    async init() {
-      await this.load();
-      this.$watch('$store.app.selectedGateway', () => this.load());
+    init() {
+      // Loads on first SHOW, not on page load — see lazyTab().
+      const t = lazyTab(this, 'network', () => this.load());
+      this.$watch('$store.app.selectedGateway', () => t.reload());
     },
 
     async load() {
@@ -24,7 +25,8 @@ function networkTab() {
         this.net = await (await fetch('api/network' + this.$store.app.gwQuery('?'))).json();
         try { this.pop = await (await fetch('api/cloud/pop')).json(); } catch (e) { /* optional */ }
       } catch (e) {
-        this.$store.app.toast('Network scan failed: ' + e.message, 'error');
+        this.$store.app.toast('Network scan failed: '
+          + fetchErrorText(e, 'api/network'), 'error');
       } finally { this.loading = false; }
     },
 

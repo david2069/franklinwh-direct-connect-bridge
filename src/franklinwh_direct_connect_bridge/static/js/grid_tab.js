@@ -9,9 +9,10 @@ function gridTab() {
     grid: null,
     loading: false,
 
-    async init() {
-      await this.load();
-      this.$watch('$store.app.selectedGateway', () => this.load());
+    init() {
+      // Loads on first SHOW, not on page load — see lazyTab().
+      const t = lazyTab(this, 'grid', () => this.load());
+      this.$watch('$store.app.selectedGateway', () => t.reload());
     },
     async load() {
       this.loading = true;

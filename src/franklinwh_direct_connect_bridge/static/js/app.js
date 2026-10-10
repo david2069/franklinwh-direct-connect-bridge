@@ -13,6 +13,43 @@ const fmt = {
 };
 
 // SoC ring stroke colour by level.
+/**
+ * Defer a tab's first fetch until the tab is actually shown.
+ *
+ * Every tab is mounted with `x-show`, not `x-if`, so its component is alive from
+ * page load whether or not you are looking at it. Six tabs fetched in `init()`,
+ * which meant opening ANY page fired an aGate session for the Network scan, the
+ * MQTT entity list, the grid read and more — and over a slow link those failed and
+ * toasted errors for tabs the user was not on.
+ *
+ * Returns `{ reload }`: a no-op until the first real load has happened, so a
+ * gateway-change watcher cannot resurrect the eager behaviour it was meant to fix.
+ */
+function lazyTab(cmp, key, loader) {
+  let loaded = false;
+  const run = () => { if (loaded) return; loaded = true; return loader(); };
+  if (cmp.$store.app.activeTab === key) run();
+  cmp.$watch('$store.app.activeTab', (t) => { if (t === key) run(); });
+  return {
+    get loaded() { return loaded; },
+    reload: () => (loaded ? loader() : undefined),
+  };
+}
+
+/**
+ * A fetch failure in words. Browsers throw a bare "Load failed" (Safari) or
+ * "Failed to fetch" (Chrome) with no URL, status or cause — which tells the user
+ * nothing and tells a bug report less.
+ */
+function fetchErrorText(e, url) {
+  const m = (e && e.message) || String(e);
+  if (/load failed|failed to fetch|networkerror/i.test(m)) {
+    return `could not reach ${url} — the request never completed `
+         + `(bridge unreachable, request blocked, or the link timed out)`;
+  }
+  return `${url}: ${m}`;
+}
+
 function socColour(soc) {
   if (soc == null) return 'var(--text-muted)';
   if (soc >= 80) return 'var(--ok)';
