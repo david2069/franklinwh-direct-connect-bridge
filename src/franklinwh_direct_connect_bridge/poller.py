@@ -26,6 +26,18 @@ from .state import GatewayState
 log = logging.getLogger("franklinwh_direct_connect_bridge.poller")
 
 
+def _fmt_outage(seconds: float | None) -> str:
+    """An outage length in words. '4920s' is a number; '1h 22m' is an answer."""
+    if seconds is None:
+        return "an outage of unknown length"
+    s = int(seconds)
+    if s < 60:
+        return f"{s}s"
+    if s < 3600:
+        return f"{s // 60}m {s % 60}s"
+    return f"{s // 3600}h {(s % 3600) // 60}m"
+
+
 async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event) -> None:
     """Resolve THIS gateway from its firmware manifest, (optionally) connect MQTT, then
     read state every ``poll_interval`` until ``stop`` is set — publishing to MQTT when
@@ -177,6 +189,55 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                 # dashboard reads the poller's copy instead of a fresh device session on every
                 # browser poll (fixes flicker + slow load). Keep last-GOOD values but reflect
                 # the CURRENT connectivity: on a failed poll, retain values and mark stale.
+                # Record the probe BEFORE acting on it (RUNTIME_DESIGN §6.9). A
+                # timeout is kept distinct from a refusal: "connection refused" is the
+                # device answering, a timeout is nobody answering, and flattening both
+                # to False is what let the UI report Offline beside live values.
+                err = str(summ.get("error") or "")
+                if summ.get("ok"):
+                    outcome = "ok"
+                elif "timed out" in err.lower() or "timeout" in err.lower():
+                    outcome = "unknown"
+                else:
+                    outcome = "failed"
+                if store is not None:
+                    try:
+                        # All THREE legs the cycle already measured. Recording one and
+                        # calling the card "Connection history" could not say which
+                        # connection it meant — and ping and :502 were being measured
+                        # and thrown away every poll.
+                        def _record_legs():
+                            interval = float(settings.poll_interval or 30)
+                            main = store.record_link_probe(
+                                gw.id, outcome, leg="local_9000",
+                                latency_ms=summ.get("latency_ms"), error=err,
+                                expected_interval_s=interval)
+                            # ping is informational: None means "not measured", which is
+                            # not the same as a failure and must not be recorded as one.
+                            png = summ.get("ping")
+                            if png is not None:
+                                store.record_link_probe(
+                                    gw.id, "ok" if png else "failed", leg="icmp",
+                                    error="" if png else "no ICMP reply",
+                                    expected_interval_s=interval)
+                            store.record_link_probe(
+                                gw.id, "ok" if summ.get("modbus_502") else "failed",
+                                leg="modbus_502",
+                                error="" if summ.get("modbus_502") else "port 502 not open",
+                                expected_interval_s=interval)
+                            return main
+                        link = await asyncio.to_thread(_record_legs)
+                        gw.link_state = link["state"]
+                        # Log on the TRANSITION only. Logging the state every cycle is
+                        # the alert-spam failure this design exists to prevent.
+                        if link["transition"] == "down":
+                            log.warning("[%s] link DOWN after %d consecutive failed probes: %s",
+                                        gw.id, link["consecutive_failures"], err or "unreachable")
+                        elif link["transition"] == "up":
+                            log.info("[%s] link RECOVERED after %s",
+                                     gw.id, _fmt_outage(link.get("outage_s")))
+                    except Exception as e:  # noqa: BLE001 — bookkeeping must not stop polling
+                        log.debug("[%s] link history not recorded: %s", gw.id, e)
                 if summ.get("ok"):
                     if fail_streak:
                         log.info("[%s] poll recovered after %d failed cycle(s)", gw.id, fail_streak)

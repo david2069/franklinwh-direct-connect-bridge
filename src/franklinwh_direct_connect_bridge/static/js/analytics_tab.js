@@ -29,11 +29,11 @@ function analyticsTab() {
     loading: false,
     _chart: null,
 
-    async init() {
+    init() {
       const today = new Date();
       this.customEnd = today.toISOString().slice(0, 10);
       this.customStart = new Date(today.getTime() - 7 * 86400000).toISOString().slice(0, 10);
-      await this.load();
+      lazyTab(this, 'analytics', () => this.load());
     },
 
     get rangeHours() {

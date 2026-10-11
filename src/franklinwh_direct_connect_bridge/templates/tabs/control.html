@@ -503,7 +503,7 @@
     </div>
     <div class="p-5">
       <div class="flex items-center justify-between gap-4 flex-wrap"
-           x-show="$store.app.summary.writes_enabled">
+           x-show="$store.app.summary.writes_enabled && $store.app.advancedTools">
         <div>
           <div class="text-sm" style="color:var(--text-primary)">Reboot gateway</div>
           <div class="text-xs text-slate-500">
@@ -524,6 +524,11 @@
       </div>
       <div class="text-xs text-slate-500" x-show="!$store.app.summary.writes_enabled">
         Reboot is hidden while writes are disabled.
+      </div>
+      <div class="text-xs text-slate-500"
+           x-show="$store.app.summary.writes_enabled && !$store.app.advancedTools" x-cloak>
+        Reboot is an advanced tool — enable <span class="font-medium">Advanced tools</span>
+        in Settings &rarr; Display to show it.
       </div>
     </div>
   </div>

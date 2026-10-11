@@ -13,19 +13,91 @@ function networkTab() {
     pinging: false,
     pop: null,
 
-    async init() {
-      await this.load();
-      this.$watch('$store.app.selectedGateway', () => this.load());
+    init() {
+      // Loads on first SHOW, not on page load — see lazyTab(). load() pulls the link
+      // history in too, so the card arrives with the probes rather than separately.
+      const t = lazyTab(this, 'network', () => this.load());
+      this.$watch('$store.app.selectedGateway', () => t.reload());
+      // The history is a local DB read, not a device probe, so it can refresh on a
+      // timer — but only while the tab is on screen.
+      setInterval(() => { if (this.$store.app.activeTab === 'network') this.loadLink(); }, 15000);
     },
+
+    // When the probes last actually ran. A panel of numbers with nothing saying when
+    // they were read cannot be told apart from the same panel five minutes stale —
+    // which is why pressing the button looked like it did nothing.
+    ranAt: null,
+    ranMs: null,
+
+    error: '',
 
     async load() {
       this.loading = true;
+      this.error = '';
+      const t0 = Date.now();
       try {
-        this.net = await (await fetch('api/network' + this.$store.app.gwQuery('?'))).json();
-        try { this.pop = await (await fetch('api/cloud/pop')).json(); } catch (e) { /* optional */ }
+        // Generous, because this probe is genuinely slow — an aGate session plus
+        // ping, :502 and four reads. But BOUNDED: with no timeout the button sat on
+        // "Probing…" indefinitely, and the tab gave no way to tell slow from hung.
+        const r = await this.$store.app.fetchTimeout(
+          'api/network' + this.$store.app.gwQuery('?'), 45000);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        this.net = await r.json();
+        try {
+          const pr = await this.$store.app.fetchTimeout('api/cloud/pop', 10000);
+          this.pop = await pr.json();
+        } catch (e) { /* optional */ }
+        this.ranAt = Date.now();
+        this.ranMs = this.ranAt - t0;
       } catch (e) {
-        this.$store.app.toast('Network scan failed: ' + e.message, 'error');
+        // fetchErrorText arrived on main with #19; use it rather than keeping a
+        // second copy of the same browser-error translation.
+        this.error = fetchErrorText(e, 'api/network');
+        this.$store.app.toast('Network probe failed: ' + this.error, 'error');
       } finally { this.loading = false; }
+      this.loadLink();                   // the probes just ran, pass or fail
+    },
+
+    // ── link history (RUNTIME_DESIGN §6.9) ────────────────────────────────
+    // The topology above draws the links; this says how each has BEHAVED. Only the
+    // legs the poll cycle actually measures are here — the rest are named as gaps by
+    // the endpoint rather than quietly omitted.
+    link: null,
+    linkError: '',
+    openLeg: null,
+
+    async loadLink() {
+      try {
+        const url = 'api/health/link' + this.$store.app.gwQuery();
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(r.statusText);
+        this.link = await r.json();
+        this.linkError = '';
+      } catch (e) {
+        const m = (e && e.message) || String(e);
+        this.linkError = /load failed|failed to fetch|networkerror/i.test(m)
+          ? 'could not reach api/health/link — the request never completed'
+          : 'api/health/link: ' + m;
+      }
+    },
+
+    /** A duration in words. '4920 s' is a number; '1h 22m' is an answer. */
+    dur(s) {
+      if (s == null) return '--';
+      s = Math.max(0, Math.round(s));
+      if (s < 60) return s + 's';
+      if (s < 3600) return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+      if (s < 86400) return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
+      return Math.floor(s / 86400) + 'd ' + Math.floor((s % 86400) / 3600) + 'h';
+    },
+    when(ts) { return ts ? new Date(ts * 1000).toLocaleString() : 'never'; },
+
+    ranText() {
+      if (!this.ranAt) return '';
+      const age = Math.round((Date.now() - this.ranAt) / 1000);
+      const when = age < 60 ? (age < 5 ? 'just now' : age + 's ago')
+                            : new Date(this.ranAt).toLocaleTimeString();
+      return `probed ${when} · took ${(this.ranMs / 1000).toFixed(1)}s`;
     },
 
     // aGate payloads nest under result / commSetPara — dig for a key wherever it lives.

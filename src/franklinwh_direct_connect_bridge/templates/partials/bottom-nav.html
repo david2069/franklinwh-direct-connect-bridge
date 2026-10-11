@@ -1,6 +1,6 @@
 <!-- ── Mobile bottom nav (phones/tablets < lg). The sidebar is hidden on mobile. ── -->
 <nav x-show="$store.app.narrow" x-cloak
-     class="fixed bottom-0 inset-x-0 z-50 backdrop-blur"
+     class="fixed bottom-0 inset-x-0 z-[70] backdrop-blur"
      style="background:var(--surface-0);border-top:1px solid var(--border);padding-bottom: env(safe-area-inset-bottom)">
   <!-- Dynamic row: as many tabs as fit the width (from $store.app.barTabs), rest under More.
        No cap/centre — the buttons fill the width, and MORE of them appear as the bar widens. -->
@@ -14,7 +14,7 @@
       </button>
     </template>
     <!-- Terminal: pinned launcher for the global console drawer (also ` / Ctrl-`) -->
-    <button @click="$store.app.toggleTerminal()"
+    <button x-show="$store.app.advancedTools" x-cloak @click="$store.app.toggleTerminal()"
             class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] transition"
             :class="$store.app.terminalOpen ? 'text-emerald-400' : 'text-slate-400'">
       <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -23,7 +23,7 @@
       </svg>
       <span class="text-[10px]">Terminal</span>
     </button>
-        <button x-show="$store.app.showMore" @click="$store.app.moreOpen = true"
+        <button x-show="$store.app.showMore" @click="$store.app.moreOpen = !$store.app.moreOpen"
             class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] transition"
             :class="$store.app.moreOpen ? 'text-emerald-400' : 'text-slate-400'">
       <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -36,9 +36,11 @@
 <!-- More sheet: every remaining tab -->
 <div x-show="$store.app.moreOpen && $store.app.narrow" x-cloak class="fixed inset-0 z-[60]"
      x-transition.opacity.duration.150ms @click="$store.app.moreOpen = false">
-  <div class="absolute inset-0 bg-black/50"></div>
-  <div class="absolute bottom-0 inset-x-0 rounded-t-2xl p-4"
-       style="background:var(--surface-0);border-top:1px solid var(--border);padding-bottom: calc(env(safe-area-inset-bottom) + 1rem)"
+  <!-- The sheet stops above the bar rather than covering it: the bar stays visible and
+       tappable, so a second press of More dismisses it without hunting for a target. -->
+  <div class="absolute inset-x-0 top-0 bg-black/50" style="bottom: calc(env(safe-area-inset-bottom) + 52px)"></div>
+  <div class="absolute inset-x-0 rounded-t-2xl p-4"
+       style="background:var(--surface-0);border-top:1px solid var(--border);bottom: calc(env(safe-area-inset-bottom) + 52px)"
        @click.stop x-transition:enter="transition ease-out duration-200"
        x-transition:enter-start="translate-y-full" x-transition:enter-end="translate-y-0">
     <div class="w-10 h-1 rounded-full mx-auto mb-4" style="background:var(--text-faint)"></div>
@@ -54,14 +56,26 @@
       </template>
       <!-- Guide (docs): the sidebar has it, but the sidebar is hidden on mobile — so
            surface it here too, else the docs are unreachable when the bottom nav is up. -->
-      <a href="guide/" target="_blank" rel="noopener" @click="$store.app.moreOpen = false"
+      <button @click="$store.app.moreOpen = false; $store.app.openGuide()"
          class="flex items-center justify-center gap-2 text-center px-2 py-3 rounded-lg text-sm min-h-[48px] transition border"
          style="color:var(--text-secondary);background:var(--surface-1);border-color:var(--border)">
         <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.5A2.5 2.5 0 0114.5 4H20v14h-6a2 2 0 00-2 2M12 6.5A2.5 2.5 0 009.5 4H4v14h6a2 2 0 012 2M12 6.5V20"/>
         </svg>
         <span>Guide</span>
-      </a>
+      </button>
+    </div>
+    <!-- Back is its own row, pinned to the RIGHT column so it sits directly under the
+         More button that opened the sheet — the thumb returns to where it started. -->
+    <div class="grid grid-cols-3 gap-2 mt-2">
+      <button @click="$store.app.moreOpen = false"
+              class="col-start-3 flex items-center justify-center gap-2 text-center px-2 py-3 rounded-lg text-sm min-h-[48px] transition border"
+              style="color:var(--text-secondary);background:var(--surface-1);border-color:var(--border)">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+        </svg>
+        <span>Back</span>
+      </button>
     </div>
   </div>
 </div>

@@ -15,11 +15,12 @@ function mqttTab() {
     filter: 'all', search: '', groupSaving: false,
     conflicts: null, scanning: false,
 
-    async init() {
-      await this.load();
+    init() {
+      // Loads on first SHOW, not on page load — see lazyTab().
+      const t = lazyTab(this, 'mqtt', () => this.load());
       // Re-fetch when the topbar gateway selection changes, so the entity list + values
       // follow the selected gateway (mocks included) instead of showing the first one.
-      this.$watch('$store.app.selectedGateway', () => this.load());
+      this.$watch('$store.app.selectedGateway', () => t.reload());
     },
 
     get filteredEntities() {

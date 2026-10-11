@@ -4,6 +4,13 @@
     <div>
       <h1 class="text-xl font-semibold" style="color:var(--text-primary)">Network</h1>
       <p class="text-sm text-slate-500">On-LAN diagnostics for this aGate — connectivity, interfaces, and its cloud link. No cloud round-trip.</p>
+      <!-- Freshness, because the probes are re-run in place: without this, a fresh
+           read and a five-minute-old one look identical. -->
+      <p class="text-xs font-mono mt-0.5" style="color:var(--text-faint)" x-show="ranAt && !error" x-cloak
+         x-text="ranText()"></p>
+      <!-- A failed probe must say so HERE. A toast scrolls away and leaves the tab
+           looking as though the button simply did nothing. -->
+      <p class="text-xs mt-1" style="color:var(--danger)" x-show="error" x-cloak x-text="error"></p>
     </div>
     <div class="flex items-center gap-2">
       <button class="btn btn-secondary btn-sm" @click="exportJson()" :disabled="!net" x-show="net">Export JSON</button>
@@ -12,7 +19,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5"/>
           <path stroke-linecap="round" d="M20.49 9A9 9 0 0 0 5.64 5.64L4 7m16 10l-1.64 1.36A9 9 0 0 1 3.51 15"/>
         </svg>
-        <span x-text="loading ? 'Running…' : 'Run diagnostics'"></span>
+        <span x-text="loading ? 'Probing…' : (ranAt ? 'Re-run probes' : 'Run probes')"></span>
       </button>
     </div>
   </div>
@@ -350,4 +357,99 @@
       </p>
     </div>
   </template>
+  <!-- ── Link history (RUNTIME_DESIGN §6.9) ──────────────────────────────────
+       The topology above draws the links. This says how each one has BEHAVED:
+       a probe describes this instant and cannot answer "when did it last work",
+       "how long has it been down" or "how many retries". Only the legs the poll
+       cycle genuinely measures appear; the rest are listed as stated gaps. -->
+  <div class="card" style="padding:0;overflow:hidden" x-show="link || linkError" x-cloak>
+    <div class="px-5 py-3 border-b border-white/[0.06]">
+      <div class="card-label" style="margin-bottom:0">Link history</div>
+      <p class="text-[11px] mt-0.5" style="color:var(--text-faint)">
+        Recorded every poll. A link is called down only after
+        <span class="font-mono" x-text="link && link.strikes_to_declare_down"></span>
+        consecutive failures, so one timed-out poll is not an outage.
+      </p>
+    </div>
+
+    <div class="px-5 py-3 text-xs" style="color:var(--danger)" x-show="linkError" x-cloak
+         x-text="linkError"></div>
+
+    <template x-for="lg in (link ? link.legs : [])" :key="lg.leg">
+      <div class="border-b border-white/[0.06]">
+        <button class="w-full px-5 py-3 flex items-center justify-between gap-3 text-left"
+                :disabled="lg.never_measured" :style="lg.never_measured ? 'opacity:.55' : ''"
+                @click="openLeg = (openLeg === lg.leg ? null : lg.leg)">
+          <div class="min-w-0">
+            <div class="text-sm" style="color:var(--text-primary)" x-text="lg.label"></div>
+            <div class="text-[11px] font-mono" style="color:var(--text-faint)">
+              <span x-show="lg.never_measured">this host does not answer it — nothing recorded</span>
+              <span x-show="!lg.never_measured"
+                    x-text="'last ok ' + (lg.last_connected ? when(lg.last_connected) : 'never')"></span>
+              <span x-show="lg.down_for_s" style="color:var(--danger)"
+                    x-text="' · down ' + dur(lg.down_for_s)"></span>
+            </div>
+          </div>
+          <span class="chip shrink-0"
+                :class="lg.verdict === 'up' ? 'ok' : (lg.verdict === 'down' ? 'error' : 'muted')"
+                x-text="lg.verdict"></span>
+        </button>
+
+        <div class="px-5 pb-3" x-show="openLeg === lg.leg" x-cloak>
+          <table class="data-table">
+            <tbody>
+              <tr><td class="text-slate-500">First connected</td>
+                  <td class="font-mono text-right" x-text="when(lg.first_connected)"></td></tr>
+              <tr><td class="text-slate-500">Data age</td>
+                  <td class="font-mono text-right" x-text="dur(lg.stale_for_s)"></td></tr>
+              <tr><td class="text-slate-500">Consecutive failures</td>
+                  <td class="font-mono text-right" x-text="lg.consecutive_failures"></td></tr>
+              <tr><td class="text-slate-500">Probes</td>
+                  <td class="font-mono text-right">
+                    <span x-text="lg.probes"></span>
+                    <span style="color:var(--text-faint)"> · </span>
+                    <span :style="lg.failures ? 'color:var(--danger)' : ''" x-text="lg.failures + ' failed'"></span>
+                    <span style="color:var(--text-faint)"> · </span>
+                    <!-- a refusal is the device answering; a timeout is nobody answering -->
+                    <span :style="lg.unknowns ? 'color:var(--warn)' : ''" x-text="lg.unknowns + ' unknown'"></span>
+                  </td></tr>
+              <tr><td class="text-slate-500">Missed polls</td>
+                  <td class="font-mono text-right" x-text="lg.missed_polls"></td></tr>
+              <tr><td class="text-slate-500">Outages recorded</td>
+                  <td class="font-mono text-right">
+                    <span x-text="lg.outages_closed"></span>
+                    <span x-show="lg.longest_outage_s" style="color:var(--text-faint)"
+                          x-text="' · longest ' + dur(lg.longest_outage_s)"></span></td></tr>
+              <tr x-show="lg.last_error"><td class="text-slate-500">Last error</td>
+                  <td class="text-right text-xs" style="color:var(--danger)" x-text="lg.last_error"></td></tr>
+            </tbody>
+          </table>
+          <template x-for="o in lg.outages.slice(0, 6)" :key="o.id">
+            <div class="flex items-baseline justify-between gap-3 text-xs py-1">
+              <span class="font-mono" style="color:var(--text-secondary)" x-text="when(o.started_ts)"></span>
+              <span class="truncate text-[11px]" style="color:var(--text-faint)"
+                    x-text="o.attempts + ' attempt(s)' + (o.last_error ? ' — ' + o.last_error : '')"></span>
+              <span class="font-mono shrink-0" :style="o.ended_ts ? '' : 'color:var(--danger)'"
+                    x-text="o.ended_ts ? dur(o.duration_s) : 'ongoing'"></span>
+            </div>
+          </template>
+          <p class="text-[11px] mt-2" style="color:var(--text-faint)"
+             x-show="!lg.outages || !lg.outages.length">
+            No outage recorded on this leg since history began.
+          </p>
+        </div>
+      </div>
+    </template>
+
+    <!-- Named rather than omitted: a reader must not have to work out what is missing. -->
+    <div class="px-5 py-3">
+      <div class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Not recorded here</div>
+      <template x-for="(why, k) in (link ? link.not_probed : {})" :key="k">
+        <div class="text-[11px] py-0.5" style="color:var(--text-faint)" x-text="why"></div>
+      </template>
+      <p class="text-[11px] mt-2" style="color:var(--text-faint)">
+        Closed outages are kept <span x-text="link && link.retention_days"></span> days; a running one is never pruned.
+      </p>
+    </div>
+  </div>
 </div>

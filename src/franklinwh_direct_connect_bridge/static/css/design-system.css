@@ -336,6 +336,10 @@ body {
 }
 .soc-ring svg { transform: rotate(-90deg); width: 100px; height: 100px; }
 .soc-ring-track { fill: none; stroke: var(--surface-2); stroke-width: 8; }
+/* The reserved floor: same geometry as the fill, drawn beneath it, muted amber so it
+   reads as a boundary rather than competing with the charge level. */
+.soc-ring-reserve { fill: none; stroke: var(--warn, #f59e0b); stroke-width: 8;
+  opacity: .28; stroke-linecap: butt; }
 .soc-ring-fill {
   fill: none;
   stroke-width: 8;
