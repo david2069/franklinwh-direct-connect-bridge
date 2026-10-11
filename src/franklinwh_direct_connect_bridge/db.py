@@ -57,6 +57,7 @@ class MetricsStore:
         self._migrate_schedules()
         self._migrate_ha_exposed()
         self._migrate_schedule_log()
+        self._migrate_link_history()
         self._migrate_control_log()
         self._migrate_app_logs()
         self._migrate_disclaimer_acks()
@@ -969,6 +970,262 @@ class MetricsStore:
             cur = self._conn.execute(q, args)
             cols = [c[0] for c in cur.description]
             return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+    # ── connectivity history (RUNTIME_DESIGN §6.9, phase 2b) ─────────────────
+    #: Consecutive failures before the link is declared down. The verdict was one
+    #: sample — a single timed-out login flipped the UI to Offline while Modbus was
+    #: still up and the data still fresh. The TRANSITION is the event, not the sample.
+    LINK_STRIKES = 3
+
+    #: Outage history is pruned by TIME, never by row count. A row cap would evict the
+    #: long outages first, which is exactly the schedule_log mistake (§6.5) wearing a
+    #: different hat — and the long ones are the only interesting ones.
+    LINK_RETENTION_DAYS = 90
+
+    #: A probe's verdict. `unknown` is NOT a failure dressed up: "connection refused"
+    #: is the device answering, a timeout is nobody answering, and flattening both to
+    #: False is what let a screen report Offline beside live values.
+    LINK_OUTCOMES = ("ok", "failed", "unknown")
+
+    #: The legs the poll cycle actually measures, named. "Connection history" meant
+    #: nothing until it said WHICH connection — there are several, and the poller had
+    #: been measuring three of them every cycle while recording only one.
+    #:
+    #: Not here, and deliberately: the aGate's own uplink to the FranklinWH cloud
+    #: (:8883), the FleetView cloud API, and the MQTT broker. None is probed by the
+    #: poll cycle, so recording them would mean inventing a probe rather than writing
+    #: down a measurement already taken.
+    LINK_LEGS: dict[str, str] = {
+        "local_9000": "Direct Connect API — bridge to aGate, TCP :9000",
+        "modbus_502": "Modbus TCP — bridge to aGate, TCP :502",
+        "icmp": "ICMP ping — bridge to aGate",
+    }
+
+    def _migrate_link_history(self) -> None:
+        """Per-gateway link state + an outage log.
+
+        None of this was recorded. "When did it first connect", "how long has this
+        outage run", "how many retries" were unanswerable not because no screen showed
+        them but because nothing wrote them down — so every outage was unrecoverable
+        the moment it ended.
+        """
+        self._conn.execute(
+            """CREATE TABLE IF NOT EXISTS link_state(
+                   gateway_id TEXT NOT NULL,
+                   leg TEXT NOT NULL DEFAULT 'local_9000',
+                   state TEXT NOT NULL DEFAULT 'unknown',
+                   first_ok_ts REAL, last_ok_ts REAL, last_probe_ts REAL,
+                   down_since_ts REAL,
+                   first_fail_ts REAL,
+                   consecutive_failures INTEGER NOT NULL DEFAULT 0,
+                   probes INTEGER NOT NULL DEFAULT 0,
+                   failures INTEGER NOT NULL DEFAULT 0,
+                   unknowns INTEGER NOT NULL DEFAULT 0,
+                   missed_polls INTEGER NOT NULL DEFAULT 0,
+                   last_outcome TEXT, last_error TEXT, last_latency_ms REAL,
+                   PRIMARY KEY(gateway_id, leg))"""
+        )
+        self._conn.execute(
+            """CREATE TABLE IF NOT EXISTS link_outages(
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   gateway_id TEXT NOT NULL,
+                   leg TEXT NOT NULL DEFAULT 'local_9000',
+                   started_ts REAL NOT NULL,
+                   ended_ts REAL,
+                   attempts INTEGER NOT NULL DEFAULT 0,
+                   unknowns INTEGER NOT NULL DEFAULT 0,
+                   last_error TEXT)"""
+        )
+        # CREATE TABLE IF NOT EXISTS is a no-op on a table that already exists, so a
+        # database written by the single-leg version keeps its old shape and every
+        # query naming `leg` fails. SQLite cannot ALTER a primary key, so the table is
+        # rebuilt — carrying existing rows across as the leg they were actually
+        # measuring (:9000), rather than discarding history to make a migration easy.
+        cols = [r[1] for r in self._conn.execute("PRAGMA table_info(link_state)")]
+        if cols and "leg" not in cols:
+            keep = [c for c in cols if c != "leg"]
+            self._conn.execute("ALTER TABLE link_state RENAME TO link_state_old")
+            self._conn.execute(
+                """CREATE TABLE link_state(
+                       gateway_id TEXT NOT NULL,
+                       leg TEXT NOT NULL DEFAULT 'local_9000',
+                       state TEXT NOT NULL DEFAULT 'unknown',
+                       first_ok_ts REAL, last_ok_ts REAL, last_probe_ts REAL,
+                       down_since_ts REAL,
+                       first_fail_ts REAL,
+                       consecutive_failures INTEGER NOT NULL DEFAULT 0,
+                       probes INTEGER NOT NULL DEFAULT 0,
+                       failures INTEGER NOT NULL DEFAULT 0,
+                       unknowns INTEGER NOT NULL DEFAULT 0,
+                       missed_polls INTEGER NOT NULL DEFAULT 0,
+                       last_outcome TEXT, last_error TEXT, last_latency_ms REAL,
+                       PRIMARY KEY(gateway_id, leg))"""
+            )
+            cl = ", ".join(keep)
+            self._conn.execute(
+                f"INSERT INTO link_state(leg, {cl}) SELECT 'local_9000', {cl} FROM link_state_old")
+            self._conn.execute("DROP TABLE link_state_old")
+
+        ocols = [r[1] for r in self._conn.execute("PRAGMA table_info(link_outages)")]
+        if ocols and "leg" not in ocols:
+            self._conn.execute(
+                "ALTER TABLE link_outages ADD COLUMN leg TEXT NOT NULL DEFAULT 'local_9000'")
+
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_outage_gw ON link_outages(gateway_id, started_ts DESC)")
+        self._conn.commit()
+
+    def record_link_probe(self, gateway_id: str, outcome: str, *,
+                          leg: str = "local_9000",
+                          latency_ms: float | None = None, error: str = "",
+                          expected_interval_s: float | None = None,
+                          strikes: int | None = None, now: float | None = None) -> dict:
+        """Record one probe of the bridge→gateway link and return what it changed.
+
+        Returns ``{state, transition, consecutive_failures, outage_s}`` where
+        ``transition`` is ``'down'``, ``'up'`` or ``None``. **Callers notify on the
+        transition and on nothing else** — alerting on the returned state every tick is
+        the alert-spam failure this exists to prevent.
+
+        A gateway is declared down only after ``strikes`` consecutive non-ok probes, and
+        recovers on the first ok. `unknown` counts toward the strikes — not knowing is
+        not evidence of health — but is tallied separately so a link that times out can
+        be told from one that is actively refusing.
+        """
+        ts = float(now if now is not None else time.time())
+        if outcome not in self.LINK_OUTCOMES:
+            outcome = "failed"
+        n = int(self.LINK_STRIKES if strikes is None else strikes)
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO link_state(gateway_id, leg) VALUES(?,?)",
+                (gateway_id, leg))
+            cur = self._conn.execute(
+                "SELECT * FROM link_state WHERE gateway_id=? AND leg=?", (gateway_id, leg))
+            row = dict(zip([c[0] for c in cur.description], cur.fetchone()))
+
+            # Missed polls: a gap wider than the expected cadence means cycles that
+            # should have happened did not. Counted from the GAP rather than from a
+            # tick, because the cycles that go missing are precisely the ones that
+            # never ran to report themselves.
+            missed = int(row["missed_polls"] or 0)
+            if expected_interval_s and row["last_probe_ts"]:
+                gap = ts - float(row["last_probe_ts"])
+                missed += max(0, int(gap // float(expected_interval_s)) - 1)
+
+            ok = outcome == "ok"
+            streak = 0 if ok else int(row["consecutive_failures"] or 0) + 1
+            # When the run of failures BEGAN. The outage is dated from here, not from
+            # the strike that confirmed it — otherwise every outage silently
+            # under-reports its length by (strikes - 1) poll intervals.
+            first_fail = None if ok else (row["first_fail_ts"] or ts)
+            was = row["state"] or "unknown"
+            # A leg that has never succeeded is `unknown`, not `up`. Holding the
+            # previous verdict during the debounce is right for a link that WAS up;
+            # for one that has never connected there is no previous verdict to hold,
+            # and reporting `up` would be asserting something never observed.
+            if ok:
+                state = "up"
+            elif streak >= n:
+                state = "down"
+            else:
+                state = was if was in ("up", "down") else "unknown"
+            transition = None
+            down_since = row["down_since_ts"]
+            outage_s = None
+
+            if state == "down" and was != "down":
+                transition = "down"
+                down_since = float(first_fail or ts)
+                self._conn.execute(
+                    "INSERT INTO link_outages(gateway_id, leg, started_ts, attempts,"
+                    " unknowns, last_error) VALUES(?,?,?,?,?,?)",
+                    (gateway_id, leg, down_since, streak,
+                     1 if outcome == "unknown" else 0, error))
+            elif state == "down":
+                self._conn.execute(
+                    "UPDATE link_outages SET attempts=attempts+1, last_error=?,"
+                    " unknowns=unknowns+? WHERE id=(SELECT id FROM link_outages"
+                    " WHERE gateway_id=? AND leg=? AND ended_ts IS NULL"
+                    " ORDER BY started_ts DESC LIMIT 1)",
+                    (error, 1 if outcome == "unknown" else 0, gateway_id, leg))
+            elif ok and was == "down":
+                transition = "up"
+                outage_s = None if not down_since else ts - float(down_since)
+                self._conn.execute(
+                    "UPDATE link_outages SET ended_ts=? WHERE gateway_id=? AND leg=?"
+                    " AND ended_ts IS NULL", (ts, gateway_id, leg))
+                down_since = None
+
+            self._conn.execute(
+                "UPDATE link_state SET state=?, last_probe_ts=?, consecutive_failures=?,"
+                " probes=probes+1, failures=failures+?, unknowns=unknowns+?,"
+                " missed_polls=?, last_outcome=?, last_error=?, last_latency_ms=?,"
+                " first_ok_ts=COALESCE(first_ok_ts, ?), last_ok_ts=?, down_since_ts=?,"
+                " first_fail_ts=? WHERE gateway_id=? AND leg=?",
+                (state, ts, streak, 0 if ok else 1, 1 if outcome == "unknown" else 0,
+                 missed, outcome, error, latency_ms,
+                 ts if ok else None, ts if ok else row["last_ok_ts"], down_since,
+                 first_fail, gateway_id, leg))
+            self._conn.commit()
+        return {"leg": leg, "state": state, "transition": transition,
+                "consecutive_failures": streak, "outage_s": outage_s}
+
+    def link_state(self, gateway_id: str, leg: str = "local_9000") -> dict | None:
+        """One leg's recorded state, or None if that leg was never probed."""
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT * FROM link_state WHERE gateway_id=? AND leg=?", (gateway_id, leg))
+            row = cur.fetchone()
+            if row is None:
+                return None
+            out = dict(zip([c[0] for c in cur.description], row))
+        if out.get("down_since_ts"):
+            out["down_for_s"] = time.time() - float(out["down_since_ts"])
+        out["label"] = self.LINK_LEGS.get(out.get("leg") or "", out.get("leg") or "")
+        return out
+
+    def link_states(self, gateway_id: str) -> list[dict]:
+        """Every leg recorded for this gateway, in the catalogue's order so the display
+        is stable rather than ordered by whichever happened to be probed first."""
+        out = [self.link_state(gateway_id, leg) for leg in self.LINK_LEGS]
+        return [r for r in out if r]
+
+    def link_outages(self, gateway_id: str | None = None, *, limit: int = 50,
+                     leg: str | None = None, open_only: bool = False) -> list[dict]:
+        q = "SELECT * FROM link_outages"
+        clauses, args = [], []
+        if gateway_id:
+            clauses.append("gateway_id=?"); args.append(gateway_id)
+        if leg:
+            clauses.append("leg=?"); args.append(leg)
+        if open_only:
+            clauses.append("ended_ts IS NULL")
+        if clauses:
+            q += " WHERE " + " AND ".join(clauses)
+        q += " ORDER BY started_ts DESC LIMIT ?"
+        args.append(max(1, min(limit, 500)))
+        with self._lock:
+            cur = self._conn.execute(q, args)
+            cols = [c[0] for c in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        for r in rows:
+            if r.get("ended_ts"):
+                r["duration_s"] = float(r["ended_ts"]) - float(r["started_ts"])
+            r["label"] = self.LINK_LEGS.get(r.get("leg") or "", r.get("leg") or "")
+        return rows
+
+    def prune_link_outages(self, *, days: int | None = None, now: float | None = None) -> int:
+        """Age out CLOSED outages. An open one is never pruned, however old — a running
+        outage is the live answer to 'how long has this been down'."""
+        d = int(self.LINK_RETENTION_DAYS if days is None else days)
+        cutoff = float(now if now is not None else time.time()) - d * 86400
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM link_outages WHERE ended_ts IS NOT NULL AND ended_ts < ?",
+                (cutoff,))
+            self._conn.commit()
+            return cur.rowcount or 0
 
     # ── control audit trail (off-grid / reboot / mode / reserve / modbus) ──────
     def _migrate_control_log(self) -> None:

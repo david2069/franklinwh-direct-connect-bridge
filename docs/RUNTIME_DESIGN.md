@@ -1,6 +1,6 @@
 # Runtime design — components, supervision and work
 
-Status: **FROZEN v1.8, 2026-10-09.** (v1.8 adds §6.8 — what a rule preview can and cannot prove, plus two dwell defects found while checking it. v1.7 adds §6.6b — provenance for every cross-bridge claim, after several were taken from screenshots rather than source. v1.6 adds §6.7 — rule authoring, history and sharing, measured against the Modbus Bridge's screen; most already exists, four things do not. v1.5 adds §6.6, the orchestration model adopted from the Modbus Bridge, and widens phase 2 to carry it. v1.4 records §6.5 — why not APScheduler, and the misfire/coalesce vocabulary phase 2 adopts. v1.3 moves the Process card from phase 0b to phase 6,
+Status: **FROZEN v1.9, 2026-10-10.** (v1.9 splits phase 6: the *recording* half becomes **phase 2b** and runs before phase 3, because connection history that is not written down while the bridge runs cannot be displayed later — see §6.9. The views stay in phase 6. v1.8 adds §6.8 — what a rule preview can and cannot prove, plus two dwell defects found while checking it. v1.7 adds §6.6b — provenance for every cross-bridge claim, after several were taken from screenshots rather than source. v1.6 adds §6.7 — rule authoring, history and sharing, measured against the Modbus Bridge's screen; most already exists, four things do not. v1.5 adds §6.6, the orchestration model adopted from the Modbus Bridge, and widens phase 2 to carry it. v1.4 records §6.5 — why not APScheduler, and the misfire/coalesce vocabulary phase 2 adopts. v1.3 moves the Process card from phase 0b to phase 6,
 where it becomes part of a whole Monitoring section rather than a card built twice. v1.2
 redefined `zombie`; v1.1 added `aborted`.) (v1.1 added the `aborted` state and the transition
 rules. v1.2 redefines `zombie` as *uncontrollable* rather than *superseded*, and adds the
@@ -499,6 +499,88 @@ one undifferentiated stream in which **execution history is 2.2% of rows** (9 of
 out. Phase 2 separates them: occurrences carry execution, `schedule_log` reverts to CRUD and
 operator actions.
 
+## 6.9 · Connectivity history — why the recording half moves to phase 2b
+
+**Added v1.9, 2026-10-10.** Prompted by a screenshot: the Health tab reporting **Offline**
+beside Modbus `:502` **Up**, a 91 ms latency and a 99.9% SoC, with nothing saying any of it
+was cached. The owner's questions were "when did it first and last connect, how many
+heartbeats has it missed, how long has this outage been running" — and none of those are
+missing from a screen. They are **never recorded**.
+
+### What exists today
+
+`/api/health` (`client.health`) is a one-shot probe of this instant: ping, a login
+round-trip for latency, is `:502` open, `sunsMdEn`. It returns
+`{host, ping, sendmqtt_9000, modbus_502, latency_ms, ok}`. `GatewayState` carries
+`state_ts` — when the last snapshot was written — and nothing about transitions: no
+first-seen, no last-good, no offline-since, no consecutive-failure count.
+
+There is good connection logic in the product, in the wrong place. The browser's `conn.*`
+(`app.js`) already counts consecutive attempts, records `offlineSince`, backs off, stops
+polling while down, toasts **only on transition**, and lets the banner be dismissed until
+the next real outage. It is browser-session state, discarded on reload, and it watches
+browser→bridge, not bridge→aGate.
+
+### Why this moves ahead of phase 3
+
+**You cannot display history you never captured.** Every day the bridge runs without
+recording transitions is a day of evidence permanently lost; when the next outage is
+investigated, the answer is "we did not write it down". The views can wait — the writing
+cannot. The recording is also small, and it is the *same data structure* the false-positive
+fix needs, which is the second reason:
+
+### The verdict needs a debounce, and the debounce needs the counter
+
+`isOnline` is `summary.ok === true` — **one sample, no debounce**. A single timed-out login
+flips the chip to Offline while Modbus is still up and the data is still fresh. That is the
+false positive in the screenshot, and the fix is not a longer timeout:
+
+* **N consecutive failures to declare down; one success to clear.** The TRANSITION is the
+  event, never the sample.
+* **Back off on the bridge→aGate hop** as the browser already does on browser→bridge. A
+  gateway down for forty minutes must not be probed every thirty seconds.
+* **A timeout is not a refusal.** "Connection refused" is the device answering; a timeout
+  means *we do not know*. They are recorded as different outcomes, never flattened to
+  `false` — this is the same `Outcome{ok|failed|unknown|skipped}` distinction phase 3 brings
+  to writes, arriving early for reads because the screen above was built on a flattened one.
+
+Counting consecutive failures is required for the debounce whether or not anything is
+stored. Once counted, writing it down is nearly free — so the fix and the history are one
+piece of work, and splitting them would mean building the counter twice.
+
+### What phase 2b records
+
+| Recorded | Answers |
+| --- | --- |
+| First connection per gateway | "when did this ever work" |
+| Last successful contact | "how stale is what I am looking at" |
+| Outage rows: started, ended, duration, attempts, last error | "how long, how many retries, and why" |
+| Consecutive failure count (live) | the debounce input, and "is this real yet" |
+| Missed polls against expected cadence | heartbeats, in the owner's words |
+| Outcome class per probe: `ok` / `failed` / `unknown` | timeout separated from refusal |
+
+Stored per gateway, pruned by time rather than by row count — an outage history capped by
+rows would evict the long outages first, which is the `schedule_log` mistake (§6.5) in a
+new costume.
+
+### Notification policy — unchanged, and now implementable
+
+The policy in `OBSERVABILITY_COVERAGE.md` does not change; phase 2b gives it the transitions
+it needs. Restated because it is the answer to "how do we stop false-positive alerts":
+
+* Notify **on transition**, never per tick while a condition persists.
+* **Re-notify after 6 hours** if still outstanding, so a real problem does not fade.
+* **Clearing notifies too** — a silent recovery must not leave a stale alarm.
+* **`unknown` ignores all of the above** and notifies immediately, every time: an ambiguous
+  outcome is the one case where repetition is correct, because nobody can tell what happened.
+
+### What stays in phase 6
+
+The Monitoring **views** — Overview (impact), Capabilities, Processes — and the rename of
+Health to Connectivity. Phase 6 is unchanged in content; it simply arrives with real history
+to draw instead of starting from an empty table. `/api/health/workers` (phase 0a) already
+answers "which processes are alive" and still has no screen; that remains phase 6's job.
+
 ## 6.6 · Orchestration — what transfers from the Modbus Bridge
 
 Phase 2 adopts the Modbus Bridge's orchestration model rather than inventing one. It is
@@ -748,6 +830,7 @@ a new revision of this document and a note saying what moved and why; discoverin
 | **0b** ✅ | Full lifecycle states; deregister only when work has ended; `start` refuses a name still `stopping` (the zombie fix); confirmed aborts; restart actions with `free`/`handoff`/`guarded`, `guarded` going through `reconcile_interrupted`; banded ordering and family grouping in the API | BR-39, 40 | the supervisor **recovers**, not just reports; two pollers can no longer run for one gateway |
 | **1** | Scheduler becomes its own worker on its own cadence, reading per-gateway snapshots. Copy `franklinwh-modbus-bridge/gateway/scheduler.py` | BR-35 | scheduling survives a gateway failure; resolution untied from `poll_interval` |
 | **2** | `occurrences` table (the "execution queue") with `misfire_grace`/`coalesce`/`max_instances` semantics; **orchestration per §6.6** — per-resource exclusivity, one-or-all targeting, priority with deterministic tie-break, symmetric entry/exit actions, templated notifications; `schedule_log` split into event / error / exception. | BR-15–19, 44–48 | `missed`, retry and resume become expressible; two rules can no longer fight over a battery; "why didn't mine run" is answerable |
+| **2b** | **Connectivity history + debounced verdict (§6.9).** Per-gateway first-seen / last-good / outage rows with attempts and last error; consecutive-failure counter; N-strikes before `offline`, one success to clear; backoff on the bridge→aGate hop; `ok`/`failed`/`unknown` kept distinct so a timeout is not a refusal | BR-29, 30 | the questions "when did it last work, how long has it been down, how many retries" become answerable — and stop being lost daily |
 | **3** | Wire `resilience.call` into scheduler actions and bridge writes; `POST /api/dispatch` takes a gateway | BR-3, 6–13, 34 | outcomes structured; `unknown` surfaced; dispatch targets the right battery |
 | **4** | Capability + impact health: dependency graph, freshness, schedule pre-flight, `/api/health` rollup | BR-41, 42, 43 | "will my schedule fire tonight" is answerable |
 | **5** | `selfcheck` worker + findings endpoint | BR-14, 26, 28 | standing conditions detected |
@@ -756,7 +839,9 @@ a new revision of this document and a note saying what moved and why; discoverin
 | **—** | Dependency + drift panel in `/api/support-info`. Independent of L0 | — | "which library is this actually running?" |
 
 Phases 0a–3 are the spine: supervision, then a scheduler that is a component, then work
-that exists as rows, then calls that fail honestly. Phases 4–7 are what make it visible.
+that exists as rows, then calls that fail honestly. Phase 2b sits inside that spine
+rather than beside it: it is the same "record it before you need it" move as the
+occurrences table, applied to the link instead of to the schedule. Phases 4–7 are what make it visible.
 The drift panel is unordered because nothing depends on it.
 
 ### Why Monitoring, and why not "Health"

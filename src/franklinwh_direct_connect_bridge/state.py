@@ -28,6 +28,10 @@ class GatewayState:
     mqtt_connected: bool = False        # last-known broker connection state
     node: str = ""                      # resolved device node (serial or "agate")
     last_state: dict = field(default_factory=dict)   # last published power/state dict
+    #: Debounced link verdict from the recorded history ("up"/"down"/"unknown"),
+    #: NOT the last sample. One timed-out login used to flip the UI to Offline
+    #: while Modbus was up and the data fresh (RUNTIME_DESIGN §6.9).
+    link_state: str = "unknown"
     state_ts: float = 0.0               # when last_state was written — the scheduler
                                         # reads this snapshot, so its AGE decides whether
                                         # a schedule may be evaluated against it at all

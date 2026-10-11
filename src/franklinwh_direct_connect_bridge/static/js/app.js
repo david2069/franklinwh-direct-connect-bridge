@@ -695,6 +695,24 @@ document.addEventListener('alpine:init', () => {
       this.pollBattery();
     },
 
+    //: Every fetch in this app had NO timeout. Over a VPN or a flaky link a request
+    //  can hang for minutes with no feedback at all — which is why "Probing…" never
+    //  finished and why pressing Retry Now looked like it did nothing: the retry fired
+    //  a poll that hung exactly like the one before it. A request that cannot complete
+    //  must fail loudly rather than wait silently.
+    async fetchTimeout(url, ms = 15000, opts = {}) {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), ms);
+      try {
+        return await fetch(url, { ...opts, signal: ctl.signal });
+      } catch (e) {
+        if (e && e.name === 'AbortError') {
+          throw new Error(`timed out after ${Math.round(ms / 1000)}s`);
+        }
+        throw e;
+      } finally { clearTimeout(t); }
+    },
+
     async poll() {
       try {
         if (this.siteMode) { await this._pollSite(); return; }
@@ -703,7 +721,7 @@ document.addEventListener('alpine:init', () => {
         const url = (this.gateways.length > 1 && this.selectedGateway)
           ? `api/gateways/${encodeURIComponent(this.selectedGateway)}/summary`
           : 'api/summary';
-        const r = await fetch(url);
+        const r = await this.fetchTimeout(url);
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const d = await r.json();
         // Keep last-good mode/power if a (transient) response lacks them, so the
@@ -847,8 +865,13 @@ document.addEventListener('alpine:init', () => {
     },
 
     get connOfflineSinceLabel() {
-      if (!this.conn.offlineSince) return '';       // bridge observation — HOST zone
-      return this._fmtHostTime(this.conn.offlineSince / 1000, { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
+      // THIS BROWSER noticed the bridge stop answering (offlineSince is Date.now()),
+      // so it is rendered in the viewer's zone. It had been formatted in the HOST
+      // zone, which showed "offline since 6:12" on a phone reading 8:12 — the same
+      // instant, described in a clock the reader is not holding.
+      if (!this.conn.offlineSince) return '';
+      return new Date(this.conn.offlineSince).toLocaleTimeString([],
+        { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
     },
 
     // ── Getters ────────────────────────────────────────────

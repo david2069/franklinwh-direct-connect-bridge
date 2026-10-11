@@ -1155,6 +1155,91 @@ def create_app() -> FastAPI:
     def api_health(gateway: str | None = Query(None)):
         return client.health(get_settings(), host=_gw_host(gateway))
 
+    @app.get("/api/health/link")
+    def api_health_link(gateway: str | None = Query(None), limit: int = Query(20, ge=1, le=200)):
+        """The link's HISTORY, not another probe of this instant (RUNTIME_DESIGN §6.9).
+
+        `/api/health` re-probes and tells you about now; it cannot say when the gateway
+        first connected, how long the current outage has run, or how many retries it
+        took last time — because until phase 2b none of that was written down.
+
+        `verdict` is **debounced**: a gateway is `down` only after
+        `LINK_STRIKES` consecutive failed probes, and recovers on the first success. A
+        single timed-out poll no longer reads as an outage.
+        """
+        store = _ha_store()
+        gw = gateway or (get_state().id if get_state() else "")
+        legs = []
+        for row in store.link_states(gw):
+            ol = store.link_outages(gw, leg=row["leg"], limit=limit)
+            cl = [o for o in ol if o.get("duration_s") is not None]
+            legs.append({
+                "leg": row["leg"], "label": row["label"], "verdict": row["state"],
+                "consecutive_failures": row.get("consecutive_failures", 0),
+                "first_connected": row.get("first_ok_ts"),
+                "last_connected": row.get("last_ok_ts"),
+                "stale_for_s": (time.time() - row["last_ok_ts"]) if row.get("last_ok_ts") else None,
+                "down_since": row.get("down_since_ts"), "down_for_s": row.get("down_for_s"),
+                "probes": row.get("probes", 0), "failures": row.get("failures", 0),
+                "unknowns": row.get("unknowns", 0), "missed_polls": row.get("missed_polls", 0),
+                "last_outcome": row.get("last_outcome"), "last_error": row.get("last_error"),
+                "last_latency_ms": row.get("last_latency_ms"),
+                "outages": ol, "outages_closed": len(cl),
+                "longest_outage_s": max([o["duration_s"] for o in cl], default=None),
+            })
+        # A leg in the catalogue with no rows has never been measured on this host —
+        # ICMP, typically, which many gateways do not answer. Listed as "not measured"
+        # rather than omitted: a leg that silently disappears is the same "work it out
+        # yourself" failure as an unnamed one.
+        seen = {l["leg"] for l in legs}
+        for key, label in store.LINK_LEGS.items():
+            if key not in seen:
+                legs.append({"leg": key, "label": label, "verdict": "not measured",
+                             "never_measured": True, "probes": 0, "failures": 0,
+                             "unknowns": 0, "missed_polls": 0, "consecutive_failures": 0,
+                             "outages": [], "outages_closed": 0})
+        st = store.link_state(gw) or {}
+        outages = store.link_outages(gw, leg="local_9000", limit=limit)
+        now = time.time()
+        closed = [o for o in outages if o.get("duration_s") is not None]
+        return {
+            "gateway_id": gw,
+            # Per leg, because "is it connected" has three different answers and the
+            # single flattened one could not say which link it was describing.
+            "legs": legs,
+            # Legs the poll cycle does NOT probe, named so their absence is a stated
+            # gap rather than something the reader has to notice.
+            "not_probed": {
+                "agate_cloud_8883": "aGate to FranklinWH cloud (AWS IoT) — reported by the aGate, not probed",
+                "cloud_api": "FleetView cloud API — only contacted on demand",
+                "mqtt_broker": "MQTT broker — connection state is on the MQTT tab",
+                "agate_uplink": "aGate WiFi / Ethernet / 4G — see the Network topology",
+            },
+            # Kept for compatibility: the Direct Connect leg, which is what `ok` means.
+            "verdict": st.get("state", "unknown"),
+            "strikes_to_declare_down": store.LINK_STRIKES,
+            "consecutive_failures": st.get("consecutive_failures", 0),
+            "first_connected": st.get("first_ok_ts"),
+            "last_connected": st.get("last_ok_ts"),
+            "last_probe": st.get("last_probe_ts"),
+            "stale_for_s": (now - st["last_ok_ts"]) if st.get("last_ok_ts") else None,
+            "down_since": st.get("down_since_ts"),
+            "down_for_s": st.get("down_for_s"),
+            "probes": st.get("probes", 0),
+            "failures": st.get("failures", 0),
+            # Timeouts counted apart from refusals: one means the device said no, the
+            # other means nobody answered, and only the second is genuinely ambiguous.
+            "unknowns": st.get("unknowns", 0),
+            "missed_polls": st.get("missed_polls", 0),
+            "last_outcome": st.get("last_outcome"),
+            "last_error": st.get("last_error"),
+            "last_latency_ms": st.get("last_latency_ms"),
+            "outages": outages,
+            "outages_closed": len(closed),
+            "longest_outage_s": max([o["duration_s"] for o in closed], default=None),
+            "retention_days": store.LINK_RETENTION_DAYS,
+        }
+
     @app.get("/api/summary")
     def api_summary(gateway: str | None = Query(None)):
         # Serve the poller's cached last-good summary when warm — avoids a full device
