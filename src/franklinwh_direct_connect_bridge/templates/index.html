@@ -276,6 +276,16 @@
           </template>
         </div>
         <div class="px-5 py-3 border-t space-y-3" style="border-color:var(--border)">
+          <!-- What is being agreed to, and when. The acknowledgement is persisted with
+               the app version for the audit trail, so the version must be visible at the
+               moment of consent — agreeing to an unnamed revision is not consent to
+               anything checkable afterwards. -->
+          <p class="text-[11px] font-mono" style="color:var(--text-faint)">
+            <span x-text="'v' + (($store.app.disclaimer && $store.app.disclaimer.version) || '?')"></span>
+            <span x-show="$store.app.buildAsset" x-cloak>
+              · build <span x-text="$store.app.buildAsset"></span></span>
+            · shown <span x-text="new Date().toLocaleString()"></span>
+          </p>
           <label class="flex items-start gap-2 text-sm cursor-pointer select-none" style="color:var(--text-primary)">
             <input type="checkbox" x-model="$store.app.agreedChecked" class="mt-0.5 shrink-0">
             <span>I have read and agree to the above — don't show this again.</span>
@@ -296,6 +306,34 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Guide panel: the bundled docs in-app, with a way back. -->
+    <div x-show="$store.app.guideOpen" x-cloak
+         @keydown.escape.window="$store.app.closeGuide()"
+         class="fixed inset-0 z-[125] flex flex-col" style="background:var(--surface-0, #0f172a)">
+      <div class="flex items-center gap-2 px-3 py-2 border-t-0 border-b shrink-0"
+           style="border-color:var(--border);padding-top:max(.5rem, env(safe-area-inset-top))">
+        <button @click="$store.app.closeGuide()"
+                class="btn btn-secondary btn-sm inline-flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+          </svg>
+          Back
+        </button>
+        <div class="card-label">Guide</div>
+        <div class="flex-1"></div>
+        <a href="guide/" target="_blank" rel="noopener"
+           class="btn btn-secondary btn-sm inline-flex items-center gap-1.5" title="Open the docs in a separate tab">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/>
+          </svg>
+          New tab
+        </a>
+      </div>
+      <!-- src is bound so the docs are only fetched once the panel is first opened -->
+      <iframe :src="$store.app.guideOpen ? 'guide/' : 'about:blank'" title="Guide"
+              class="flex-1 w-full" style="border:0;background:#fff"></iframe>
     </div>
 
     <!-- Toast notifications -->

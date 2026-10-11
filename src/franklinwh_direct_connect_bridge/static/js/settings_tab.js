@@ -124,16 +124,22 @@ function settingsTab() {
       this._dl('support-info.csv', csv, 'text/csv');
     },
 
-    async init() {
-      await this.reload();
-      await this.loadGateways();
-      await this.loadSitesMeters();
-      await this.loadUtilitiesTariffs();
-      await this.loadConstants();
-      await this.loadSystemSetup();
-      await this.loadNotify();
-      // Refresh roster status periodically so "last poll"/ok stay live.
-      setInterval(() => { this.loadGateways(); this.loadSitesMeters(); this.loadUtilitiesTariffs(); }, 15000);
+    init() {
+      lazyTab(this, 'settings', async () => {
+        await this.reload();
+        await this.loadGateways();
+        await this.loadSitesMeters();
+        await this.loadUtilitiesTariffs();
+        await this.loadConstants();
+        await this.loadSystemSetup();
+        await this.loadNotify();
+      });
+      // Refresh roster status periodically so "last poll"/ok stay live — but only while
+      // the tab is on screen. This ticked every 15s forever, on every page, invisibly.
+      setInterval(() => {
+        if (this.$store.app.activeTab !== 'settings') return;
+        this.loadGateways(); this.loadSitesMeters(); this.loadUtilitiesTariffs();
+      }, 15000);
     },
 
     _gwTz: {},   // gateway id -> tz label (cached; each gateway may sit in a different zone)

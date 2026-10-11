@@ -49,22 +49,30 @@
   </div>
 
   <!-- Top row: SoC ring + power-flow metrics -->
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:items-start">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
     <!-- Battery State of Charge -->
     <div class="card" x-show="$store.app.dashCards.socRing" :style="$store.app.dashCardStyle('socRing')">
       <div class="flex items-baseline justify-between gap-2 mb-3">
-        <span class="card-label">Battery State of Charge</span>
-        <span class="text-[11px]" style="color:var(--text-faint)" x-show="$store.app.gwModel"
+        <span class="card-label whitespace-nowrap">Battery State of Charge</span>
+        <span class="text-[11px] truncate text-right" style="color:var(--text-faint)" x-show="$store.app.gwModel"
               x-text="$store.app.gwModel + ($store.app.gwModelCountry ? ' · ' + $store.app.gwModelCountry : '')"></span>
       </div>
-      <div class="flex items-center gap-5">
-        <div class="soc-ring">
+      <div class="flex items-center gap-5 min-w-0">
+        <div class="soc-ring shrink-0">
           <svg viewBox="0 0 100 100">
             <circle class="soc-ring-track" cx="50" cy="50" r="40"/>
             <circle class="soc-ring-fill" cx="50" cy="50" r="40"
                     :stroke="socColour($store.app.socPct)"
                     :stroke-dashoffset="$store.app.ringOffset"/>
+            <!-- Reserved floor for the ACTIVE mode, drawn as an arc from 0 so it reads
+                 as a floor rather than as a seam in the track. -->
+            <circle x-show="$store.app.socReserveArc" x-cloak
+                    class="soc-ring-reserve" cx="50" cy="50" r="40"
+                    :stroke-dasharray="$store.app.socReserveArc
+                      ? ($store.app.socReserveArc.dash + ' ' + $store.app.socReserveArc.gap) : '0 999'">
+              <title x-text="$store.app.socReserveArc ? ('Reserved floor ' + $store.app.socReserveArc.pct + '% — the battery will not discharge below this') : ''"></title>
+            </circle>
             <!-- Reserve-SoC marker for the ACTIVE mode -->
             <line x-show="$store.app.socReserveTick" x-cloak
                   :x1="$store.app.socReserveTick && $store.app.socReserveTick.x1"
@@ -80,26 +88,33 @@
             <span class="text-[10px] text-slate-500 font-medium">%</span>
           </div>
         </div>
-        <div class="flex-1 text-sm space-y-1">
-          <div class="flex justify-between gap-2">
-            <span class="text-slate-500">Mode
+        <div class="flex-1 min-w-0 text-sm space-y-1">
+          <div class="flex justify-between gap-2 items-baseline" x-show="$store.app.socReserveArc" x-cloak>
+            <span class="text-slate-500 whitespace-nowrap shrink-0">Reserved</span>
+            <span class="font-mono whitespace-nowrap" style="color:var(--warn,#f59e0b)"
+                  x-text="($store.app.socReserveArc ? $store.app.socReserveArc.pct : '--') + '%'"
+                  title="The battery will not discharge below this in the active mode"></span>
+          </div>
+          <div class="flex justify-between gap-2 items-baseline">
+            <span class="text-slate-500 whitespace-nowrap shrink-0">Mode
               <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]"
                     style="color:var(--text-faint)" x-text="$store.app.srcTag('name', 1301)"></span></span>
-            <span class="font-medium" x-text="$store.app.activeMode"></span>
+            <span class="font-medium truncate min-w-0" x-text="$store.app.activeMode"
+                  :title="$store.app.activeMode"></span>
           </div>
-          <div class="flex justify-between gap-2">
-            <span class="text-slate-500">Battery
+          <div class="flex justify-between gap-2 items-baseline">
+            <span class="text-slate-500 whitespace-nowrap shrink-0">Battery
               <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]"
                     style="color:var(--text-faint)" x-text="$store.app.srcTag('p_fhp', 1301)"></span></span>
-            <span class="font-mono"
+            <span class="font-mono whitespace-nowrap truncate min-w-0"
                   :style="'color:' + powerColour($store.app.power.battery_w, 'battery')"
                   x-text="$store.app.chargeState"></span>
           </div>
-          <div class="flex justify-between gap-2">
-            <span class="text-slate-500">Run status
+          <div class="flex justify-between gap-2 items-baseline">
+            <span class="text-slate-500 whitespace-nowrap shrink-0">Run status
               <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]"
                     style="color:var(--text-faint)" x-text="$store.app.srcTag('run_status', 1301)"></span></span>
-            <span class="inline-flex items-center gap-1.5">
+            <span class="inline-flex items-center gap-1.5 whitespace-nowrap shrink-0">
               <!-- backend source of the dispatch: VPP=Cloud, FORCE=Modbus (guarded) -->
               <span x-show="$store.app.isForced" x-cloak class="chip inline-flex items-center"
                     style="font-size:.55rem;padding:0 6px"

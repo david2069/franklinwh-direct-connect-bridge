@@ -12,9 +12,10 @@ function energyCostsTab() {
     expanded: {},
     modbusImport: { open: false, url: 'http://host.docker.internal:8100', user: 'admin', pass: 'admin', busy: false, preview: null },
 
-    async init() {
-      await this.load();
-      this.$watch('$store.app.selectedGateway', () => this.load());
+    init() {
+      // Loads on first SHOW, not on page load — see lazyTab().
+      const t = lazyTab(this, 'energy_costs', () => this.load());
+      this.$watch('$store.app.selectedGateway', () => t.reload());
     },
 
     async load() {

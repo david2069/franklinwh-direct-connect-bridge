@@ -13,11 +13,14 @@ function networkTab() {
     pinging: false,
     pop: null,
 
-    async init() {
-      this.loadLink();
+    init() {
+      // Loads on first SHOW, not on page load — see lazyTab(). load() pulls the link
+      // history in too, so the card arrives with the probes rather than separately.
+      const t = lazyTab(this, 'network', () => this.load());
+      this.$watch('$store.app.selectedGateway', () => t.reload());
+      // The history is a local DB read, not a device probe, so it can refresh on a
+      // timer — but only while the tab is on screen.
       setInterval(() => { if (this.$store.app.activeTab === 'network') this.loadLink(); }, 15000);
-      await this.load();
-      this.$watch('$store.app.selectedGateway', () => this.load());
     },
 
     // When the probes last actually ran. A panel of numbers with nothing saying when
@@ -47,10 +50,9 @@ function networkTab() {
         this.ranAt = Date.now();
         this.ranMs = this.ranAt - t0;
       } catch (e) {
-        const m = (e && e.message) || String(e);
-        this.error = /load failed|failed to fetch|networkerror/i.test(m)
-          ? 'could not reach api/network — the request never completed'
-          : 'api/network: ' + m;
+        // fetchErrorText arrived on main with #19; use it rather than keeping a
+        // second copy of the same browser-error translation.
+        this.error = fetchErrorText(e, 'api/network');
         this.$store.app.toast('Network probe failed: ' + this.error, 'error');
       } finally { this.loading = false; }
       this.loadLink();                   // the probes just ran, pass or fail
