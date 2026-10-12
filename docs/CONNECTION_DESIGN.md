@@ -54,8 +54,10 @@ Our own call sites are few:
 | `/api/battery/control/status` | on demand |
 
 Three or four calls a minute cannot produce 38 connections — so the multiplier is
-**inside the library**, and the fwh-modbus session established why (code reading,
-`develop` 8af8301 + pysunspec2 1.3.3):
+**inside the library**. The fwh-modbus session established why, and then corrected its
+own first answer: this is verified in the **deployed pysunspec2 1.3.6**
+(`ModbusClientTCP.read`: `local_connect` → `disconnect`), and it applies to **writes as
+well as reads** — one `send_command` is about **7 TCP opens**:
 
 * `connect()` builds the device and runs a full `scan()`, which opens one connection
   for the scan **and closes it at the end**. The session is left with no socket.
@@ -68,6 +70,17 @@ Three or four calls a minute cannot produce 38 connections — so the multiplier
 
 So one `status()` call is not one connection; it is a scan plus several reads, each its
 own socket. And a *failure* costs more than a success, because the retry path rescans.
+
+**The consequence for this design, stated plainly: connections-per-minute is mostly a
+measure of REQUEST COUNT, not of reconnects.** We are not leaking connections through
+bad lifecycle management on the Modbus side — we are making a normal number of requests
+through a library that spends a socket on each one. That changes what a fix looks like
+(§4.1a).
+
+One more library behaviour worth recording: it treats **any exception whose message
+contains "modbus" as a dead link**, so a device *exception reply* — a legitimate
+protocol answer — triggers a reconnect and a full rescan. Whether that materially
+inflates reconnect rates is an open hypothesis, not a finding.
 
 **We also make it worse ourselves, twice:**
 
@@ -104,7 +117,10 @@ neither of us should answer them twice.
 | U2 | Response-time distribution with a single quiet client | Separates "slow device" from "contention", and sets timeouts |
 | U3 | Cost of a full model scan, and whether reconnect-with-rescan is itself a cause of timeouts | Decides whether reconnect may skip the rescan |
 | U4 | Whether churn (many short connections) behaves differently from a few long-lived ones | Decides whether this design is a fix or merely tidier |
-| U9 | Whether our `CLOSE_WAIT` sockets are a library leak or ours | Ours to answer; see §6 |
+| L1 | Whether our `CLOSE_WAIT` sockets are a library leak or ours | Ours to answer; see §6 |
+| L2 | Whether the library's "any exception containing *modbus* means dead link" rule inflates our reconnect and rescan rate | Decides whether request reduction alone helps |
+
+*(Numbered `L*` so they do not collide with the Modbus Bridge's `U*` list, which is shared between both repos and has its own U9.)*
 
 **Explicitly: nobody should discover U1 by exhausting it on the live site.** Both
 bridges have agreed that.
@@ -158,6 +174,25 @@ two gateways are genuinely independent and must not queue behind each other.
 two callers behind one socket is correct behaviour against a device that may only
 tolerate one. Latency under contention is the price, and it is visible (§4.6) rather
 than hidden.
+
+### 4.1a The Modbus half of §4.1 is blocked on a library change
+
+This must not be glossed. A `GatewaySession` that owns a socket achieves **nothing** on
+the Modbus channel while `pysunspec2` opens and closes its own connection per read and
+per write. Holding our socket open underneath that simply adds an idle socket to the
+device's table.
+
+So the Modbus side of this design splits in two:
+
+| Part | Owner | Available now? |
+| --- | --- | --- |
+| Stop making unnecessary *requests* (delete the probe, skip mocks, de-duplicate status calls) | us | **yes** — and it is the only Modbus-side lever we hold |
+| Hold one connection across requests | `franklinwh-modbus` / `pysunspec2` | **no** — needs their change |
+
+That is an argument for sequencing, not for waiting: request reduction is worth doing on
+its own, is independently measurable, and does not depend on anyone else's schedule. The
+session object should be built for the **local** channel first, where we own the whole
+path, and extended to Modbus when the library can keep a socket.
 
 ### 4.2 Connection lifetime and liveness
 
@@ -243,9 +278,27 @@ whether serialising callers behind one socket costs anything in practice.
 
 ## 6. Proof, before and after
 
+**Measure first, and for long enough.** The Modbus Bridge added a §5.4 "Measurement
+(Phase 0b)" that ships *before* any fix and requires **at least 7 days of baseline**
+before anything changes. Adopted here, and the reason is worth stating: without it,
+"this reduced churn" is a claim about a number nobody wrote down. Seven days also
+covers a weekday/weekend cycle and at least one of the daily timeout peaks.
+
+What to record per gateway per hour, for both channels — the same shape they are
+using, so the two bridges' numbers can be compared rather than merely coexisting:
+
+* requests ok / timeout / error, **with the exception class**;
+* latency p50 / p95 / max;
+* connections opened, per path;
+* reconnects, failed reconnects, rescans;
+* data freshness (age of the newest good value).
+
+Phase 2b's link history already records a subset of this per leg. This extends it
+rather than starting a second table.
+
 1. **Baseline, now:** socket-state census and timeout counts per hour, with the three
-   clients running as they are. Partly captured above; needs to run for 24 h.
-2. **Answer U9 ourselves:** find what leaves sockets in `CLOSE_WAIT`. This is our bug
+   clients running as they are. Partly captured above; needs **7 days**, not 24 h.
+2. **Answer L1 ourselves:** find what leaves sockets in `CLOSE_WAIT`. This is our bug
    regardless of the rest of the design, and it is the cheapest thing here.
 3. **Emulator first.** Exercise session reuse, idle close, reconnect backoff and
    staleness against the in-process mock. No live aGate.
