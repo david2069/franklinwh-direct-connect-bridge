@@ -105,11 +105,40 @@ Two things fall outside it, and should be said so they are not assumed either wa
 * **The other clients are unaffected.** The Modbus Bridge and Energipay keep their own
   connections. This switch only silences *us*.
 
-**One consequence to accept consciously:** with Modbus TCP off, the **VPP/force badge
-goes blind.** The aGate's 1301 `run_status` never reveals a VPP dispatch — only the
-Modbus M704 WSet state does. So while suspended, the bridge cannot tell whether a cloud
-VPP or another controller is moving the battery. That is lost safety visibility, not a
-cosmetic gap, and it belongs beside the toggle rather than being discovered later.
+### What is actually lost — tested, 2026-10-12
+
+An earlier draft of this plan claimed that with Modbus off "the VPP badge goes blind,
+because 1301 `run_status` never reveals a VPP dispatch". That was **overstated**. A
+live test on the reference aGate:
+
+| Step | Local 1301 `run_status` | Modbus M704 |
+| --- | --- | --- |
+| Before | 2 (Discharging) | `Not Active`, `vpp_active` False |
+| During a Modbus force discharge (−1500 W) | **2 (Discharging)** | `Force Discharge`, `vpp_active` True |
+| After release | 2 (Discharging) | `Not Active`, `vpp_active` False |
+
+So **a Modbus force is not `run_status` 9**, and two different things have been wearing
+the name *VPP*:
+
+1. **`vpp_active` in this codebase** — the M704 WSet force bit. *Any* forced setpoint,
+   from any controller.
+2. **`run_status` 9, "VPP mode"** — what the FranklinWH app shows for a cloud/utility
+   VPP programme. `catalog.run_status_desc(9)` names it, and `cloud_compat.py:40`
+   already maps it **from the local 1301 payload**.
+
+`run_status` 9 is therefore a **local** reading and does not need Modbus. What
+suspending Modbus actually costs is visibility of **M704 force dispatches** — in
+practice, the Modbus Bridge's own commands or an orphaned force left by one.
+
+**Still unproven:** that a genuine cloud VPP event sets `run_status` 9 locally. It
+cannot be manufactured to order; the only evidence is that our own code assumes it.
+Worth confirming opportunistically the next time a real VPP event occurs, and worth
+not relying on until then.
+
+**So, if Modbus had never been set up here, what would be lost:** force dispatch (the
+only local force path), the model-correct max charge/discharge ratings (falls back to
+the `battery_max_power_kw` constant), and detection of another controller's force.
+Cloud VPP detection would **not** be lost.
 
 ## 4. Plan
 
@@ -150,10 +179,11 @@ B is a correctness fix that stands on its own.
    dispatch and the VPP monitor but leaves the probe running and converts force
    schedules into fake successes. **Recommendation: do A and B first** — they are small,
    and suspending without them produces misleading data and a misleading history.
-2. **Accept VPP blindness while suspended** (§3), or keep the VPP monitor alone running
-   at a much lower cadence as the single exception. It is one connection per interval,
-   and it is the only thing that can see another controller moving the battery — but
-   allowing it means "off" is not quite off, and the acceptance test in §3 would have
-   to say "zero except the VPP monitor", which is a weaker thing to verify.
+2. **Keep the VPP monitor running as a single exception, or not?** Now that the cost is
+   measured rather than assumed, the case for the exception is weaker: it would only
+   preserve detection of *M704 forces*, which in practice means the Modbus Bridge's own
+   commands — and that bridge already knows what it sent. Allowing it also means "off"
+   is not quite off, and the acceptance test weakens from "zero connections to :502" to
+   "zero except one". **Recommendation: no exception.**
 3. **Default for new installs** — unchanged (`on`), or off until the strategy is
    settled?
