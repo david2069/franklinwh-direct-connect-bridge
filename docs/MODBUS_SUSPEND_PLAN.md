@@ -1,0 +1,158 @@
+# Suspending Modbus — plan
+
+**Status: PLAN for review. No code.** Written 2026-10-12.
+
+Context: `CONNECTION_DESIGN.md`. The owner asked whether Modbus can be switched off
+globally while a new strategy is settled, keeping the code, and handling UI, API and
+schedules that try to use it.
+
+---
+
+## 1. The switch already exists. It is incomplete, and the gap is the expensive one.
+
+This is the main finding, and it changes the job from "build a kill switch" to
+"finish one and fix what it silently breaks".
+
+**What is already there and works:**
+
+| Piece | Where |
+| --- | --- |
+| `set_enabled()` / `is_enabled()` / `available()` | `battery_control.py:262-276` |
+| Persisted as `modbus_enabled` in app config, restored at startup | `app.py:785` |
+| UI toggle on the Control tab | `control.html:435` |
+| REST read + write of the flag | `app.py:3455`, `app.py:3475` |
+| Honoured by `status()`, `cached_ratings()`, `execute()` | `battery_control.py:329, 374, 408` |
+| Honoured by the VPP monitor loop | `app.py:854` |
+
+So dispatch, ratings and VPP detection already stop. Good.
+
+### Gap 1 — the probe ignores the switch, and it is most of the traffic
+
+`client.summary()` line 801:
+
+```
+out["modbus_502"] = any(discover.port_open(_ph, 502, timeout=3.0) for _ in range(3))
+```
+
+It calls `discover` directly and never consults `battery_control`. So **with Modbus
+"disabled" today, this bridge still opens TCP to :502 on every poll of every gateway,
+mocks included** — 1 connect when the port answers, 3 × 3 s when it does not.
+
+Turning the existing switch off therefore does **not** stop us touching the aGate's
+Modbus port. Anyone who flipped it and then measured would conclude, wrongly, that
+we were not the problem.
+
+### Gap 2 — a disabled subsystem currently reports schedules as SUCCESSFUL
+
+With Modbus off, a scheduled `force` action runs:
+
+`_force_dispatch` → `battery_control.execute()` → `{"ok": False, "result": "Modbus
+(SunSpec 502) is disabled in Control settings"}` → the action returns
+`"force discharge: Modbus (SunSpec 502) is disabled in Control settings"`.
+
+That string contains none of `failed`, `not confirmed`, `error` or ` skipped`, so both
+the old substring test and phase 3's `_classify` read it as **OK**. The occurrence is
+marked fired, `last_result` reads like a success, and the history shows a run that
+never happened.
+
+**This is pre-existing — phase 3 did not introduce it and did not fix it.** It matters
+far more once the switch is actually used: suspending Modbus would quietly convert
+every force schedule into a fake success. Fixing this is a precondition of suspending,
+not a follow-up.
+
+---
+
+## 2. What "disabled" should mean, surface by surface
+
+The principle, consistent with the rules already settled elsewhere in this bridge:
+**absent with a reason, never silently degraded, and never a failure.** "Disabled" is
+an operator decision, not a fault — it must not page anyone, must not retry, and must
+not look like a device problem.
+
+| Surface | Behaviour when disabled | Why |
+| --- | --- | --- |
+| Socket probe | **Not performed at all.** `modbus_502` becomes `None` | Same rule as phase 2b's never-measured legs: *not measured* ≠ *down* |
+| Link history (`modbus_502` leg) | Leg recorded as **not measured**, existing history retained | An open outage must not keep accruing against a leg nobody is probing; the history is still worth keeping |
+| Dispatch / force actions | `SKIPPED` with the reason, never `OK`, never retried | Gap 2 |
+| Scheduler rules using `force` | Flagged at **save and at enable time**, not only at fire time | Finding out at 02:00 that a rule cannot run is the failure 2b exists to prevent |
+| UI controls (Battery Control, Release, dispatch) | Visible but disabled, with the reason inline and a link to the toggle | A vanished control invites a hunt; a disabled one with a reason does not. Same judgement as the Advanced-tools gate |
+| MQTT / HA entities sourced from Modbus | Published as **unavailable**, not frozen at the last value | A stale number presented as live is the `schedule_log` / C8 mistake again |
+| REST endpoints | `503` with a machine-readable reason (`modbus_disabled`) | Distinguishable from `503 unreachable`; a caller must be able to tell "off" from "broken" |
+| `cached_ratings` | Return `None`, fall back to the `battery_max_power_kw` constant | Already the documented fallback |
+| Derived values that need ratings | Degrade to the constant and say so | They already fail closed |
+
+**Deliberately NOT disabled:** the `modbus_bridge_url` dispatch provider. That is an
+HTTP call to a separate Modbus Bridge service, not a socket to :502, and it is the one
+path that still works when we stop talking Modbus ourselves. Conflating the two would
+remove the obvious workaround at the moment it becomes most useful.
+
+---
+
+## 3. Scope of the switch — one flag or two?
+
+Worth deciding explicitly, because "Modbus" is three different activities:
+
+| Activity | Cost to the aGate | Value to us |
+| --- | --- | --- |
+| **Polling** — VPP/force truth every 60 s, ratings hourly, the probe every 30 s | ~all of it | VPP badge, correct max charge/discharge |
+| **Dispatch** — force charge/discharge/standby | a burst, rarely | The only local force path |
+| **Reads on demand** — Control tab status | a burst, when looked at | Diagnostics |
+
+Suspension is aimed at the first. A single flag is simpler and matches what exists;
+**recommendation: keep one flag now**, because the goal is to stop the churn and a
+second flag invites a half-off state nobody can reason about. If we later want "no
+polling, dispatch still allowed", that is a second flag with its own design.
+
+**One consequence to accept consciously:** with Modbus off, the **VPP/force badge goes
+blind.** The aGate's 1301 `run_status` never shows a VPP dispatch — only the Modbus
+M704 WSet state does. So while suspended, the bridge cannot tell whether a cloud VPP
+or another controller is dispatching the battery. That is a real loss of safety
+visibility, not a cosmetic one, and it should be stated in the UI next to the toggle
+rather than discovered.
+
+---
+
+## 4. Plan
+
+**Phase A — make the switch honest (small, independent, do first)**
+1. Gate the `:502` probe on `is_enabled()`, and skip it for mocks regardless.
+2. `modbus_502` becomes tri-state: `True` / `False` / `None` (not measured).
+3. Link history: `modbus_502` leg records *not measured* while disabled; close any open
+   outage with that reason rather than leaving it running.
+
+**Phase B — stop the silent success (precondition for using the switch)**
+4. `battery_control` returns a distinguishable *disabled* result, not a generic
+   `{"ok": False}` whose text happens to read as success.
+5. `_classify` maps it to `SKIPPED`; `_fire_entry` records the occurrence as `skipped`
+   with the reason, and does not mark the rule fired.
+6. A test that asserts a `force` rule on a disabled Modbus is recorded as skipped —
+   because this is exactly the class of bug that survived two implementations already.
+
+**Phase C — tell the user before it bites**
+7. UI: disable rather than hide the Modbus-dependent controls, with the reason and a
+   link to the toggle; note the VPP-blindness beside the toggle itself.
+8. Scheduler: warn at save/enable time when a rule needs a disabled subsystem.
+9. MQTT: mark Modbus-sourced entities unavailable.
+
+**Phase D — measure**
+10. Re-run the socket census with the switch off. **Acceptance: zero connections to
+    :502 from this container.** That is the whole point, and it is a number, not an
+    impression.
+
+Phases A and B are each small and worth doing whether or not Modbus is suspended.
+B is a correctness fix that stands on its own.
+
+---
+
+## 5. Decisions needed
+
+1. **Suspend now, or after Phase A+B?** Flipping the existing switch today stops
+   dispatch and the VPP monitor but leaves the probe running and converts force
+   schedules into fake successes. **Recommendation: do A and B first** — they are small,
+   and suspending without them produces misleading data and a misleading history.
+2. **One flag or two** (§3). Recommendation: one.
+3. **Accept VPP blindness while suspended** (§3), or keep the VPP monitor alone running
+   at a much lower cadence as the single exception. It is one connection per interval,
+   and it is the only thing that can see another controller moving the battery.
+4. **Default for new installs** — unchanged (`on`), or off until the strategy is
+   settled?
