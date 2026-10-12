@@ -19,7 +19,13 @@ from pathlib import Path
 from .config import Settings, metrics_active
 
 # Numeric columns written per sample (mode is stored separately as TEXT).
-_NUM_COLS = ("soc", "grid_w", "solar_w", "battery_w", "load_w", "generator_w")
+#: `grid_voltage_v` is the SERVICE voltage — one reading of the thing itself, not
+#: the sum of gridVol1 + gridVol2. On a single-phase service those two are halves of
+#: nothing, and summing them is how the "legs" confusion started
+#: (DEF-GRID-VOLTAGE-LEGS-AU). Nullable: a gateway with no Modbus records NULL rather
+#: than a guess.
+_NUM_COLS = ("soc", "grid_w", "solar_w", "battery_w", "load_w", "generator_w",
+             "grid_voltage_v", "grid_freq_hz")
 
 #: Tariff-tier accumulator arrays carried by cmdType 1301, stored as one JSON
 #: column. These are RUNNING daily totals that reset at midnight, so which one
@@ -51,6 +57,7 @@ class MetricsStore:
         self._conn.execute("CREATE INDEX IF NOT EXISTS ix_metrics_ts ON metrics(ts)")
         self._migrate_gateway_id()
         self._migrate_tiers()
+        self._migrate_grid_voltage()
         self._migrate_bms()
         self._migrate_ha_instances()
         self._migrate_notify_devices()
@@ -112,7 +119,8 @@ class MetricsStore:
         with self._lock:
             self._conn.execute(
                 "INSERT INTO metrics(ts, soc, grid_w, solar_w, battery_w, load_w, "
-                "generator_w, mode, gateway_id, tiers) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                "generator_w, grid_voltage_v, grid_freq_hz, mode, gateway_id, tiers) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 vals,
             )
             self._conn.commit()
@@ -236,6 +244,23 @@ class MetricsStore:
     # temperatures), recorded on demand for trend analysis. Deliberately separate
     # from `metrics`: that table is one wide row per 30s forever, whereas these are
     # dense per-cell arrays kept only for the sessions the user chose to record.
+
+    def _migrate_grid_voltage(self) -> None:
+        """Add the grid voltage/frequency columns. Idempotent.
+
+        Grid voltage was read on every poll and written nowhere, so when an actual
+        investigation needed it — was a curtailment caused by Volt-Watt? — the answer
+        was unrecoverable. Volt-Watt and Volt-VAr respond to VOLTAGE, so without a
+        voltage series no curtailment event can be attributed.
+
+        Nullable by design: a gateway with no Modbus (a mock, or :502 closed) records
+        NULL. NULL means "not measured", which is not the same as zero and must never
+        be averaged as one.
+        """
+        cols = [r[1] for r in self._conn.execute("PRAGMA table_info(metrics)")]
+        for c in ("grid_voltage_v", "grid_freq_hz"):
+            if c not in cols:
+                self._conn.execute(f"ALTER TABLE metrics ADD COLUMN {c} REAL")
 
     def _migrate_bms(self) -> None:
         self._conn.execute(
@@ -964,6 +989,9 @@ class MetricsStore:
     #: silently claim the scarce error budget.
     LOG_SEVERITY: dict[str, str] = {
         "error": "error", "failed": "error", "missed": "error",
+        # An UNKNOWN outcome is louder than a failure, not quieter: the write may
+        # have landed and nobody can say what the device is doing (phase 3).
+        "unknown": "error",
         "exception": "exception",
     }
 

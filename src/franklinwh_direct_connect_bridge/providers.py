@@ -164,11 +164,17 @@ def _dispatch_via_modbus_bridge(base: str, action: str, power_w, power_pct,
 
 
 def dispatch(s: Settings, action: str, *, power_w=None, power_pct=None,
-             duration_s=None, target_soc=None) -> dict:
+             duration_s=None, target_soc=None, gateway_id: str | None = None) -> dict:
     """Actuate battery dispatch (force charge/discharge/standby/release + target-SoC) via
     the resolved provider. Gated upstream by allow_writes. Raises ``DispatchUnavailable``
     (no provider), ``ValueError`` (bad action), ``NotImplementedError`` (library path not
-    wired), or a transport error (provider unreachable)."""
+    wired), or a transport error (provider unreachable).
+
+    ``gateway_id`` names WHICH battery (BR-34). It was absent, so on a multi-gateway
+    site every dispatch went to the resolved default provider — a force-charge aimed at
+    one aGate could land on another, and the response could not say which. It is echoed
+    in the result so the caller can verify the target rather than assume it.
+    """
     act = (action or "").strip().lower()
     if act not in _MB_ACTION:
         raise ValueError(f"unknown action {action!r}; expected charge/discharge/standby/release")
@@ -181,8 +187,9 @@ def dispatch(s: Settings, action: str, *, power_w=None, power_pct=None,
     if active["kind"] == "modbus-bridge":
         res = _dispatch_via_modbus_bridge(active["source"], act, power_w, power_pct,
                                           duration_s, target_soc)
-        return {"ok": True, "action": act, "provider": {"kind": active["kind"],
-                "via": active["via"], "source": active["source"]}, "result": res}
+        return {"ok": True, "action": act, "gateway_id": gateway_id or "",
+                "provider": {"kind": active["kind"], "via": active["via"],
+                             "source": active["source"]}, "result": res}
     # modbus-lib: dispatch without the Bridge's watchdog is unsafe (orphan-dispatch risk) —
     # not wired in Phase 2. The library path is detected but actuation is deferred.
     raise NotImplementedError(

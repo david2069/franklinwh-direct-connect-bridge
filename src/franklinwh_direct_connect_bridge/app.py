@@ -251,6 +251,10 @@ class RebootReq(BaseModel):
 class DispatchReq(BaseModel):
     # HYBRID-CAPABILITIES Phase 2 — battery dispatch via the resolved Modbus provider.
     action: str                         # charge | discharge | standby | release
+    # WHICH battery (BR-34). Absent, every dispatch went to the resolved default
+    # provider, so on a multi-gateway site a force-charge aimed at one aGate could
+    # land on another — and the response could not say which one it hit.
+    gateway_id: str | None = None
     power_w: int | None = None
     power_pct: int | None = None
     duration_s: int | None = None       # watchdog seconds (0 = no limit)
@@ -3886,10 +3890,15 @@ def create_app() -> FastAPI:
         safe). Gated by allow_writes. 503 = no provider, 501 = library path not wired,
         422 = bad action, 502 = provider unreachable."""
         _guard_writes()
+        gw = req.gateway_id or ""
+        if gw and get_gateway(gw) is None:
+            raise HTTPException(404, f"unknown gateway {gw!r} — refusing to dispatch to "
+                                     "the default instead of the one you named")
         try:
             return providers.dispatch(
                 get_settings(), req.action, power_w=req.power_w, power_pct=req.power_pct,
-                duration_s=req.duration_s, target_soc=req.target_soc)
+                duration_s=req.duration_s, target_soc=req.target_soc,
+                gateway_id=gw or None)
         except providers.DispatchUnavailable as e:
             raise HTTPException(status_code=503, detail=str(e))
         except ValueError as e:

@@ -857,6 +857,26 @@ def summary(s: Settings, host: str | None = None) -> dict[str, Any]:
                 out["der_comms"] = {"sunsMdEn": d.get("sunsMdEn"), "sep2": d.get("enable")}
             except (OSError, TransportError, TimeoutError):
                 pass
+            # Grid voltage + frequency, inside the SAME session — one extra read, no
+            # extra login. `gridLineVol` is the SERVICE voltage in tenths (2409 ->
+            # 240.9 V): one reading of the thing itself, not gridVol1 + gridVol2,
+            # which on a single-phase service are halves of nothing
+            # (DEF-GRID-VOLTAGE-LEGS-AU). Optional: a gateway that cannot answer
+            # records nothing rather than a guess.
+            # NB: the client exposes each frame as a METHOD (c.ibg_run_status()),
+            # there is no generic c.read(). Catching AttributeError here would hide
+            # that kind of mistake entirely — which it did, silently, on the first
+            # attempt: the column stayed NULL and nothing said why.
+            try:
+                run = c.ibg_run_status() or {}
+                lv = run.get("gridLineVol")
+                if lv not in (None, ""):
+                    out["power"]["grid_voltage_v"] = round(float(lv) / 10.0, 1)
+                fz = run.get("gridFreq")
+                if fz not in (None, ""):
+                    out["power"]["grid_freq_hz"] = round(float(fz), 2)
+            except (OSError, TransportError, TimeoutError, ValueError) as e:
+                log.debug("grid voltage not read this cycle: %s", e)
             out["firmware"] = {k: manifest.get(k)
                                for k in ("IBG_VER", "APP_VER", "protocolVer", "IBG_SN")
                                if k in manifest}

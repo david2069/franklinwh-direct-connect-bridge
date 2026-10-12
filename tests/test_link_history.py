@@ -191,3 +191,41 @@ def test_legs_are_returned_in_catalogue_order(store):
     store.record_link_probe("gw1", "ok", leg="icmp", now=T0)
     store.record_link_probe("gw1", "ok", leg="local_9000", now=T0)
     assert [r["leg"] for r in store.link_states("gw1")] == ["local_9000", "icmp"]
+
+
+# ── grid voltage persistence (FEAT-GRID-VOLTAGE-HISTORY) ─────────────────────
+def test_grid_voltage_and_frequency_are_stored(store):
+    store.insert({"soc": 50, "grid_w": -1000, "grid_voltage_v": 240.9,
+                  "grid_freq_hz": 49.97}, ts=int(T0), gateway_id="gw1")
+    row = store._conn.execute(
+        "SELECT grid_voltage_v, grid_freq_hz FROM metrics ORDER BY ts DESC LIMIT 1"
+    ).fetchone()
+    assert row == (240.9, 49.97)
+
+
+def test_a_gateway_that_cannot_report_voltage_stores_null_not_zero(store):
+    """NULL means 'not measured'. Zero is a measurement, and averaging it would drag
+    a voltage series toward a value the grid never held."""
+    store.insert({"soc": 50, "grid_w": 0}, ts=int(T0), gateway_id="gw1")
+    row = store._conn.execute(
+        "SELECT grid_voltage_v, grid_freq_hz FROM metrics ORDER BY ts DESC LIMIT 1"
+    ).fetchone()
+    assert row == (None, None)
+
+
+def test_the_voltage_columns_are_added_to_an_existing_database(tmp_path, monkeypatch):
+    """CREATE TABLE IF NOT EXISTS is a no-op on a live DB — the same trap that made
+    the per-leg link_state migration a silent failure."""
+    import sqlite3
+    path = str(tmp_path / "old.db")
+    c = sqlite3.connect(path)
+    c.execute("""CREATE TABLE metrics(id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER,
+                 soc REAL, grid_w REAL, solar_w REAL, battery_w REAL, load_w REAL,
+                 generator_w REAL, mode TEXT, gateway_id TEXT, tiers TEXT)""")
+    c.execute("INSERT INTO metrics(ts, soc) VALUES (1, 42)")
+    c.commit(); c.close()
+    monkeypatch.setenv("METRICS_DB", path)
+    s = db_mod.MetricsStore(path)
+    cols = [r[1] for r in s._conn.execute("PRAGMA table_info(metrics)")]
+    assert "grid_voltage_v" in cols and "grid_freq_hz" in cols
+    assert s._conn.execute("SELECT soc FROM metrics WHERE ts=1").fetchone()[0] == 42

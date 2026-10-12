@@ -23,9 +23,11 @@ import datetime as dt
 import logging
 import fnmatch
 import re
+import time
 from typing import Any
 
 from . import ha_instances
+from . import resilience
 
 
 log = logging.getLogger(__name__)
@@ -1565,11 +1567,143 @@ def _force_dispatch(action: dict, *, host: str | None, window_min: int,
     return f"force {direction}: {out.get('result', '')}"
 
 
+#: Which action kinds actually command the device. These go through
+#: resilience.call as WRITES, which means: bounded by a deadline, retried only
+#: while the fault looks transient, and NEVER retried once the outcome is
+#: UNKNOWN — a second force-charge after an ambiguous first one is how you
+#: dispatch twice (RUNTIME_DESIGN phase 3).
+DEVICE_WRITES = frozenset({"force", "set_mode", "smart_circuit", "offgrid"})
+
+
+def run_action_outcome(action: dict, *, settings, client, store, snapshot: dict,
+                       host: str | None = None, window_min: int = 0,
+                       gateway_id: str | None = None, dry_run: bool = False,
+                       schedule_id: str | None = None, schedule_name: str | None = None,
+                       window_end_ts: float | None = None,
+                       notifier=None) -> resilience.Outcome:
+    """Execute one action and return a structured :class:`resilience.Outcome`.
+
+    The string-returning :func:`run_action` is kept as a thin wrapper, but the
+    scheduler now decides on the VERDICT rather than on the words. It used to
+    infer success with ``"failed" not in result`` — so an action whose failure
+    text happened not to contain that substring was recorded as a success, and
+    an UNKNOWN write was indistinguishable from a clean one.
+    """
+    kind = (action or {}).get("kind") or ""
+    target = f"{gateway_id or host or '?'}"
+
+    def _skip(detail: str) -> resilience.Outcome:
+        """Preconditions unmet. Nothing was attempted, so this is not a failure
+        and must never be retried or alerted on."""
+        return resilience.Outcome(verdict=resilience.Verdict.SKIPPED, action=kind,
+                                  target=target, detail=detail)
+
+    def _classify(detail: str) -> resilience.Verdict:
+        """Read a verdict out of the body's text.
+
+        `_run_action_body` never raises — it catches and returns a failure STRING.
+        That contract is deliberate (one bad step must not kill a schedule), but it
+        means resilience.call sees a clean return for a failed write unless the text
+        is inspected as well. Missing this is exactly how a failure gets recorded as
+        a success, which is the defect phase 3 exists to remove.
+        """
+        low = str(detail).lower()
+        if " skipped" in low or low.startswith("unknown action"):
+            return resilience.Verdict.SKIPPED
+        if "failed" in low or "not confirmed" in low or "error" in low:
+            return resilience.Verdict.FAILED
+        return resilience.Verdict.OK
+
+    if kind in DEVICE_WRITES and not dry_run:
+        # The window is the deadline: retrying past the end of the window would
+        # dispatch into conditions the rule no longer describes.
+        policy = resilience.DISPATCH if kind == "force" else resilience.WRITE
+        deadline = None
+        if window_end_ts:
+            deadline = max(1.0, float(window_end_ts) - time.time())
+        def _attempt():
+            """Raise on a reported failure so resilience can classify and retry it;
+            return the text on success so the Outcome carries the same words the UI
+            has always shown."""
+            text = run_action(action, settings=settings, client=client,
+                              store=store, snapshot=snapshot, host=host,
+                              window_min=window_min, gateway_id=gateway_id,
+                              dry_run=dry_run, schedule_id=schedule_id,
+                              schedule_name=schedule_name,
+                              window_end_ts=window_end_ts)
+            if _classify(text) is resilience.Verdict.FAILED:
+                raise ConnectionError(text)      # transient by default, so it retries
+            return text
+
+        out = resilience.call(
+            _attempt, action=kind, target=target, policy=policy, write=True,
+            audit=_audit_action(store, schedule_id, schedule_name),
+            notifier=notifier, deadline_s=deadline)
+        # Carry the body's own words through, and honour a SKIPPED that came back
+        # as a clean return rather than being mistaken for a successful write.
+        if out.verdict is resilience.Verdict.OK and isinstance(out.value, str):
+            out.detail = out.value
+            if _classify(out.value) is resilience.Verdict.SKIPPED:
+                out.verdict = resilience.Verdict.SKIPPED
+        return out
+
+    # Everything else — notifications, HA service calls, dry runs, and the
+    # kinds that are refused outright — keeps the simple path. They command no
+    # hardware, so an ambiguous result has no safety consequence.
+    try:
+        detail = run_action(action, settings=settings, client=client, store=store,
+                            snapshot=snapshot, host=host, window_min=window_min,
+                            gateway_id=gateway_id, dry_run=dry_run,
+                            schedule_id=schedule_id, schedule_name=schedule_name,
+                            window_end_ts=window_end_ts)
+    except Exception as e:  # noqa: BLE001
+        return resilience.Outcome(verdict=resilience.Verdict.FAILED, action=kind,
+                                  target=target, error=f"{type(e).__name__}: {e}")
+    v = _classify(detail)
+    if v is resilience.Verdict.SKIPPED:
+        return _skip(str(detail))
+    return resilience.Outcome(verdict=v, action=kind, target=target, detail=str(detail))
+
+
+def _audit_action(store, schedule_id, schedule_name):
+    """An audit sink for resilience.call that writes to the schedule log. None when
+    there is nothing to write to, so a dry run or a unit test stays silent."""
+    if store is None or not schedule_id:
+        return None
+
+    def _audit(**kw) -> None:
+        try:
+            v = kw.get("verdict") or ""
+            status = v if v in ("unknown", "failed") else ("fired" if v == "ok" else "error")
+            store.log_schedule_event(
+                schedule_id, schedule_name or "", status,
+                kw.get("detail") or kw.get("error") or v)
+        except Exception:  # noqa: BLE001 — auditing must never break the call
+            pass
+    return _audit
+
+
 def run_action(action: dict, *, settings, client, store, snapshot: dict,
                host: str | None = None, window_min: int = 0,
                gateway_id: str | None = None, dry_run: bool = False,
                schedule_id: str | None = None, schedule_name: str | None = None,
                window_end_ts: float | None = None) -> str:
+    """String form, kept for callers and the UI. Prefer `run_action_outcome`.
+
+    Also the single seam the Outcome path goes through, so a caller (or a test) that
+    substitutes this function still controls both."""
+    return _run_action_body(action, settings=settings, client=client, store=store,
+                            snapshot=snapshot, host=host, window_min=window_min,
+                            gateway_id=gateway_id, dry_run=dry_run,
+                            schedule_id=schedule_id, schedule_name=schedule_name,
+                            window_end_ts=window_end_ts)
+
+
+def _run_action_body(action: dict, *, settings, client, store, snapshot: dict,
+                     host: str | None = None, window_min: int = 0,
+                     gateway_id: str | None = None, dry_run: bool = False,
+                     schedule_id: str | None = None, schedule_name: str | None = None,
+                     window_end_ts: float | None = None) -> str:
     """Execute one action and return a human-readable outcome.
 
     Never raises: a failing action must record WHY and let the rest of the
@@ -2201,17 +2335,29 @@ def _fire_entry(entry: dict, *, settings, client, store, snapshot: dict,
     # so one rule's variables can never leak into the next rule's message.
     snapshot = {**snapshot, **run_context(entry, gateway_id=gateway_id, now=now,
                                           phase="fire")}
+    outcome: resilience.Outcome | None = None
     if action.get("kind"):
-        results.append(run_action(action, settings=settings, client=client,
-                                  store=store, snapshot=snapshot, host=host,
-                                  window_min=int(entry.get("duration_min") or 0),
-                                  gateway_id=gateway_id, schedule_id=entry["id"],
-                                  schedule_name=entry["name"],
-                                  window_end_ts=entry.get("_wend") if entry.get("_wend") is not None else _window_end_ts(entry, now)))
+        outcome = run_action_outcome(
+            action, settings=settings, client=client, store=store, snapshot=snapshot,
+            host=host, window_min=int(entry.get("duration_min") or 0),
+            gateway_id=gateway_id, schedule_id=entry["id"], schedule_name=entry["name"],
+            window_end_ts=entry.get("_wend") if entry.get("_wend") is not None else _window_end_ts(entry, now))
+        results.append(outcome.detail or outcome.render())
     results += _fire_ha_phase(entry, "fire", settings=settings, client=client,
                               store=store, snapshot=snapshot, host=host)
     summary = "; ".join(results) or "nothing to do"
-    ok_all = all("failed" not in r and "NOT confirmed" not in r for r in results)
+    # Decide on the VERDICT, not on the words. This used to be
+    # `"failed" not in r`, so an action whose failure text did not happen to
+    # contain that substring was recorded as a success — and an UNKNOWN write
+    # was indistinguishable from a clean one (RUNTIME_DESIGN phase 3).
+    ha_ok = all("failed" not in r and "NOT confirmed" not in r
+                for r in results[1 if outcome is not None else 0:])
+    if outcome is None:
+        ok_all, unknown = ha_ok, False
+    else:
+        unknown = outcome.verdict is resilience.Verdict.UNKNOWN
+        ok_all = ha_ok and outcome.verdict in (resilience.Verdict.OK,
+                                               resilience.Verdict.SKIPPED)
 
     # Mark the occurrence fired ONLY on success. This is the fix for the defect that
     # started this work: the old code called mark_schedule_fired unconditionally, and
@@ -2220,6 +2366,21 @@ def _fire_entry(entry: dict, *, settings, client, store, snapshot: dict,
     # Leaving it unmarked is the entire retry mechanism: the next tick re-evaluates it,
     # bounded by the window, and sweep_missed closes it out if the window shuts first.
     occ_id = entry.get("_occ_id")
+    # UNKNOWN is never treated as a failure to retry: the write may have landed,
+    # and a retry would dispatch twice. It settles the occurrence and is reported
+    # LOUDER than a failure, because nobody can say what the battery is doing.
+    if unknown:
+        if occ_id is not None:
+            store.finish_occurrence(occ_id, status="unknown", reason=summary)
+        store.mark_schedule_fired(entry["id"], entry.get("_wkey")
+                                  or now.date().isoformat(), summary)
+        # Severity comes from the store's status map (LOG_SEVERITY), so the
+        # classification lives in one place rather than at every call site.
+        store.log_schedule_event(entry["id"], entry["name"], "unknown", summary)
+        log.warning("[%s] schedule %r outcome UNKNOWN — the write may have landed; "
+                    "NOT retrying: %s", gateway_id or "-", entry.get("name"), summary)
+        return {"id": entry["id"], "name": entry["name"], "result": summary,
+                "ok": False, "unknown": True}
     if ok_all:
         store.mark_schedule_fired(
             entry["id"], entry.get("_wkey") or now.date().isoformat(), summary)
