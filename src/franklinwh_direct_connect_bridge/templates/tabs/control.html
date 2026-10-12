@@ -425,10 +425,19 @@
     <div class="p-5">
       <div class="flex items-center justify-between gap-3">
         <div>
-          <div class="text-sm" style="color:var(--text-primary)">Enable Modbus path</div>
+          <div class="text-sm" style="color:var(--text-primary)">Use Modbus from this bridge</div>
           <div class="text-xs text-slate-500">
-            Powers battery ratings (max charge/discharge) and force dispatch. Off → the bridge
+            Powers battery ratings (max charge/discharge) and force dispatch. Off → this bridge
             falls back to the max-power constant and cannot force-dispatch.
+          </div>
+          <!-- Two different things get called "Modbus enable": this flag, and the aGate's own
+               SunSpec listener (cmdType 1205 sunsMdEn). Say which one this is, because the
+               "Port 502 reachable" badge below makes it read like a gateway setting. -->
+          <div class="text-[11px] mt-1" style="color:var(--text-faint)">
+            Affects <span class="font-medium">this bridge only</span>. It does not change what
+            the gateway listens for — other clients (the Modbus Bridge, Energipay, the app)
+            are unaffected. The aGate's own SunSpec listener is
+            <span class="font-mono">sunsMdEn</span>, shown on the Dashboard.
           </div>
         </div>
         <button type="button" @click="$store.app.toggleModbus()" role="switch"
@@ -440,8 +449,11 @@
         </button>
       </div>
       <div class="flex items-center gap-2 mt-3 text-xs flex-wrap">
+        <!-- Reachability of the GATEWAY's port, measured independently of the flag above —
+             it stays live when the flag is off, which is why it needs labelling. -->
         <span class="chip" :class="$store.app.summary.modbus_502 ? 'ok' : 'muted'"
-              x-text="$store.app.summary.modbus_502 ? 'Port 502 reachable' : 'Port 502 not reachable'"></span>
+              title="The gateway's port 502, probed by the poller. Independent of the switch above."
+              x-text="($store.app.summary.modbus_502 ? 'Gateway port 502 reachable' : 'Gateway port 502 not reachable')"></span>
         <span class="text-slate-500" x-show="!$store.app.modbus.enabled && $store.app.modbus.reason"
               x-text="$store.app.modbus.reason"></span>
       </div>

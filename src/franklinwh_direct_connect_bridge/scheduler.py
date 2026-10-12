@@ -896,11 +896,26 @@ def snapshot_from_state(state: dict, power: dict | None = None) -> dict[str, Any
         "load.power_w": st.get("load_w"),
         "generator.power_w": st.get("generator_w"),
         "mode.name": st.get("mode"),
+        # Run status BOTH ways, because a rule may reasonably want either: the number
+        # for an exact machine test (`status.run_status == 8`), or the label for a
+        # readable one (`status.run_status_desc == "Debug Mode"`) and for message
+        # substitution. Same value, two spellings — never a third enum of our own.
+        "status.run_status": st.get("run_status"),
+        "status.run_status_desc": st.get("run_status_desc"),
+        # Programme id. 9 means VPP; normal programmes use large arbitrary ids, so a
+        # rule must test `== 9` and never `!= 9` to mean "no programme".
+        "status.programme_id": st.get("programme_id"),
         "bridge.latency_ms": st.get("latency_ms"),
     }
     # grid.connected is derived, so say so rather than implying a device field.
     grid = st.get("grid_w")
     snap["grid.connected"] = None if grid is None else int(grid != 0)
+    # Booleans as 1/0 so they compare with `== 1` like every other boolean sensor
+    # here, rather than needing a separate true/false vocabulary in the editor.
+    for key, src in (("status.vpp", "vpp"), ("status.off_grid", "off_grid"),
+                     ("status.debug", "debug")):
+        v = st.get(src)
+        snap[key] = None if v is None else int(bool(v))
     # state IS the summary power block (poller sets last_state = summary['power']), so the daily
     # solar counter is here — available in the scheduler ENGINE tick too (where power is None).
     snap["solar.today_kwh"] = st.get("kwh_sun")   # actual PV generated today
@@ -987,6 +1002,13 @@ SENSORS = [
     ("load.power_w", "Home load (W)"),
     ("generator.power_w", "Generator power (W)"),
     ("mode.name", "Operating mode"),
+    ("status.run_status", "Run status (number: 0 Standby, 1 Charging, 2 Discharging, "
+                          "5-7 off-grid, 8 Debug, 9 VPP)"),
+    ("status.run_status_desc", "Run status (text: \"Discharging\", \"Debug Mode\", …)"),
+    ("status.vpp", "Under external control / VPP mode"),
+    ("status.off_grid", "Off-grid (islanded)"),
+    ("status.debug", "Debug Mode — FranklinWH remote support session"),
+    ("status.programme_id", "Programme id (9 = VPP; others are arbitrary ids)"),
     ("bridge.latency_ms", "Round-trip latency (ms)"),
 ]
 

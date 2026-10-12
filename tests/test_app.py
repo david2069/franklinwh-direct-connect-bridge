@@ -408,3 +408,36 @@ def test_mode_field_is_not_labelled_tou():
     src = (pathlib.Path(fieldschema.__file__)).read_text()
     assert '"tou_mode":                 "Operating Mode"' in src
     assert "TOU mode" not in src.split("FIELD_ATTRS", 1)[-1] if "FIELD_ATTRS" in src else True
+
+
+# ── /api/der-comms is a GATEWAY setting, not a bridge one ────────────────────
+def test_disabling_sunsmden_requires_explicit_confirmation(monkeypatch):
+    """It stops the aGate accepting SunSpec Modbus from EVERY client — the Modbus
+    Bridge and Energipay included — which is a cross-system outage from one call."""
+    monkeypatch.setattr(client_module, "writes_enabled", lambda s: True)
+    monkeypatch.setattr(client_module, "set_der_comms",
+                        lambda *a, **k: {"ok": True})
+    r = _app().post("/api/der-comms", json={"sunspec_modbus": False})
+    assert r.status_code == 409
+    assert "every client" in r.json()["detail"]
+    assert "/api/modbus" in r.json()["detail"], "must point at the bridge-local switch"
+
+
+def test_enabling_sunsmden_is_not_blocked(monkeypatch):
+    """Only the disable direction is dangerous; turning the listener back on is not."""
+    monkeypatch.setattr(client_module, "writes_enabled", lambda s: True)
+    monkeypatch.setattr(client_module, "set_der_comms", lambda *a, **k: {"ok": True})
+    r = _app().post("/api/der-comms", json={"sunspec_modbus": True})
+    assert r.status_code != 409
+
+
+def test_the_confirmed_disable_still_goes_through(monkeypatch):
+    """The guard is a speed bump for the unaware, not a refusal."""
+    monkeypatch.setattr(client_module, "writes_enabled", lambda s: True)
+    seen = {}
+    def _fake(s, **kw):
+        seen.update(kw); return {"ok": True}
+    monkeypatch.setattr(client_module, "set_der_comms", _fake)
+    r = _app().post("/api/der-comms",
+                    json={"sunspec_modbus": False, "confirm": True})
+    assert r.status_code != 409 and seen.get("sunspec_modbus") is False

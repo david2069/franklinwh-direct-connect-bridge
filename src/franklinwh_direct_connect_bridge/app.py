@@ -241,6 +241,9 @@ class CallReq(BaseModel):
 
 class DerCommsReq(BaseModel):
     sunspec_modbus: bool | None = None  # toggle SunSpec Modbus (sunsMdEn); None = leave
+    #: Required to DISABLE sunsMdEn, because that silences the gateway for every client
+    #: rather than for this bridge. See the endpoint docstring.
+    confirm: bool = False
     ieee2030_5: bool | None = None      # toggle IEEE 2030.5 / SEP2 enable; None = leave
 
 
@@ -3866,8 +3869,28 @@ def create_app() -> FastAPI:
     @app.post("/api/der-comms")
     def api_set_der_comms(req: DerCommsReq, gateway: str | None = Query(None)):
         """Write DER comms toggles (SunSpec Modbus / IEEE 2030.5). Delayed-apply — the
-        device reply is not proof; verify at the interface level (:502 / status2030_5)."""
+        device reply is not proof; verify at the interface level (:502 / status2030_5).
+
+        **This is a GATEWAY setting, not a bridge setting.** Disabling `sunsMdEn` stops
+        the aGate listening for SunSpec Modbus from *every* client — the Modbus Bridge,
+        Energipay, the installer's tools — not just this bridge. It is a cross-system
+        outage from one API call, and nothing downstream would say why: those clients
+        would simply start timing out.
+
+        To stop **this bridge** using Modbus, use `PUT /api/modbus` instead; that is a
+        local flag and touches no device. Disabling here therefore requires an explicit
+        `confirm=true`, so it cannot be done by accident or by a client that assumed the
+        two switches were the same thing.
+        """
         _guard_writes()
+        if req.sunspec_modbus is False and not req.confirm:
+            raise HTTPException(
+                status_code=409,
+                detail="Disabling sunsMdEn stops the GATEWAY accepting SunSpec Modbus "
+                       "from every client, not just this bridge — the Modbus Bridge and "
+                       "any other integration would start timing out with no explanation. "
+                       "To silence only this bridge use PUT /api/modbus. If you really "
+                       "mean the gateway, repeat with confirm=true.")
         host = _gw_host(gateway)   # SAFETY: the write must hit the SELECTED gateway
         try:
             return client.set_der_comms(get_settings(),
