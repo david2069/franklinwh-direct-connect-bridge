@@ -48,10 +48,14 @@ Our own call sites are few:
 
 | Caller | Cadence |
 | --- | --- |
-| VPP monitor → `battery_control.status()` | 60 s (`FWH_VPP_MONITOR_S`, floor 15 s) |
+| ~~VPP monitor → `battery_control.status()`~~ | ~~60 s~~ — **removed 2026-10-12**: VPP is read locally (1707 programme id), so this path opens no socket |
 | Poller `summary()` → `port_open(host, 502)` | every poll (30 s) |
 | `cached_ratings()` | 1 h TTL |
 | `/api/battery/control/status` | on demand |
+
+The VPP monitor has since been moved to the local channel and no longer opens a
+socket at all, which removes roughly one connection per minute per gateway from
+the figures below.
 
 Three or four calls a minute cannot produce 38 connections — so the multiplier is
 **inside the library**. The fwh-modbus session established why, and then corrected its
