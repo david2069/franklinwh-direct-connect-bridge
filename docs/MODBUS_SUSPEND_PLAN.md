@@ -105,40 +105,38 @@ Two things fall outside it, and should be said so they are not assumed either wa
 * **The other clients are unaffected.** The Modbus Bridge and Energipay keep their own
   connections. This switch only silences *us*.
 
-### What is actually lost — tested, 2026-10-12
+### What is actually lost — measured, then fixed
 
-An earlier draft of this plan claimed that with Modbus off "the VPP badge goes blind,
-because 1301 `run_status` never reveals a VPP dispatch". That was **overstated**. A
-live test on the reference aGate:
+This section said twice that suspending Modbus would blind the VPP badge. **It no longer
+costs anything**, because VPP detection was moved to the local channel on 2026-10-12.
 
-| Step | Local 1301 `run_status` | Modbus M704 |
+Measured on the reference aGate during a Modbus force discharge, with the mobile app
+showing VPP Mode:
+
+| Field | Not forced | During VPP |
 | --- | --- | --- |
-| Before | 2 (Discharging) | `Not Active`, `vpp_active` False |
-| During a Modbus force discharge (−1500 W) | **2 (Discharging)** | `Force Discharge`, `vpp_active` True |
-| After release | 2 (Discharging) | `Not Active`, `vpp_active` False |
+| 1301 `run_status` | 2 | **2** — unchanged |
+| `name` | `Self-Consumption` | **`""`** |
+| **1707 `ibgRunStatus`** | 85232 | **9** |
 
-So **a Modbus force is not `run_status` 9**, and two different things have been wearing
-the name *VPP*:
+`ibgRunStatus` is the local equivalent of the cloud's `tou_mode` — a programme id where 9
+means VPP, and where normal programmes use large arbitrary ids. `vpp_monitor` now reads
+it from the poller's cached block and opens no Modbus connection at all. See
+`RUN_STATUS_AND_MODE.md`.
 
-1. **`vpp_active` in this codebase** — the M704 WSet force bit. *Any* forced setpoint,
-   from any controller.
-2. **`run_status` 9, "VPP mode"** — what the FranklinWH app shows for a cloud/utility
-   VPP programme. `catalog.run_status_desc(9)` names it, and `cloud_compat.py:40`
-   already maps it **from the local 1301 payload**.
+**So, with Modbus TCP off, what is actually lost:**
 
-`run_status` 9 is therefore a **local** reading and does not need Modbus. What
-suspending Modbus actually costs is visibility of **M704 force dispatches** — in
-practice, the Modbus Bridge's own commands or an orphaned force left by one.
+| Capability | Lost? |
+| --- | --- |
+| VPP / external-control detection | **No** — local 1707 |
+| Battery state, power, SoC, voltage, frequency | **No** — local 1301 / 1707 |
+| Off-grid and Debug/support-session detection | **No** — local `run_status` |
+| **Force dispatch and Release** | **Yes** — the only local force path |
+| **Model-correct max charge/discharge ratings** | **Yes** — falls back to the `battery_max_power_kw` constant |
+| Detection of *another* controller's M704 force specifically | Partly — `ibgRunStatus` 9 covers any external control, but not which register was written |
 
-**Still unproven:** that a genuine cloud VPP event sets `run_status` 9 locally. It
-cannot be manufactured to order; the only evidence is that our own code assumes it.
-Worth confirming opportunistically the next time a real VPP event occurs, and worth
-not relying on until then.
-
-**So, if Modbus had never been set up here, what would be lost:** force dispatch (the
-only local force path), the model-correct max charge/discharge ratings (falls back to
-the `battery_max_power_kw` constant), and detection of another controller's force.
-Cloud VPP detection would **not** be lost.
+Two capabilities, both write-side or nice-to-have. That is a much cheaper suspension than
+this document originally described.
 
 ## 4. Plan
 
@@ -179,11 +177,8 @@ B is a correctness fix that stands on its own.
    dispatch and the VPP monitor but leaves the probe running and converts force
    schedules into fake successes. **Recommendation: do A and B first** — they are small,
    and suspending without them produces misleading data and a misleading history.
-2. **Keep the VPP monitor running as a single exception, or not?** Now that the cost is
-   measured rather than assumed, the case for the exception is weaker: it would only
-   preserve detection of *M704 forces*, which in practice means the Modbus Bridge's own
-   commands — and that bridge already knows what it sent. Allowing it also means "off"
-   is not quite off, and the acceptance test weakens from "zero connections to :502" to
-   "zero except one". **Recommendation: no exception.**
+2. ~~Keep the VPP monitor running as an exception?~~ **Settled: no exception needed.**
+   The VPP monitor no longer uses Modbus at all, so there is nothing to except. "Off"
+   can mean off, and the acceptance test stays "zero connections to :502".
 3. **Default for new installs** — unchanged (`on`), or off until the strategy is
    settled?
