@@ -21,6 +21,16 @@ from .state import get_state
 
 log = logging.getLogger("franklinwh_direct_connect_bridge.client")
 
+#: The programme id the aGate reports while under external control. The vendor
+#: reference is explicit that ANY remote client taking direct control — Modbus
+#: TCP or the cloud API — puts the gateway in "VPP Mode", so this covers a
+#: utility dispatch, the app, the Modbus bridge and our own force alike.
+VPP_PROGRAMME_ID = 9
+
+#: RUN_STATUS 8 — a FranklinWH remote-support session. Worth surfacing: it means
+#: a third party is connected to the gateway.
+DEBUG_RUN_STATUS = 8
+
 
 def active_host(s: Settings) -> str:
     """The IP we currently talk to — a re-discovered address wins over the configured one."""
@@ -821,9 +831,16 @@ def summary(s: Settings, host: str | None = None) -> dict[str, Any]:
                 "run_status": pf.get("run_status"),
                 "run_status_desc": (catalog.run_status_desc(pf.get("run_status"))
                                     if pf.get("run_status") is not None else None),
-                # Islanded (5/6/7) and VPP/force (9) — surfaced prominently in the top nav.
+                # Islanded (5/6/7) — surfaced prominently in the top nav.
                 "off_grid": pf.get("run_status") in (5, 6, 7),
-                "vpp": pf.get("run_status") == 9,
+                # 8 = a FranklinWH remote-support session is active on this gateway.
+                # Someone outside the household can see and change things, so it is
+                # surfaced rather than left as an unexplained number.
+                "debug": pf.get("run_status") == DEBUG_RUN_STATUS,
+                # NB: `vpp` is NOT derived from run_status. That was a long-standing
+                # defect — 1301 run_status never carries 9, it reports the battery's
+                # direction and keeps doing so under VPP. The real source is the 1707
+                # programme id, set further down. See docs/RUN_STATUS_AND_MODE.md.
             }
             # Richer, dashboard-parity blocks from the SAME power_flow read (no extra
             # device round-trip). power stays unchanged for back-compat.
@@ -869,6 +886,15 @@ def summary(s: Settings, host: str | None = None) -> dict[str, Any]:
             # attempt: the column stayed NULL and nothing said why.
             try:
                 run = c.ibg_run_status() or {}
+                # ibgRunStatus is the LOCAL equivalent of the cloud's tou_mode: a
+                # programme id, where 9 means VPP. It is NOT a RUN_STATUS key — normal
+                # programmes use large arbitrary ids (85232 here; the cloud cookbook's
+                # example is 29287). Test == 9 and nothing else; != 9 does not mean
+                # "no programme". See docs/RUN_STATUS_AND_MODE.md.
+                prog = run.get("ibgRunStatus")
+                if prog is not None:
+                    out["power"]["programme_id"] = prog
+                    out["power"]["vpp"] = (int(prog) == VPP_PROGRAMME_ID)
                 lv = run.get("gridLineVol")
                 if lv not in (None, ""):
                     out["power"]["grid_voltage_v"] = round(float(lv) / 10.0, 1)

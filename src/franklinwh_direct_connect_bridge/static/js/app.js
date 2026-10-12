@@ -1052,6 +1052,11 @@ document.addEventListener('alpine:init', () => {
       return this.battery.run_status_desc || this.power.run_status_desc
              || (this.power.run_status ?? '--');
     },
+    //: run_status 8 — a FranklinWH remote-support session. Not a fault, but a third
+    //  party is connected to the gateway and can change things, so it is shown.
+    get isDebugMode() {
+      return this.power.debug === true || this.power.run_status === 8;
+    },
     //: run_status 5/6/7 — the aGate has islanded (disconnected from the grid, running on
     //  battery). Surfaced as a prominent top-nav badge and drives the on/off-grid button.
     get isOffGrid() {

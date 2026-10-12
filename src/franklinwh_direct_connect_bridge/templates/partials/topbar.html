@@ -113,8 +113,18 @@
         <path stroke-linecap="round" stroke-linejoin="round" d="M18.36 6.64A9 9 0 1 1 5.64 6.64M12 2v10"/></svg>
       <span>OFF-GRID</span>
     </div>
+    <!-- Debug Mode (run_status 8) = a FranklinWH remote-support session is live on this
+         gateway. Someone outside the household can see and change things, so it ranks
+         above VPP and is never silently rendered as a bare number. -->
+    <div class="chip warn inline-flex items-center gap-1" :style="{order: $store.app.topbarOrder('status')}"
+         x-show="$store.app.isDebugMode && $store.app.topbarShow('status')" x-cloak
+         title="Debug Mode — a FranklinWH remote-support session is active on this gateway">
+      <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 8v5M12 16h.01"/></svg>
+      <span>SUPPORT SESSION</span>
+    </div>
     <div class="chip vpp inline-flex items-center gap-1" :style="{order: $store.app.topbarOrder('status')}"
-         x-show="$store.app.isVpp && !$store.app.isOffGrid && $store.app.topbarShow('status')" x-cloak
+         x-show="$store.app.isVpp && !$store.app.isOffGrid && !$store.app.isDebugMode && $store.app.topbarShow('status')" x-cloak
          :title="'VPP dispatch active' + ($store.app.vppProgramme ? ' — ' + $store.app.vppProgramme : '')">
       <span class="w-1.5 h-1.5 rounded-full bg-current"></span><span>VPP</span>
     </div>

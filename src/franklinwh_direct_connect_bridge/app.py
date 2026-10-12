@@ -851,9 +851,13 @@ def create_app() -> FastAPI:
             while True:
                 try:
                     h, st = _host(), _store()
-                    if h and st and battery_control.available()[0]:
+                    # VPP detection is LOCAL now (cmdType 1707 programme id), so this
+                    # loop no longer requires Modbus to run. Modbus is still needed to
+                    # RECONCILE an interrupted dispatch, because that releases — a
+                    # write — so that step stays gated on availability.
+                    if h and st:
                         reconciled = []
-                        if boot:
+                        if boot and battery_control.available()[0]:
                             # Reconcile scheduled dispatches a restart left in-flight,
                             # per the user's policy, BEFORE the generic orphan check —
                             # so our own dispatch is not also flagged as an orphan.
@@ -876,10 +880,20 @@ def create_app() -> FastAPI:
                                 log.error("dispatch reconcile failed: %s", e)
                         # Skip the generic boot-orphan alert if we already handled a
                         # scheduled dispatch this boot (avoids double-notifying).
-                        _res = vpp_monitor.check(h, st, boot=(boot and not reconciled))
-                        # Record the VPP/force truth (Modbus M704 — the aGate 1301
-                        # run_status never shows VPP) on the matching gateway, for the
-                        # top-nav + dashboard badge.
+                        # Feed the poller's cached power block: it already carries
+                        # `vpp` and `programme_id` from 1707, so no device call here.
+                        _snap = {}
+                        try:
+                            for _g in state.gateways():
+                                if _g.active_host == h:
+                                    _snap = (_g.last_summary or {}).get("power", {}) or {}
+                                    break
+                        except Exception:  # noqa: BLE001
+                            pass
+                        _res = vpp_monitor.check(h, st, boot=(boot and not reconciled),
+                                                 snapshot=_snap)
+                        # Record the VPP truth (local 1707 programme id == 9) on the
+                        # matching gateway, for the top-nav + dashboard badge.
                         try:
                             for _gw in state.gateways():
                                 if _gw.active_host == h:

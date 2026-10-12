@@ -1003,3 +1003,43 @@ def test_run_variables_substitute_in_the_same_namespace_as_sensors():
 
 def test_an_unknown_variable_renders_as_a_question_mark_not_a_failure():
     assert sch.substitute("%run.nonsense%", _ctx()) == "?"
+
+
+# ── run status / programme id — docs/RUN_STATUS_AND_MODE.md ─────────────────
+def test_every_run_status_value_has_a_label():
+    """Including 8 (Debug Mode). A bare number on screen is not a status."""
+    # NB: the old module name, because that is what the source and this venv use.
+    # The library renamed itself in 0.4.0 and the shim goes in 0.5.0 — see
+    # DEF-LIB-OLD-IMPORT-NAME.
+    from franklinwh_local import catalog
+    expect = {0: "Standby", 1: "Charging", 2: "Discharging",
+              5: "Off-Grid Standby", 6: "Off-Grid Charging", 7: "Off-Grid Discharging",
+              8: "Debug Mode", 9: "VPP mode"}
+    for v, label in expect.items():
+        assert catalog.run_status_desc(v) == label, v
+
+
+def test_an_unknown_run_status_still_renders_something():
+    from franklinwh_local import catalog
+    assert "10" in catalog.run_status_desc(10)
+
+
+def test_vpp_is_the_programme_id_not_the_run_status():
+    """1301 run_status never carries 9 — it reports the battery's direction and keeps
+    doing so under VPP (measured 2026-10-12). The VPP signal is the 1707 programme id,
+    the local equivalent of the cloud's tou_mode."""
+    from franklinwh_direct_connect_bridge import client as C
+    assert C.VPP_PROGRAMME_ID == 9
+    assert C.DEBUG_RUN_STATUS == 8
+    src = __import__("inspect").getsource(C.summary)
+    assert '"vpp": pf.get("run_status") == 9' not in src, \
+        "VPP must not be derived from run_status — that branch is unreachable"
+    assert "ibgRunStatus" in src
+
+
+def test_a_normal_programme_id_is_not_treated_as_absence():
+    """Normal programmes use large arbitrary ids (85232 here, 29287 in the cloud
+    cookbook). Only == 9 means VPP; != 9 does not mean 'no programme'."""
+    from franklinwh_direct_connect_bridge import client as C
+    assert (85232 == C.VPP_PROGRAMME_ID) is False
+    assert (9 == C.VPP_PROGRAMME_ID) is True

@@ -55,21 +55,34 @@ def _log_event(store, status: str, detail: str) -> None:
         pass
 
 
-def check(host: str, store, *, boot: bool = False, notify: bool = True) -> dict:
-    """One monitor pass. Returns {vpp, changed, event}. Never raises."""
+def check(host: str, store, *, boot: bool = False, notify: bool = True,
+          snapshot: dict | None = None) -> dict:
+    """One monitor pass. Returns {vpp, changed, event}. Never raises.
+
+    Reads VPP from the LOCAL channel, not Modbus. `snapshot` is the poller's cached
+    power block, which already carries `vpp` and `programme_id` from cmdType 1707 —
+    the local equivalent of the cloud's `tou_mode`, where 9 means VPP.
+
+    This used to open a Modbus connection per pass to read the M704 WSet bit. That was
+    unnecessary: the vendor reference states that ANY remote client taking direct
+    control puts the gateway in VPP Mode, and the aGate reports that on the local
+    channel. Measured 2026-10-12 — during a Modbus force, 1707 `ibgRunStatus` read 9
+    while 1301 `run_status` stayed 2. See docs/RUN_STATUS_AND_MODE.md.
+    """
     from . import battery_control
     from . import notify_engine   # dispatch notifications flow through the trigger engine
-    try:
-        st = battery_control.status(host)
-    except Exception as e:                                       # noqa: BLE001
-        return {"vpp": None, "changed": False, "error": str(e)}
-    if not st.get("available"):
-        return {"vpp": None, "changed": False, "reason": st.get("reason")}
+    snap = snapshot or {}
+    if snap.get("vpp") is None:
+        # No local reading yet (first poll, or the gateway did not answer). Report
+        # "unknown" rather than "not dispatching" — absence of data is not evidence
+        # that the battery is idle.
+        return {"vpp": None, "changed": False, "reason": "no local programme reading yet"}
 
-    vpp = bool(st.get("vpp_active"))
+    vpp = bool(snap.get("vpp"))
     ours = battery_control.current().get("active") not in (None, "Not Active")
-    w = st.get("wset", {}) or {}
-    pct = w.get("wset_pct")
+    # Actual battery power, which is what is HAPPENING — better than the commanded
+    # WSet percentage this used to report, which was only what was asked for.
+    pct = snap.get("battery_w")
     prev = _last["vpp"]
     _last["vpp"] = vpp
 
@@ -78,7 +91,7 @@ def check(host: str, store, *, boot: bool = False, notify: bool = True) -> dict:
     # only an "orphan" if a prior run of THIS bridge left it — which we cannot distinguish
     # here (our in-memory 'current' is cleared on restart). So: WARNING, not CRITICAL.
     if boot and vpp and not ours:
-        msg = (f"VPP (force) dispatch active at startup (WSetPct={pct}%) — started externally "
+        msg = (f"VPP (force) dispatch active at startup (battery {pct} W) — started externally "
                f"(a utility VPP programme, the app, the Modbus bridge, or a prior run), not by "
                f"this bridge. This bridge will not auto-release it; use the Release button to "
                f"override if you want to clear it.")
@@ -93,7 +106,7 @@ def check(host: str, store, *, boot: bool = False, notify: bool = True) -> dict:
 
     if vpp and not prev:
         src = "this bridge" if ours else "an external controller (Modbus bridge / app / cloud VPP)"
-        msg = f"Battery dispatch STARTED — VPP mode active (source: {src}, WSetPct={pct}%)."
+        msg = f"Battery dispatch STARTED — VPP mode active (source: {src}, battery {pct} W)."
         log.warning(msg)
         _log_event(store, "vpp-start", msg)
         # Only alert for dispatches WE did not start (ours already show in the widget/log).
