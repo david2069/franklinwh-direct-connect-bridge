@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from franklinwh_local import catalog
+from franklinwh_direct_connect_api import catalog
 
 # ── Mode name → Cloud API workMode int ───────────────────────────────────────
 # Cloud workMode numbering: TOU=1, Self-Consumption=2, Emergency Backup=3.

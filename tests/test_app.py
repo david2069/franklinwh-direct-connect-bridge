@@ -43,7 +43,7 @@ def test_power_endpoint(monkeypatch):
 
 
 def test_read_endpoint_maps_transport_error_to_502(monkeypatch):
-    from franklinwh_local.transport import TransportError
+    from franklinwh_direct_connect_api.transport import TransportError
 
     def boom(s, host=None):
         raise TransportError("host is down")
@@ -193,7 +193,7 @@ def test_cloud_reserve_503_without_provider(monkeypatch):
 
 
 def test_set_mode_maps_transport_error_to_502(monkeypatch):
-    from franklinwh_local.transport import TransportError
+    from franklinwh_direct_connect_api.transport import TransportError
 
     monkeypatch.setattr(client_module, "writes_enabled", lambda s: True)
 

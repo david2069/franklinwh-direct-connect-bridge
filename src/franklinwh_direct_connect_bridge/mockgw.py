@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 
-from franklinwh_local.emulator import Emulator
+from franklinwh_direct_connect_api.emulator import Emulator
 
 log = logging.getLogger("franklinwh_direct_connect_bridge.mockgw")
 

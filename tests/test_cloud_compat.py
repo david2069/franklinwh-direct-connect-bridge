@@ -277,7 +277,7 @@ def test_cloud_reserves_endpoint(monkeypatch):
 
 
 def test_cloud_reserves_endpoint_502(monkeypatch):
-    from franklinwh_local.transport import TransportError
+    from franklinwh_direct_connect_api.transport import TransportError
 
     def boom(s, host=None):
         raise TransportError("host is down")
@@ -298,7 +298,7 @@ def test_cloud_tou_endpoint(monkeypatch):
 
 
 def test_cloud_tou_endpoint_502(monkeypatch):
-    from franklinwh_local.transport import TransportError
+    from franklinwh_direct_connect_api.transport import TransportError
 
     def boom(s, host=None):
         raise TransportError("host is down")
@@ -343,7 +343,7 @@ def test_cloud_network_endpoint(monkeypatch):
 
 
 def test_cloud_facade_502_on_device_error(monkeypatch):
-    from franklinwh_local.transport import TransportError
+    from franklinwh_direct_connect_api.transport import TransportError
 
     def boom(s, name, host=None):
         raise TransportError("host is down")
@@ -367,7 +367,7 @@ def test_cloud_stats_endpoint(monkeypatch):
 
 
 def test_cloud_stats_endpoint_502(monkeypatch):
-    from franklinwh_local.transport import TransportError
+    from franklinwh_direct_connect_api.transport import TransportError
 
     def boom(s, host=None):
         raise TransportError("host is down")
@@ -393,7 +393,7 @@ def test_cloud_smart_circuits_info_endpoint(monkeypatch):
 
 
 def test_cloud_smart_circuits_502(monkeypatch):
-    from franklinwh_local.transport import TransportError
+    from franklinwh_direct_connect_api.transport import TransportError
 
     def boom(s, name, host=None):
         raise TransportError("host is down")

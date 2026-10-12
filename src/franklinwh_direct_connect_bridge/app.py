@@ -20,7 +20,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from starlette.requests import Request
 
-from franklinwh_local.transport import TransportError
+from franklinwh_direct_connect_api.transport import TransportError
 
 from . import __version__, client, db
 from . import environment
@@ -156,7 +156,7 @@ def _run_status_desc(rs: int | None) -> str | None:
     if rs is None:
         return None
     try:
-        from franklinwh_local import catalog as _cat
+        from franklinwh_direct_connect_api import catalog as _cat
         return _cat.run_status_desc(rs)
     except Exception:  # pragma: no cover — never break a roster row on a lookup
         return None
@@ -1753,7 +1753,7 @@ def create_app() -> FastAPI:
     def _default_scan_subnet() -> str:
         """A /24 to sweep — derived from a configured (non-mock) gateway host, else the
         library's local-subnet guess, else a common default."""
-        from franklinwh_local import discover as _disc
+        from franklinwh_direct_connect_api import discover as _disc
         st = _gw_store()
         hosts = [r.get("host") for r in (st.gateways() if st else [])
                  if r.get("host") and not r.get("is_mock")]
@@ -1768,7 +1768,7 @@ def create_app() -> FastAPI:
     async def api_gateway_scan(req: GatewayScanReq):
         """Sweep a subnet for aGates on TCP 9000 and confirm each with a real Local-API
         login (1101/1102). Returns candidates; the UI adds the confirmed ones."""
-        from franklinwh_local import discover as _disc
+        from franklinwh_direct_connect_api import discover as _disc
         subnet = (req.subnet or _default_scan_subnet()).strip()
         try:
             targets = _disc.expand_targets(subnet)
@@ -1951,7 +1951,7 @@ def create_app() -> FastAPI:
         Writes need ALLOW_WRITES **and** an explicit ``confirm`` — a raw console is
         exactly where a mistyped ``opt`` becomes a reboot.
         """
-        from franklinwh_local import catalog as _cat
+        from franklinwh_direct_connect_api import catalog as _cat
         host = _gw_host(gateway)
         # "Not opt:0" is NOT the same as "write": 1725 READS with opt:1, and treating
         # that as a write blocked a legitimate read. Compare against the command's
@@ -1978,7 +1978,7 @@ def create_app() -> FastAPI:
     @app.get("/api/raw/catalog")
     def api_raw_catalog():
         """Known cmdTypes for the console's autocomplete: code, name, description."""
-        from franklinwh_local import catalog
+        from franklinwh_direct_connect_api import catalog
         return {
             "commands": [
                 {"cmd": code, "name": i.name, "description": i.description,
@@ -3807,10 +3807,10 @@ def create_app() -> FastAPI:
     @app.get("/api/catalog")
     def api_catalog():
         """What each /api/cmd/<name> endpoint IS: ``name -> {description, cmd, write}``
-        from ``franklinwh_local.catalog``. ``write`` marks cmdTypes with a known write
+        from ``franklinwh_direct_connect_api.catalog``. ``write`` marks cmdTypes with a known write
         recipe (catalog.WRITES). Never raises — degrades to {} on any import/attr error."""
         try:
-            from franklinwh_local import catalog as _cat
+            from franklinwh_direct_connect_api import catalog as _cat
             write_cmds = {w.get("cmd") for w in getattr(_cat, "WRITES", {}).values()}
             out: dict[str, dict] = {}
             for info in _cat.CATALOG.values():

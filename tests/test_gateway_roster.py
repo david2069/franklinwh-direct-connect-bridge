@@ -108,7 +108,7 @@ def test_gateway_scan_endpoint(gw_client, monkeypatch):
     """Discover: /api/gateways/scan returns confirmed/unconfirmed candidates and marks
     already-added hosts. discover.scan is stubbed (no real network)."""
     c, store = gw_client
-    from franklinwh_local import discover as _disc
+    from franklinwh_direct_connect_api import discover as _disc
 
     class _HR:
         def __init__(self, host, confirmed, sn):

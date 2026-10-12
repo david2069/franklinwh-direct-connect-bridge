@@ -32,7 +32,7 @@ _NUM_COLS = ("soc", "grid_w", "solar_w", "battery_w", "load_w", "generator_w",
 #: grew between two samples reveals the tier the device considered active — the
 #: only way to observe when the tariff boundary moves. The gateway itself keeps
 #: only end-of-day totals, so a day not recorded here is lost permanently.
-#: See franklinwh_local.energy.tier_transitions() and BACKLOG DEF-1303-TIER-BASIS.
+#: See franklinwh_direct_connect_api.energy.tier_transitions() and BACKLOG DEF-1303-TIER-BASIS.
 _TIER_KEYS = ("sharp", "peak", "flat", "valley")
 
 
@@ -130,7 +130,7 @@ class MetricsStore:
         """Samples that carry tier accumulators, oldest first.
 
         Returns ``[{"ts": int, **tier_arrays}]`` — the shape
-        ``franklinwh_local.energy.tier_transitions()`` expects, so the active-tier
+        ``franklinwh_direct_connect_api.energy.tier_transitions()`` expects, so the active-tier
         boundary can be extracted directly from stored history.
         """
         sql = ("SELECT ts, tiers FROM metrics WHERE ts BETWEEN ? AND ? "

@@ -5,8 +5,8 @@ Regression guard: the set was hand-maintained and had fallen 7 methods behind
 agate_serial, energy_history) — the same drift the library itself hit.
 """
 
-from franklinwh_local import catalog
-from franklinwh_local.client import LocalClient
+from franklinwh_direct_connect_api import catalog
+from franklinwh_direct_connect_api.client import LocalClient
 
 from franklinwh_direct_connect_bridge.client import READ_METHODS
 

@@ -220,7 +220,7 @@ def test_schedule_endpoint_422_on_bad_window(monkeypatch):
 
 
 def test_schedule_write_delegates_to_the_library(monkeypatch):
-    """Protocol recipe lives in franklinwh_local; the bridge only maps the shape.
+    """Protocol recipe lives in franklinwh_direct_connect_api; the bridge only maps the shape.
 
     The discard behaviour itself is pinned in the library's own tests — here we
     check the two-window editor shape becomes the firmware's four slots and that

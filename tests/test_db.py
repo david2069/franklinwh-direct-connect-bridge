@@ -194,7 +194,7 @@ def test_tier_migration_is_idempotent_on_an_existing_db(tmp_path):
 
 def test_stored_shape_feeds_tier_transitions():
     """The stored rows must be directly consumable by the library helper."""
-    from franklinwh_local import energy
+    from franklinwh_direct_connect_api import energy
 
     s = MetricsStore(":memory:")
     s.insert({"soc": 50}, 1_000_000, None, _tiers(flat=1.0))

@@ -1011,7 +1011,7 @@ def test_every_run_status_value_has_a_label():
     # NB: the old module name, because that is what the source and this venv use.
     # The library renamed itself in 0.4.0 and the shim goes in 0.5.0 — see
     # DEF-LIB-OLD-IMPORT-NAME.
-    from franklinwh_local import catalog
+    from franklinwh_direct_connect_api import catalog
     expect = {0: "Standby", 1: "Charging", 2: "Discharging",
               5: "Off-Grid Standby", 6: "Off-Grid Charging", 7: "Off-Grid Discharging",
               8: "Debug Mode", 9: "VPP mode"}
@@ -1020,7 +1020,7 @@ def test_every_run_status_value_has_a_label():
 
 
 def test_an_unknown_run_status_still_renders_something():
-    from franklinwh_local import catalog
+    from franklinwh_direct_connect_api import catalog
     assert "10" in catalog.run_status_desc(10)
 
 

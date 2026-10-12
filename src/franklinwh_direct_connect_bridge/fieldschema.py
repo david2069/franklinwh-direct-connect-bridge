@@ -300,12 +300,12 @@ _LOCAL_SUPPLEMENT: dict[str, dict[str, str]] = {
 
 
 # ── Enum decode tables ─────────────────────────────────────────────────────────
-# ``{raw_key: {code: description}}``. Sourced from ``franklinwh_local.catalog`` so the
+# ``{raw_key: {code: description}}``. Sourced from ``franklinwh_direct_connect_api.catalog`` so the
 # local broker and the bridge agree byte-for-byte. Import-guarded: fieldschema must
-# stay importable even if franklinwh_local isn't installed (unit-test / packaging safety).
+# stay importable even if franklinwh_direct_connect_api isn't installed (unit-test / packaging safety).
 def _load_enums() -> dict[str, dict[int, str]]:
     try:
-        from franklinwh_local import catalog as _cat
+        from franklinwh_direct_connect_api import catalog as _cat
         return {"run_status": dict(_cat.RUN_STATUS)}
     except Exception:  # pragma: no cover - fallback keeps import safe
         return {"run_status": {

@@ -12,9 +12,9 @@ from typing import Any
 
 import logging
 
-from franklinwh_local import catalog, discover
-from franklinwh_local.client import LocalClient
-from franklinwh_local.transport import TransportError
+from franklinwh_direct_connect_api import catalog, discover
+from franklinwh_direct_connect_api.client import LocalClient
+from franklinwh_direct_connect_api.transport import TransportError
 
 from .config import Settings
 from .state import get_state
@@ -397,7 +397,7 @@ def set_circuit_schedule(s: Settings, circuit: int, windows: list[dict],
     """Attempt a smart-circuit schedule write — delegates to the library.
 
     The protocol recipe and its hardware findings live in
-    ``franklinwh_local.client.set_circuit_schedule``; this only turns the bridge's
+    ``franklinwh_direct_connect_api.client.set_circuit_schedule``; this only turns the bridge's
     two-window editor shape into the firmware's four slots.
 
     **The aGate discards these on FW V12R02B30D06** (live-tested 2026-09-14, five
@@ -483,7 +483,7 @@ def raw_command(s: Settings, cmd: int, data: dict | None = None,
     Read-only by default: anything other than ``opt:0`` is a write and is gated by the
     caller. See :data:`DANGEROUS_WRITES` for the codes worth a second look.
     """
-    from franklinwh_local import catalog
+    from franklinwh_direct_connect_api import catalog
     import time as _time
 
     # `data or default` is WRONG here: {} is falsy, so an explicitly empty dataArea
@@ -522,7 +522,7 @@ def firmware_all(s: Settings, host: str | None = None) -> dict[str, Any]:
     battery each entry belongs to, and it omits ``ibg_iot`` / ``ibg_local`` / ``pe_ver``
     entirely. 1833 fills both gaps, keyed by device id.
     """
-    from franklinwh_local import catalog
+    from franklinwh_direct_connect_api import catalog
     out: dict[str, Any] = {"gateway": {}, "devices": []}
     with _client(s, host) as c:
         manifest = c.login()
@@ -715,7 +715,7 @@ def battery(s: Settings, host: str | None = None, dev_id: int = 1) -> dict[str, 
             if st:
                 # Decode the state codes rather than showing bare integers — the
                 # enums match franklinwh_cloud.const.states exactly.
-                from franklinwh_local import catalog as _cat
+                from franklinwh_direct_connect_api import catalog as _cat
                 st["bmsState_desc"] = _cat.bms_state_desc(st.get("bmsState"))
                 st["peState_desc"] = _cat.pcs_state_desc(st.get("peState"))
             # DCDCStatus (from 1703 electrical) is the charge-state field. Live-verified
@@ -725,7 +725,7 @@ def battery(s: Settings, host: str | None = None, dev_id: int = 1) -> dict[str, 
             # discharge, so they are NOT charge states and their domain is unproven.
             el = blocks.get("electrical") or {}
             if el and el.get("DCDCStatus") is not None:
-                from franklinwh_local import catalog as _cat2
+                from franklinwh_direct_connect_api import catalog as _cat2
                 el["DCDCStatus_desc"] = _cat2.DCDC_STATE.get(el.get("DCDCStatus"))
         out["ok"] = blocks.get("cells") is not None
     except (TransportError, OSError, TimeoutError, ValueError) as e:
