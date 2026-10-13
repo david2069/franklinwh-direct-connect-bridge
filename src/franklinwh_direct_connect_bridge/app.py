@@ -1270,6 +1270,42 @@ def create_app() -> FastAPI:
             "retention_days": store.LINK_RETENTION_DAYS,
         }
 
+    @app.get("/api/health/link/hourly")
+    def api_health_link_hourly(gateway: str | None = Query(None),
+                               leg: str | None = Query(None),
+                               hours: int = Query(24, ge=1, le=720)):
+        """Hourly rollup per gateway and leg — the before/after measurement.
+
+        `/api/health/link` says what is true NOW and when it was last down.
+        **Neither answers "is this getting better or worse"**, which is what any claim
+        that a change helped actually requires. This does.
+
+        Latency percentiles are derived from a capped reservoir (64 samples/hour), so
+        they describe the sampled probes rather than every probe — `lat_sampled` says
+        how many. Percentiles are deliberately NOT pre-computed and stored: they cannot
+        be merged across buckets, so a stored p95 would make the daily and weekly views
+        quietly wrong.
+        """
+        store = _ha_store()
+        gw = gateway or (get_state().id if get_state() else "")
+        rows = store.link_hourly(gw or None, leg=leg, hours=hours)
+        tot = {"probes": 0, "ok": 0, "failed": 0, "unknown": 0,
+               "connects": 0, "reconnects": 0}
+        for r in rows:
+            for k in tot:
+                tot[k] += int(r.get(k) or 0)
+        return {
+            "gateway_id": gw, "hours": hours, "buckets": len(rows),
+            "totals": tot,
+            # Connects per probe is the number that matters for churn: 1.0 means a
+            # fresh connection for every single probe, which is where this bridge
+            # started. A held session drives it toward 0.
+            "connects_per_probe": (round(tot["connects"] / tot["probes"], 3)
+                                   if tot["probes"] else None),
+            "retention_days": store.LINK_HOURLY_DAYS,
+            "hourly": rows,
+        }
+
     @app.get("/api/summary")
     def api_summary(gateway: str | None = Query(None)):
         # Serve the poller's cached last-good summary when warm — avoids a full device

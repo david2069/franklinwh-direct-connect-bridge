@@ -229,3 +229,75 @@ def test_the_voltage_columns_are_added_to_an_existing_database(tmp_path, monkeyp
     cols = [r[1] for r in s._conn.execute("PRAGMA table_info(metrics)")]
     assert "grid_voltage_v" in cols and "grid_freq_hz" in cols
     assert s._conn.execute("SELECT soc FROM metrics WHERE ts=1").fetchone()[0] == 42
+
+
+# ── hourly rollup: the before/after measurement ─────────────────────────────
+def test_probes_fold_into_their_hour_bucket(store):
+    for i in range(5):
+        store.link_hourly_probe = None
+        store.record_link_probe("gw1", "ok", latency_ms=10 + i, now=T0 + i)
+    rows = store.link_hourly("gw1", hours=48, now=T0 + 10)
+    assert len(rows) == 1
+    b = rows[0]
+    assert b["probes"] == 5 and b["ok"] == 5 and b["failed"] == 0
+
+
+def test_separate_hours_are_separate_buckets(store):
+    store.record_link_probe("gw1", "ok", now=T0)
+    store.record_link_probe("gw1", "ok", now=T0 + 3700)
+    assert len(store.link_hourly("gw1", hours=48, now=T0 + 7200)) == 2
+
+
+def test_outcomes_are_counted_apart(store):
+    store.record_link_probe("gw1", "ok", now=T0)
+    store.record_link_probe("gw1", "failed", error="refused", now=T0 + 1)
+    store.record_link_probe("gw1", "unknown", error="timed out", now=T0 + 2)
+    b = store.link_hourly("gw1", hours=2, now=T0 + 10)[0]
+    assert (b["ok"], b["failed"], b["unknown"]) == (1, 1, 1)
+    assert b["probes"] == 3
+
+
+def test_latency_percentiles_come_from_the_reservoir(store):
+    for i in range(20):
+        store.record_link_probe("gw1", "ok", latency_ms=float(i), now=T0 + i)
+    b = store.link_hourly("gw1", hours=2, now=T0 + 60)[0]
+    assert b["lat_n"] == 20 and b["lat_max"] == 19.0
+    assert b["lat_avg"] == pytest.approx(9.5, abs=0.1)
+    assert b["lat_p50"] is not None and b["lat_p95"] is not None
+    assert b["lat_sampled"] == 20
+
+
+def test_the_reservoir_is_capped_so_a_busy_hour_cannot_bloat_a_row(store):
+    for i in range(store.LAT_RESERVOIR + 50):
+        store.record_link_probe("gw1", "ok", latency_ms=1.0, now=T0 + i)
+    b = store.link_hourly("gw1", hours=2, now=T0 + 500)[0]
+    assert b["lat_sampled"] == store.LAT_RESERVOIR
+    assert b["lat_n"] == store.LAT_RESERVOIR + 50, "the COUNT still sees every probe"
+
+
+def test_connects_are_counted_so_churn_is_visible(store):
+    """The number that would have caught 38 TIME_WAIT sockets a minute."""
+    for i in range(4):
+        store.record_link_probe("gw1", "ok", now=T0 + i, connects=1)
+    b = store.link_hourly("gw1", hours=2, now=T0 + 60)[0]
+    assert b["connects"] == 4 and b["probes"] == 4
+
+
+def test_legs_roll_up_separately(store):
+    store.record_link_probe("gw1", "ok", leg="local_9000", now=T0)
+    store.record_link_probe("gw1", "failed", leg="modbus_502", now=T0)
+    rows = {r["leg"]: r for r in store.link_hourly("gw1", hours=2, now=T0 + 60)}
+    assert rows["local_9000"]["ok"] == 1 and rows["modbus_502"]["failed"] == 1
+
+
+def test_buckets_age_out_by_time(store):
+    store.record_link_probe("gw1", "ok", now=T0)
+    assert store.prune_link_hourly(days=1, now=T0 + 10 * 86400) == 1
+
+
+def test_telemetry_never_breaks_the_thing_it_measures(store, monkeypatch):
+    """A rollup failure must not stop the probe being recorded."""
+    monkeypatch.setattr(store, "_roll_hourly",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    r = store.record_link_probe("gw1", "ok", now=T0)
+    assert r["state"] == "up", "the probe itself must still land"

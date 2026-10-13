@@ -66,6 +66,7 @@ class MetricsStore:
         self._migrate_schedule_log()
         self._migrate_occurrences()
         self._migrate_link_history()
+        self._migrate_link_hourly()
         self._migrate_control_log()
         self._migrate_app_logs()
         self._migrate_disclaimer_acks()
@@ -1145,11 +1146,134 @@ class MetricsStore:
             "CREATE INDEX IF NOT EXISTS ix_outage_gw ON link_outages(gateway_id, started_ts DESC)")
         self._conn.commit()
 
+    #: Hourly buckets kept. 90 days matches the outage retention, and is enough to see
+    #: a weekly cycle and whether a change helped — the question the bridge could not
+    #: answer when it found 38 TIME_WAIT sockets a minute, because nothing was counting.
+    LINK_HOURLY_DAYS = 90
+
+    def _migrate_link_hourly(self) -> None:
+        """Per-gateway, per-leg, per-hour rollup.
+
+        `link_state` answers "what is true now" and `link_outages` "when was it down".
+        Neither answers "is this getting better or worse", which is what a before/after
+        measurement needs — and it is the shape the Modbus Bridge adopted too, so the
+        two bridges' numbers can be compared rather than merely coexisting.
+
+        Latency is kept as count/sum/max plus a small reservoir, not as a percentile:
+        percentiles cannot be merged across buckets, so storing them would make the
+        daily and weekly views wrong in a way nobody would notice.
+        """
+        self._conn.execute(
+            """CREATE TABLE IF NOT EXISTS link_hourly(
+                   gateway_id TEXT NOT NULL,
+                   leg TEXT NOT NULL,
+                   hour_ts INTEGER NOT NULL,
+                   probes INTEGER NOT NULL DEFAULT 0,
+                   ok INTEGER NOT NULL DEFAULT 0,
+                   failed INTEGER NOT NULL DEFAULT 0,
+                   unknown INTEGER NOT NULL DEFAULT 0,
+                   connects INTEGER NOT NULL DEFAULT 0,
+                   reconnects INTEGER NOT NULL DEFAULT 0,
+                   lat_n INTEGER NOT NULL DEFAULT 0,
+                   lat_sum REAL NOT NULL DEFAULT 0,
+                   lat_max REAL,
+                   lat_samples TEXT,
+                   last_error TEXT,
+                   PRIMARY KEY(gateway_id, leg, hour_ts))"""
+        )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_link_hourly ON link_hourly(hour_ts DESC)")
+        self._conn.commit()
+
+    #: How many latency samples to keep per bucket for percentiles. Small on purpose —
+    #: enough for a usable p50/p95 at 120 probes/hour, cheap to store, and capped so a
+    #: busy hour cannot bloat a row.
+    LAT_RESERVOIR = 64
+
+    def _roll_hourly(self, gateway_id: str, leg: str, outcome: str,
+                     latency_ms: float | None, error: str, ts: float,
+                     connects: int = 0, reconnects: int = 0) -> None:
+        """Fold one probe into its hour bucket. Never raises — telemetry must not be
+        able to break the thing it is measuring."""
+        try:
+            hour = int(ts // 3600) * 3600
+            self._conn.execute(
+                "INSERT OR IGNORE INTO link_hourly(gateway_id, leg, hour_ts) VALUES(?,?,?)",
+                (gateway_id, leg, hour))
+            row = self._conn.execute(
+                "SELECT lat_samples FROM link_hourly WHERE gateway_id=? AND leg=? AND hour_ts=?",
+                (gateway_id, leg, hour)).fetchone()
+            samples = []
+            if row and row[0]:
+                try:
+                    samples = json.loads(row[0])
+                except (ValueError, TypeError):
+                    samples = []
+            if latency_ms is not None and len(samples) < self.LAT_RESERVOIR:
+                samples.append(round(float(latency_ms), 1))
+            self._conn.execute(
+                "UPDATE link_hourly SET probes=probes+1,"
+                " ok=ok+?, failed=failed+?, unknown=unknown+?,"
+                " connects=connects+?, reconnects=reconnects+?,"
+                " lat_n=lat_n+?, lat_sum=lat_sum+?,"
+                " lat_max=MAX(COALESCE(lat_max,0), ?), lat_samples=?,"
+                " last_error=COALESCE(NULLIF(?,''), last_error)"
+                " WHERE gateway_id=? AND leg=? AND hour_ts=?",
+                (1 if outcome == "ok" else 0,
+                 1 if outcome == "failed" else 0,
+                 1 if outcome == "unknown" else 0,
+                 int(connects), int(reconnects),
+                 1 if latency_ms is not None else 0,
+                 float(latency_ms or 0.0), float(latency_ms or 0.0),
+                 json.dumps(samples), error,
+                 gateway_id, leg, hour))
+        except Exception:  # noqa: BLE001
+            pass
+
+    def link_hourly(self, gateway_id: str | None = None, *, leg: str | None = None,
+                    hours: int = 24, now: float | None = None) -> list[dict]:
+        """Hourly rollup, newest first, with percentiles derived from the reservoir."""
+        since = int(((now or time.time()) - hours * 3600) // 3600) * 3600
+        q = "SELECT * FROM link_hourly WHERE hour_ts>=?"
+        args: list = [since]
+        if gateway_id:
+            q += " AND gateway_id=?"; args.append(gateway_id)
+        if leg:
+            q += " AND leg=?"; args.append(leg)
+        q += " ORDER BY hour_ts DESC, leg"
+        with self._lock:
+            cur = self._conn.execute(q, args)
+            cols = [c[0] for c in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        for r in rows:
+            s = []
+            try:
+                s = sorted(json.loads(r.pop("lat_samples") or "[]"))
+            except (ValueError, TypeError):
+                s = []
+            r["lat_avg"] = round(r["lat_sum"] / r["lat_n"], 1) if r["lat_n"] else None
+            # Percentiles come from the RESERVOIR, which is capped — so they describe
+            # the sampled probes, not every probe. Said plainly rather than implied.
+            r["lat_p50"] = s[len(s) // 2] if s else None
+            r["lat_p95"] = s[min(len(s) - 1, int(len(s) * 0.95))] if s else None
+            r["lat_sampled"] = len(s)
+            r["label"] = self.LINK_LEGS.get(r.get("leg") or "", r.get("leg") or "")
+        return rows
+
+    def prune_link_hourly(self, *, days: int | None = None, now: float | None = None) -> int:
+        d = int(self.LINK_HOURLY_DAYS if days is None else days)
+        cutoff = float(now if now is not None else time.time()) - d * 86400
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM link_hourly WHERE hour_ts < ?", (cutoff,))
+            self._conn.commit()
+            return cur.rowcount or 0
+
     def record_link_probe(self, gateway_id: str, outcome: str, *,
                           leg: str = "local_9000",
                           latency_ms: float | None = None, error: str = "",
                           expected_interval_s: float | None = None,
-                          strikes: int | None = None, now: float | None = None) -> dict:
+                          strikes: int | None = None, now: float | None = None,
+                          connects: int = 0, reconnects: int = 0) -> dict:
         """Record one probe of the bridge→gateway link and return what it changed.
 
         Returns ``{state, transition, consecutive_failures, outage_s}`` where
@@ -1237,6 +1361,15 @@ class MetricsStore:
                  missed, outcome, error, latency_ms,
                  ts if ok else None, ts if ok else row["last_ok_ts"], down_since,
                  first_fail, gateway_id, leg))
+            # Guarded at the CALL SITE as well as inside _roll_hourly. The inner guard
+            # cannot protect against the rollup itself being broken or replaced, and
+            # the rule is that telemetry must never break the thing it measures — a
+            # lost bucket is a gap in a chart; a lost probe is a gap in the record.
+            try:
+                self._roll_hourly(gateway_id, leg, outcome, latency_ms, error, ts,
+                                  connects=connects, reconnects=reconnects)
+            except Exception:  # noqa: BLE001
+                pass
             self._conn.commit()
         return {"leg": leg, "state": state, "transition": transition,
                 "consecutive_failures": streak, "outage_s": outage_s}
