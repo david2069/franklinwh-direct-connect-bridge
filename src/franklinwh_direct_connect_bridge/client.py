@@ -825,6 +825,14 @@ def summary(s: Settings, host: str | None = None, *, mock: bool = False) -> dict
         "writes_enabled": writes_enabled(s),
     }
     _ph, _pp = _split_hostport(host, s.fwh_port)
+    # How many TCP connections this call made. Today it is always 1: `with _client(...)`
+    # opens a fresh socket and logs in, every time. Reported by the code that actually
+    # does the connecting rather than assumed by the caller, so when a held session
+    # lands here this becomes 0 for a reused socket WITHOUT touching the telemetry.
+    #
+    # Reporting 0 while the truth is 1 would be exactly the misleading-diagnostic
+    # failure the rest of this bridge keeps running into.
+    out["connects"] = 0
     out["ping"] = discover.ping(_ph, timeout=1.0)
     # The :502 probe is a REAL TCP connect, three of them on failure. It used to run
     # unconditionally, so "Modbus disabled" still opened sockets to the gateway every
@@ -839,6 +847,7 @@ def summary(s: Settings, host: str | None = None, *, mock: bool = False) -> dict
         with _client(s, host) as c:
             t0 = time.time()
             manifest = c.login()
+            out["connects"] = 1          # a fresh socket AND a fresh login, every poll
             out["latency_ms"] = round((time.time() - t0) * 1000, 1)
             out["ok"] = True
             pf = c.power_flow()

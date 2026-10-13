@@ -301,3 +301,24 @@ def test_telemetry_never_breaks_the_thing_it_measures(store, monkeypatch):
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     r = store.record_link_probe("gw1", "ok", now=T0)
     assert r["state"] == "up", "the probe itself must still land"
+
+
+def test_connects_per_probe_reports_the_truth_today(store):
+    """Today the bridge opens a fresh socket AND a fresh login every poll, so this must
+    read 1.0. Reporting 0 while the truth is 1 would be the misleading-diagnostic
+    failure this telemetry exists to catch — and it would make a later improvement
+    look like no change at all."""
+    for i in range(6):
+        store.record_link_probe("gw1", "ok", latency_ms=90.0, now=T0 + i, connects=1)
+    b = store.link_hourly("gw1", hours=2, now=T0 + 60)[0]
+    assert b["connects"] == b["probes"] == 6
+
+
+def test_a_reused_session_shows_as_fewer_connects_than_probes(store):
+    """What success will look like: the probe count keeps climbing, the connect count
+    does not."""
+    store.record_link_probe("gw1", "ok", now=T0, connects=1)        # first, opens
+    for i in range(1, 10):
+        store.record_link_probe("gw1", "ok", now=T0 + i, connects=0)  # reused
+    b = store.link_hourly("gw1", hours=2, now=T0 + 60)[0]
+    assert b["probes"] == 10 and b["connects"] == 1

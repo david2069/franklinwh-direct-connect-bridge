@@ -212,7 +212,12 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                             main = store.record_link_probe(
                                 gw.id, outcome, leg="local_9000",
                                 latency_ms=summ.get("latency_ms"), error=err,
-                                expected_interval_s=interval)
+                                expected_interval_s=interval,
+                                # Reported by the call that did the connecting, not
+                                # assumed here — so connects_per_probe tells the truth
+                                # today (1.0, a fresh socket + login every poll) and
+                                # falls on its own when a held session lands.
+                                connects=int(summ.get("connects") or 0))
                             # ping is informational: None means "not measured", which is
                             # not the same as a failure and must not be recorded as one.
                             png = summ.get("ping")
