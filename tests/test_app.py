@@ -475,3 +475,22 @@ def test_ac_type_is_never_inferred_from_voltage_level():
     code = "\n".join(ast.unparse(n) for n in body)
     assert "grid_voltage_v" not in code and "240" not in code, \
         "ac_type must come from the device flag or the declared meter, never the voltage"
+
+
+def test_grid_phase_is_never_taken_from_the_solar_three_phase_flag():
+    """isThreePhaseInstall is a SOLAR field — the AU/NZ Commissioning Guide puts
+    "Three Phase" under Solar Setting → standalone three-phase SOLAR system, and the
+    field sits beside solarInstallState / solarInvManu / solarInvRatePower. The grid
+    service phase is a separate System Parameters setting ("Grid phase system")."""
+    import ast, pathlib
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
+    tree = ast.parse((root / "app.py").read_text())
+    for fn_name in ("_ac_type_for", "_ac_type_source"):
+        fn = next(n for n in ast.walk(tree)
+                  if isinstance(n, ast.FunctionDef) and n.name == fn_name)
+        body = [n for n in fn.body]
+        if (body and isinstance(body[0], ast.Expr)
+                and isinstance(getattr(body[0], "value", None), ast.Constant)):
+            body = body[1:]
+        code = "\n".join(ast.unparse(n) for n in body)
+        assert "three_phase" not in code and "isThreePhase" not in code, fn_name

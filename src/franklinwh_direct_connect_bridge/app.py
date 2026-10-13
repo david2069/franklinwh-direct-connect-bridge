@@ -3229,7 +3229,18 @@ def create_app() -> FastAPI:
             pass
         return {
             "grid_connection": {
+                # isThreePhaseInstall is a SOLAR field, not a grid one. It sits beside
+                # solarInstallState / solarInvManu / solarInvRatePower, and the AU/NZ
+                # Commissioning Guide puts "Three Phase" under Solar Setting ->
+                # "standalone three-phase SOLAR system". The grid service phase is a
+                # separate System Parameters setting, "Grid phase system".
+                "solar_three_phase": bool(g("isThreePhaseInstall")),
+                # Kept under the old key so existing callers do not break, but it has
+                # never meant the grid service and must not be read as such.
                 "three_phase": bool(g("isThreePhaseInstall")),
+                # "Grid phase system" (System Parameters). The enum is NOT established —
+                # 0 on this single-phase site, which is consistent with 0 = single but
+                # also with 0 = unset. Not used to derive ac_type until it is confirmed.
                 "phase_con": g("gridPhaseConSet"), "phase_seq": g("gridPhaseSeqSet"),
                 "service_amps": g("airSwitchCur"),
                 "electric_supply_raw": g("electricSupply"),
@@ -3252,14 +3263,14 @@ def create_app() -> FastAPI:
                 "half_voltage_2_v": _num(rg("gridVol2")),
                 # Kept so existing callers do not break; prefer half_voltage_v.
                 "leg_voltage_v": _num(rg("gridVol1")),
-                # Phase topology, in order of authority:
-                #   1. the device's own three-phase flag;
-                #   2. the ac_type the owner declared on this gateway's METER — the
-                #      only thing that distinguishes AU single-phase from US
-                #      split-phase without Modbus;
-                #   3. None — not established, and nothing above asserts one.
-                # SunSpec M701 ACType would be authoritative, but it needs Modbus,
-                # which may be switched off. See DEF-GRID-VOLTAGE-LEGS-AU.
+                # Phase topology of the GRID SERVICE. The only source used is the
+                # ac_type the owner declared on this gateway's meter, because nothing
+                # on the local channel establishes it:
+                #   * isThreePhaseInstall is about the SOLAR system (above);
+                #   * gridPhaseConSet is the right field but its enum is unconfirmed;
+                #   * SunSpec M701 ACType would be authoritative and needs Modbus,
+                #     which may be switched off.
+                # None means not established. Nothing here guesses from voltage.
                 "ac_type": _ac_type_for(gateway),
                 "ac_type_source": _ac_type_source(gateway),
                 "rated_hz_code": g("ratedGridHz"),               # 1701 enum, NOT a Hz value
@@ -3901,9 +3912,9 @@ def create_app() -> FastAPI:
             gw = (get_gateway(gateway) if gateway else None) or get_state()
             if gw is None:
                 return None
-            summ = (gw.last_summary or {}).get("grid_connection") or {}
-            if summ.get("three_phase"):
-                return "three"
+            # NB: deliberately does NOT consult three_phase/isThreePhaseInstall — that
+            # is a solar field, and reading it as the grid service was the bug this
+            # function was written to avoid.
             # Reuse the scheduler's resolver rather than a second copy of the rule.
             m = scheduler._meter_for_gateway(_ha_store(), gw.id)
             t = (m or {}).get("ac_type")
@@ -3917,8 +3928,6 @@ def create_app() -> FastAPI:
             gw = (get_gateway(gateway) if gateway else None) or get_state()
             if gw is None:
                 return None
-            if ((gw.last_summary or {}).get("grid_connection") or {}).get("three_phase"):
-                return "device (isThreePhaseInstall)"
             m = scheduler._meter_for_gateway(_ha_store(), gw.id)
             return "declared on the meter" if (m or {}).get("ac_type") else None
         except Exception:  # noqa: BLE001
