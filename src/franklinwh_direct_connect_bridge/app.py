@@ -3907,6 +3907,25 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=str(e))
 
     # -- extra gated writes ---------------------------------------------------
+    #: Region -> service topology. Only regions whose convention is unambiguous are
+    #: listed; anything else falls through to the default below.
+    _AC_TYPE_BY_REGION = {"US": "split", "CA": "split",
+                          "AU": "single", "NZ": "single",
+                          "DE": "single", "GB": "single", "IE": "single"}
+
+    #: What to assume when neither the owner nor the SKU says. Today roughly 99% of the
+    #: installed base is US, so "split" is the best available default — stated as an
+    #: assumption (see _ac_type_source), never as a finding.
+    _AC_TYPE_DEFAULT = "split"
+
+    def _gw_region(gw) -> str | None:
+        """The SKU's country from the login manifest (devicedb maps SyHdVersion)."""
+        try:
+            from . import devicedb
+            return (devicedb.gateway(getattr(gw, "sy_hd_version", None)) or {}).get("country")
+        except Exception:  # noqa: BLE001
+            return None
+
     def _ac_type_for(gateway: str | None) -> str | None:
         """single | split | three, or None when nobody has established it.
 
@@ -3920,11 +3939,20 @@ def create_app() -> FastAPI:
                 return None
             # NB: deliberately does NOT consult three_phase/isThreePhaseInstall — that
             # is a solar field, and reading it as the grid service was the bug this
-            # function was written to avoid.
-            # Reuse the scheduler's resolver rather than a second copy of the rule.
+            # function was written to avoid. Nor the voltage level, which is the
+            # mirror-image bug the Modbus Bridge found on its own side.
+            # 1. What the owner declared. Always wins.
             m = scheduler._meter_for_gateway(_ha_store(), gw.id)
             t = (m or {}).get("ac_type")
-            return t or None
+            if t:
+                return t
+            # 2. The SKU's region. Today ~99% of the installed base is US, where the
+            #    service IS split-phase and "L1/L2" is simply correct — so defaulting
+            #    to neutral labelling everywhere would make the common case worse to
+            #    serve the rare one. The region is a real signal (devicedb maps
+            #    SyHdVersion -> country), not a guess from the readings.
+            return _AC_TYPE_BY_REGION.get((_gw_region(gw) or "").upper(),
+                                          _AC_TYPE_DEFAULT)
         except Exception:  # noqa: BLE001 — a label must never break the payload
             return None
 
@@ -3935,7 +3963,12 @@ def create_app() -> FastAPI:
             if gw is None:
                 return None
             m = scheduler._meter_for_gateway(_ha_store(), gw.id)
-            return "declared on the meter" if (m or {}).get("ac_type") else None
+            if (m or {}).get("ac_type"):
+                return "declared on the meter"
+            region = (_gw_region(gw) or "").upper()
+            if region in _AC_TYPE_BY_REGION:
+                return f"assumed from the {region} model — set it on the meter to be sure"
+            return "assumed (US split-phase is the common case) — set it on the meter"
         except Exception:  # noqa: BLE001
             return None
 

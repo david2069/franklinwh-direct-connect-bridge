@@ -533,3 +533,25 @@ def test_not_measured_is_not_recorded_as_an_outage():
     root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     src = (root / "poller.py").read_text()
     assert "if mb is not None:" in src
+# ── ac_type: serve the 99% without mislabelling the rest ─────────────────────
+def test_ac_type_defaults_to_split_because_most_installs_are_us():
+    """~99% of the installed base is US, where the service IS split-phase and L1/L2 is
+    correct. Defaulting to neutral labelling everywhere would make the common case
+    worse in order to serve the rare one."""
+    from franklinwh_direct_connect_bridge import app as app_module
+    import ast, pathlib
+    src = (pathlib.Path(app_module.__file__)).read_text()
+    assert '_AC_TYPE_DEFAULT = "split"' in src
+    assert '"US": "split"' in src and '"AU": "single"' in src
+
+
+def test_an_assumed_ac_type_says_it_is_assumed():
+    """The hazard is a guess that reads as a finding — 'leg 122.4 V' against a 253 V
+    threshold looked authoritative. Every non-declared answer names itself."""
+    import pathlib
+    from franklinwh_direct_connect_bridge import app as app_module
+    src = (pathlib.Path(app_module.__file__)).read_text()
+    i = src.index("def _ac_type_source(")
+    body = src[i:i + 900]
+    assert "assumed" in body and "declared on the meter" in body
+    assert "set it on the meter" in body, "must tell the user how to make it definite"
