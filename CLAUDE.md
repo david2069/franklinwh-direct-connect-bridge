@@ -47,6 +47,36 @@ A passing unit test is not evidence that a device behaves as assumed.
 **Confirm a measurement rather than assume a build.** "It built" is not "it works" —
 check the database, the socket table, or the live endpoint, and report the number.
 
+## Defect tracking and change management
+
+The detailed policy lives in `franklinwh-modbus` at
+`.agents/policies/change_management.md` (effective 2026-03-18) and is the source; this is
+its Direct Connect reading.
+
+**Queue first; fix in batches.** A defect or request is written down before it is worked
+on — `BACKLOG.md` for new items, `docs/IN_FLIGHT.md` for work already underway. Only an S1
+is fixed the moment it is reported. If asked to fix a non-S1 immediately, say it is queued,
+offer to group it with the related items, and ask whether it is in fact a blocker.
+
+| Severity | Definition | Response |
+|---|---|---|
+| **S1 — Blocker** | System down, data loss, security hole, hardware safety, cannot proceed | Fix now, with a brief plan first |
+| **S2 — High** | Broken but a workaround exists | Queue → next planned batch |
+| **S3 — Medium** | Cosmetic, UX, non-functional | Queue → group by area |
+| **S4 — Low** | Nice-to-have, cleanup, future work | Queue → backlog review |
+
+**Group → plan → execute → verify.** Group queued items by functional area (client /
+transport, poller, scheduler, store and migrations, HTTP API, UI, MQTT, Modbus) before
+touching code. Each batch gets a written plan first, one verification pass at the end, and
+one version bump — not one per fix.
+
+**Do not chain fixes.** If a fix causes a new defect, stop and queue the new defect; do not
+keep patching. If a fix in a batch breaks a test, review the whole batch, not just the
+failing test. When a change has cascaded, go back to the last good state rather than piling
+on more fixes.
+
+**State the regression risk** before a change: low, medium or high, and what it touches.
+
 ## Say so when something is not done
 
 Report outcomes plainly: what was verified, what was assumed, what was skipped and why.
