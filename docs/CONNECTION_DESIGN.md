@@ -4,6 +4,12 @@
 Written 2026-10-12. Measurements are from the running bridge against the reference
 aGate at 192.168.0.110, read-only.
 
+> **Partly superseded, 2026-10-13.** The owner has directed that this bridge retire
+> its DIRECT Modbus TCP and reach the same capabilities through the Modbus Bridge's
+> REST API — see `MODBUS_VIA_REST_DESIGN.md`. That removes the Modbus half of §4.1,
+> including the dependency on a `pysunspec2` change we do not own. The LOCAL-channel
+> half (TCP 9000, §1.4) still stands and is unaffected.
+
 Companion: the Modbus Bridge's `docs/dispatch-reliability-design.md`
 (david2069/franklinwh-modbus-bridge PR #57). Its §5.2 reaches the same conclusion on
 connection ownership from a different starting point. Where this document agrees, it
