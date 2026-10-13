@@ -3233,11 +3233,35 @@ def create_app() -> FastAPI:
                 "phase_con": g("gridPhaseConSet"), "phase_seq": g("gridPhaseSeqSet"),
                 "service_amps": g("airSwitchCur"),
                 "electric_supply_raw": g("electricSupply"),
-                # Real freq/voltage from 1708 (not the 1701 enum codes):
+                # Real freq/voltage from ibg_run_status (catalogue 1707), not the 1701
+                # enum codes.
                 "nominal_freq_hz": _num(rg("dspSettingFreq")),   # configured nominal, e.g. 50
                 "live_freq_hz": _num(rg("gridFreq")),            # live grid frequency
-                "grid_voltage_v": (round(line_v / 10, 1) if line_v else None),  # line V (÷10)
-                "leg_voltage_v": _num(rg("gridVol1")),           # per-leg (split-phase)
+                # THE service voltage — one reading of the thing itself (gridLineVol,
+                # tenths). This is what grid-compliance curves are quoted against:
+                # AS/NZS 4777.2 Volt-Watt starts at 253 V of SERVICE voltage.
+                "grid_voltage_v": (round(line_v / 10, 1) if line_v else None),
+                # The firmware also reports the service as two halves, because the
+                # product's native layout is US split-phase. On a single-phase service
+                # (this site: aGate X-01-AU, 240 V) there are no legs, so these are NOT
+                # labelled L1/L2 and NOT called legs — doing so showed 122 V against a
+                # 253 V threshold and read as headroom that does not exist.
+                # `half_voltage_v` is deliberately neutral: it is what the gateway
+                # reports, with no claim about conductors. DEF-GRID-VOLTAGE-LEGS-AU.
+                "half_voltage_v": _num(rg("gridVol1")),
+                "half_voltage_2_v": _num(rg("gridVol2")),
+                # Kept so existing callers do not break; prefer half_voltage_v.
+                "leg_voltage_v": _num(rg("gridVol1")),
+                # Phase topology, in order of authority:
+                #   1. the device's own three-phase flag;
+                #   2. the ac_type the owner declared on this gateway's METER — the
+                #      only thing that distinguishes AU single-phase from US
+                #      split-phase without Modbus;
+                #   3. None — not established, and nothing above asserts one.
+                # SunSpec M701 ACType would be authoritative, but it needs Modbus,
+                # which may be switched off. See DEF-GRID-VOLTAGE-LEGS-AU.
+                "ac_type": _ac_type_for(gateway),
+                "ac_type_source": _ac_type_source(gateway),
                 "rated_hz_code": g("ratedGridHz"),               # 1701 enum, NOT a Hz value
             },
             "grid_limits": {
@@ -3866,6 +3890,40 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=str(e))
 
     # -- extra gated writes ---------------------------------------------------
+    def _ac_type_for(gateway: str | None) -> str | None:
+        """single | split | three, or None when nobody has established it.
+
+        Never guessed from the voltage level: that is the mirror-image bug the Modbus
+        Bridge found on its own side, where a US 240 V split-phase site read as
+        single-phase. Unknown is reported as unknown.
+        """
+        try:
+            gw = (get_gateway(gateway) if gateway else None) or get_state()
+            if gw is None:
+                return None
+            summ = (gw.last_summary or {}).get("grid_connection") or {}
+            if summ.get("three_phase"):
+                return "three"
+            # Reuse the scheduler's resolver rather than a second copy of the rule.
+            m = scheduler._meter_for_gateway(_ha_store(), gw.id)
+            t = (m or {}).get("ac_type")
+            return t or None
+        except Exception:  # noqa: BLE001 — a label must never break the payload
+            return None
+
+    def _ac_type_source(gateway: str | None) -> str | None:
+        """Where the ac_type came from, so a reader can weigh it."""
+        try:
+            gw = (get_gateway(gateway) if gateway else None) or get_state()
+            if gw is None:
+                return None
+            if ((gw.last_summary or {}).get("grid_connection") or {}).get("three_phase"):
+                return "device (isThreePhaseInstall)"
+            m = scheduler._meter_for_gateway(_ha_store(), gw.id)
+            return "declared on the meter" if (m or {}).get("ac_type") else None
+        except Exception:  # noqa: BLE001
+            return None
+
     @app.post("/api/der-comms")
     def api_set_der_comms(req: DerCommsReq, gateway: str | None = Query(None)):
         """Write DER comms toggles (SunSpec Modbus / IEEE 2030.5). Delayed-apply — the

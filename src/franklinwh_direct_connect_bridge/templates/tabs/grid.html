@@ -45,9 +45,22 @@
             <div class="text-sm font-semibold tabular-nums" style="color:var(--text-secondary)" x-text="val(grid.grid_connection.service_amps, ' A')"></div>
           </div>
           <div>
-            <div class="text-[10px] uppercase tracking-widest text-slate-500">Grid voltage</div>
-            <div class="text-sm font-semibold tabular-nums" style="color:var(--text-primary)" x-text="grid.grid_connection.grid_voltage_v != null ? val(grid.grid_connection.grid_voltage_v, ' V') : '–'"></div>
-            <div class="text-[10px]" style="color:var(--text-faint)" x-show="grid.grid_connection.leg_voltage_v != null" x-text="'legs ' + val(grid.grid_connection.leg_voltage_v, ' V')"></div>
+            <div class="text-[10px] uppercase tracking-widest text-slate-500">Grid voltage
+              <span class="normal-case tracking-normal" style="color:var(--text-faint)">(service)</span></div>
+            <div class="text-sm font-semibold tabular-nums" style="color:var(--text-primary)"
+                 title="Service voltage — the figure grid-compliance curves are quoted against (AS/NZS 4777.2 Volt-Watt starts at 253 V)"
+                 x-text="grid.grid_connection.grid_voltage_v != null ? val(grid.grid_connection.grid_voltage_v, ' V') : '–'"></div>
+            <!-- The firmware reports the service as two halves because the product's
+                 native layout is US split-phase. Only call them L1/L2 where the service
+                 genuinely IS split-phase; otherwise say what they are without claiming a
+                 topology. DEF-GRID-VOLTAGE-LEGS-AU. -->
+            <div class="text-[10px]" style="color:var(--text-faint)"
+                 x-show="grid.grid_connection.half_voltage_v != null"
+                 :title="grid.grid_connection.ac_type === 'split'
+                   ? 'Per leg (split-phase service)'
+                   : 'As reported by the gateway — the service split into two halves. Not separate conductors on a single-phase service.'"
+                 x-text="(grid.grid_connection.ac_type === 'split' ? 'legs ' : 'gateway reports 2 \u00d7 ')
+                         + val(grid.grid_connection.half_voltage_v, ' V')"></div>
           </div>
           <div>
             <div class="text-[10px] uppercase tracking-widest text-slate-500">Frequency</div>

@@ -252,9 +252,15 @@
       <div class="card p-4" x-show="el.gridVol1 !== undefined && bmsCards.inverter">
         <div class="card-label">Inverter &amp; Power Electronics</div>
         <div class="grid gap-4 text-sm" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
-          <div><div class="metric-label">Grid Voltages</div>
-            <div class="font-mono">L1 <span x-text="fmt(el.gridVol1,1,'V')"></span></div>
-            <div class="font-mono">L2 <span x-text="fmt(el.gridVol2,1,'V')"></span></div></div>
+          <!-- L1/L2 only where the service is genuinely split-phase; on a single-phase
+               service these are two halves of one service, not two conductors. -->
+          <div><div class="metric-label">Grid Voltages
+              <span class="font-normal" style="color:var(--text-faint)"
+                    x-show="$store.app.acType !== 'split'">(gateway halves)</span></div>
+            <div class="font-mono"><span x-text="$store.app.acType === 'split' ? 'L1' : 'a'"></span>
+              <span x-text="fmt(el.gridVol1,1,'V')"></span></div>
+            <div class="font-mono"><span x-text="$store.app.acType === 'split' ? 'L2' : 'b'"></span>
+              <span x-text="fmt(el.gridVol2,1,'V')"></span></div></div>
           <div><div class="metric-label">Inverter Lines</div>
             <div class="font-mono">L1 <span x-text="fmt(el.inverterVolt1,1,'V')"></span></div>
             <div class="font-mono">L2 <span x-text="fmt(el.inverterVolt2,1,'V')"></span></div></div>

@@ -441,3 +441,37 @@ def test_the_confirmed_disable_still_goes_through(monkeypatch):
     r = _app().post("/api/der-comms",
                     json={"sunspec_modbus": False, "confirm": True})
     assert r.status_code != 409 and seen.get("sunspec_modbus") is False
+
+
+# ── DEF-GRID-VOLTAGE-LEGS-AU: do not assert a phase topology we cannot confirm ──
+def test_the_ui_does_not_hardcode_legs_for_grid_voltage():
+    """A single-phase service has no legs. Calling the halves 'legs' showed 122 V
+    against a 253 V Volt-Watt threshold and read as headroom that does not exist."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
+    grid = (root / "templates/tabs/grid.html").read_text()
+    assert "'legs '" in grid, "the split-phase wording must still exist for real split-phase"
+    assert "ac_type === 'split'" in grid, "…but only behind an ac_type check"
+    bat = (root / "templates/tabs/battery.html").read_text()
+    assert "acType === 'split' ? 'L1'" in bat, "L1/L2 must be conditional, not hardcoded"
+
+
+def test_ac_type_is_never_inferred_from_voltage_level():
+    """The mirror-image bug the Modbus Bridge found: guessing phase from the voltage
+    level labels a US 240 V split-phase site as single-phase.
+
+    Checks EXECUTABLE lines only — the docstring legitimately mentions 240 V while
+    explaining the bug, and an earlier version of this test matched that prose.
+    """
+    import ast, pathlib, textwrap
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
+    tree = ast.parse((root / "app.py").read_text())
+    fn = next(n for n in ast.walk(tree)
+              if isinstance(n, ast.FunctionDef) and n.name == "_ac_type_for")
+    body = list(fn.body)
+    if (body and isinstance(body[0], ast.Expr)
+            and isinstance(getattr(body[0], "value", None), ast.Constant)):
+        body = body[1:]                      # drop the docstring
+    code = "\n".join(ast.unparse(n) for n in body)
+    assert "grid_voltage_v" not in code and "240" not in code, \
+        "ac_type must come from the device flag or the declared meter, never the voltage"

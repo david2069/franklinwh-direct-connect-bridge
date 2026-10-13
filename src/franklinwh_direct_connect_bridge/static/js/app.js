@@ -1052,6 +1052,12 @@ document.addEventListener('alpine:init', () => {
       return this.battery.run_status_desc || this.power.run_status_desc
              || (this.power.run_status ?? '--');
     },
+    //: single | split | three, or '' when nobody has established it. Never guessed
+    //  from the voltage level — that is how a US 240 V split-phase site gets labelled
+    //  single-phase (the mirror of DEF-GRID-VOLTAGE-LEGS-AU, found on the Modbus side).
+    get acType() {
+      return (this.summary.grid_connection && this.summary.grid_connection.ac_type) || '';
+    },
     //: run_status 8 — a FranklinWH remote-support session. Not a fault, but a third
     //  party is connected to the gateway and can change things, so it is shown.
     get isDebugMode() {
