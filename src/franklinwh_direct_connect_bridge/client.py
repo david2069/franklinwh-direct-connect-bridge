@@ -794,7 +794,25 @@ def _energy_today_from_power_flow(pf: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
-def summary(s: Settings, host: str | None = None) -> dict[str, Any]:
+def _probe_modbus(host: str, *, mock: bool = False) -> bool | None:
+    """Is the gateway's :502 open? None when we deliberately did not look.
+
+    Three states, not two: True reachable, False probed and refused, None not probed
+    (Modbus switched off here, or a mock with no Modbus). The distinction matters —
+    the same rule the link history uses for a leg nobody measured.
+    """
+    if mock:
+        return None
+    try:
+        from . import battery_control
+        if not battery_control.is_enabled():
+            return None
+    except Exception:  # noqa: BLE001 — never fail a poll over the probe
+        pass
+    return any(discover.port_open(host, 502, timeout=3.0) for _ in range(3))
+
+
+def summary(s: Settings, host: str | None = None, *, mock: bool = False) -> dict[str, Any]:
     """Everything the dashboard needs in ONE aGate session (one login) — efficient on the
     flaky local link vs. five separate connect/login round-trips. Reads ``host`` when given
     (multi-gateway); the caller (poller) stores serial/firmware/caches on its gateway — this
@@ -808,7 +826,15 @@ def summary(s: Settings, host: str | None = None) -> dict[str, Any]:
     }
     _ph, _pp = _split_hostport(host, s.fwh_port)
     out["ping"] = discover.ping(_ph, timeout=1.0)
-    out["modbus_502"] = any(discover.port_open(_ph, 502, timeout=3.0) for _ in range(3))
+    # The :502 probe is a REAL TCP connect, three of them on failure. It used to run
+    # unconditionally, so "Modbus disabled" still opened sockets to the gateway every
+    # poll — the switch did not mean what it said, and anyone measuring our footprint
+    # after flipping it would have been misled (MODBUS_SUSPEND_PLAN Gap 1).
+    #
+    # Skipped entirely when the Modbus path is off, and for mocks, which have no
+    # Modbus at all. The result is then None — "not measured", which is NOT the same
+    # as False ("tried and failed") and must not be rendered as "not reachable".
+    out["modbus_502"] = _probe_modbus(_ph, mock=mock)
     try:
         with _client(s, host) as c:
             t0 = time.time()

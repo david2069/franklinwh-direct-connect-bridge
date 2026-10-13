@@ -177,7 +177,8 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                 _poll_timeout = max(10, min(settings.poll_interval, 30))
                 try:
                     summ = await asyncio.wait_for(
-                        asyncio.to_thread(client.summary, settings, gw.active_host),
+                        asyncio.to_thread(client.summary, settings, gw.active_host,
+                                          mock=bool(getattr(gw, 'is_mock', False))),
                         timeout=_poll_timeout)
                 except asyncio.TimeoutError:
                     summ = {"ok": False, "error": f"poll timed out after {_poll_timeout}s"}
@@ -220,11 +221,16 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                                     gw.id, "ok" if png else "failed", leg="icmp",
                                     error="" if png else "no ICMP reply",
                                     expected_interval_s=interval)
-                            store.record_link_probe(
-                                gw.id, "ok" if summ.get("modbus_502") else "failed",
-                                leg="modbus_502",
-                                error="" if summ.get("modbus_502") else "port 502 not open",
-                                expected_interval_s=interval)
+                            # None = not probed (Modbus off here, or a mock). Record
+                            # nothing rather than a failure: a leg nobody measured is
+                            # "not measured", and logging it as down would invent an
+                            # outage out of our own configuration.
+                            mb = summ.get("modbus_502")
+                            if mb is not None:
+                                store.record_link_probe(
+                                    gw.id, "ok" if mb else "failed", leg="modbus_502",
+                                    error="" if mb else "port 502 not open",
+                                    expected_interval_s=interval)
                             return main
                         link = await asyncio.to_thread(_record_legs)
                         gw.link_state = link["state"]

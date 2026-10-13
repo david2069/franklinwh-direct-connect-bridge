@@ -494,3 +494,42 @@ def test_grid_phase_is_never_taken_from_the_solar_three_phase_flag():
             body = body[1:]
         code = "\n".join(ast.unparse(n) for n in body)
         assert "three_phase" not in code and "isThreePhase" not in code, fn_name
+
+
+# ── MODBUS_SUSPEND_PLAN Phase A: off must mean off ──────────────────────────
+def test_the_502_probe_is_skipped_when_modbus_is_disabled(monkeypatch):
+    """The switch said "Modbus disabled" while the poller still opened TCP to :502
+    every cycle. Anyone measuring our footprint after flipping it would have been
+    misled — which is exactly what a coordinated single-client run needs to not happen."""
+    from franklinwh_direct_connect_bridge import client as C, battery_control as BC
+    called = []
+    monkeypatch.setattr(C.discover, "port_open",
+                        lambda h, p, timeout=0: called.append((h, p)) or True)
+    monkeypatch.setattr(BC, "is_enabled", lambda: False)
+    assert C._probe_modbus("10.0.0.1") is None, "not probed = None, not False"
+    assert called == [], "no socket may be opened while Modbus is off"
+
+
+def test_a_mock_gateway_never_probes_502(monkeypatch):
+    from franklinwh_direct_connect_bridge import client as C
+    called = []
+    monkeypatch.setattr(C.discover, "port_open",
+                        lambda h, p, timeout=0: called.append(1) or True)
+    assert C._probe_modbus("127.0.0.1", mock=True) is None
+    assert called == []
+
+
+def test_the_probe_still_runs_when_modbus_is_enabled(monkeypatch):
+    from franklinwh_direct_connect_bridge import client as C, battery_control as BC
+    monkeypatch.setattr(BC, "is_enabled", lambda: True)
+    monkeypatch.setattr(C.discover, "port_open", lambda h, p, timeout=0: True)
+    assert C._probe_modbus("10.0.0.1") is True
+
+
+def test_not_measured_is_not_recorded_as_an_outage():
+    """None must not reach record_link_probe as a failure — that would invent an
+    outage out of our own configuration."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
+    src = (root / "poller.py").read_text()
+    assert "if mb is not None:" in src
