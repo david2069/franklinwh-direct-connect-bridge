@@ -126,6 +126,42 @@ misleading, and should be re-pointed at `ibgRunStatus`.
 
 ---
 
+## 4a. A US-centric platform, and an international one coming
+
+Worth stating because it decides how to shape code **now**, not later.
+
+The current aGate is **US electrical-standards centric**. Its native service layout is
+split-phase, which is why the firmware reports the service as two halves even on an AU
+single-phase 240 V site, and why `gridVol1` + `gridVol2` sum to the service voltage
+here rather than describing two real conductors.
+
+FranklinWH have stated an **international platform is coming**, with **native
+single-phase and three-phase support** in addition to split/two-phase — required for
+the European market, Germany in particular.
+
+**What that means for this code:**
+
+* **Never assume two.** Per-line voltages are exposed as a **list**
+  (`line_voltages_v`), not a pair. `half_voltage_v` / `half_voltage_2_v` /
+  `leg_voltage_v` are kept for existing callers but bake in "exactly two" and will be
+  wrong on three-phase hardware. Prefer the list.
+* **The service voltage stays the primary figure.** `gridLineVol` is one reading of the
+  thing itself, and it is what grid-compliance curves are quoted against. It does not
+  change shape when the topology does — summing N halves would.
+* **`ac_type` must stay a real enum**, not a boolean. `single | split | three` already
+  exists on the meter model; nothing should collapse it to "is it three-phase or not".
+* **Phase-dependent labelling belongs behind `ac_type`**, which is why `L1`/`L2` and
+  "legs" are conditional rather than removed — on genuinely split-phase hardware they
+  are correct, and on three-phase hardware the correct labels are different again.
+* **`M701 ACType` gets more valuable, not less.** It already distinguishes
+  `0 SINGLE_PHASE / 1 SPLIT_PHASE / 2 THREE_PHASE`, which is exactly the axis the new
+  platform moves along.
+
+**What NOT to do:** build speculative three-phase handling now. Nobody has one, the
+field semantics are unconfirmed (`RESEARCH-GRID-PHASE-ENUM`), and guessing is how the
+"legs" defect happened. The goal here is only to avoid baking in assumptions that would
+have to be unpicked — a list instead of a pair, an enum instead of a boolean.
+
 ## 5. Rules of thumb
 
 1. **To show the user what the battery is doing:** `RUN_STATUS[1301.run_status]`.

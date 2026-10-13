@@ -3252,16 +3252,22 @@ def create_app() -> FastAPI:
                 # tenths). This is what grid-compliance curves are quoted against:
                 # AS/NZS 4777.2 Volt-Watt starts at 253 V of SERVICE voltage.
                 "grid_voltage_v": (round(line_v / 10, 1) if line_v else None),
-                # The firmware also reports the service as two halves, because the
-                # product's native layout is US split-phase. On a single-phase service
-                # (this site: aGate X-01-AU, 240 V) there are no legs, so these are NOT
-                # labelled L1/L2 and NOT called legs — doing so showed 122 V against a
-                # 253 V threshold and read as headroom that does not exist.
-                # `half_voltage_v` is deliberately neutral: it is what the gateway
-                # reports, with no claim about conductors. DEF-GRID-VOLTAGE-LEGS-AU.
+                # The gateway also reports per-line voltages. TODAY this hardware is
+                # US-centric and reports two, because its native layout is split-phase —
+                # but FranklinWH have stated an international platform is coming with
+                # NATIVE single- and three-phase support (for the European market,
+                # Germany especially). So this is a LIST, not a pair: a consumer must
+                # not assume two. On a single-phase service the two entries are halves
+                # of one service, not separate conductors — which is why nothing here
+                # says "legs" or "L1/L2" unless ac_type is genuinely split.
+                # DEF-GRID-VOLTAGE-LEGS-AU.
+                "line_voltages_v": [v for v in (_num(rg("gridVol1")),
+                                                _num(rg("gridVol2")))
+                                    if v is not None],
+                # Kept so existing callers do not break; prefer line_voltages_v. Both
+                # bake in "exactly two" and will be wrong on three-phase hardware.
                 "half_voltage_v": _num(rg("gridVol1")),
                 "half_voltage_2_v": _num(rg("gridVol2")),
-                # Kept so existing callers do not break; prefer half_voltage_v.
                 "leg_voltage_v": _num(rg("gridVol1")),
                 # Phase topology of the GRID SERVICE. The only source used is the
                 # ac_type the owner declared on this gateway's meter, because nothing
