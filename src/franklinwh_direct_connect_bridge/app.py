@@ -260,6 +260,23 @@ class RebootReq(BaseModel):
     confirm: bool = False               # must be true — reboot is DESTRUCTIVE
 
 
+class IntegrationMappingsReq(BaseModel):
+    """The Integration Mapping page's saved rows. Free-form per protocol, validated
+    only on the protocol id — the shape of a mapping differs by transport."""
+    mappings: list[dict] = Field(default_factory=list)
+
+
+class ProbeReq(BaseModel):
+    """One field to look up live. `field` alone is enough — the frame is found.
+
+    Module level deliberately: an in-function pydantic model fails to resolve its
+    annotations (the file already carries that note for the other request models).
+    """
+    field: str = ""                  # raw key, e.g. "ibgRunStatus" or "gridLineVol"
+    read: str = ""                   # optional: force a specific /api/cmd/<name>
+    gateway: str | None = None
+
+
 class DispatchReq(BaseModel):
     # HYBRID-CAPABILITIES Phase 2 — battery dispatch via the resolved Modbus provider.
     action: str                         # charge | discharge | standby | release
@@ -1279,6 +1296,164 @@ def create_app() -> FastAPI:
             "outages_closed": len(closed),
             "longest_outage_s": max([o["duration_s"] for o in closed], default=None),
             "retention_days": store.LINK_RETENTION_DAYS,
+        }
+
+    def _probe_candidates(field: str) -> list[str]:
+        """Which read methods plausibly carry this field.
+
+        The question that cost the most time this week was never "is this register
+        right" — it was "WHICH frame has this field". Three separate wrong answers came
+        from reasoning about a field's name or its neighbours instead of reading it:
+        VPP looked absent because 1301 was the wrong frame, isThreePhaseInstall looked
+        like grid topology because of its name, and gridVol1 looked like a leg.
+        """
+        f = (field or "").strip().lower()
+        if not f:
+            return []
+        hits, rest = [], []
+        for name in client.READ_METHODS:
+            n = name.lower()
+            (hits if f in n or n in f else rest).append(name)
+        # Frames whose NAME hints at the field first, then everything else — the caller
+        # stops at the first frame that actually contains it.
+        return hits + rest
+
+    #: Protocols the Integration Mapping page offers. `implemented` is the honest bit:
+    #: an option that is not built says so on its face and cannot be saved into a
+    #: configuration that would then fail at runtime. A visible intent is fine; a
+    #: silent no-op is the thing that burned us before — controls painted in the UI
+    #: and not grounded in code.
+    INTEGRATION_PROTOCOLS = [
+        {"id": "direct_9000", "name": "Direct Connect (TCP 9000)",
+         "detail": "The aGate's own local API — cmdType frames, auto-discovered",
+         "implemented": True},
+        {"id": "sunspec_502", "name": "SunSpec / Modbus TCP",
+         "detail": "SunSpec models over :502. NB this aGate's map starts at offset 0, "
+                   "not 40000 — a 4xxxx address must be converted first",
+         "implemented": True},
+        {"id": "modbus_bridge_rest", "name": "Modbus Bridge REST",
+         "detail": "Delegate to an installed Modbus Bridge (its watchdog owns dispatch)",
+         "implemented": True},
+        {"id": "cloud_api", "name": "FranklinWH Cloud API",
+         "detail": "getDeviceCompositeInfo — the only source that names a VPP programme",
+         "implemented": True},
+        {"id": "mqtt", "name": "MQTT",
+         "detail": "Topic subscription + JSON path",
+         "implemented": False, "note": "To be implemented"},
+        {"id": "ha_websocket", "name": "Home Assistant WebSocket",
+         "detail": "HA state events",
+         "implemented": False, "note": "To be implemented"},
+        {"id": "rest", "name": "Generic REST",
+         "detail": "HTTP GET + JSON dot-path",
+         "implemented": False, "note": "To be implemented"},
+    ]
+
+    @app.get("/api/integrations")
+    def api_integrations():
+        """The Integration Mapping page: protocols, saved mappings, and probe targets.
+
+        A mapping is a NAME this bridge uses paired with WHERE the value comes from.
+        The page exists because "which frame carries this field" was repeatedly guessed
+        rather than looked up, and three of those guesses were wrong.
+        """
+        st = _gw_store()
+        try:
+            saved = st.get_config("integration_mappings", None) if st else None
+            rows = json.loads(saved) if isinstance(saved, str) else (saved or [])
+        except Exception:  # noqa: BLE001
+            rows = []
+        return {
+            "protocols": INTEGRATION_PROTOCOLS,
+            "mappings": rows,
+            # Everything probeable on the local channel, so the picker is grounded in
+            # what the device actually exposes rather than a hand-kept list.
+            "reads": sorted(client.READ_METHODS),
+        }
+
+    @app.put("/api/integrations")
+    def api_integrations_put(req: IntegrationMappingsReq):
+        """Save the mappings. Refuses a protocol that is not implemented, so a visible
+        placeholder can never become a stored configuration that fails at runtime."""
+        allowed = {p["id"] for p in INTEGRATION_PROTOCOLS if p["implemented"]}
+        for m in req.mappings:
+            proto = (m or {}).get("protocol") or ""
+            if proto and proto not in allowed:
+                raise HTTPException(
+                    422, f"protocol {proto!r} is not implemented yet — it can be shown "
+                         "as a placeholder but not saved")
+        st = _gw_store()
+        if st is not None:
+            st.set_config("integration_mappings", json.dumps(req.mappings))
+        _audit("integration_mappings", detail=f"{len(req.mappings)} mapping(s)")
+        return {"ok": True, "count": len(req.mappings)}
+
+    @app.post("/api/probe")
+    def api_probe(req: ProbeReq):
+        """Read one field from the device NOW, and show the request that fetched it.
+
+        The point is to make "what does this actually read?" a two-second question
+        instead of an inference. It returns the live value, the frame it came from, the
+        exact request sent, and the schema/enum description — so a reader can check a
+        claim rather than trust one.
+
+        Read-only: only `READ_METHODS` are reachable, so this cannot write.
+        """
+        host = _gw_host(req.gateway)
+        s = get_settings()
+        field = (req.field or "").strip()
+        names = [req.read] if req.read else _probe_candidates(field)
+        if not names:
+            raise HTTPException(422, "give a field name, or a read to probe")
+        tried: list[str] = []
+        for name in names[:40]:          # bounded: each miss is a device round-trip
+            if name not in client.READ_METHODS:
+                continue
+            tried.append(name)
+            try:
+                payload, request = client.read_with_request(s, name, host=host)
+            except (OSError, TransportError, TimeoutError, ValueError):
+                continue
+            body = payload.get("result") if isinstance(payload, dict) and isinstance(
+                payload.get("result"), dict) else payload
+            if req.read and not field:
+                return _probe_result(name, None, None, payload, request)
+            for src in (body, payload):
+                if isinstance(src, dict) and field in src:
+                    return _probe_result(name, field, src[field], payload, request)
+        raise HTTPException(404, {
+            "detail": f"{field!r} not found in any read frame",
+            "tried": tried,
+            "hint": "the field may live on another channel (Modbus/cloud), be named "
+                    "differently on the wire, or only appear in some states",
+        })
+
+    def _probe_result(name, field, value, payload, request) -> dict:
+        from . import fieldschema
+        cat = None
+        try:
+            from franklinwh_direct_connect_api import catalog as _cat
+            for cid, item in _cat.CATALOG.items():
+                if getattr(item, "name", "") == name:
+                    cat = {"cmd_type": cid, "description": getattr(item, "description", "")}
+                    break
+        except Exception:  # noqa: BLE001
+            pass
+        meta = fieldschema.describe_field(field) if field else None
+        enum = (meta or {}).get("enum") if isinstance(meta, dict) else None
+        return {
+            "read": name, "field": field, "value": value,
+            # The decoded meaning where we have one, so a bare 9 or 85232 is not left
+            # for the reader to interpret.
+            "decoded": (enum or {}).get(value) if enum and not isinstance(value, dict) else None,
+            "label": (meta or {}).get("label") if meta else None,
+            "unit": (meta or {}).get("unit") if meta else None,
+            "group": (meta or {}).get("group") if meta else None,
+            "cmd": cat,
+            # The frame actually sent — not a reconstruction. The whole point is that a
+            # reader can verify rather than trust.
+            "request": request,
+            "payload": payload,
+            "probed_at": time.time(),
         }
 
     @app.get("/api/health/link/hourly")

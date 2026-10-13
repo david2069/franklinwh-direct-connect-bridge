@@ -1893,6 +1893,132 @@
       <button @click="testCloud()" class="btn btn-secondary btn-sm shrink-0"
               :disabled="cloudTesting" x-text="cloudTesting ? 'Testing…' : 'Test'"></button>
     </div>
+
+  <!-- ══ Integration → Mapping ══════════════════════════════════════
+       Where each value comes from, with a live Probe. Lives under Integrations
+       because that is what it configures; it is not a separate concern. -->
+  <!-- ── Integration → Mapping ──────────────────────────────────────────────── -->
+  <div x-data="integrationsTab()" x-init="init()" class="space-y-4">
+
+    <div class="flex items-center justify-between gap-3 flex-wrap">
+      <div>
+        <div class="text-[10px] uppercase tracking-widest text-slate-500">Mapping</div>
+        <p class="text-sm text-slate-500">
+          Where each value comes from, and a <span class="font-medium">Probe</span> that reads it live.
+          Probe before you trust a mapping — a field's name does not tell you which frame carries it.
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="btn btn-secondary btn-sm" @click="load()" :disabled="loading"
+                x-text="loading ? 'Loading…' : 'Reload'"></button>
+        <button class="btn btn-primary btn-sm" @click="save()" :disabled="saving"
+                x-text="saving ? 'Saving…' : 'Save mappings'"></button>
+      </div>
+    </div>
+
+    <p class="text-xs" style="color:var(--danger)" x-show="error" x-cloak x-text="error"></p>
+
+    <!-- Protocols: what this bridge can actually speak, and what it cannot yet. -->
+    <div class="card">
+      <div class="card-label">Protocols</div>
+      <div class="grid gap-2" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+        <template x-for="p in protocols" :key="p.id">
+          <div class="rounded-lg border p-3" style="border-color:var(--border)"
+               :style="p.implemented ? '' : 'opacity:.6'">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-sm font-medium" style="color:var(--text-primary)" x-text="p.name"></span>
+              <!-- Said on its face. A placeholder shows the intended shape; it never
+                   saves into a configuration that would fail at runtime. -->
+              <span class="chip" :class="p.implemented ? 'ok' : 'muted'" style="font-size:.55rem"
+                    x-text="p.implemented ? 'available' : (p.note || 'To be implemented')"></span>
+            </div>
+            <div class="text-[11px] mt-1" style="color:var(--text-faint)" x-text="p.detail"></div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- Mappings -->
+    <div class="card" style="padding:0;overflow:hidden">
+      <div class="px-5 py-3 border-b flex items-center justify-between gap-3" style="border-color:var(--border)">
+        <div class="card-label" style="margin-bottom:0">Field mappings</div>
+        <button class="btn btn-secondary btn-sm" @click="addRow()">+ Add row</button>
+      </div>
+
+      <div class="px-5 py-6 text-sm text-slate-500" x-show="!mappings.length" x-cloak>
+        No mappings yet. Add a row, type the raw field name (e.g.
+        <span class="font-mono">ibgRunStatus</span>), and press Probe — it finds the frame for you.
+      </div>
+
+      <template x-for="(m, i) in mappings" :key="i">
+        <div class="px-5 py-3 border-b" style="border-color:var(--border)">
+          <div class="flex items-center gap-2 flex-wrap">
+            <input type="checkbox" x-model="m.enabled" class="shrink-0" title="Enabled">
+            <input class="form-control form-control-sm" style="width:11rem" placeholder="name in this bridge"
+                   x-model="m.name">
+            <select class="form-control form-control-sm" style="width:auto" x-model="m.protocol">
+              <template x-for="p in protocols" :key="p.id">
+                <!-- Unimplemented protocols are selectable so the intent is visible, and
+                     the API refuses to SAVE them — the refusal is the guard, not the UI. -->
+                <option :value="p.id" x-text="p.name + (p.implemented ? '' : ' — to be implemented')"></option>
+              </template>
+            </select>
+            <input class="form-control form-control-sm" style="width:12rem" placeholder="raw field, e.g. gridLineVol"
+                   x-model="m.field">
+            <input class="form-control form-control-sm" style="width:4.5rem" placeholder="unit" x-model="m.unit">
+            <button class="btn btn-secondary btn-sm" @click="probe(m)" :disabled="m._probing || !m.field"
+                    x-text="m._probing ? 'Probing…' : 'Probe'"></button>
+            <button class="btn btn-secondary btn-sm" @click="removeRow(i)" title="Remove">&times;</button>
+          </div>
+
+          <p class="text-[11px] mt-1" style="color:var(--warn)" x-show="!implemented(m.protocol)" x-cloak>
+            This protocol is not implemented yet — the row can be kept as intent, but saving will be refused.
+          </p>
+
+          <!-- The probe result, including the request that fetched it: the point is that
+               a reader can verify rather than trust a reconstruction. -->
+          <div class="mt-2 rounded-lg p-3 text-xs" style="background:var(--surface-1)"
+               x-show="m._probe" x-cloak>
+            <template x-if="m._probe && m._probe.ok">
+              <div class="space-y-1">
+                <div class="flex items-baseline gap-2 flex-wrap">
+                  <span class="chip ok" style="font-size:.55rem">found</span>
+                  <span class="font-mono" style="color:var(--text-primary)"
+                        x-text="(m._probe.label || m._probe.field) + ' = ' + JSON.stringify(m._probe.value)"></span>
+                  <span x-show="m._probe.decoded" style="color:var(--accent)"
+                        x-text="'→ ' + m._probe.decoded"></span>
+                  <span x-show="m._probe.unit" style="color:var(--text-faint)" x-text="m._probe.unit"></span>
+                </div>
+                <div style="color:var(--text-faint)">
+                  from <span class="font-mono" x-text="m._probe.read"></span>
+                  <span x-show="m._probe.cmd" x-text="'(cmdType ' + (m._probe.cmd && m._probe.cmd.cmd_type) + ')'"></span>
+                </div>
+                <div style="color:var(--text-faint)">
+                  request sent:
+                  <span class="font-mono" x-text="JSON.stringify(m._probe.request)"></span>
+                </div>
+              </div>
+            </template>
+            <template x-if="m._probe && !m._probe.ok">
+              <div>
+                <span class="chip error" style="font-size:.55rem">not found</span>
+                <span class="ml-2" style="color:var(--danger)" x-text="m._probe.detail"></span>
+                <div class="mt-1" style="color:var(--text-faint)" x-show="m._probe.tried && m._probe.tried.length"
+                     x-text="'tried: ' + (m._probe.tried || []).slice(0, 8).join(', ') + '…'"></div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <p class="text-[11px]" style="color:var(--text-faint)">
+      A probe reads the device now and shows the frame it used and the exact request sent, so a mapping
+      can be checked rather than assumed. SunSpec note: this aGate's map starts at offset <span class="font-mono">0</span>,
+      not <span class="font-mono">40000</span> — a 4xxxx address must be converted first.
+    </p>
+  </div>
+
   </div>
 
   <!-- Everything editable here auto-saves on change (persisted across restarts). -->
