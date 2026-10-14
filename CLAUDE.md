@@ -121,7 +121,11 @@ of real hardware**. Scope reported by the `franklinwh-gateway-emulator` session,
 
 **Model only — does not count as verification**
 
-- Live extension registers: partly calibrated, and 15514–15516 are not served.
+- Live extension registers. 15003, 15011–15013, 15022, 15024/25, 15029–15036, 15040 and
+  16000 are live, following one site's evidence: candidates, not established (emulator
+  issues #2, #4). 15514–15516 are served as 0, observed once while charging (#3). 15016,
+  16001/16002 and the rest are static or candidate. 15040 is the solar-side power term,
+  not PF.
 - The spec, US split-phase, three-phase and generator profiles.
 - Connection limits. The emulator accepts one client and refuses the newest; whether the
   aGate closes the oldest or refuses the newest **is not established**.
