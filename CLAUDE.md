@@ -107,43 +107,26 @@ check the database, the socket table, or the live endpoint, and report the numbe
 ### What an emulator run verifies
 
 An emulator run counts as verification **only for the paths it reproduces from observation
-of real hardware**. Scope reported by the `franklinwh-gateway-emulator` session,
-2026-10-14; it owns this list and it is the one to ask when it changes.
+of real hardware**. Every emulator reports its own scope in three buckets:
 
-**Reproduced from observation — counts as verification**
+- **Reproduced from observation** — counts as verification.
+- **Model only** — plausible behaviour nobody has confirmed against hardware. Does not count.
+- **Not covered** — the emulator does not attempt it. Does not count.
 
-- Modbus framing, function codes and exception codes.
-- Register layout and static values for profile `agate-v10r01b04d00` — 589 static points
-  matched to the 2026-10-07 scan.
-- Observed write semantics: M704 obeyed; 15507–15509 acknowledged and discarded;
-  Direct Connect 1207 stored. Each observed **once, on one site**.
-- Direct Connect read payloads for firmware V12R02B30D06.
+Anything outside the first bucket needs the reference aGate.
 
-**Model only — does not count as verification**
+**The current scope is the emulator's to state, not ours to copy.** For the FranklinWH
+Gateway Emulator it is the table in its own `CLAUDE.md`, under "Critical changes need real
+verification", in the `franklinwh-gateway-emulator` repository — which is private, so it is
+not linkable from this public file. Ask that repository, or the session working in it,
+rather than trusting a copy here: a copy of it in this file went stale within an hour of
+being written, which is why there is no longer one.
 
-- Live extension registers. 15003, 15011–15013, 15022, 15024/25, 15029–15036, 15040 and
-  16000 are live, following one site's evidence: candidates, not established (emulator
-  issues #2, #4). 15514–15516 are served as 0, observed once while charging (#3). 15016,
-  16001/16002 and the rest are static or candidate. 15040 is the solar-side power term,
-  not PF.
-- The spec, US split-phase, three-phase and generator profiles.
-- Connection limits. The emulator accepts one client and refuses the newest; whether the
-  aGate closes the oldest or refuses the newest **is not established**.
-- Timing — replies are instant unless a fault is injected.
-- Battery, solar and grid physics, and grid-code responses (IEEE 1547 values from memory).
-
-**Not covered at all**
-
-- Firmware fault modes: `0xFFFF` values, broken sockets, partial replies, reboot recovery.
-- Concurrency and stress. The emulator is a single-threaded asyncio server — a smoke test,
-  not a stress test.
-
-Anything in the last two groups needs the reference aGate. **A report of an emulator run
-states what that emulator does not model** — on one occasion register 15514 raised an
-exception on the emulator and answered on the aGate, and a report that omits the gap reads
-as a clean pass. **Every emulator-verified claim names the coverage-list version, the
-profile and the emulator commit** — that requirement binds claims verified on the
-emulator, not every claim.
+**A report of an emulator run states what that emulator does not model.** On one occasion
+register 15514 raised an exception on the emulator and answered on the aGate; a report that
+omits the gap reads as a clean pass. **Every emulator-verified claim names the
+coverage-list version, the profile and the emulator commit** — that requirement binds
+claims verified on the emulator, not every claim.
 
 **Emulator output is not evidence of what a register or field means.** It serves what it
 was told to serve.
