@@ -363,6 +363,7 @@ _MODE_SOC_FIELDS = {1: ("touMinSoc", "touMaxSoc"), 2: ("selfMinSoc", "selfMaxSoc
 
 
 def mode_from_reads(power_flow: dict, mode_list: dict, mode_soc: dict | None = None,
+                    offgrid: dict | None = None,
                     tou_schedule: dict | None = None,
                     requested_workmode: int | None = None) -> dict[str, Any]:
     """Cloud ``get_mode`` flat dict from local reads. Returns the ACTIVE mode
@@ -391,6 +392,8 @@ def mode_from_reads(power_flow: dict, mode_list: dict, mode_soc: dict | None = N
         min_soc = mode_soc.get(mn, 0)
         max_soc = mode_soc.get(mx, 100)
     run_status = int(pf.get("run_status", 0) or 0)
+    # 1723's own value, or None. Never derived from run_status — see #46.
+    offgrid_state = (offgrid or {}).get("offgridState")
     result: dict[str, Any] = {
         "currendId": target.get("id"),
         "workMode": work_mode,
@@ -404,7 +407,12 @@ def mode_from_reads(power_flow: dict, mode_list: dict, mode_soc: dict | None = N
         "run_status": run_status,
         "run_desc": catalog.run_status_desc(run_status),
         "electricityType": target.get("electricity_type", 1),
-        "offgridState": 1 if run_status in (5, 6, 7) else 0,   # off-grid run_status codes
+        # The gateway's OWN 1723 value when we have it. This used to be synthesised from
+        # run_status, which does not carry the off-grid codes on V12R02B30D06 — so during a
+        # real island this field reported 0 while 1723 reported 1, telling a cloud-shaped
+        # consumer the site was grid-connected during an outage (#46). None, not a guess,
+        # when it was not read.
+        "offgridState": offgrid_state,
         **_MODE_RESULT_DEFAULTS,
     }
     if work_mode == 1:                                          # TOU mode_specific

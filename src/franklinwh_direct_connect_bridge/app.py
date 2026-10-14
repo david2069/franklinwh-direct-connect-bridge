@@ -141,7 +141,12 @@ def _roster_entry(gw: GatewayState) -> dict:
         # per-gateway off-grid / VPP badges (FEAT-TOPNAV-RUNSTATUS). 5/6/7 = islanded, 9 = VPP.
         "run_status": rs,
         "run_status_desc": _run_status_desc(rs),
-        "off_grid": rs in (5, 6, 7),
+        # From the cached summary, which decided this from every signal (#45). Falls back
+        # to the run_status test only when the cache predates that — never recomputed here,
+        # because a second copy of this rule is how the two drifted in the first place.
+        "off_grid": (power.get("off_grid") if power.get("off_grid") is not None
+                     else rs in (5, 6, 7)),
+        "off_grid_signals": power.get("off_grid_signals"),
         # Dispatch badge: "vpp" (cloud-confirmed) | "force" (Modbus M704 WSet) | None.
         "vpp": _dk_kind is not None,
         "vpp_kind": _dk_kind,

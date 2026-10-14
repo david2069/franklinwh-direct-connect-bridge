@@ -816,6 +816,57 @@ def _probe_modbus(host: str, *, mock: bool = False) -> bool | None:
     return any(discover.port_open(host, 502, timeout=3.0) for _ in range(3))
 
 
+#: Off-grid run_status codes. Kept because the enum IS right — what is wrong is the
+#: assumption that 1301 emits them. On V12R02B30D06 it does not; see #45.
+OFF_GRID_RUN_STATUS = (5, 6, 7)
+
+
+def _apply_off_grid(out: dict[str, Any]) -> None:
+    """Decide off-grid from EVERY signal, and record which ones fired.
+
+    docs/OFFGRID_DESIGN.md §2 called for exactly this and only the run_status disjunct was
+    implemented — the one that does not work. Measured during a real island on 2026-10-15
+    (aGate X-01-AU, V12R02B30D06): offgridState 1, main_sw [0,0,1], mainRelay1/2Status 0,
+    dspRunstatus 5 — while 1301 run_status read 0 and 1709 gridRelayOpen read 0.
+
+    So: `offgridState` is primary, the main relays corroborate, and `run_status` is kept as
+    a disjunct because the enum is real even though this firmware does not use it.
+    `gridRelayOpen` is deliberately absent — it read 0 throughout a real island, so it is
+    not evidence of anything.
+
+    Disagreement is preserved rather than averaged into one boolean, because WHICH signal
+    fired is the diagnostic.
+    """
+    p = out.get("power") or {}
+    sig: dict[str, Any] = {}
+
+    st = p.get("offgrid_state")
+    if st is not None:
+        sig["offgrid_state"] = bool(int(st) == 1)
+
+    rs = p.get("run_status")
+    if rs is not None:
+        sig["run_status"] = bool(rs in OFF_GRID_RUN_STATUS)
+
+    dsp = p.get("dsp_run_status")
+    if dsp is not None:
+        sig["dsp_run_status"] = bool(dsp in OFF_GRID_RUN_STATUS)
+
+    sw = p.get("main_sw")
+    if isinstance(sw, (list, tuple)) and sw:
+        sig["grid_relay"] = bool(int(sw[0]) == 0)          # 0 = open = islanded
+
+    relays = out.get("relays") or {}
+    m1, m2 = relays.get("mainRelay1Status"), relays.get("mainRelay2Status")
+    if m1 is not None and m2 is not None:
+        sig["main_relays"] = bool(int(m1) == 0 and int(m2) == 0)
+
+    if sig:
+        p["off_grid"] = any(sig.values())
+        p["off_grid_signals"] = sig
+        p["off_grid_disagreement"] = bool(any(sig.values()) and not all(sig.values()))
+
+
 def summary(s: Settings, host: str | None = None, *, mock: bool = False) -> dict[str, Any]:
     """Everything the dashboard needs in ONE aGate session (one login) — efficient on the
     flaky local link vs. five separate connect/login round-trips. Reads ``host`` when given
@@ -870,8 +921,15 @@ def summary(s: Settings, host: str | None = None, *, mock: bool = False) -> dict
                 "run_status": pf.get("run_status"),
                 "run_status_desc": (catalog.run_status_desc(pf.get("run_status"))
                                     if pf.get("run_status") is not None else None),
-                # Islanded (5/6/7) — surfaced prominently in the top nav.
-                "off_grid": pf.get("run_status") in (5, 6, 7),
+                # Islanded. Provisional: 1301 alone cannot tell — on V12R02B30D06 it
+                # never emits 5/6/7 while islanded (#45). _apply_off_grid() overwrites
+                # this from every signal once 1707 and 1723 have been read in this same
+                # session. Kept non-None here so a failed later read degrades to the old
+                # behaviour rather than to nothing.
+                "off_grid": pf.get("run_status") in OFF_GRID_RUN_STATUS,
+                # The three main switches: grid, generator, solar. 0 = open. main_sw[0]
+                # is physical corroboration of islanding, where 1709 gridRelayOpen is not.
+                "main_sw": pf.get("main_sw"),
                 # 8 = a FranklinWH remote-support session is active on this gateway.
                 # Someone outside the household can see and change things, so it is
                 # surfaced rather than left as an unexplained number.
@@ -940,8 +998,33 @@ def summary(s: Settings, host: str | None = None, *, mock: bool = False) -> dict
                 fz = run.get("gridFreq")
                 if fz not in (None, ""):
                     out["power"]["grid_freq_hz"] = round(float(fz), 2)
+                # dspRunstatus is a SECOND run-status register and it is not the same
+                # value as 1301's. During the 2026-10-15 island it read 5 (Off-Grid
+                # Standby) while 1301 run_status read 0 (Standby) — the correct answer,
+                # from a register docs/OFFGRID_DESIGN.md §2 did not list. Recorded as its
+                # own field; the two are never merged.
+                dsp = run.get("dspRunstatus")
+                if dsp is not None:
+                    out["power"]["dsp_run_status"] = dsp
+                    out["power"]["dsp_run_status_desc"] = catalog.run_status_desc(dsp)
+                for k in ("mainRelay1Status", "mainRelay2Status", "gridRelay2",
+                          "solarRelayStatus", "blackStartRelay"):
+                    if run.get(k) is not None:
+                        out.setdefault("relays", {})[k] = run[k]
             except (OSError, TransportError, TimeoutError, ValueError) as e:
                 log.debug("grid voltage not read this cycle: %s", e)
+            # 1723 — the gateway's OWN off-grid state, and the only signal that was
+            # simply correct during the 2026-10-15 island (#45). One more cmdType inside
+            # the session that is already open, not another connection.
+            try:
+                og = c.offgrid() or {}
+                if og.get("offgridState") is not None:
+                    out["power"]["offgrid_state"] = og.get("offgridState")
+                    out["power"]["offgrid_requested"] = og.get("offgridSet")
+                    out["power"]["offgrid_reconnect_soc"] = og.get("offgridSoc")
+            except (OSError, TransportError, TimeoutError) as e:
+                log.debug("off-grid state not read this cycle: %s", e)
+            _apply_off_grid(out)
             out["firmware"] = {k: manifest.get(k)
                                for k in ("IBG_VER", "APP_VER", "protocolVer", "IBG_SN")
                                if k in manifest}

@@ -20,20 +20,48 @@ Five separate questions. Four are answerable locally; one is blocked by firmware
 
 ## 2. Am I off-grid? — four independent signals
 
-| source | field | now | reading |
-| :--- | :--- | :--- | :--- |
-| `1301` power_flow | `run_status` | `0` | `5` Off-Grid Standby · `6` Off-Grid Charging · `7` Off-Grid Discharging |
-| `1723` offgrid | `offgridState` | `0` | the gateway's own off-grid state |
-| `1709` relay_status | `gridRelayOpen` | `0` | grid relay open ⇒ islanded |
-| `1301` power_flow | `elecnet_state` | `0` | *candidate* "electric net state"; **undecoded** |
+> **Corrected 2026-10-15 by a real island.** The table and recommendation below were
+> rewritten after measuring an owner-initiated off-grid event (aGate X-01-AU, firmware
+> V12R02B30D06, sampled every 15s for ~80 minutes). The previous text named `run_status` as
+> primary and `gridRelayOpen` as "the truth about copper"; **both were wrong on this
+> firmware**, and implementing the old recommendation literally produced defect #45.
 
-`run_status` uses the **same integer vocabulary as the cloud** (`RUN_STATUS`), so it is
-the primary signal. `gridRelayOpen` is the physical corroboration — if these two ever
-disagree, the relay is the truth about copper and `run_status` the truth about intent.
+| source | field | islanded | on-grid | verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| `1723` offgrid | `offgridState` | **1** | 0 | **PRIMARY** — the only signal that was simply correct |
+| `1707` ibg_run_status | `dspRunstatus` | **5** = Off-Grid Standby | run-state | correct, and absent from the original table |
+| `1301` power_flow | `main_sw[0]` | **0** (open) | 1 | physical corroboration |
+| `1707` ibg_run_status | `mainRelay1/2Status` | **0 / 0** | 1 / 1 | physical corroboration |
+| `1301` power_flow | `run_status` | **0, 1, 2** — never 5/6/7 | 0/1/2 | **does not discriminate** on this firmware |
+| `1709` relay_status | `gridRelayOpen` | **0** | 0 | **not evidence** — unchanged through a real island |
+| `1301` power_flow | `elecnet_state` | 0 | 0 | still undecoded; unchanged, so not a candidate |
 
-**Recommendation:** treat off-grid as `run_status in (5,6,7) or offgridState == 1 or
-gridRelayOpen == 1`, and surface *which* signals fired. Disagreement is itself
-diagnostic and must not be averaged away into a single boolean.
+The `RUN_STATUS` enum itself is not in doubt — `5/6/7` are real codes and the cloud uses
+them. What is disproved is the assumption that **`1301 run_status` carries them**. It is
+kept as a disjunct because a different firmware may well emit them; it is simply not
+sufficient alone, and on this firmware it never fires.
+
+`gridRelayOpen` is removed as a corroborator rather than demoted. A field that reads `0`
+both on-grid and through an island carries no information about islanding, whatever its
+name says.
+
+**Recommendation (current):** off-grid is `offgridState == 1 or dspRunstatus in (5,6,7) or
+main_sw[0] == 0 or mainRelay1/2Status == 0 or run_status in (5,6,7)`, and the surface
+reports **which** signals fired. Disagreement is itself diagnostic and must not be averaged
+away into a single boolean — that part of the original recommendation was right and is why
+`off_grid_signals` and `off_grid_disagreement` exist.
+
+### Evidence
+
+Measured 07:21–08:10 AEDT 2026-10-15, constant throughout: `offgridState` 1, `offgridSet` 1,
+`offgridSoc` 5, `run_status` 0/1, `dspRunstatus` 5, `ibgRunStatus` 7, `main_sw` [0,0,1],
+`mainRelay1Status` 0, `mainRelay2Status` 0, `gridRelayOpen` 0, `p_uti` 0 with the site
+running on solar. Corroborated independently on the Modbus channel, which recorded
+`DERMeasureAC.DERMode = Grid Forming` from 06:51:40 — **two seconds before** the Direct
+Connect capture began, which is why that capture has no on-grid baseline.
+
+One site, one firmware, one event: [[one site is a hypothesis]]. What is not hypothetical is
+that the previous text asserted the opposite of what was measured.
 
 ---
 
