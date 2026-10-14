@@ -903,12 +903,11 @@ def grid_present(p: dict) -> bool | None:
     """Is utility voltage present on the grid side of the main relay? None = not measured.
 
     Measured during the 2026-10-15 requested island: both legs held ~120 V with ~0 A for
-    two hours while the relay was open. The utility never went away — we were simply not
-    connected to it. In a real outage these should collapse, which makes this an
-    INDEPENDENT check on `off_grid_kind`, derived from physics rather than from whether
-    somebody set a flag.
+    two hours while the relay was open. The utility was present; we were not connected to
+    it.
 
-    Unconfirmed in the outage direction, like the rest of §3: it needs the grid to fail.
+    Reported, not interpreted. Whether a real outage reads differently here has not been
+    measured.
     """
     legs = p.get("grid_leg_v")
     if not legs:

@@ -67,16 +67,11 @@ Written from this bridge (`1723 opt:1, offgridSet:0`) and captured at 5 s. The i
 physical relay closes. Nothing about the write is instantaneous, and a check made in the
 first 30 s would see a site that had accepted the command and not yet acted on it.
 
-> ⚠️ **Do not read 34 s as "how long a reconnect takes".** FranklinWH documents that
-> reconnection is contingent on the gateway being satisfied the grid is STABLE. Through this
-> entire island the utility was present and nominal on the grid side of the open relay —
-> `gridVol1` and `gridVol2` held ~120 V each with `gridCurr` ~0 A for two hours. The grid had
-> therefore been continuously qualifiable before the release command was even sent.
->
-> After a **real** outage the stability clock can only start when the utility actually
-> returns, and grid-support standards normally require a sustained qualification period
-> (IEEE 1547's default reconnect delay is minutes, not seconds). So 34 s is the floor for a
-> requested island with a healthy grid behind it, and says nothing about outage recovery.
+> **Conditions of this measurement.** The utility was present on the grid side of the open
+> relay for the whole island — `gridVol1` and `gridVol2` ~120 V each at `gridCurr` ~0 A. The
+> 34 s was measured under that condition. We have not measured a release under any other
+> condition, so the figure is reported with its conditions and not as a general reconnect
+> time.
 
 ### Grid presence is an independent discriminator
 
@@ -94,12 +89,11 @@ a flag:
 | requested island during an outage | 1 | dead |
 
 Exposed as `power.grid_present` (True / False / null when unmeasured) alongside
-`off_grid_kind`. It also answers a question the owner raised: whether the gateway itself can
-tell the two apart. It need not have a flag for it — **its inputs differ**. A software-driven
-disconnect leaves full voltage and frequency on the grid terminals; a real outage leaves
-none. Any stability check therefore behaves differently in the two cases without needing to
-know which it is. That is an inference from the measured inputs, not something read from the
-device.
+`off_grid_kind`.
+
+What the gateway does internally with any of this is not our concern and is not recorded
+here: we issue the command and the vendor's implementation does what it does. What we report
+is what we read.
 
 #### `offgridState` is at least tri-state, and the channels disagree about it
 
