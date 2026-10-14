@@ -77,11 +77,9 @@ It needs either:
 - a **real hardware test** on the reference aGate, coordinated with the owner and with
   other clients quiesced where contention matters; or
 - an **approved emulator** run that genuinely covers the path. Approved means the
-  **FranklinWH Gateway Emulator**, the Direct Connect library's in-process `Emulator`
-  (`franklinwh_direct_connect_api.Emulator`), or the
-  `franklinwh-modbus-async` emulator once it exists (planned; not available yet). A mock
-  written for the test in hand is not an emulator — it proves only that the test agrees
-  with itself.
+  **FranklinWH Gateway Emulator** or the Direct Connect library's in-process `Emulator`
+  (`franklinwh_direct_connect_api.Emulator`). A mock written for the test in hand is not
+  an emulator — it proves only that the test agrees with itself.
 
 A passing unit test is not evidence that a device behaves as assumed.
 
