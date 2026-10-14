@@ -21,6 +21,14 @@ finding. "`isThreePhaseInstall` is the grid phase" was a guess that was wrong.
 **Say what is unverified.** Mark it, rather than letting a reasonable-sounding sentence
 pass as established. One observation of an enum is not a mapping.
 
+**When a live read contradicts the documentation, the read wins — and record the
+conflict.** On this hardware the vendor documents have been wrong more than once. Do not
+quietly pick a side: write down what the document says, what the device returned, and when,
+so the next person inherits the conflict rather than one of its halves.
+
+**One site is a hypothesis.** A behaviour observed once, on one gateway, on one firmware, is
+not a mapping. Say which site, which firmware, and how many times.
+
 **A field's name is not its meaning.** Neither is its position in a payload, nor what a
 comment claims. Check before writing it down, and especially before telling anyone else.
 
@@ -74,12 +82,22 @@ Anything that **writes to hardware, changes dispatch, alters safety behaviour, m
 schema, pauses the bridge, or opens a direct Modbus client against the aGate** is critical.
 It needs either:
 
-- a **real hardware test** on the reference aGate, coordinated with the owner and with
-  other clients quiesced where contention matters; or
+- a **real hardware test** on the reference aGate, coordinated with the owner. Quiesce
+  other clients only when the test actually depends on it — a scheduled dispatch cannot be
+  observed with the controller stopped. Otherwise record which clients were active. Either
+  way, **verify a stop by counting sockets, not by trusting a switch**; or
 - an **approved emulator** run that genuinely covers the path. Approved means the
   **FranklinWH Gateway Emulator** or the Direct Connect library's in-process `Emulator`
   (`franklinwh_direct_connect_api.Emulator`). A mock written for the test in hand is not
   an emulator — it proves only that the test agrees with itself.
+
+**Read-back verification must be on hardware.** An emulator or mock that stores a write
+reads it back as applied, where the device may discard it — `FakeAGate` in
+`franklinwh-modbus-async` stores extension writes that the real aGate drops without the
+SPAN unlock. A read-back that passes against a simulator proves nothing about the device.
+
+**Migrations are verified against a copy of the live database**, not on hardware and not on
+a fresh one. A fresh database hides every migration that silently does nothing to real rows.
 
 A passing unit test is not evidence that a device behaves as assumed.
 
@@ -116,8 +134,11 @@ of real hardware**. Scope reported by the `franklinwh-gateway-emulator` session,
 - Concurrency and stress. The emulator is a single-threaded asyncio server — a smoke test,
   not a stress test.
 
-Anything in the last two groups needs the reference aGate. **Every emulator-verified claim
-names the profile and the emulator commit** — that requirement binds claims verified on the
+Anything in the last two groups needs the reference aGate. **A report of an emulator run
+states what that emulator does not model** — on one occasion register 15514 raised an
+exception on the emulator and answered on the aGate, and a report that omits the gap reads
+as a clean pass. **Every emulator-verified claim names the coverage-list version, the
+profile and the emulator commit** — that requirement binds claims verified on the
 emulator, not every claim.
 
 **Emulator output is not evidence of what a register or field means.** It serves what it
