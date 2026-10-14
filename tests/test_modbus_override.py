@@ -1,6 +1,7 @@
 """Modbus host/port override + effective_target (Control-tab connection setup)."""
 
 from franklinwh_direct_connect_bridge import battery_control as bc
+from franklinwh_direct_connect_bridge import client as client_mod
 
 
 def _reset():
@@ -52,3 +53,44 @@ def test_clear_override_returns_to_auto():
     bc.set_host_override("", 0)
     assert bc.host_override() == {"host": "", "port": None}
     assert bc.effective_target("192.168.0.110") == ("192.168.0.110", 502)
+
+
+# --- #30 / #32: the Modbus probe is tri-state, and it honours the disable switch ----------
+
+def test_probe_modbus_returns_none_when_disabled_and_opens_no_socket(monkeypatch):
+    """Disabled here means no socket, and 'not probed' — never a confident False.
+
+    The socket is what matters: a probe that returns None but still connected would keep
+    breaking the owner's "Modbus is off" guarantee during a correlation window (#32).
+    """
+    opened: list[tuple] = []
+    monkeypatch.setattr(client_mod.discover, "port_open",
+                        lambda h, p, timeout=0: opened.append((h, p)) or True)
+    monkeypatch.setattr(bc, "is_enabled", lambda: False)
+
+    assert client_mod._probe_modbus("192.0.2.10") is None
+    assert opened == [], f"probe opened a socket while Modbus is disabled: {opened}"
+
+
+def test_probe_modbus_probes_when_enabled(monkeypatch):
+    opened: list[tuple] = []
+    monkeypatch.setattr(client_mod.discover, "port_open",
+                        lambda h, p, timeout=0: opened.append((h, p)) or True)
+    monkeypatch.setattr(bc, "is_enabled", lambda: True)
+
+    assert client_mod._probe_modbus("192.0.2.10") is True
+    assert opened == [("192.0.2.10", 502)]
+
+
+def test_probe_modbus_false_when_refused(monkeypatch):
+    monkeypatch.setattr(client_mod.discover, "port_open", lambda h, p, timeout=0: False)
+    monkeypatch.setattr(bc, "is_enabled", lambda: True)
+    assert client_mod._probe_modbus("192.0.2.10") is False
+
+
+def test_probe_modbus_none_for_a_mock_gateway(monkeypatch):
+    opened: list[tuple] = []
+    monkeypatch.setattr(client_mod.discover, "port_open",
+                        lambda h, p, timeout=0: opened.append((h, p)) or True)
+    assert client_mod._probe_modbus("192.0.2.10", mock=True) is None
+    assert opened == []

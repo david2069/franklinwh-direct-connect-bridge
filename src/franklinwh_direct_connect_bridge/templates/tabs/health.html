@@ -20,8 +20,10 @@
         <tr>
           <td class="text-slate-500">Modbus :502</td>
           <td class="text-right">
-            <span class="chip ok" x-show="$store.app.summary.modbus_502">Up</span>
-            <span class="chip error" x-show="!$store.app.summary.modbus_502">Down</span>
+            <span class="chip ok" x-show="$store.app.summary.modbus_502 === true">Up</span>
+            <span class="chip error" x-show="$store.app.summary.modbus_502 === false">Down</span>
+            <span class="chip muted" x-show="$store.app.summary.modbus_502 == null"
+                  title="Modbus is disabled in this bridge (or this is a mock gateway), so port 502 was not probed. This is not a statement about the gateway — its own SunSpec Modbus setting is on the SunSpec Modbus card.">Not probed</span>
           </td>
         </tr>
         <tr><td class="text-slate-500">Ping</td><td class="font-mono text-right" x-text="$store.app.summary.ping ?? 'n/a'"></td></tr>

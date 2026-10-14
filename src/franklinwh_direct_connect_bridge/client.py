@@ -187,7 +187,11 @@ def health(s: Settings, host: str | None = None) -> dict[str, Any]:
         "ping": discover.ping(host, timeout=1.0),
         "sendmqtt_9000": False,
         "latency_ms": None,
-        "modbus_502": any(discover.port_open(host, 502, timeout=3.0) for _ in range(3)),
+        # Through _probe_modbus, so this path honours the Modbus-disabled switch like
+        # every other. It used to open the socket unconditionally, which made "Modbus
+        # is off" untrue the moment anyone opened the Network tab (#32). None = not
+        # probed; the UI renders that as "Not probed", not as "Down" (#30).
+        "modbus_502": _probe_modbus(host),
         "sunsMdEn": None,
     }
     try:
@@ -217,7 +221,7 @@ def network_bundle(s: Settings, host: str | None = None) -> dict[str, Any]:
         "ping": discover.ping(host, timeout=1.0),
         "sendmqtt_9000": False,
         "latency_ms": None,
-        "modbus_502": any(discover.port_open(host, 502, timeout=3.0) for _ in range(3)),
+        "modbus_502": _probe_modbus(host),   # honours the disable switch — #32
     }
     out: dict[str, Any] = {"host": host, "reachability": reach,
                            "connectivity": None, "interfaces_raw": None,

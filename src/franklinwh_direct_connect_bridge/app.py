@@ -3159,8 +3159,10 @@ def create_app() -> FastAPI:
         nb["topology"] = {
             # aGate ← LAN → Bridge ← browser/MQTT ; aGate → AWS IoT ; account → FleetView cloud
             "agate": {"ip": host_ip, "link": _active_link(nb.get("connectivity")),
+                      # modbus_502 is deliberately NOT cast: None means "not probed"
+                      # and bool() would turn that into a confident "down" (#30).
                       "ports": {"local_api_9000": bool(reach.get("sendmqtt_9000")),
-                                "modbus_502": bool(reach.get("modbus_502"))},
+                                "modbus_502": reach.get("modbus_502")},
                       "latency_ms": reach.get("latency_ms")},
             "bridge": {"ip": _bridge_ip_toward(host_ip), "http_port": 8101,
                        "uptime_s": round(time.time() - _STARTED_AT, 1),

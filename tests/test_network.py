@@ -109,3 +109,18 @@ def test_network_topology_home_assistant_node(tmp_path, monkeypatch):
     # exposed-entity count (what the bridge publishes to HA via MQTT discovery)
     assert isinstance(ha["published_entities"], int) and ha["published_entities"] > 0
 
+
+
+def test_network_topology_preserves_not_probed(tmp_path, monkeypatch):
+    """None must survive to the client as None (#30).
+
+    bool() here would turn "we did not look" into a confident "down" on the topology
+    diagram, which is the whole defect.
+    """
+    fx = dict(FIXTURE)
+    fx["reachability"] = dict(FIXTURE["reachability"], modbus_502=None)
+    monkeypatch.setattr(client_mod, "network_bundle", lambda s, host=None: dict(fx))
+    c = _client(tmp_path, monkeypatch)
+    monkeypatch.setattr(client_mod, "network_bundle", lambda s, host=None: dict(fx))
+    ports = c.get("/api/network").json()["topology"]["agate"]["ports"]
+    assert ports["modbus_502"] is None, f"not-probed was flattened to {ports['modbus_502']!r}"

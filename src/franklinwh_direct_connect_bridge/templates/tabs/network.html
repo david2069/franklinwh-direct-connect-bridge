@@ -95,7 +95,7 @@
             </g>
             <!-- aGate -->
             <g style="cursor:help">
-              <title x-text="'aGate ' + ((topo.agate && topo.agate.ip) || '?') + ' · link ' + linkLabel(topo.agate && topo.agate.link) + ' · :9000 Local API ' + ((topo.agate && topo.agate.ports && topo.agate.ports.local_api_9000) ? 'up' : 'down') + ' · :502 Modbus ' + ((topo.agate && topo.agate.ports && topo.agate.ports.modbus_502) ? 'up' : 'down') + (topo.agate && topo.agate.latency_ms != null ? (' · round-trip ' + topo.agate.latency_ms + 'ms') : '')"></title>
+              <title x-text="'aGate ' + ((topo.agate && topo.agate.ip) || '?') + ' · link ' + linkLabel(topo.agate && topo.agate.link) + ' · :9000 Local API ' + ((topo.agate && topo.agate.ports && topo.agate.ports.local_api_9000) ? 'up' : 'down') + ' · :502 Modbus ' + (!topo.agate || !topo.agate.ports || topo.agate.ports.modbus_502 == null ? 'not probed' : (topo.agate.ports.modbus_502 ? 'up' : 'down')) + (topo.agate && topo.agate.latency_ms != null ? (' · round-trip ' + topo.agate.latency_ms + 'ms') : '')"></title>
               <rect x="20" y="150" width="240" height="104" rx="8" style="fill:var(--surface-2);stroke:var(--accent)"/>
               <text x="34" y="176" font-size="13" font-weight="700" style="fill:var(--text-primary)">aGate</text>
               <text x="34" y="196" font-size="11" font-family="ui-monospace,monospace" style="fill:var(--text-secondary)" x-text="(topo.agate && topo.agate.ip) || '–'"></text>
@@ -221,7 +221,10 @@
               <span class="font-mono" :style="reach.sendmqtt_9000 ? 'color:#34d399' : 'color:#ef4444'"
                     x-text="(reach.sendmqtt_9000 ? 'OK' : 'FAILED') + (reach.latency_ms!=null ? '  ' + reach.latency_ms + 'ms' : '')"></span></div>
             <div class="flex items-center justify-between"><span style="color:var(--text-secondary)">Modbus :502</span>
-              <span class="font-mono" :style="reach.modbus_502 ? 'color:#34d399' : 'color:var(--text-faint)'" x-text="reach.modbus_502 ? 'open' : 'closed'"></span></div>
+              <span class="font-mono"
+                    :style="reach.modbus_502 === true ? 'color:#34d399' : (reach.modbus_502 === false ? 'color:#ef4444' : 'color:var(--text-faint)')"
+                    :title="reach.modbus_502 == null ? 'Modbus is disabled in this bridge (or this is a mock gateway), so port 502 was not probed. This is not a statement about the gateway — its own SunSpec Modbus setting is on the SunSpec Modbus card.' : ''"
+                    x-text="reach.modbus_502 === true ? 'open' : (reach.modbus_502 === false ? 'closed' : 'not probed')"></span></div>
           </div>
         </div>
 

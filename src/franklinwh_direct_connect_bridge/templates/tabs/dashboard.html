@@ -447,8 +447,10 @@
     <div class="card metric-card">
       <div class="metric-label">Modbus :502</div>
       <div class="mt-1">
-        <span class="chip ok" x-show="$store.app.summary.modbus_502">Up</span>
-        <span class="chip error" x-show="!$store.app.summary.modbus_502">Down</span>
+        <span class="chip ok" x-show="$store.app.summary.modbus_502 === true">Up</span>
+        <span class="chip error" x-show="$store.app.summary.modbus_502 === false">Down</span>
+        <span class="chip muted" x-show="$store.app.summary.modbus_502 == null"
+              title="Modbus is disabled in this bridge (or this is a mock gateway), so port 502 was not probed. This is not a statement about the gateway — its own SunSpec Modbus setting is on the SunSpec Modbus card.">Not probed</span>
       </div>
       <div class="metric-sub">Ping: <span x-text="$store.app.summary.ping ?? 'n/a'"></span></div>
     </div>
