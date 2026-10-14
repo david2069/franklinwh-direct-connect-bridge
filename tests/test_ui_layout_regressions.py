@@ -96,3 +96,41 @@ def test_build_script_keeps_the_wheels_directory():
     script = (TABS.parents[2] / "tools/build_image.sh").read_text()
     assert 'rm -rf "$HERE/wheels"' not in script
     assert 'rm -f "$HERE/wheels"/*.whl' in script
+
+
+# --- reserve write: show the new value at once, not after the ~8s poll --------------------
+
+def _app_js() -> str:
+    return (TABS.parents[0] / "static/js/app.js").read_text()
+
+
+def test_reserve_modal_updates_the_row_before_the_delayed_poll():
+    """A success message beside the OLD number reads like a failure.
+
+    The aGate takes ~8s to reflect a cloud reserve write, so the modal defers its refresh
+    by 8500ms. Without an optimistic update the user sees "Reserve set to 8%" next to a
+    row still showing 5% for those 8 seconds.
+    """
+    html = (TABS / "tabs/dashboard.html").read_text()
+    save = html[html.index("async resvSave()"):html.index("setTimeout(()=>this.$store.app.poll(), 8500)")]
+    assert "noteReserveApplied" in save, (
+        "the reserve modal no longer updates the row optimistically; the old value will "
+        "sit beside the success message until the deferred poll"
+    )
+
+
+def test_optimistic_reserve_update_is_overwritten_by_the_poll():
+    """Optimistic, not authoritative: it must write to the SAME field the poll refreshes.
+
+    If it wrote anywhere else, a write that was accepted but did not persist would show
+    the new number for ever instead of correcting itself.
+    """
+    js = _app_js()
+    fn = js[js.index("noteReserveApplied(modeName, pct)"):]
+    fn = fn[:fn.index("\n    },")]
+    assert "this.summary.mode && this.summary.mode.modes" in fn
+    assert "m.reserved_soc = pct" in fn
+    # the getter the UI reads must be backed by that same path
+    getter = js[js.index("get modes()"):]
+    getter = getter[:getter.index("\n    },")]
+    assert "this.summary.mode && this.summary.mode.modes" in getter

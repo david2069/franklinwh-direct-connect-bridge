@@ -1589,6 +1589,16 @@ document.addEventListener('alpine:init', () => {
         return { ok: false, status: 0, detail: `Network error: ${e.message}` };
       } finally { clearTimeout(timer); }
     },
+    // Show an accepted reserve straight away, instead of leaving the OLD number on screen
+    // next to a success message for the ~8s the aGate takes to reflect a cloud write.
+    // Optimistic only: the delayed poll re-reads 1726 and overwrites this either way, so a
+    // write that silently did not persist corrects itself rather than sticking.
+    noteReserveApplied(modeName, pct) {
+      const list = (this.summary.mode && this.summary.mode.modes) || [];
+      const m = list.find(x => x && x.name === modeName);
+      if (m) m.reserved_soc = pct;
+    },
+
     // (setReserve removed — all reserve writes now go through applyReserve(), which the
     //  dashboard modal and the Control-tab editor both drive with a full saving/ok/error
     //  lifecycle + timeout. No fire-and-forget toast path remains.)

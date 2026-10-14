@@ -316,6 +316,7 @@
            if (res.ok){
              this.resvStatus='ok';
              this.resvMsg='Reserve set to '+pct+'% — syncing to the aGate (~8s).';
+             this.$store.app.noteReserveApplied(this.resvMode.name, pct);
              setTimeout(()=>this.$store.app.poll(), 8500);
            } else {
              this.resvStatus='error';
