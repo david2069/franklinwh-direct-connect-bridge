@@ -122,6 +122,33 @@ and it identifies the **programme**, never the run state.
 relay closed — then the key disappeared entirely once on grid. A field that is absent rather
 than 0 when inactive; worth knowing before testing it for falsiness.
 
+### The untested case: a real outage
+
+Everything measured so far is a **requested** island — a software disconnect with the utility
+live behind the open relay. The owner has not thrown the grid breaker; that test is planned
+for when they are next on site (owner, 2026-10-15).
+
+It is the only way to measure these, each of which is currently recorded as unconfirmed:
+
+| what | currently | a breaker-off test reads |
+| :--- | :--- | :--- |
+| §3's outage row | inferred | does `offgridSet 0` with `offgridState 1` actually occur? |
+| `grid_leg_v` | ~120 V per leg, requested island | do the legs collapse, so `grid_present` reads False? |
+| `run_status` 5/6/7 | never seen, local **or** cloud | does an unrequested island use them? |
+| `dspRunstatus` | 5 while requested | same value when nobody asked? |
+| cloud `offgridreason` | 1 while requested | what it reads with no request |
+| reconnect behaviour | 34 s, grid live throughout | what happens when the utility has to come back first |
+| Modbus `701` voltage node | not established | does it drop with the utility, or hold at the formed island? |
+
+The last one settles a question the `franklinwh-modbus-bridge` session has correctly kept
+open: near-zero current locates the CT, not the voltage tap. A dead utility separates them.
+
+**This is the owner's test to run, on site.** Nothing here is a reason to interrupt supply;
+it is a list of what one such event would answer if it is performed deliberately, and what to
+have recording before it starts. Start recording **before** the breaker is thrown — the
+2026-10-15 capture began ~53 s after cutover and has no on-grid baseline, which is the single
+thing that cost the most that day.
+
 ### Evidence
 
 Measured 07:21–08:10 AEDT 2026-10-15, constant throughout: `offgridState` 1, `offgridSet` 1,
