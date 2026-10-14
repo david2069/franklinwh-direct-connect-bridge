@@ -20,6 +20,20 @@ if [[ "${1:-}" == "--down" ]]; then $COMPOSE down -v; exit 0; fi
 echo "==> up"
 $COMPOSE up -d
 
+# Fail loudly if a container is crash-looping. restart: unless-stopped turns an ImportError
+# into a silent retry forever, and the harness then "runs" while answering nothing.
+echo "==> checking the containers stayed up"
+sleep 5
+for name in fwhmqtt-local-bridge fwhmqtt-modbus-bridge; do
+  state=$(docker inspect "$name" --format '{{.State.Status}}' 2>/dev/null || echo missing)
+  if [[ "$state" != "running" ]]; then
+    echo "   FAIL: $name is '$state', not running. Last lines:"
+    docker logs --tail 15 "$name" 2>&1 | sed 's/^/      /'
+    exit 1
+  fi
+  echo "   ok: $name running"
+done
+
 echo "==> waiting for bridges to answer"
 for url in http://localhost:8110/api/health http://localhost:8111/api/status; do
   for i in $(seq 1 40); do
