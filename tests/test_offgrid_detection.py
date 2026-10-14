@@ -77,3 +77,37 @@ def test_grid_relay_open_is_not_used():
     _apply_off_grid(out)
     assert "grid_relay_open" not in out["power"]["off_grid_signals"]
     assert out["power"]["off_grid"] is True
+
+
+# --- simulated vs outage (docs/OFFGRID_DESIGN.md §3) --------------------------------------
+
+def test_requested_island_is_simulated():
+    out = _islanded()
+    out["power"]["offgrid_requested"] = 1      # measured during the 2026-10-15 test
+    _apply_off_grid(out)
+    assert out["power"]["off_grid_kind"] == "simulated"
+
+
+def test_unrequested_island_is_an_outage():
+    """The (offgridSet 0, offgridState 1) row. Still unconfirmed on hardware — it needs the
+    grid to actually fail — so this pins the LOGIC, not the device behaviour."""
+    out = _islanded()
+    out["power"]["offgrid_requested"] = 0
+    _apply_off_grid(out)
+    assert out["power"]["off_grid_kind"] == "outage"
+
+
+def test_kind_is_none_when_1723_could_not_be_read():
+    """Saying 'outage' because a read failed would raise an alarm out of a missing field."""
+    out = _islanded()
+    out["power"].pop("offgrid_requested", None)
+    _apply_off_grid(out)
+    assert out["power"]["off_grid_kind"] is None
+    assert out["power"]["off_grid"] is True
+
+
+def test_on_grid_has_no_kind():
+    out = _on_grid()
+    out["power"]["offgrid_requested"] = 0
+    _apply_off_grid(out)
+    assert out["power"]["off_grid_kind"] is None

@@ -51,6 +51,49 @@ reports **which** signals fired. Disagreement is itself diagnostic and must not 
 away into a single boolean — that part of the original recommendation was right and is why
 `off_grid_signals` and `off_grid_disagreement` exist.
 
+### The return to grid, 2026-10-15 09:00 AEDT
+
+Written from this bridge (`1723 opt:1, offgridSet:0`) and captured at 5 s. The island's
+*start* was missed by ~53 s; this is the transition with a baseline on both sides.
+
+| time | what changed |
+| :--- | :--- |
+| 09:00:01 | write issued → `{"ok": true, "result": 0}` |
+| 09:00:02 | `offgridState` **1 → 2**, `offgridSet` **1 → 0** — the command lands in ~1 s |
+| 09:00:25 | `dspRunstatus` **5 → 4**, `ibgRunStatus` **7 → 85232**, `p_uti` 0 → 9 W |
+| 09:00:35 | `mainRelay1Status` **0 → 1**, `main_sw` **[0,0,1] → [1,0,1]**, `p_uti` −848 W |
+
+**34 seconds, in three stages**: command accepted, programme and run state change, then the
+physical relay closes. Nothing about the write is instantaneous, and a check made in the
+first 30 s would see a site that had accepted the command and not yet acted on it.
+
+#### `offgridState` is at least tri-state, and the channels disagree about it
+
+It settled at **2**, not 0. Local `1723` read 2 while the site exported 848 W. Any test of
+`offgridState != 0` — the obvious spelling — would call this site islanded while it is
+exporting. Testing `== 1` is the correct form and is what the implementation uses.
+
+The cloud does **not** agree: `selectOffgrid` at 09:04:18 returned `offgridState: 0` for the
+same site, same moment. So this field differs between channels — the cloud either collapses
+the "returned" state or does not carry it. Reported by the `franklinwh-cloud` session;
+recorded as a cross-channel difference, not as one of them being wrong.
+
+#### `ibgRunStatus` is a programme id — settled on two channels
+
+`7` while islanded, `85232` on return, which is this gateway's mode id for Self-Consumption
+in `1726`. The cloud's `runtimeData.mode` read `7` in 71/71 island polls and `85232`
+afterwards, and showed `9` for a Modbus dispatch on 2026-10-14. Same field, two channels,
+and it identifies the **programme**, never the run state.
+
+`dspRunstatus` is the run state: `5` islanded, `4` after the return. Our catalog has `4` as
+"Reserved 4", so that enum is incomplete for this register.
+
+#### Cloud `offgridreason`
+
+`1` through the island, **0** at 09:00:21 — about 20 s after the write and *before* the
+relay closed — then the key disappeared entirely once on grid. A field that is absent rather
+than 0 when inactive; worth knowing before testing it for falsiness.
+
 ### Evidence
 
 Measured 07:21–08:10 AEDT 2026-10-15, constant throughout: `offgridState` 1, `offgridSet` 1,
@@ -90,11 +133,24 @@ So:
 That is exactly the distinction asked for, and it falls out of the field pair rather than
 needing a reason code.
 
-> ⚠️ **Hypothesis, not fact.** Both flags read `0` on a grid-connected system, so the
-> table above is inferred from the field names and the cloud's read/write split. It can
-> only be confirmed during a real outage or a deliberate off-grid test. The UI must
-> therefore show the two raw flags alongside the interpretation, never the interpretation
-> alone.
+> **Half confirmed, 2026-10-15.** The `(1, 1)` row is now measured, not inferred: through a
+> deliberate island, `1723` read `offgridSet: 1, offgridState: 1` continuously, and the write
+> that ended it took `offgridSet` to 0 one second later. So "requested ⇒ simulated" holds.
+>
+> The `(0, 1)` row — a real outage — is **still unconfirmed**, and confirming it means the
+> grid actually failing, which is not something to arrange. The UI therefore says
+> **OFF-GRID · OUTAGE** for that case meaning *"islanded with no request we know about"*,
+> not *"a positively identified outage"*. And if `1723` cannot be read, the badge stays the
+> plain **OFF-GRID**: inferring an outage from a failed read would raise an alarm out of a
+> missing field.
+>
+> Also measured: `offgridState` returns **2**, not 0, after a requested island ends — so the
+> state is at least tri-state and `!= 0` is the wrong test. The cloud's `selectOffgrid`
+> reported `0` for the same site at the same time, so the two channels differ on this field.
+
+**Implemented** as `power.off_grid_kind` — `simulated` | `outage` | `null` — surfaced in the
+top bar as a distinct badge per case, with the raw flags available alongside, as this section
+required.
 
 ---
 

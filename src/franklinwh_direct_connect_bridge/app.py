@@ -147,6 +147,7 @@ def _roster_entry(gw: GatewayState) -> dict:
         "off_grid": (power.get("off_grid") if power.get("off_grid") is not None
                      else rs in (5, 6, 7)),
         "off_grid_signals": power.get("off_grid_signals"),
+        "off_grid_kind": power.get("off_grid_kind"),      # 'simulated' | 'outage' | None
         # Dispatch badge: "vpp" (cloud-confirmed) | "force" (Modbus M704 WSet) | None.
         "vpp": _dk_kind is not None,
         "vpp_kind": _dk_kind,

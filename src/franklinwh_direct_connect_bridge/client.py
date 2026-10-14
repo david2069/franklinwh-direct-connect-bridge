@@ -865,6 +865,30 @@ def _apply_off_grid(out: dict[str, Any]) -> None:
         p["off_grid"] = any(sig.values())
         p["off_grid_signals"] = sig
         p["off_grid_disagreement"] = bool(any(sig.values()) and not all(sig.values()))
+        p["off_grid_kind"] = _off_grid_kind(p)
+
+
+def _off_grid_kind(p: dict) -> str | None:
+    """'simulated' (someone asked for this) vs 'outage' (the grid went away), or None.
+
+    docs/OFFGRID_DESIGN.md §3: there is no reason code, but there is a field PAIR whose
+    divergence is the answer. ``offgridSet`` is what was REQUESTED, ``offgridState`` is what
+    IS. Islanded with a request is a deliberate test; islanded WITHOUT one is a real outage,
+    and the two warrant very different words on screen.
+
+    §3 was written as a hypothesis because both flags read 0 on a grid-connected system and
+    nothing had been measured. The 2026-10-15 island confirms the requested case: offgridSet
+    1 with offgridState 1 throughout a deliberate test, returning to offgridSet 0 on the
+    write. The OUTAGE row (0, 1) remains unconfirmed — it needs the grid to actually fail,
+    which is not something to arrange — so 'outage' is reported but should be read as "not a
+    request we know about" rather than as a positively identified outage.
+    """
+    if not p.get("off_grid"):
+        return None
+    req = p.get("offgrid_requested")
+    if req is None:
+        return None          # 1723 unread — say nothing rather than guess which it is
+    return "simulated" if int(req) == 1 else "outage"
 
 
 def summary(s: Settings, host: str | None = None, *, mock: bool = False) -> dict[str, Any]:

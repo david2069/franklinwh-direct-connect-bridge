@@ -54,7 +54,19 @@
             <span class="flex items-center gap-1.5 min-w-0">
               <span class="text-sm truncate" :style="g.id === $store.app.selectedGateway ? 'color:#34d399' : 'color:var(--text-primary)'"
                     x-text="g.label || g.host"></span>
-              <span x-show="g.off_grid" class="chip offgrid" style="padding:0 6px;font-size:.6rem">OFF-GRID</span>
+              <!-- Simulated (someone asked) and an outage (the grid went) are the same
+                   electrical state and completely different news. offgridSet is the
+                   discriminator: see docs/OFFGRID_DESIGN.md §3. Unknown kind stays the
+                   plain badge rather than guessing which it is. -->
+              <span x-show="g.off_grid && g.off_grid_kind === 'simulated'" class="chip offgrid"
+                    title="Off-grid because it was requested (1723 offgridSet = 1) — a deliberate island, not an outage."
+                    style="padding:0 6px;font-size:.6rem">OFF-GRID · SIMULATED</span>
+              <span x-show="g.off_grid && g.off_grid_kind === 'outage'" class="chip offgrid"
+                    title="Islanded with no request recorded (1723 offgridSet = 0) — consistent with a real grid outage."
+                    style="padding:0 6px;font-size:.6rem">OFF-GRID · OUTAGE</span>
+              <span x-show="g.off_grid && !g.off_grid_kind" class="chip offgrid"
+                    title="Islanded. Whether it was requested could not be read (1723 unavailable)."
+                    style="padding:0 6px;font-size:.6rem">OFF-GRID</span>
               <span x-show="g.vpp_kind === 'vpp' && !g.off_grid" class="chip vpp" style="padding:0 6px;font-size:.6rem">VPP</span>
               <span x-show="g.vpp && g.vpp_kind !== 'vpp' && !g.off_grid" class="chip vpp" style="padding:0 6px;font-size:.6rem">FORCE</span>
             </span>
