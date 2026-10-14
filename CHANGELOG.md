@@ -13,6 +13,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Schedules and tariff windows are evaluated on the site's clock, not the container's.**
+  `docs/TIMEZONES.md` has always said a schedule rule is authored in gateway wall-clock; the
+  scheduler used naive container-local time. Standalone Docker hid it by mounting
+  `/etc/localtime`, so the two clocks agreed — but as a Home Assistant add-on nothing sets a
+  timezone, and a gateway can sit in a different zone from the host in any case. Affects cron
+  windows and `tariff.demand/bonus/charge_window_active`, which gate dispatch. (#41)
+
 - **Modbus reachability is no longer reported as "Down" when it was never probed.** Two
   reachability paths opened TCP to the aGate's `:502` with no disable guard, so loading the
   Network tab made "Modbus is off" untrue; both now honour the switch. `None` means *not

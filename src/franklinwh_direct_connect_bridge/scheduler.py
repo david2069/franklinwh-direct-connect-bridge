@@ -26,6 +26,7 @@ import re
 import time
 from typing import Any
 
+from . import site_time
 from . import ha_instances
 from . import resilience
 
@@ -384,7 +385,7 @@ def window_now(entry: dict, now: dt.datetime):
     for idx, (s, dur) in enumerate(_windows_for(entry)):
         if _cur_inside(cur, s, dur):
             d = _occ_date(now, s, dur, cur)
-            end = ((dt.datetime.combine(d, dt.time.min) + dt.timedelta(minutes=s + dur)).timestamp()
+            end = ((dt.datetime.combine(d, dt.time.min, now.tzinfo) + dt.timedelta(minutes=s + dur)).timestamp()
                    if dur else None)
             key = d.isoformat() if idx == 0 else f"{d.isoformat()}#{idx}"   # idx0 = legacy date key
             return ("inside", key, end, d)
@@ -490,7 +491,7 @@ def next_fire_ts(entry: dict, now: dt.datetime, last_fired_day: str | None = Non
             continue
         best = None
         for idx, (s_min, dur) in enumerate(wins):
-            fire_dt = dt.datetime.combine(d, dt.time.min) + dt.timedelta(minutes=s_min)
+            fire_dt = dt.datetime.combine(d, dt.time.min, now.tzinfo) + dt.timedelta(minutes=s_min)
             key = d.isoformat() if idx == 0 else f"{d.isoformat()}#{idx}"
             if i == 0:
                 if last_fired_day == key:
@@ -1431,7 +1432,7 @@ def billing_snapshot(store, gateway_id=None, now: dt.datetime | None = None) -> 
     a given window is None when that tariff doesn't define it (so a gate on it fails
     closed — the safe default). Windows: demand_window / bonus_window / charge_window
     (JSON columns) + pricing.import_windows[]."""
-    now = now or dt.datetime.now()
+    now = now or dt.datetime.now().astimezone()
     meter = _meter_for_gateway(store, gateway_id)
     if not meter:
         return {}
@@ -1474,7 +1475,7 @@ def tariff_snapshot(store, gateway_id=None, now: dt.datetime | None = None) -> d
     unconfigured — a sensor then reads None and a gate fails closed (never fires),
     which is the safe default. Tiered pricing uses the first tier here (the billing
     engine will later supply period-to-date use for exact tiering)."""
-    now = now or dt.datetime.now()
+    now = now or dt.datetime.now().astimezone()
     meter = _meter_for_gateway(store, gateway_id)
     if not meter:
         return {}
@@ -1898,7 +1899,12 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
     cannot react faster than the bridge reads the gateway, which is worth knowing
     before relying on a short window.
     """
-    now = now or dt.datetime.now()
+    # The SITE's clock, not the container's. docs/TIMEZONES.md: a schedule rule is authored
+    # in site wall-clock. Aware, so every .timestamp() below converts correctly; falls back
+    # to container-local (also aware) when the gateway cannot be read, which is what this
+    # did everywhere before.
+    if now is None:
+        now, _ = site_time.now_site(settings, host)
     snapshot = snapshot_from_state(state)
     snapshot.update(ha_snapshot(store))     # exposed HA entities are conditions too
     snapshot.update(solar_snapshot(settings))   # weather + solar-forecast sensors

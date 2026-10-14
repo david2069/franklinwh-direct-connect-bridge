@@ -57,6 +57,7 @@ from .ha_supervisor import apply_supervisor_mqtt, discover_mqtt
 from .notify import Notifier
 from .poller import run_gateway
 from . import supervisor
+from . import site_time
 from . import mockgw
 from .publish import entities
 from .state import GatewayState, get_state, get_gateway, gateways as get_gateways
@@ -3449,21 +3450,13 @@ def create_app() -> FastAPI:
         out = {"available": False, "agate_time": tl.get("time"),
                "base_offset_h": tl.get("timezone"), "dst": tl.get("DST"),
                "tz_str": (tl.get("timezoneStr") or None)}
-        t = tl.get("time")
-        if t:
-            try:
-                local = _dt.datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
-                off = round((local - _dt.datetime.utcnow()).total_seconds() / 60 / 15) * 15
-                out["offset_minutes"] = int(off)
-                h, m = divmod(abs(int(off)), 60)
-                out["label"] = f"UTC{'+' if off >= 0 else '-'}{h}" + (f":{m:02d}" if m else "")
-                out["available"] = True
-            except (ValueError, TypeError):
-                pass
-        if not out["available"] and isinstance(tl.get("timezone"), (int, float)):
-            off = int(tl["timezone"]) * 60
-            out.update(offset_minutes=off, available=True,
-                       label=f"UTC{'+' if off >= 0 else '-'}{abs(int(tl['timezone']))}")
+        # One implementation of this, shared with the scheduler — which has to agree with
+        # what this endpoint shows, or the UI explains a decision the scheduler did not make.
+        off = site_time._offset_from_reading(tl or {})
+        if off is not None:
+            h, m = divmod(abs(int(off)), 60)
+            out.update(offset_minutes=int(off), available=True,
+                       label=f"UTC{'+' if off >= 0 else '-'}{h}" + (f":{m:02d}" if m else ""))
         return out
 
     # -- gated control writes (off unless allow_writes) -----------------------
