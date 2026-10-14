@@ -10,7 +10,9 @@ CLOUD_LIB="${FWH_CLOUD_SRC:-$HERE/../franklinwh-cloud}"   # HYBRID Phase 3 reser
 TAG="${1:-franklinwh-direct-connect-bridge:dev}"
 
 echo "==> building bundled wheels"
-rm -rf "$HERE/wheels"; mkdir -p "$HERE/wheels"
+# Clear the wheels but KEEP the directory and its committed .gitkeep: the Dockerfile
+# COPYs wheels/, so deleting it breaks a clean-clone build (and makes this tree dirty).
+mkdir -p "$HERE/wheels"; rm -f "$HERE/wheels"/*.whl
 # Prefer the repo venv's python — the system python3 is often "externally managed" (PEP 668)
 # and refuses `pip install build`, which used to abort the whole build silently.
 PY="python3"

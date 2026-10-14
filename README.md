@@ -159,22 +159,62 @@ src/franklinwh_direct_connect_bridge/
 tests/
 ```
 
-## Run (standalone, dev)
+## Run it yourself (standalone)
+
+Nothing here needs a checkout of any other FranklinWH repository. The Direct Connect API
+library is an ordinary dependency and installs from PyPI like any other.
+
+**With pip:**
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ../franklinwh-direct-connect-api   # the local API library (editable)
-pip install -e ".[test,cloud]"            # cloud extra = the cloud transport
+pip install ".[cloud]"            # pulls franklinwh-direct-connect-api from PyPI
 FWH_HOST=192.0.2.110 franklinwh-direct-connect-bridge run   # → http://localhost:8101
 ```
 
-> **Note:** the cloud transport is an **optional extra**. Install without `cloud` and the app
-> still runs, but every cloud-backed capability — including reserve-SoC write — degrades to
-> `available: false, reason: "library not installed"` (check `GET /api/providers`). That is
-> the same mechanism by which Modbus dispatch reports unavailable, so don't read one as
-> evidence of the other. The Docker image installs it from a bundled wheel in `wheels/`.
+**With Docker:**
 
-Or `docker compose up --build` (mounts the sibling library for dev).
+```bash
+docker build -t franklinwh-direct-connect-bridge:dev .
+docker compose up -d
+```
+
+A plain `docker build` resolves every dependency from PyPI, including
+[`franklinwh-direct-connect-api`](https://pypi.org/project/franklinwh-direct-connect-api/).
+The **Home Assistant add-on builds exactly this way**, on your HA host, with no sibling
+repositories involved.
+
+> **Do not use `docker compose up --build`.** `docker-compose.yml` has no `build:` section
+> (see below), so the `--build` flag is silently ignored and any existing container keeps
+> running. Build the image first, as above.
+
+> **The cloud transport is an optional extra.** Install without `[cloud]` and the app still
+> runs, but every cloud-backed capability — including reserve-SoC write — reports
+> `available: false, reason: "library not installed"` (see `GET /api/providers`). That is
+> the same mechanism by which Modbus dispatch reports unavailable, so do not read one as
+> evidence of the other.
+
+## Develop
+
+Only this part involves sibling checkouts, and only so an **unreleased** library can be
+tested before it ships.
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[test,cloud]"
+pip install -e ../franklinwh-local          # optional: the library, editable
+tools/dev.sh                                 # build image, restart container, VERIFY it
+```
+
+`tools/build_image.sh` builds wheels from the sibling repos into `wheels/`, and the
+Dockerfile prefers anything it finds there over PyPI. An empty `wheels/` — which is what a
+clean clone has — simply means everything comes from PyPI. That is why `wheels/.gitkeep` is
+committed: the Dockerfile `COPY`s the directory, so it has to exist.
+
+`tools/dev.sh` then checks that the running container is actually built from your working
+tree, and **exits non-zero if it is not**. `GET /api/version` reports the same stamp as
+`source_sha`. Use it before trusting any measurement taken against the running bridge — see
+`CLAUDE.md`, "Verifying against the running bridge".
 
 ## Demo / no-hardware mode
 

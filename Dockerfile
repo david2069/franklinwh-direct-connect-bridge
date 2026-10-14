@@ -14,18 +14,19 @@ COPY src/ src/
 # Bundled library docs (mkdocs site) served at /guide. tools/build_image.sh builds it;
 # a committed .gitkeep keeps the dir present for a bare `docker build` (then /guide 404s).
 COPY docs_site/ /app/docs_site/
-# franklinwh-direct-connect-api: prefer a locally-built wheel (tools/build_image.sh drops it in
-# ./wheels/ — auth-free while the repo is private); fall back to PyPI once published.
+# Dependencies come from pyproject.toml — ONE list, not two. This used to hand-repeat the
+# dependency list here and install with --no-deps, so the two could drift silently.
+#
+# wheels/ holds locally-built wheels when a developer runs tools/build_image.sh, which is
+# how an unreleased library gets tested before it ships. A clean clone has only a
+# .gitkeep, nothing is pre-installed, and pip resolves everything from PyPI — which is
+# what an end user and the Home Assistant add-on builder get, with no sibling checkouts
+# and no dev-cycle coupling. The directory must exist either way or this COPY fails.
 COPY wheels/ /tmp/wheels/
 RUN if ls /tmp/wheels/*.whl >/dev/null 2>&1; then \
         pip install --no-cache-dir /tmp/wheels/*.whl; \
-    else \
-        pip install --no-cache-dir franklinwh-direct-connect-api; \
     fi \
- && pip install --no-cache-dir \
-        fastapi "uvicorn>=0.29" jinja2 "pydantic>=2" "pydantic-settings>=2" "paho-mqtt>=2" \
-        "franklinwh-modbus>=0.9" "croniter>=2.0" \
- && pip install --no-cache-dir --no-deps -e .
+ && pip install --no-cache-dir -e ".[cloud]"
 
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh

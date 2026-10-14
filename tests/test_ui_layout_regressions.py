@@ -60,3 +60,39 @@ def test_mock_gateway_form_is_collapsed_by_default():
     details = html.rindex("<details", 0, start)
     opening = html[details:start]
     assert " open" not in opening, "the mock gateway disclosure is expanded by default again"
+
+
+# --- end-user build: no sibling checkouts, no dev-cycle coupling ---------------------------
+
+def test_wheels_directory_is_committed():
+    """The Dockerfile COPYs wheels/, so a clean clone must contain it or the build fails.
+
+    This is what broke the end-user and Home Assistant add-on path: wheels/ existed only on
+    a developer's machine, created by tools/build_image.sh.
+    """
+    import subprocess
+    root = TABS.parents[2]
+    tracked = subprocess.run(["git", "ls-files", "wheels"], cwd=root,
+                             capture_output=True, text=True).stdout.split()
+    assert "wheels/.gitkeep" in tracked, "wheels/.gitkeep is not committed; a clean clone cannot build"
+
+
+def test_dockerfile_installs_declared_dependencies():
+    """One dependency list — pyproject.toml — not a second copy in the Dockerfile.
+
+    It used to repeat the list and install with --no-deps, so the two could drift and an
+    end-user build could silently differ from a developer's.
+    """
+    lines = (TABS.parents[2] / "Dockerfile").read_text().splitlines()
+    # Executable lines only: a comment EXPLAINING --no-deps must not fail this test, which
+    # is exactly what a naive substring check did on first run.
+    code = "\n".join(ln for ln in lines if not ln.lstrip().startswith("#"))
+    assert '-e ".[cloud]"' in code
+    assert "--no-deps" not in code, "Dockerfile is bypassing the declared dependencies again"
+
+
+def test_build_script_keeps_the_wheels_directory():
+    """`rm -rf wheels` would delete the committed .gitkeep. Clear the wheels, keep the dir."""
+    script = (TABS.parents[2] / "tools/build_image.sh").read_text()
+    assert 'rm -rf "$HERE/wheels"' not in script
+    assert 'rm -f "$HERE/wheels"/*.whl' in script

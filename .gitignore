@@ -24,8 +24,10 @@ env/
 .idea/
 .DS_Store
 
-# built lib wheels (copied in at image build)
+# built lib wheels (copied in at image build). The directory itself IS committed:
+# the Dockerfile COPYs it, so a clean clone must have it or `docker build` fails.
 wheels/*.whl
+!wheels/.gitkeep
 data-demo/
 
 # built docs (bundled at image build; keep the dir, ignore the build)
