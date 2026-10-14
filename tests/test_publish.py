@@ -14,7 +14,7 @@ def test_build_state_maps_power_flow_fields():
 
 
 def test_discovery_configs_shape():
-    device = entities.device_info("sn123", "10060006A02F24170091", "V12R02B30D06")
+    device = entities.device_info("sn123", "10060006A00X00000001", "V12R02B30D06")  # pii: allow — documentation placeholder
     configs, state_topic, avail_topic = entities.discovery_configs(
         "sn123", device, "franklinwh-local", "homeassistant")
     assert state_topic == "franklinwh-local/sn123/state"

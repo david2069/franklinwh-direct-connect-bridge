@@ -8,14 +8,14 @@ from franklinwh_direct_connect_bridge import app as app_module, client as client
 def test_support_info_maps_model_and_redacts_serials(monkeypatch):
     # A fake real gateway
     gw = state.GatewayState(id="gw1", configured_host="192.168.0.110",
-                            serial="10060006A02F24170091", is_mock=False)
+                            serial="10060006A00X00000001", is_mock=False)  # pii: allow — documentation placeholder
     monkeypatch.setattr(app_module, "get_gateways", lambda: [gw], raising=False)
     monkeypatch.setattr("franklinwh_direct_connect_bridge.state.gateways", lambda: [gw])
     # firmware carries serials + SyHdVersion — the endpoint must map the model but drop serials
     monkeypatch.setattr(client_module, "firmware", lambda s, host=None: {
         "SyHdVersion": 102, "protocolVer": "V1.11.03", "IBG_VER": "V12R02",
-        "IBG_SN": "10060006A02F24170091", "FHP_SN": ["10050013A00X23430165"],
-        "BMS_SN": "10060006A02F24170091B1",
+        "IBG_SN": "10060006A00X00000001", "FHP_SN": ["10050013A00X00000002"],  # pii: allow — documentation placeholder
+        "BMS_SN": "10060006A00X00000001B1",
     })
     c = TestClient(app_module.create_app())
     d = c.get("/api/support-info").json()
@@ -24,7 +24,7 @@ def test_support_info_maps_model_and_redacts_serials(monkeypatch):
     assert g["hardware_model_id"] == 102 and g["apower_count"] == 1
     import json
     blob = json.dumps(d)
-    for pii in ("10060006A02F24170091", "10050013A00X23430165", "192.168.0.110", "IBG_SN"):
+    for pii in ("10060006A00X00000001", "10050013A00X00000002", "192.168.0.110", "IBG_SN"):  # pii: allow — documentation placeholder
         assert pii not in blob, f"PII leaked: {pii}"
 
 

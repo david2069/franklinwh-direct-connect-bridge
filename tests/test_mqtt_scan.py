@@ -19,7 +19,7 @@ def test_analyze_coexist_duplicate_device():
     msgs = {
         "homeassistant/sensor/a/soc/config": _cfg(own, "FranklinWH aGate (Local Bridge)", "Local Bridge v0.1.0 · aGate X"),
         "homeassistant/sensor/a/pwr/config": _cfg(own, "FranklinWH aGate (Local Bridge)", "Local Bridge v0.1.0 · aGate X"),
-        "homeassistant/sensor/b/soc/config": _cfg("franklinwh_10060006A02F24170091", "FranklinWH 24170091", "Modbus Bridge v0.1.0 · aGate X"),
+        "homeassistant/sensor/b/soc/config": _cfg("franklinwh_10060006A00X00000001", "FranklinWH 00000001", "Modbus Bridge v0.1.0 · aGate X"),
     }
     r = mqtt_scan.analyze(msgs, own, "homeassistant", "10060006a02f24170091")
     assert r["ok"] and r["foreign_count"] == 1 and r["collision"] is False

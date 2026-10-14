@@ -7,7 +7,7 @@ inference has an authoritative source.
 from franklinwh_direct_connect_bridge import circuits, devicedb
 from tests.test_circuits import AU_CFG, AU_METER
 
-AU_MANIFEST = {"SyHdVersion": 102, "IBG_SN": "10060006A02F24170091",
+AU_MANIFEST = {"SyHdVersion": 102, "IBG_SN": "10060006A00X00000001",  # pii: allow — documentation placeholder
                "IBG_VER": "V12R02B30D06_260304", "protocolVer": "V1.11.03"}
 
 

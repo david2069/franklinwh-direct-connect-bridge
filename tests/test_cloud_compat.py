@@ -62,13 +62,13 @@ SAMPLE_DEVICE_INFO = {"opt": 0, "result": 0, "usrName": "Home",
 # A local network_interfaces (1118) commSetPara block (firmware field names).
 SAMPLE_COMM = {
     "currentNetType": 3,
-    "wifiMAC": "AA:BB:CC:DD:EE:FF", "wifiDHCP": 1, "wifiStaticIP": "192.0.2.110",
+    "wifiMAC": "00:00:5E:00:53:01", "wifiDHCP": 1, "wifiStaticIP": "192.0.2.110",
     "wifiDNS": "8.8.8.8", "wifiGateWay": "192.0.2.1",
-    "eth0MAC": "88:C9:B3:20:00:80", "eth0DHCP": 0, "eth0StaticIP": "0.0.0.0",
+    "eth0MAC": "00:00:5E:00:53:02", "eth0DHCP": 0, "eth0StaticIP": "0.0.0.0",
     "eth0DNS": "8.8.8.8", "eth0GateWay": "172.16.1.1",
-    "eth1MAC": "88:C9:B3:21:2C:B8", "eth1DHCP": 1, "eth1StaticIP": "0.0.0.0",
+    "eth1MAC": "00:00:5E:00:53:03", "eth1DHCP": 1, "eth1StaticIP": "0.0.0.0",
     "eth1DNS": "8.8.8.8", "eth1GateWay": "0.0.0.0",
-    "operatorMAC": "0E:4B:51:E6:81:08", "operatorDNS": "192.192.192.192", "operatorRSSI": 21,
+    "operatorMAC": "00:00:5E:00:53:04", "operatorDNS": "192.192.192.192", "operatorRSSI": 21,
     "awsStatus": 1,
 }
 SAMPLE_NETWORK = {"opt": 0, "result": 0, "commSetPara": SAMPLE_COMM}
@@ -251,7 +251,7 @@ def test_network_shape_and_mapping():
                                "operator", "awsStatus"}
     assert set(out["wifi"].keys()) == {"mac", "dhcp", "ip", "dns", "gateway"}
     assert out["currentNetType"] == 3 and out["awsStatus"] == 1
-    assert out["wifi"]["mac"] == "AA:BB:CC:DD:EE:FF"
+    assert out["wifi"]["mac"] == "00:00:5E:00:53:01"
     assert out["wifi"]["dhcp"] is True            # wifiDHCP 1 → True
     assert out["eth0"]["dhcp"] is False           # eth0DHCP 0 → False
     assert out["operator"]["rssi"] == 21
@@ -261,7 +261,7 @@ def test_network_accepts_flat_and_nested():
     # Flat top-level commSetPara block (no envelope) resolves the same.
     flat = cloud_compat.network_from_interfaces(SAMPLE_COMM)
     nested = cloud_compat.network_from_interfaces({"result": {"commSetPara": SAMPLE_COMM}})
-    assert flat["wifi"]["mac"] == nested["wifi"]["mac"] == "AA:BB:CC:DD:EE:FF"
+    assert flat["wifi"]["mac"] == nested["wifi"]["mac"] == "00:00:5E:00:53:01"
 
 
 # ── Endpoint shape tests (monkeypatched client) ──────────────────────────────
