@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 import urllib.request
 
 from .environment import IS_HA_ADDON
@@ -62,6 +63,58 @@ def discover_mqtt() -> dict:
     except Exception as e:  # noqa: BLE001 — discovery must never raise
         log.warning("MQTT discovery via Supervisor failed: %s", e)
         return {"found": False, "error": str(e)}
+
+
+def host_timezone() -> str | None:
+    """The HOST's timezone from the Supervisor, e.g. ``Australia/Sydney``. Never raises.
+
+    An add-on container has no timezone of its own, so without this it runs UTC and every
+    log line, chart label and ``datetime.now()`` is hours out from what the owner sees.
+    (Schedules are unaffected since #41 — those follow the aGate's clock, not this one.)
+
+    Read in Python rather than through ``bashio::info.timezone``: franklinwh-modbus-bridge
+    reports (commit ``137146a``) that bashio returns "Unable to access the API, forbidden"
+    on real add-on installs while the identical token works from Python in the same boot,
+    and a shell guard cannot tell a refusal from "no timezone set" — so it fails silently
+    and the container stays on UTC. Their finding, cited; not independently reproduced here.
+    """
+    if not IS_HA_ADDON:
+        return None
+    token = os.environ.get("SUPERVISOR_TOKEN")
+    if not token:
+        return None
+    try:
+        req = urllib.request.Request(
+            "http://supervisor/info",
+            headers={"Authorization": f"Bearer {token}"},
+            method="GET",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            payload = json.loads(resp.read().decode())
+        tz = ((payload.get("data") or {}).get("timezone") or "").strip()
+        return tz or None
+    except Exception as e:  # noqa: BLE001 — a missing timezone must never block startup
+        log.warning("host timezone lookup via Supervisor failed: %s", e)
+        return None
+
+
+def apply_host_timezone() -> str | None:
+    """Set the process timezone from the Supervisor. Returns what was applied, or None.
+
+    ``time.tzset()`` is what makes it take effect for anything already imported; setting
+    ``TZ`` alone changes nothing in a running process.
+    """
+    tz = host_timezone()
+    if not tz:
+        return None
+    try:
+        os.environ["TZ"] = tz
+        time.tzset()
+    except Exception as e:  # noqa: BLE001
+        log.warning("could not apply host timezone %r: %s", tz, e)
+        return None
+    log.info("timezone set from the Supervisor: %s", tz)
+    return tz
 
 
 def apply_supervisor_mqtt(settings) -> bool:

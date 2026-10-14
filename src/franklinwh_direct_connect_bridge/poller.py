@@ -141,6 +141,15 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
             # instead of staying dead until a bridge restart.
             if settings.mqtt_enabled and pub is None and (time.time() - last_mqtt_try) >= _MQTT_RETRY_S:
                 last_mqtt_try = time.time()
+                # Re-ask the Supervisor first. Auto-config runs once at startup, so an
+                # add-on installed before Mosquitto kept retrying the SAME unset broker
+                # for ever and never noticed when Mosquitto appeared. No-op off-add-on,
+                # and it leaves user-supplied credentials alone.
+                try:
+                    from .ha_supervisor import apply_supervisor_mqtt as _apply_sup
+                    await asyncio.to_thread(_apply_sup, settings)
+                except Exception as e:  # noqa: BLE001 — never break the poll loop
+                    log.debug("[%s] Supervisor MQTT re-check failed: %s", gw.id, e)
                 if not serial:
                     await _resolve_identity()
                     if not serial:

@@ -91,9 +91,13 @@ def test_poller_gates_the_initial_publish_on_a_known_serial():
 
 def test_poller_retries_identity_before_retrying_the_publisher():
     src = (ROOT / "src/franklinwh_direct_connect_bridge/poller.py").read_text()
-    heal = src.split("Self-heal:", 1)[1][:900]
+    # Bound the block by what FOLLOWS it, not by a character count. A fixed window broke
+    # the moment anything else was added to the block, which says nothing about the rule.
+    heal = src.split("Self-heal:", 1)[1].split("Honor UI-requested", 1)[0]
     assert "_resolve_identity()" in heal, "a late serial would never be picked up"
     assert "if serial:" in heal, "the retry must stay gated on a known serial"
+    # the ordering is the rule: resolve the identity, THEN try the publisher
+    assert heal.index("_resolve_identity()") < heal.index("_start_mqtt")
 
 
 @pytest.mark.parametrize("serial", ["", None])

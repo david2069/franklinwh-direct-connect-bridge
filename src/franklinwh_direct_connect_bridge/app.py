@@ -53,7 +53,7 @@ from . import state
 from . import scheduler_worker
 from . import workers as _workers
 from .config import get_settings, gateway_list, metrics_active, save_override
-from .ha_supervisor import apply_supervisor_mqtt, discover_mqtt
+from .ha_supervisor import apply_host_timezone, apply_supervisor_mqtt, discover_mqtt
 from .notify import Notifier
 from .poller import run_gateway
 from . import supervisor
@@ -779,6 +779,8 @@ def create_app() -> FastAPI:
         # Zero-config MQTT: fill unset broker creds from the HA Supervisor before the
         # poller (and MqttPublisher) start. Runs in a thread with a short timeout so a
         # hung network call can never block startup; never raises.
+        # Before MQTT, because this changes what every log line below is stamped with.
+        await asyncio.to_thread(apply_host_timezone)
         await asyncio.to_thread(apply_supervisor_mqtt, s)
         # Apply the persisted Modbus (SunSpec 502) master switch — default on. When the
         # user disabled it from the Control tab, ratings + force dispatch stay off.

@@ -36,6 +36,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Changed
 
+- **A Mosquitto add-on installed after this one is now found.** MQTT auto-configuration ran
+  once at startup; the poller's existing retry then reconnected to the same unset broker for
+  ever. It re-asks the Supervisor before each attempt, so the broker is picked up without a
+  restart. User-supplied credentials are still never overwritten. (FEAT-HA-ADDON-PARITY)
+- **The add-on container takes the host's timezone**, read from the Supervisor in Python.
+  Nothing set one before, so it ran UTC and every log line and rendered local time was hours
+  out. Schedules are unaffected either way — since #41 those follow the aGate's clock.
+  (FEAT-HA-ADDON-PARITY)
+
 - Dependencies come from `pyproject.toml` alone. The Dockerfile used to repeat the list and
   install with `--no-deps`, so an end-user image could silently differ from a developer's. (#37)
 - `README.md` separates **Run it yourself** from **Develop**. The old instructions required a
