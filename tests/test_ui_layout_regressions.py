@@ -134,3 +134,18 @@ def test_optimistic_reserve_update_is_overwritten_by_the_poll():
     getter = js[js.index("get modes()"):]
     getter = getter[:getter.index("\n    },")]
     assert "this.summary.mode && this.summary.mode.modes" in getter
+
+
+# --- changelog ----------------------------------------------------------------------------
+
+def test_changelog_exists_with_an_unreleased_section():
+    """Cheap, and it is the step that gets skipped.
+
+    A test cannot know whether a given change deserved an entry, but it can stop the file
+    being deleted or losing the section every entry is written into. The repo had no
+    CHANGELOG.md at all until 2026-10-15.
+    """
+    changelog = TABS.parents[2] / "CHANGELOG.md"
+    assert changelog.exists(), "CHANGELOG.md is missing"
+    text = changelog.read_text()
+    assert "## [Unreleased]" in text, "no [Unreleased] section to write entries into"

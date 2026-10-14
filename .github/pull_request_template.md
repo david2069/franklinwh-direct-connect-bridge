@@ -34,6 +34,11 @@ Disabled the change; these tests failed:
   - [ ] Read-back verification done on hardware, not a simulator
 -->
 
+## Changelog
+
+- [ ] `CHANGELOG.md` updated under `[Unreleased]`, or this change is not user-facing
+      (internal refactor, tests, docs or policy only)
+
 ## Publishable evidence
 
 - [ ] `python3 tools/pii_check.py` run — no new findings (no serials, MACs, LAN IPs,

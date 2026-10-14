@@ -185,6 +185,28 @@ on more fixes.
 
 **State the regression risk** before a change: low, medium or high, and what it touches.
 
+## Keep the changelog current
+
+The detailed policy lives in `franklinwh-modbus` at `.agents/policies/release_policy.md`
+and is the source; this is its Direct Connect reading.
+
+**Every change to user-facing behaviour updates `CHANGELOG.md` in the same commit**, under
+`[Unreleased]`, using Keep a Changelog categories — Added, Changed, Fixed, Security.
+
+User-facing means: a new or changed endpoint, CLI command or UI behaviour; a bug fix that
+changes what someone sees or gets; a change to how the project is installed or built; a
+safety or dispatch change; a schema migration. Internal refactors with no visible effect,
+test-only changes, and policy or documentation edits do not need an entry.
+
+**Write it for the person affected, not for the committer.** "Modbus reachability is no
+longer reported as Down when it was never probed" tells a reader what changed for them;
+"fix tri-state handling" does not. Reference the issue or pull request.
+
+**Do not reconstruct history you did not witness.** If the file is missing entries from
+before it existed, say so at the top and start from the point you can vouch for. Git history
+is the record for the rest; a plausible-sounding entry invented from a commit message is a
+claim in a public file, which is exactly what these rules exist to prevent.
+
 ## Say so when something is not done
 
 Report outcomes plainly: what was verified, what was assumed, what was skipped and why.
