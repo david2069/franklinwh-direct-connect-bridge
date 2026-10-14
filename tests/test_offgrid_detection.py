@@ -111,3 +111,31 @@ def test_on_grid_has_no_kind():
     out["power"]["offgrid_requested"] = 0
     _apply_off_grid(out)
     assert out["power"]["off_grid_kind"] is None
+
+
+# --- grid presence: the physical discriminator -------------------------------------------
+
+def test_grid_present_during_a_requested_island():
+    """Measured 2026-10-15: both legs ~120 V at ~0 A for two hours with the relay open.
+
+    The utility never left. That is what makes 34 s a floor for the reconnect and not a
+    general figure — the grid had been qualifiable the whole time.
+    """
+    from franklinwh_direct_connect_bridge.client import grid_present
+    assert grid_present({"grid_leg_v": [120.2, 120.2]}) is True
+
+
+def test_grid_absent_reads_as_no_grid():
+    from franklinwh_direct_connect_bridge.client import grid_present
+    assert grid_present({"grid_leg_v": [0.0, 0.0]}) is False
+
+
+def test_one_live_leg_still_counts_as_grid_present():
+    """A single lost leg is not a full outage, and must not be reported as one."""
+    from franklinwh_direct_connect_bridge.client import grid_present
+    assert grid_present({"grid_leg_v": [120.1, 0.0]}) is True
+
+
+def test_grid_presence_unknown_when_not_measured():
+    from franklinwh_direct_connect_bridge.client import grid_present
+    assert grid_present({}) is None

@@ -866,6 +866,9 @@ def _apply_off_grid(out: dict[str, Any]) -> None:
         p["off_grid_signals"] = sig
         p["off_grid_disagreement"] = bool(any(sig.values()) and not all(sig.values()))
         p["off_grid_kind"] = _off_grid_kind(p)
+        gp = grid_present(p)
+        if gp is not None:
+            p["grid_present"] = gp
 
 
 def _off_grid_kind(p: dict) -> str | None:
@@ -889,6 +892,28 @@ def _off_grid_kind(p: dict) -> str | None:
     if req is None:
         return None          # 1723 unread — say nothing rather than guess which it is
     return "simulated" if int(req) == 1 else "outage"
+
+
+#: Below this, a grid leg is not carrying utility voltage. Well under any nominal leg
+#: (120 V split or 230 V single) and well above sensor noise on a dead line.
+GRID_LEG_DEAD_V = 40.0
+
+
+def grid_present(p: dict) -> bool | None:
+    """Is utility voltage present on the grid side of the main relay? None = not measured.
+
+    Measured during the 2026-10-15 requested island: both legs held ~120 V with ~0 A for
+    two hours while the relay was open. The utility never went away — we were simply not
+    connected to it. In a real outage these should collapse, which makes this an
+    INDEPENDENT check on `off_grid_kind`, derived from physics rather than from whether
+    somebody set a flag.
+
+    Unconfirmed in the outage direction, like the rest of §3: it needs the grid to fail.
+    """
+    legs = p.get("grid_leg_v")
+    if not legs:
+        return None
+    return any(float(v) >= GRID_LEG_DEAD_V for v in legs)
 
 
 def summary(s: Settings, host: str | None = None, *, mock: bool = False) -> dict[str, Any]:
@@ -1031,6 +1056,15 @@ def summary(s: Settings, host: str | None = None, *, mock: bool = False) -> dict
                 if dsp is not None:
                     out["power"]["dsp_run_status"] = dsp
                     out["power"]["dsp_run_status_desc"] = catalog.run_status_desc(dsp)
+                # Grid-side voltage, measured on the UTILITY side of the main relay. In a
+                # requested island this stays at nominal with ~0 current — the grid is
+                # there, we are simply not connected to it. In a real outage it should
+                # collapse. That makes it an independent check on "simulated vs outage",
+                # from physics rather than from a request flag.
+                gv = [run.get("gridVol1"), run.get("gridVol2")]
+                if any(v is not None for v in gv):
+                    out["power"]["grid_leg_v"] = [round(float(v), 1) for v in gv
+                                                  if v is not None]
                 for k in ("mainRelay1Status", "mainRelay2Status", "gridRelay2",
                           "solarRelayStatus", "blackStartRelay"):
                     if run.get(k) is not None:
