@@ -58,7 +58,7 @@ No state recorded. Needs one before it can be planned.
 - [UI-PARITY](#ui-parity-modbus-bridge-for-look-fwhai-for-controlsfunctionality) — Modbus Bridge for LOOK, FWHAI for CONTROLS/functionality
 - [FEAT-CLOUD-CROSSCHECK](#feat-cloud-crosscheck-optional-cloud-api-witness-for-local-writesreads-when-creds-present) — optional cloud-API witness for local writes/reads (when creds present)
 
-### `QUEUED` — 65
+### `QUEUED` — 64
 
 Agreed, not started.
 
@@ -68,7 +68,6 @@ Agreed, not started.
 - [DOC-SESSION-CHANGES](#doc-session-changes-document-the-2026-09-29-batch-bridge-user-docs-queued) — document the 2026-09-29 batch (bridge user docs)
 - [FEAT-USERS-RBAC](#feat-users-rbac-optional-users-profiles-role-based-access-login-gated-queued) — optional users, profiles & role-based access (login-gated)
 - [FEAT-SECURE-API](#feat-secure-api-https-auth-tokens-mtls-reverse-proxy-first-native-token-auth-in-app-queued) — HTTPS + auth (tokens / mTLS): reverse-proxy first, native token auth in-app
-- [DEF-ADDGW-DEFAULT-REAL](#def-addgw-default-real-add-gateway-real-gateway-is-the-default-mock-is-the-optionaladvanced-path-queued) — Add Gateway: real gateway is the default, mock is the optional/advanced path
 - [FEAT-DASH-MODEL-DETAILS](#feat-dash-model-details-show-gatewaybattery-model-on-the-main-dashboard-queued) — show gateway/battery model on the main dashboard
 - [FEAT-HELP-TAB](#feat-help-tab-promote-guide-to-a-help-landing-page-guide-support-queued-optional) — promote "Guide" to a "Help" landing page (Guide + Support)
 - [FEAT-PARAM-SOLAR-SOURCE](#feat-param-solar-source-consolidate-solar-source-parameters-export-only-non-ct-solar-queued-maybe-too-obscure) — consolidate solar-source parameters (export-only / non-CT solar)
@@ -128,7 +127,7 @@ Agreed, not started.
 - [FEAT-SETUP-WIZARD](#feat-setup-wizard-first-run-setup-and-re-configuration-later) — first-run setup, and re-configuration later
 - [RESEARCH-GRID-PHASE-ENUM](#research-grid-phase-enum-confirm-gridphaseconset-and-ratedgridvolt-enums) — confirm `gridPhaseConSet` and `ratedGridVolt` enums
 
-### `PARTIAL` — 28
+### `PARTIAL` — 27
 
 Shipped in part; the remainder is named in the section.
 
@@ -136,7 +135,6 @@ Shipped in part; the remainder is named in the section.
 - [FEAT-LEGAL-DISCLAIMER](#feat-legal-disclaimer-unofficial-app-disclaimer-startup-log-first-connect-docs-gh-links-core-done-2026-09-29) — unofficial-app disclaimer (startup log + first-connect + docs + GH links)
 - [FEAT-SOC-RING-RESERVE-MARKER](#feat-soc-ring-reserve-marker-mark-the-active-modes-reserved-soc-on-the-soc-ring-done-2026-09-30) — mark the active mode's reserved SoC on the SoC ring
 - [FEAT-DOCS-DISCLAIMER](#feat-docs-disclaimer-disclaimer-on-the-docs-home-page-like-the-franklinwh-cloud-docs-done-2026-09-30) — disclaimer on the docs home page, like the FranklinWH Cloud docs
-- [DEF-BOTTOM-NAV-ALWAYS-ON](#def-bottom-nav-always-on-bottom-nav-shown-at-desktop-widths-breakpoint-not-firing) — bottom nav shown at desktop widths (breakpoint not firing)
 - [FEAT-WEATHER-SOLAR-OPENMETEO](#feat-weather-solar-openmeteo-open-meteo-weather-solar-forecast-pv-setup-like-energipay) — Open-Meteo weather + Solar Forecast + PV setup (like Energipay)
 - [FEAT-ENERGY-SANKEY-RANGES](#feat-energy-sankey-ranges-match-modbus-energy-flow-dayweekmonthyear-date-picker-done) — match Modbus energy flow: Day/Week/Month/Year + date picker
 - [FEAT-NOTIFICATIONS-SETTINGS](#feat-notifications-settings-energipay-style-notifications-management-in-settings) — Energipay-style notifications management in Settings
@@ -188,10 +186,12 @@ Finding, analysis or standing practice — not a work item.
 - [INFO-CONTAINER-TZ](#info-container-tz-containers-are-utc-the-host-is-aest-mostly-harmless) — containers are UTC, the host is AEST; mostly harmless
 - [OPS-BACKUP](#ops-backup-back-up-regularly-so-nothing-is-lost) — back up regularly so nothing is lost
 
-### `DONE` — 6
+### `DONE` — 8
 
 Shipped. Kept for the reasoning; details in git history.
 
+- [DEF-ADDGW-DEFAULT-REAL](#def-addgw-default-real-add-gateway-real-gateway-is-the-default-mock-is-the-optionaladvanced-path) — Add Gateway: real gateway is the default, mock is the optional/advanced path
+- [DEF-BOTTOM-NAV-ALWAYS-ON](#def-bottom-nav-always-on-bottom-nav-shown-at-desktop-widths-breakpoint-not-firing) — bottom nav shown at desktop widths (breakpoint not firing)
 - [DEF-DASH-CARDS-NARROW](#def-dash-cards-narrow-dashboard-cards-stay-narrow-while-space-goes-unused) — dashboard cards stay narrow while space goes unused
 - [DEF-DASH-TEXT-WRAP](#def-dash-text-wrap-labels-and-values-wrap-mid-phrase-in-the-soc-card) — labels and values wrap mid-phrase in the SoC card
 - [DEF-SOC-RING-RESERVE-UNREADABLE](#def-soc-ring-reserve-unreadable-the-reserve-marker-is-correct-and-still-reads-as-a-glitch) — the reserve marker is correct and still reads as a glitch
@@ -503,9 +503,12 @@ CREDENTIALS warning). Ties to the durable Logs DB (the startup line is now audit
 
 ---
 
-## DEF-ADDGW-DEFAULT-REAL — Add Gateway: real gateway is the default, mock is the optional/advanced path (queued)
+## DEF-ADDGW-DEFAULT-REAL — Add Gateway: real gateway is the default, mock is the optional/advanced path
 
-**Status:** `QUEUED` — queued — **Filed:** 2026-09-29 (user). **Scope:** UI ordering/emphasis in the Gateways
+**Status:** `DONE` — verified 2026-10-15: Discover first, manual real gateway second and
+expanded, mock last inside a collapsed `<details>` marked OPTIONAL — exactly the "Want"
+below. Shipped at some point without the status being updated; pinned now by
+`tests/test_ui_layout_regressions.py`. Originally filed — **Filed:** 2026-09-29 (user). **Scope:** UI ordering/emphasis in the Gateways
 settings, no backend change.
 
 **Now (wrong emphasis):** the Add-Gateway panel leads with **"ADD MOCK GATEWAY (TESTING)"** — the mock
@@ -620,7 +623,10 @@ Ties to the Site/Meter model ([[site-meter-utility-tariff-model]]) + the HA-enti
 
 ## DEF-BOTTOM-NAV-ALWAYS-ON — bottom nav shown at desktop widths (breakpoint not firing)
 
-**Status:** `PARTIAL` — FIXED 2026-09-21 (verify pending rebuild)
+**Status:** `DONE` — verified 2026-10-15. The fix below is in place and now pinned by
+`tests/test_ui_layout_regressions.py`, which fails if a Tailwind breakpoint class returns
+to either partial. The "verify pending rebuild" note sat unresolved for three weeks because
+nothing checked it; a test does now.
 **Reported:** 2026-09-21 (user: "bottom nav bar appears to be permanently on? energipay's
 measure window size precisely to invoke in that context")
 

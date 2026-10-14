@@ -269,8 +269,9 @@ document.addEventListener('alpine:init', () => {
                             : window.matchMedia('(max-width: 699px)').matches;
     },
     initSidebar() {
-      // 768 px cutover: phones (< 768) get the bottom bar; all iPads/desktop get the sidebar
-      // by default. The navLayout override wins over this.
+      // 700 px cutover: phones (<= 699) get the bottom bar; all iPads/desktop get the
+      // sidebar by default. The navLayout override wins over this. Keep this number and
+      // the matchMedia below in step — the comment said 768 while the query said 699.
       this._mqNarrow = window.matchMedia('(max-width: 699px)');
       const saved = localStorage.getItem('fwh-sidebar-collapsed');
       this.narrow = this._computeNarrow();
