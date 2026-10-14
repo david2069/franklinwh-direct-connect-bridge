@@ -2,6 +2,9 @@
 # HA Add-on: the supervisor overrides BUILD_FROM with an arch-specific ALPINE base
 # (see build.yaml). Works on both Debian (apt-get) and Alpine (apk).
 ARG BUILD_FROM=python:3.12-slim
+# Stamped by tools/build_image.sh so a running container can say WHICH source it is.
+# Without it, "I rebuilt and tested" is unverifiable — and was wrong at least once.
+ARG SOURCE_SHA=unknown
 FROM $BUILD_FROM
 
 WORKDIR /app
@@ -37,3 +40,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["franklinwh-direct-connect-bridge", "run"]
+
+ARG SOURCE_SHA
+ENV BRIDGE_SOURCE_SHA=${SOURCE_SHA}

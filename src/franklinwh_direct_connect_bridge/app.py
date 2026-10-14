@@ -5025,7 +5025,10 @@ def create_app() -> FastAPI:
         ``__version__`` — a rebuild during development changes the files without
         touching the version string.
         """
-        return {"version": __version__, "asset": _asset_version()}
+        return {"version": __version__, "asset": _asset_version(),
+                # Which SOURCE this container was built from. Compare it with the
+                # working tree before believing a live test: tools/dev.sh does.
+                "source_sha": os.environ.get("BRIDGE_SOURCE_SHA", "unknown")}
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):

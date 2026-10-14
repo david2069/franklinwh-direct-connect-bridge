@@ -40,6 +40,7 @@ else
 fi
 touch "$HERE/docs_site/.gitkeep"
 
-echo "==> docker build $TAG"
-docker build -t "$TAG" "$HERE"
+SHA="$("$HERE/tools/source_stamp.sh")"
+echo "==> docker build $TAG (source $SHA)"
+docker build --build-arg "SOURCE_SHA=$SHA" -t "$TAG" "$HERE"
 echo "==> done: $TAG"

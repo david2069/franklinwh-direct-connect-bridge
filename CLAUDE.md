@@ -131,6 +131,30 @@ claims verified on the emulator, not every claim.
 **Emulator output is not evidence of what a register or field means.** It serves what it
 was told to serve.
 
+## Verifying against the running bridge
+
+**Use `tools/dev.sh`.** It builds the image, recreates the container, and then proves the
+container is running this working tree by comparing a source stamp. It exits non-zero if
+they differ.
+
+**`docker compose up -d --build` does nothing here.** `docker-compose.yml` has no `build:`
+section on purpose: the image needs the sibling `franklinwh-direct-connect-api` (and
+optionally `franklinwh-cloud`) wheels built first, so a bare `docker compose build` would
+produce a broken image. With no `build:`, the `--build` flag is silently ignored and the
+OLD container keeps running. A live test then measures old code and passes.
+
+That is not hypothetical. On 2026-10-14 a fix for the Modbus probe was "verified" against a
+container that had never been rebuilt; the measurement was of the defect, not the fix. The
+second raw probe site was only found because the result looked wrong.
+
+So, before believing any measurement taken against the running bridge:
+
+- `tools/dev.sh` must print **OK**. If it prints MISMATCH, the measurement is worthless.
+- `/api/version` carries `source_sha`. Quote it alongside the measurement.
+- A stamp with a `+` suffix means uncommitted changes are in the image. Fine while
+  iterating; commit before quoting that stamp as evidence, because `+<hash>` is not
+  something anyone else can check out.
+
 ## Defect tracking and change management
 
 The detailed policy lives in `franklinwh-modbus` at
