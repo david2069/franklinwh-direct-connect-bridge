@@ -649,7 +649,30 @@ generation — matches Energipay's "measure window size precisely" approach.
 
 ## FEAT-HA-ADDON-PARITY — port Modbus bridge's HA add-on changes (timezone, Supervisor API, actionable notifications) (queued)
 
-**Status:** `QUEUED` — queued — **Filed:** 2026-09-22 (user)
+**Status:** `QUEUED` — **Filed:** 2026-09-22 (user). **Reviewed 2026-10-15** against the
+Modbus Bridge's actual commits; the gaps below are verified in our own source, not assumed.
+
+**These are HOST-platform concerns, not API-richness ones.** The note elsewhere that our
+richer local API makes their work less relevant holds for the *wizard*, and does not hold
+here — the Supervisor, the broker's lifecycle and the host clock are the same for any
+add-on regardless of which device API sits behind it.
+
+| Their change | Our state | Gap |
+|---|---|---|
+| `mqtt: need` → `mqtt: want` (`67778c2`) | `config.yaml:34` already `mqtt:want` | none |
+| Re-ask the Supervisor every 30s when no broker, and connect when Mosquitto appears later (`67778c2`) | `apply_supervisor_mqtt()` is called ONCE, in `lifespan` (`app.py:781`) | **real** — install Mosquitto after us and we never notice until a restart |
+| Host timezone from the Supervisor in Python, not bashio (`137146a`) | nothing sets a timezone anywhere in the add-on path — no `TZ`, no `bashio`, no Supervisor lookup in `docker-entrypoint.sh`, `Dockerfile` or `config.yaml` | **real**, and see the issue below |
+| HA itself as an entity source via `http://supervisor/core` (`b636366`) | n/a — we publish TO HA over MQTT; we do not read HA entities as scheduler conditions | not applicable today |
+
+**The timezone gap is not cosmetic.** It surfaced a separate and larger defect: the
+scheduler evaluates cron windows and tariff windows against naive container-local time,
+while `docs/TIMEZONES.md` line 83 says the rule is site wall-clock. Filed as issue #41
+(`sev:S2-major`). Fixing the container clock is necessary but NOT sufficient — a correct
+host clock still leaves the contract unimplemented for a gateway in a different zone from
+the host. Do #41 and this item together, in that order.
+
+[[INFO-CONTAINER-TZ]] says "containers are UTC, the host is AEST; mostly harmless". That
+assessment is wrong for the scheduler and should be corrected when #41 lands.
 
 Port the HA add-on improvements the Modbus bridge made:
 - **Timezone:** honor the HA add-on / Supervisor timezone so schedule triggers, TOU
