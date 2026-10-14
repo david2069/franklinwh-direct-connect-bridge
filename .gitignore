@@ -33,3 +33,6 @@ docs_site/*
 !docs_site/.gitkeep
 tools/backup_dev_to_icloud.sh
 tools/com.david2069.dev-icloud-backup.plist
+
+# Local PII denylist for tools/pii_check.py — never committed
+.pii-denylist
