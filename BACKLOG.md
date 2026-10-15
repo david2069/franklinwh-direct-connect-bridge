@@ -4409,10 +4409,15 @@ Village Energy compliance gateway, connecting to the **aGate's Modbus TCP server
 slave 1) to receive DNSP dispatch and "control this system's energy export", with a
 documented **1.5 kW fallback cap** if it goes offline.
 
-So the vendor's own answer to "how is export controlled on this hardware" is a Modbus client
-writing to the aGate. What that device writes is **not stated** in the guide. Reading the
-Voltello/Village Energy documentation is the cheapest next step and may name the registers
-outright.
+That is a commissioning procedure, not a protocol description. The guide does **not** say
+that LinkPro writes to the aGate, nor what it would write. The owner's reading is that the
+device supports **solar PV systems only**, with reading the aGate's SoC and state as a
+secondary benefit, and that the FranklinWH knowledge base does not explain how Voltello
+interacts with Amber or Localvolts in respect of the aGate.
+
+**So it is not a route to this feature and should not be treated as one.** It is recorded
+because it is the only vendor-documented mention of export control we have found, not because
+it answers anything here.
 
 ### Order of work
 

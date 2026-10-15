@@ -24,6 +24,19 @@ That is the whole of it. The page is a commissioning procedure, not a protocol d
 - Whether the serial-number binding gates anything at the aGate, or is bookkeeping in the app.
 - Whether the 1.5 kW fallback is readable or configurable.
 
+## The owner's reading, and where enquiry stopped
+
+Stated by the owner, 2026-10-15:
+
+- The device is believed to be a **bridge to support solar PV systems only**.
+- A **secondary benefit** is that it reads the aGate's **SoC and state**.
+- **The FranklinWH knowledge base was searched and does not say** how Voltello or Village
+  Energy interact with **Amber Electric** or **Localvolts** in respect of the aGate.
+
+So beyond solar curtailment there is nothing to go on. The owner says as much: any
+functionality above that is speculation, and it is not recorded here as anything else. The
+enquiry has been made and did not produce an answer; that is itself the finding.
+
 ## Relevance to this project
 
 Narrow, and worth keeping narrow:
