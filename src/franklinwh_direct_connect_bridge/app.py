@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -2453,21 +2454,53 @@ def create_app() -> FastAPI:
                 "exposed": req.exposed}
 
     @app.get("/api/ha/notify-targets")
-    def api_ha_notify_targets():
-        """``notify.*`` services per instance — these are services, not entities,
-        so they never appear in an entity list."""
+    def api_ha_notify_targets(instance: str | None = Query(None)):
+        """``notify.*`` services, optionally for ONE instance — these are services, not
+        entities, so they never appear in an entity list.
+
+        Each target carries what is needed to tell NEAR-DUPLICATES apart. Home Assistant
+        re-registers a companion app as ``notify.pixel_tablet_2`` beside the original and
+        gives no hint which one is live; the only evidence is the matching entity's
+        ``last_updated``, so it is fetched and reported rather than left for the user to
+        find in a 3800-entity browser. ``duplicate_of`` names the target it shadows.
+        """
         st = _ha_store()
         out, errors = [], {}
         for inst in st.ha_instances():
             if not inst.get("enabled"):
                 continue
+            if instance and inst["id"] != instance:
+                continue
             try:
-                for target in ha_instances.notify_targets(inst["base_url"],
-                                                          inst.get("token")):
-                    out.append({"instance_id": inst["id"], "instance": inst["name"],
-                                "service": target})
+                services = ha_instances.notify_targets(inst["base_url"], inst.get("token"))
             except Exception as e:                               # noqa: BLE001
                 errors[inst["id"]] = f"{type(e).__name__}: {e}"
+                continue
+            # The entity side, when there is one. Best-effort: a target with no matching
+            # entity is still a usable target, it just has no last-seen to show.
+            meta: dict[str, dict] = {}
+            try:
+                for s in ha_instances.states(inst["base_url"], inst.get("token")):
+                    eid = s.get("entity_id", "")
+                    if eid.startswith("notify."):
+                        meta[eid] = {
+                            "name": (s.get("attributes") or {}).get("friendly_name") or "",
+                            "last_updated": s.get("last_updated") or s.get("last_changed"),
+                            "state": s.get("state"),
+                        }
+            except Exception:                                    # noqa: BLE001 — metadata only
+                meta = {}
+            bases: dict[str, str] = {}
+            for target in services:
+                m = meta.get(target, {})
+                # "pixel_tablet_2" shadows "pixel_tablet" — only when the original exists.
+                base = re.sub(r"_\d+$", "", target)
+                dup = base if (base != target and base in services) else None
+                bases.setdefault(base, target)
+                out.append({"instance_id": inst["id"], "instance": inst["name"],
+                            "service": target, "name": m.get("name") or "",
+                            "last_updated": m.get("last_updated"),
+                            "duplicate_of": dup})
         return {"targets": out, "errors": errors}
 
     @app.get("/api/ha/notify-devices")
@@ -2478,12 +2511,18 @@ def create_app() -> FastAPI:
         while notifications as a whole are off, so both are reported.
         """
         st = _ha_store()
-        by_id = {i["id"]: i["name"] for i in st.ha_instances()}
+        by_id = {i["id"]: i for i in st.ha_instances()}
         return {
             "master_enabled": bool(get_settings().ha_notify),
+            # A device can be ON while the instance carrying it is OFF, which delivers
+            # nothing — so the two are reported separately rather than merged into one
+            # "enabled" that cannot explain the silence.
             "devices": [{**d, "enabled": bool(d["enabled"]),
-                         "instance": by_id.get(d["instance_id"], "(missing instance)"),
-                         "instance_missing": d["instance_id"] not in by_id}
+                         "instance": (by_id.get(d["instance_id"]) or {}).get(
+                             "name", "(missing instance)"),
+                         "instance_missing": d["instance_id"] not in by_id,
+                         "instance_disabled": not (by_id.get(d["instance_id"]) or {}).get(
+                             "enabled", 1)}
                         for d in st.notify_devices()],
         }
 

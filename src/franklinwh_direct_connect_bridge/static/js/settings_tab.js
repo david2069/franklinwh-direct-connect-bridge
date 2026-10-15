@@ -1116,13 +1116,18 @@ function settingsTab() {
       this.notif.addDev = { id: dev.id, alias: dev.alias, instance_id: dev.instance_id, service: dev.service };
       this.notif.discovered = []; this.notif.pickerOpen = false;
     },
+    // Ask the CHOSEN instance, not every instance. A bridge can read several Home
+    // Assistants and a notification goes to exactly one — mixing their targets in one
+    // list is how a message ends up on the wrong house's phone.
     async discover() {
       this.notif.busy = true;
+      const inst = this.notif.addDev.instance_id;
       try {
-        if (!this.notif.targets) this.notif.targets = await (await fetch('api/ha/notify-targets')).json();
-        this.notif.discovered = (this.notif.targets.targets || [])
-          .filter(t => !this.notif.addDev.instance_id || t.instance_id === this.notif.addDev.instance_id)
-          .map(t => t.service);
+        const url = 'api/ha/notify-targets' + (inst ? '?instance=' + encodeURIComponent(inst) : '');
+        const d = await (await fetch(url)).json();
+        this.notif.discovered = d.targets || [];
+        const err = (d.errors || {})[inst];
+        if (err) { Alpine.store('app').toast('Could not read that instance: ' + err, 'error'); return; }
         if (!this.notif.discovered.length) { Alpine.store('app').toast('No notify services found on that instance', 'warning'); return; }
         this.notif.pickerSearch = ''; this.notif.pickerOpen = true;
       } catch (e) { Alpine.store('app').toast('Discover failed: ' + e.message, 'error'); }
@@ -1130,11 +1135,56 @@ function settingsTab() {
     },
     get notifyPicker() {
       const q = this.notif.pickerSearch.trim().toLowerCase();
-      return this.notif.discovered.map(x => ({ service: x, label: this.friendlyService(x) }))
+      return this.notif.discovered
+        .map(t => ({
+          service: t.service,
+          label: t.name || this.friendlyService(t.service),
+          // Home Assistant re-registers a companion app as `_2` beside the original and
+          // gives no hint which is live. Last-seen IS the hint — show it, rather than
+          // leaving the user to find it in a 3800-entity browser.
+          seen: this.fmtSeen(t.last_updated),
+          shadows: t.duplicate_of || '',
+        }))
         .filter(x => !q || x.service.toLowerCase().includes(q) || x.label.toLowerCase().includes(q));
     },
+
+    //: "2 hours ago" / "just now" / '' when Home Assistant does not report it.
+    fmtSeen(iso) {
+      if (!iso) return '';
+      const then = Date.parse(iso);
+      if (!then) return '';
+      const mins = Math.max(0, Math.round((Date.now() - then) / 60000));
+      if (mins < 2) return 'seen just now';
+      if (mins < 60) return `seen ${mins} min ago`;
+      const hrs = Math.round(mins / 60);
+      if (hrs < 48) return `seen ${hrs} h ago`;
+      return `seen ${Math.round(hrs / 24)} d ago`;
+    },
     friendlyService(x) { return x.replace(/^notify\./, '').replace(/mobile_app_/, '').replace(/_/g, ' '); },
-    chooseService(x) { this.notif.addDev.service = x; this.notif.pickerOpen = false; },
+    // Take Home Assistant's own friendly name across. Typing "David's iPhone 15 Pro" by
+    // hand, next to a list that already says it, is work the picker should have done.
+    chooseService(x, label) {
+      this.notif.addDev.service = x;
+      if (!this.notif.addDev.alias && label) this.notif.addDev.alias = label;
+      this.notif.pickerOpen = false;
+    },
+
+    //: Turn an instance off WITHOUT deleting it. Its devices stop being offered and stop
+    //: receiving — suppression, not removal, so the aliases and the history survive a
+    //: holiday, a moved server, or a token that needs replacing.
+    async toggleInstance(inst) {
+      try {
+        const r = await fetch('api/ha/instances/' + inst.id, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: !inst.enabled }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        await this.loadNotif();
+        Alpine.store('app').toast(
+          `${inst.name} ${inst.enabled ? 'disabled — its devices are suppressed' : 'enabled'}`,
+          'success');
+      } catch (e) { Alpine.store('app').toast('Could not change it: ' + e.message, 'error'); }
+    },
     async testNewDevice() {
       const f = this.notif.addDev;
       if (!f.instance_id || !f.service) { Alpine.store('app').toast('Pick an instance and service first', 'warning'); return; }

@@ -132,6 +132,14 @@ def fire(store, event: str, title: str, message: str, *, cfg: dict | None = None
             store.log_notify(event, title=title, message=message,
                              device=d.get("alias") or d["id"], ok=False)
             continue
+        # A DISABLED instance suppresses its devices without anyone having to disable each
+        # one — that is the point of being able to turn an instance off instead of deleting
+        # it. Logged as skipped rather than failed: nothing went wrong, it was switched off.
+        if not inst.get("enabled", 1):
+            store.log_notify(event, title=title, message=message,
+                             device=f"{d.get('alias') or d['id']} (instance disabled)",
+                             ok=None)
+            continue
         r = ha_instances.send_notification(inst["base_url"], inst.get("token"),
                                            d["service"], title, message)
         ok = bool(r.get("ok"))

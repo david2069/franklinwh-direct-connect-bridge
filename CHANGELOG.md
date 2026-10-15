@@ -11,7 +11,29 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Picking a notification target is a picker, not a search of 3804 entities.** Discover
+  now asks the **chosen** Home Assistant instance rather than all of them — one bridge can
+  read several, and a notification goes to exactly one. Each target shows Home Assistant's
+  own friendly name (and fills the alias from it), when it was **last seen**, and whether
+  it is a **duplicate** of another: HA re-registers a companion app as `notify.x_2` beside
+  `notify.x` and gives no hint which is live, so last-seen — the only evidence there is —
+  is shown instead of left to be hunted for.
+
+- **A Home Assistant instance can be disabled without deleting it.** Its devices stop being
+  offered and stop receiving, while their aliases and delivery history survive — for a
+  holiday, a moved server, or a token that needs replacing. A device on a disabled instance
+  says so rather than looking enabled and silently delivering nothing, and the delivery log
+  records those as *skipped*, not *failed*: nothing went wrong, it was switched off.
+
+- The add-on's own Home Assistant now reads as **"This Home Assistant (Supervisor)"** with
+  an *auto-detected* badge, instead of showing `http://supervisor/core`.
+
+### Fixed
+
+- **The add-device dialog no longer discards a half-filled form** on a click outside it —
+  the same fix as the schedule editor.
 
 ## [0.3.2] — 2026-10-15
 

@@ -1603,12 +1603,23 @@
             <div class="text-sm font-medium truncate" style="color:var(--text-primary)">
               <span x-text="inst.name"></span>
               <span x-show="inst.is_default" class="chip ok ml-1">default</span>
+              <!-- The add-on registers the Home Assistant it runs inside. Saying so beats
+                   showing http://supervisor/core, which means nothing to a user. -->
+              <span x-show="(inst.base_url || '').startsWith('http://supervisor')"
+                    class="chip muted ml-1">auto-detected</span>
+              <span x-show="!inst.enabled" class="chip warn ml-1">disabled</span>
             </div>
-            <div class="text-[11px] font-mono truncate text-slate-500" x-text="inst.base_url"></div>
+            <div class="text-[11px] font-mono truncate text-slate-500"
+                 x-text="(inst.base_url || '').startsWith('http://supervisor')
+                         ? 'This Home Assistant (Supervisor)' : inst.base_url"></div>
           </div>
           <div class="flex items-center gap-2 shrink-0">
             <span class="chip" :class="inst.has_token ? 'ok' : 'muted'"
                   x-text="inst.has_token ? 'token set' : 'no token'"></span>
+            <!-- Disable, not delete: suppresses its devices and keeps the aliases and the
+                 delivery history for when it comes back. -->
+            <button @click="toggleInstance(inst)" class="btn btn-secondary btn-sm"
+                    x-text="inst.enabled ? 'Disable' : 'Enable'"></button>
             <button @click="deleteInstance(inst)" class="text-slate-500 hover:text-red-400" title="Remove"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>
           </div>
         </div>
@@ -1664,6 +1675,7 @@
               <div class="text-[11px] font-mono truncate text-slate-500">
                 <span x-text="dev.service"></span> · <span x-text="dev.instance"></span>
                 <span x-show="dev.instance_missing" class="chip warn ml-1">instance missing</span>
+                <span x-show="dev.instance_disabled" class="chip warn ml-1">instance disabled</span>
               </div>
             </div>
           </div>
@@ -1678,9 +1690,12 @@
   </div>
 
   <!-- Add-device modal: Discover + Test-before-save -->
+  <!-- The backdrop does not close this: an alias, an instance and a tested service are
+       work, and discarding them on a stray click is the defect we fixed in the schedule
+       editor. Escape and Cancel still close it. -->
   <div x-show="notif.addDev" x-cloak class="fixed inset-0 z-[110] flex items-center justify-center p-4"
        @keydown.escape.window="notif.addDev=null">
-    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="notif.addDev=null"></div>
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
     <div class="relative w-full max-w-md rounded-xl border shadow-2xl max-h-[90vh] overflow-auto"
          style="background:var(--surface-0,#0f172a);border-color:var(--border)">
       <div class="px-5 py-3 border-b flex items-center justify-between" style="border-color:var(--border)">
@@ -1693,7 +1708,9 @@
           <input class="form-control form-control-sm block mt-1 w-full" x-model="notif.addDev.alias" placeholder="David's iPhone"></label>
         <label class="text-xs text-slate-500 block">HA instance
           <select class="form-control form-control-sm block mt-1 w-full" x-model="notif.addDev.instance_id">
-            <template x-for="inst in notif.instances" :key="inst.id">
+            <!-- A disabled instance delivers nothing, so offering it here would only
+                 create a device that silently never fires. -->
+            <template x-for="inst in notif.instances.filter(i => i.enabled)" :key="inst.id">
               <option :value="inst.id" x-text="inst.name"></option>
             </template>
           </select></label>
@@ -1707,10 +1724,21 @@
           <div x-show="notif.pickerOpen" x-cloak class="mt-2 rounded border border-white/10 max-h-52 overflow-auto" style="background:var(--surface-1)">
             <input class="form-control form-control-sm w-full" x-model="notif.pickerSearch" placeholder="filter services…">
             <template x-for="opt in notifyPicker" :key="opt.service">
-              <button @click="chooseService(opt.service)"
-                      class="w-full text-left px-3 py-1.5 text-xs hover:bg-white/5 flex justify-between gap-2">
-                <span x-text="opt.label"></span>
-                <span class="font-mono text-slate-500 truncate" x-text="opt.service"></span>
+              <button @click="chooseService(opt.service, opt.label)"
+                      class="w-full text-left px-3 py-1.5 text-xs hover:bg-white/5">
+                <div class="flex justify-between gap-2">
+                  <span x-text="opt.label"></span>
+                  <span class="font-mono text-slate-500 truncate" x-text="opt.service"></span>
+                </div>
+                <!-- Which of two near-identical targets is the live one: last-seen is the
+                     only evidence Home Assistant gives, so it is shown here rather than
+                     left to be hunted for. -->
+                <div class="flex justify-between gap-2 text-[10px]" style="color:var(--text-faint)">
+                  <span x-show="opt.shadows" style="color:#fbbf24">
+                    duplicate of <span class="font-mono" x-text="opt.shadows"></span>
+                  </span>
+                  <span class="ml-auto" x-text="opt.seen"></span>
+                </div>
               </button>
             </template>
           </div>
