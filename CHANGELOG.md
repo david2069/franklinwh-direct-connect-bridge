@@ -11,6 +11,33 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+
+- **One Home Assistant device per integration per aGate.** The device identifier now names
+  the integration — `franklinwh_direct_<serial>` — so this bridge can never merge with the
+  Modbus Bridge or FWHAI into a single device. (That merge is real: two sibling
+  integrations both published `franklinwh_<SERIAL>`, Home Assistant combined them into one
+  device of 155 entities, their discovery configs overwrote each other and a mode command
+  ran on both.) Entity ids are untouched, so this is a device rename and your history stays
+  where it is.
+
+- **The identity namespace can be switched to `fwh_dc`** (Settings → MQTT, confirm-gated).
+  That one DOES re-create entities under new ids — the old ones keep your history — so it
+  is an explicit choice, never automatic, and the API states the cost before you take it.
+
+### Fixed
+
+- **Removing or disabling a gateway now takes its Home Assistant entities with it.** The
+  poller stopped the publisher without clearing discovery, and a retained config outlives
+  the bridge — so a deleted gateway's entities stayed in Home Assistant for ever, while the
+  UI claimed disabling unpublished them. A normal restart still leaves entities alone, which
+  is the case that must never clear them.
+
+- **Commands are subscribed on the topic root they are advertised on.** The publisher built
+  its subscription from `mqtt_prefix` while the discovery configs used the namespace root.
+  Identical today, divergent after a namespace switch — and the failure would have been
+  silent: every command accepted by Home Assistant and received by nobody.
+
 Nothing yet.
 
 ## [0.4.0] — 2026-10-15

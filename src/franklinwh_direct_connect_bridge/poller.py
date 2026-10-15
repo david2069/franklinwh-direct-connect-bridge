@@ -71,7 +71,8 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
     def _start_mqtt():
         """Create + start an MqttPublisher (blocking connect). Raises on failure."""
         # Each gateway is a distinct serial node → distinct HA device (collision-free).
-        device = entities.device_info(node, serial, fw)
+        device = entities.device_info(node, serial, fw,
+                                      namespace=settings.mqtt_namespace)
         def _on_control(key: str, payload: str) -> None:
             """Inbound HA control. Runs on the MQTT network thread, so it is kept
             short and every outcome is logged — a control that silently fails is
@@ -175,9 +176,20 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                         await asyncio.to_thread(pub.clear_discovery)
                         log.info("[%s] cleared HA discovery entities (UI request)", gw.id)
                         gw.unpublish_requested = False
+                    if gw.publisher_restart_requested:
+                        # Identity changed under us (namespace). Everything the publisher
+                        # captured — topic root, client id, entity ids — is stale, so it
+                        # is replaced rather than patched. The retry path below rebuilds
+                        # it on the next tick.
+                        await asyncio.to_thread(pub.stop)
+                        pub = None
+                        gw.mqtt_connected = False
+                        gw.publisher_restart_requested = False
+                        log.info("[%s] MQTT publisher restarting for the new identity", gw.id)
                 except Exception as e:  # noqa: BLE001
                     log.warning("[%s] discovery (re/un)publish failed: %s", gw.id, e)
-                gw.mqtt_connected = pub.is_connected()
+                if pub is not None:
+                    gw.mqtt_connected = pub.is_connected()
             try:
                 # One-session read; power already has entity keys + canonical mode label.
                 # Bound the cycle (DEF-POLLER-STALL fix 2): a full summary is ping+Modbus
@@ -387,5 +399,16 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
         raise
     finally:
         if pub:
+            # Removing or disabling a gateway must take its entities with it: a retained
+            # discovery config outlives the bridge, so Home Assistant would keep
+            # re-creating entities for a gateway that no longer exists. Only on an
+            # explicit removal — clearing them on every restart would be far worse.
+            if getattr(gw, "unpublish_on_stop", False):
+                try:
+                    await asyncio.to_thread(pub.clear_discovery)
+                    log.info("[%s] cleared HA entities (gateway removed or disabled)", gw.id)
+                except Exception as e:  # noqa: BLE001 — shutdown must not raise
+                    log.warning("[%s] could not clear HA entities on stop: %s", gw.id, e)
+                gw.unpublish_on_stop = False
             await asyncio.to_thread(pub.stop)
             log.info("[%s] MQTT publisher stopped", gw.id)

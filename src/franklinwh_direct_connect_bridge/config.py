@@ -51,6 +51,16 @@ class Settings(BaseSettings):
     mqtt_username: str = ""
     mqtt_password: str = ""
     mqtt_prefix: str = "franklinwh-local"
+    #: The identity namespace for Home Assistant: entity unique_ids are
+    #: ``<namespace>_<node>_<key>`` and the device identifier is
+    #: ``<namespace>_direct_<node>``. Agreed across the FranklinWH bridges so two
+    #: integrations can never merge into one HA device (2026-10-15).
+    #:
+    #: Left at the legacy "franklinwh" for EXISTING installs on purpose: changing it
+    #: creates new entities and strands the user's history on the old ones. New installs
+    #: start on "fwh_dc", and an existing install can switch deliberately — see
+    #: POST /api/mqtt/namespace and docs/HA_HISTORY.md.
+    mqtt_namespace: str = "franklinwh"
     ha_discovery_prefix: str = "homeassistant"
 
     # Metrics / history (local SQLite). Tri-state: None = auto (see ``metrics_active``);
@@ -160,7 +170,8 @@ _OVERRIDE_KEYS = {"allow_writes", "log_level", "ha_notify", "ha_url", "ha_token"
                   # broker in one click instead of sending the user to the add-on options
                   # and a restart. Enabling it CREATES Home Assistant entities, so it stays
                   # an explicit action, never something startup decides.
-                  "mqtt_enabled", "mqtt_host", "mqtt_port", "mqtt_username", "mqtt_password"}
+                  "mqtt_enabled", "mqtt_host", "mqtt_port", "mqtt_username", "mqtt_password",
+                  "mqtt_prefix", "mqtt_namespace"}
 
 
 def overrides_path() -> Path:

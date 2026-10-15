@@ -43,7 +43,7 @@ def test_sw_version_reports_the_real_version():
 # ── the identity contract these fixes protect ─────────────────────────────────
 def test_device_identity_keys_off_the_node_not_the_package_name():
     d = entities.device_info("abc123", "abc123", None)
-    assert d["identifiers"] == ["franklinwh_abc123"]
+    assert d["identifiers"] == ["franklinwh_direct_abc123"]
     # The package was renamed to franklinwh_direct_connect_bridge; none of the
     # identity may follow it, or every existing HA entity orphans.
     blob = repr(d)

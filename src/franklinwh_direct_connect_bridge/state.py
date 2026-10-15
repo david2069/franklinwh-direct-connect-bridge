@@ -38,6 +38,14 @@ class GatewayState:
     last_summary: dict = field(default_factory=dict) # last-good full /api/summary (poller-cached)
     republish_requested: bool = False   # UI → poller: re-publish HA discovery
     unpublish_requested: bool = False   # UI → poller: clear entities from HA
+    #: UI → poller: drop the MQTT publisher and build a new one. Needed when something the
+    #: publisher captured at construction changes — the identity namespace decides the
+    #: topic root, the client id and every entity id, so it cannot be patched in place.
+    publisher_restart_requested: bool = False
+    #: Clear this gateway's Home Assistant entities when its poller stops. Set when the
+    #: gateway is REMOVED or DISABLED — not on a normal shutdown, where wiping the
+    #: entities on every add-on restart would be far worse than leaving them.
+    unpublish_on_stop: bool = False
     # FORCE truth from the Modbus M704 WSet state (the aGate 1301 run_status does NOT surface
     # a dispatch — it stays Charging/Discharging). Set by the VPP monitor loop; None until
     # first observed / when Modbus is unavailable. Read by the summary + roster for the badge.

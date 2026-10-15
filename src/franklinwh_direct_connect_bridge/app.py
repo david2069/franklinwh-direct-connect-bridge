@@ -274,6 +274,16 @@ class SetupExpectedReq(BaseModel):
     apowers: int | None = None
 
 
+class MqttNamespaceReq(BaseModel):
+    """``fwh_dc`` to adopt the per-integration namespace, ``franklinwh`` to go back.
+
+    Defined at module level because FastAPI resolves the annotation from the module's
+    globals — nested inside create_app() it silently became a QUERY parameter.
+    """
+    namespace: str
+    confirm: bool = False
+
+
 class SetupTimezoneReq(BaseModel):
     """The site's IANA timezone, e.g. ``Australia/Sydney``. One per site."""
     timezone: str
@@ -1686,6 +1696,12 @@ def create_app() -> FastAPI:
         gid = row["id"]
         s = get_settings()
         want_poll = s.mqtt_enabled or metrics_active(s)
+        # Disabled, or no longer publishing → take its Home Assistant entities with it.
+        # The poller's shutdown path does the clearing, because that is where the
+        # publisher lives.
+        gw_live = state.get_gateway(gid)
+        if gw_live is not None and (not row.get("enabled") or not row.get("publish_ha", True)):
+            gw_live.unpublish_on_stop = True
         await supervisor.stop_poller(gid)
         state.unregister_gateway(gid)
         if not row.get("enabled") or not want_poll:
@@ -1749,6 +1765,11 @@ def create_app() -> FastAPI:
             raise HTTPException(503, "metrics store is disabled; gateway roster needs it")
         if st.gateway(gw_id) is None:
             raise HTTPException(404, f"no gateway '{gw_id}'")
+        # Deleting a gateway leaves its retained discovery configs behind unless we say
+        # so: Home Assistant would keep re-creating entities for a gateway that is gone.
+        gw_live = state.get_gateway(gw_id)
+        if gw_live is not None:
+            gw_live.unpublish_on_stop = True
         await supervisor.stop_poller(gw_id)
         mockgw.stop_mock(gw_id)
         state.unregister_gateway(gw_id)
@@ -4941,6 +4962,68 @@ def create_app() -> FastAPI:
         return {"ok": True, "host": found["host"], "port": found["port"],
                 "restart_required": False,
                 "note": "Publishing is on — the poller connects within a minute."}
+
+    @app.get("/api/mqtt/namespace")
+    def api_mqtt_namespace_get():
+        """The identity namespace in use, and what changing it would cost."""
+        s = get_settings()
+        from .publish.mqtt_publisher import topic_root
+        ns = s.mqtt_namespace or "franklinwh"
+        return {
+            "namespace": ns,
+            "recommended": "fwh_dc",
+            "is_recommended": ns == "fwh_dc",
+            "topic_root": topic_root(s),
+            "device_identifier_example": f"{ns}_direct_<serial>",
+            "unique_id_example": f"{ns}_<serial>_soc",
+            # Said plainly, because it is the user's history that pays for it.
+            "cost": ("Entity ids change, so Home Assistant creates NEW entities and the "
+                     "existing ones keep your history. Recoverable by renaming — see "
+                     "docs/HA_HISTORY.md — but not automatic."),
+        }
+
+    @app.post("/api/mqtt/namespace")
+    def api_mqtt_namespace_set(req: MqttNamespaceReq):
+        """Adopt an identity namespace. Confirm-gated, because it re-creates entities.
+
+        Why it exists: one Home Assistant device per INTEGRATION per aGate. Two sibling
+        bridges both published ``franklinwh_<SERIAL>``, so Home Assistant merged them into
+        a single device of 155 entities whose discovery configs overwrote each other and
+        whose commands ran on both. The namespace is what keeps them apart.
+        """
+        _guard_writes()
+        ns = (req.namespace or "").strip().lower()
+        if not re.fullmatch(r"[a-z][a-z0-9_]{2,15}", ns):
+            raise HTTPException(422, "namespace must be lower-case letters, digits and "
+                                     "underscores, e.g. fwh_dc")
+        if not req.confirm:
+            raise HTTPException(428, "refused: pass confirm=true — this re-creates every "
+                                     "entity in Home Assistant under new ids")
+        s = get_settings()
+        if ns == (s.mqtt_namespace or "franklinwh"):
+            return {"ok": True, "namespace": ns, "changed": False}
+
+        # Clear the OLD discovery configs first, while the publishers still know them.
+        # Leaving them retained would leave a second, dead device in Home Assistant for
+        # ever — the broker keeps handing those configs back on every restart.
+        # The publisher lives inside each gateway's poller task, so this goes through the
+        # same request flags the Republish / Clear HA buttons use. Order matters: clear
+        # under the OLD identity first (the publisher still knows those topics), then
+        # change the namespace, then force a rebuild.
+        asked = 0
+        for gw in (get_gateways() or []):
+            gw.unpublish_requested = True
+            asked += 1
+
+        save_override("mqtt_namespace", ns)
+        setattr(s, "mqtt_namespace", ns)        # live object: the pollers hold it
+        for gw in (get_gateways() or []):
+            gw.publisher_restart_requested = True
+        _audit("mqtt_namespace", detail=ns, result="changed", ok=True)
+        return {"ok": True, "namespace": ns, "changed": True, "gateways": asked,
+                "note": ("Publishing restarts under the new ids. Any entity Home Assistant "
+                         "kept from the old namespace can be removed under Settings → "
+                         "Devices & services → MQTT.")}
 
     @app.get("/api/mqtt/orphans")
     def api_mqtt_orphans():

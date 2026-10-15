@@ -33,7 +33,7 @@ def test_no_serial_still_gives_a_usable_name():
 def test_the_identifiers_do_not_change_with_the_name():
     """THE thing that must not move: identifiers are the device's identity in HA."""
     d = entities.device_info("abc123", SERIAL)
-    assert d["identifiers"] == ["franklinwh_abc123"]
+    assert d["identifiers"] == ["franklinwh_direct_abc123"]
     assert d["name"] == "FranklinWH Direct 24170091"
     assert d["serial_number"] == SERIAL
 

@@ -10,6 +10,18 @@ from ..config import Settings
 from . import entities
 
 
+def topic_root(settings) -> str:
+    """The MQTT topic root. Derived from the identity namespace unless the user set an
+    explicit ``mqtt_prefix`` — one setting to change, not two that can disagree.
+
+    Legacy installs stay on ``franklinwh-local``; the new namespace gives ``fwh-dc``.
+    """
+    ns = (getattr(settings, "mqtt_namespace", "") or "franklinwh").strip()
+    if ns == "franklinwh":
+        return settings.mqtt_prefix or "franklinwh-local"
+    return ns.replace("_", "-")
+
+
 class MqttPublisher:
     def __init__(self, settings: Settings, node: str, device: dict,
                  command_handler=None, groups=None):
@@ -20,16 +32,24 @@ class MqttPublisher:
         #: Runs on the paho network thread, so it must not block for long.
         self.command_handler = command_handler
         self.configs, self.state_topic, self.avail_topic = entities.discovery_configs(
-            node, device, settings.mqtt_prefix, settings.ha_discovery_prefix, groups
+            node, device, topic_root(settings), settings.ha_discovery_prefix, groups,
+            namespace=settings.mqtt_namespace,
         )
         self.client = mqtt.Client(
-            mqtt.CallbackAPIVersion.VERSION2, client_id=f"franklinwh-direct-connect-bridge-{node}"
+            # Client id carries the namespace too: two integrations connecting with the
+            # same id knock each other off the broker.
+            mqtt.CallbackAPIVersion.VERSION2,
+            client_id=f"{settings.mqtt_namespace}-direct-{node}"
         )
         if settings.mqtt_username:
             self.client.username_pw_set(settings.mqtt_username, settings.mqtt_password)
         # Last-will: mark offline if the bridge drops.
         self.client.will_set(self.avail_topic, "offline", retain=True)
-        self.cmd_filter = entities.command_topic_filter(node, settings.mqtt_prefix)
+        # MUST use the same root as the discovery configs above. Using mqtt_prefix
+        # here while the configs advertise topic_root() would publish command
+        # topics the publisher never subscribes to — commands would vanish in
+        # silence, which is the worst failure this surface can have.
+        self.cmd_filter = entities.command_topic_filter(node, topic_root(settings))
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
 
@@ -72,7 +92,8 @@ class MqttPublisher:
         publish the new set — so a disabled group's entities disappear from HA."""
         self.clear_discovery()
         self.configs, self.state_topic, self.avail_topic = entities.discovery_configs(
-            self.node, self.device, self.s.mqtt_prefix, self.s.ha_discovery_prefix, groups)
+            self.node, self.device, topic_root(self.s), self.s.ha_discovery_prefix, groups,
+            namespace=self.s.mqtt_namespace)
         self.publish_discovery()
 
     def clear_discovery(self) -> None:

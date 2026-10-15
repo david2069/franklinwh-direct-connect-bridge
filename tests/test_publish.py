@@ -30,7 +30,9 @@ def test_discovery_configs_shape():
     assert soc["unit_of_measurement"] == "%" and soc["device_class"] == "battery"
     assert soc["state_topic"] == state_topic
     assert soc["availability_topic"] == avail_topic
-    assert soc["device"]["identifiers"] == ["franklinwh_sn123"]
+    # <namespace>_direct_<node>: one HA device per INTEGRATION per aGate, so two
+    # FranklinWH bridges on one broker cannot merge into a single device.
+    assert soc["device"]["identifiers"] == ["franklinwh_direct_sn123"]
     # sw_version clearly names THIS integration + the aGate firmware
     assert soc["device"]["sw_version"].startswith("Direct Connect Bridge v")
     assert "V12R02B30D06" in soc["device"]["sw_version"]

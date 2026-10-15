@@ -111,6 +111,28 @@ def build_state(power: dict, health: dict) -> dict[str, Any]:
     }
 
 
+#: The integration word that goes in the device identifier. One Home Assistant device per
+#: INTEGRATION per aGate — never a merged one. Agreed across the FranklinWH bridges on
+#: 2026-10-15 (owner's decision, relayed by the Modbus Bridge session; its write-up is
+#: docs/ha-device-identity.md in franklinwh-modbus-bridge).
+#:
+#: It exists because two sibling integrations both published device id
+#: ``franklinwh_<SERIAL>``: Home Assistant merged them into ONE device of 155 entities,
+#: their discovery configs overwrote each other, and a mode command ran on both.
+INTEGRATION = "direct"
+
+
+def device_identifier(node: str, namespace: str = "franklinwh") -> str:
+    """Home Assistant's device identity: ``<namespace>_direct_<node>``.
+
+    Changing this re-keys the DEVICE, which Home Assistant handles by renaming in place —
+    entities keep their own ``unique_id``, so history and long-term statistics stay put.
+    That is why the integration word can be added now, while the entity ids are left
+    alone: the cheap half of the agreed scheme costs the user nothing.
+    """
+    return f"{namespace}_{INTEGRATION}_{node}"
+
+
 def device_name(serial: str) -> str:
     """The Home Assistant DEVICE name: ``FranklinWH Direct <last 8 of serial>``.
 
@@ -127,7 +149,8 @@ def device_name(serial: str) -> str:
     return f"FranklinWH Direct {tail}" if tail else "FranklinWH Direct Connect"
 
 
-def device_info(node: str, serial: str, firmware: str | None = None) -> dict[str, Any]:
+def device_info(node: str, serial: str, firmware: str | None = None,
+                namespace: str = "franklinwh") -> dict[str, Any]:
     from .. import __version__
     # DO NOT change `identifiers`. They are Home Assistant's device IDENTITY: a new value
     # creates a SECOND device and orphans every entity already discovered. The `name`
@@ -139,7 +162,10 @@ def device_info(node: str, serial: str, firmware: str | None = None) -> dict[str
     # Connect Bridge". The aGate's own firmware is appended when known.
     bridge = f"Direct Connect Bridge v{__version__}"
     d = {
-        "identifiers": [f"franklinwh_{node}"],
+        # <namespace>_direct_<node>. The entity unique_ids below deliberately keep the
+        # legacy prefix: moving THOSE creates new entities and strands the user's history
+        # on the old ones, so it is a separate, explicit decision (see HA_HISTORY.md).
+        "identifiers": [device_identifier(node, namespace)],
         "name": device_name(serial),
         "manufacturer": MANUFACTURER,
         "model": "aGate",
@@ -150,7 +176,8 @@ def device_info(node: str, serial: str, firmware: str | None = None) -> dict[str
     return d
 
 
-def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: str, groups=None):
+def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: str,
+                      groups=None, namespace: str = "franklinwh"):
     """Return (list[(config_topic, config_payload)], state_topic, availability_topic)."""
     state_topic = f"{prefix}/{node}/state"
     avail_topic = f"{prefix}/{node}/availability"
@@ -161,8 +188,8 @@ def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: st
             continue
         cfg = {
             "name": e["name"],
-            "unique_id": f"franklinwh_{node}_{e['key']}",
-            "object_id": f"franklinwh_{node}_{e['key']}",
+            "unique_id": f"{namespace}_{node}_{e['key']}",
+            "object_id": f"{namespace}_{node}_{e['key']}",
             "state_topic": state_topic,
             "value_template": "{{ value_json.%s }}" % e["key"],
             "availability_topic": avail_topic,
@@ -182,8 +209,8 @@ def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: st
         cmd_topic = f"{prefix}/{node}/control/{c['key']}/set"
         cfg = {
             "name": c["name"],
-            "unique_id": f"franklinwh_{node}_{c['key']}",
-            "object_id": f"franklinwh_{node}_{c['key']}",
+            "unique_id": f"{namespace}_{node}_{c['key']}",
+            "object_id": f"{namespace}_{node}_{c['key']}",
             "state_topic": state_topic,
             "value_template": "{{ value_json.%s }}" % c["state_key"],
             "command_topic": cmd_topic,
