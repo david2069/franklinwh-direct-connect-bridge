@@ -20,6 +20,16 @@ from __future__ import annotations
 
 from typing import Any
 
+#: How many aGates and aPowers the owner says they have. Asked, not derived: before
+#: anything is discovered there is nothing to derive FROM, and the answer tells the wizard
+#: what it should expect to find. Both default to 1 — the overwhelmingly common case, and a
+#: default that is wrong is cheap to correct here and expensive to discover later.
+EXPECTED_AGATES_KEY = "setup_expected_agates"
+EXPECTED_APOWERS_KEY = "setup_expected_apowers"
+DEFAULT_EXPECTED = 1
+#: One site, sanity bounds. Not a product limit — a guard against a typo becoming a scan.
+MAX_EXPECTED = 16
+
 #: Stored in the config table. Absent ⇒ never run ⇒ offer the wizard.
 STATE_KEY = "setup_wizard_state"
 
@@ -45,6 +55,67 @@ def set_state(store, value: str) -> str:
     if store is not None:
         store.set_config(STATE_KEY, value)
     return value
+
+
+def expected(store) -> dict[str, int]:
+    """How many aGates and aPowers the owner says are installed. Defaults to 1 each."""
+    def _one(key: str) -> int:
+        raw = (store.get_config(key, "") if store is not None else "") or ""
+        try:
+            n = int(raw)
+        except (TypeError, ValueError):
+            return DEFAULT_EXPECTED
+        return n if 1 <= n <= MAX_EXPECTED else DEFAULT_EXPECTED
+
+    return {"agates": _one(EXPECTED_AGATES_KEY), "apowers": _one(EXPECTED_APOWERS_KEY)}
+
+
+def set_expected(store, *, agates: int | None = None, apowers: int | None = None) -> dict[str, int]:
+    """Record the counts. Out-of-range is refused rather than clamped: silently storing
+    something other than what was typed is how a wrong number survives unnoticed."""
+    for name, val in (("agates", agates), ("apowers", apowers)):
+        if val is None:
+            continue
+        if not isinstance(val, int) or isinstance(val, bool) or not (1 <= val <= MAX_EXPECTED):
+            raise ValueError(f"{name} must be a whole number from 1 to {MAX_EXPECTED}")
+    if store is not None:
+        if agates is not None:
+            store.set_config(EXPECTED_AGATES_KEY, str(agates))
+        if apowers is not None:
+            store.set_config(EXPECTED_APOWERS_KEY, str(apowers))
+    return expected(store)
+
+
+def _expected_step(exp: dict[str, int], gateways: list, apowers_found: int | None) -> dict[str, Any]:
+    """What the owner says they have, against what has been found so far.
+
+    This is the one step that is ASKED rather than derived, because at first run there is
+    nothing to derive from. Its value is the comparison: it turns "1 gateway configured"
+    into "1 of the 2 you said you have", which is the difference between a wizard that
+    looks finished and one that is.
+    """
+    real = [g for g in gateways if not getattr(g, "is_mock", False)]
+    found_gw = len(real)
+    short_gw = max(0, exp["agates"] - found_gw)
+    short_ap = (max(0, exp["apowers"] - apowers_found)
+                if apowers_found is not None else None)
+    bits = [f"{found_gw} of {exp['agates']} aGate(s) configured"]
+    if apowers_found is not None:
+        bits.append(f"{apowers_found} of {exp['apowers']} aPower(s) reporting")
+    return {
+        "id": "expected",
+        "title": "How much hardware do you have?",
+        "required": True,
+        # Satisfied once what was found matches what was declared. Finding MORE is fine —
+        # it means the declaration was low, not that setup is incomplete.
+        "satisfied": short_gw == 0 and (short_ap in (0, None)),
+        "detail": " · ".join(bits),
+        "values": {"agates": exp["agates"], "apowers": exp["apowers"]},
+        "found": {"agates": found_gw, "apowers": apowers_found},
+        "defaults": {"agates": DEFAULT_EXPECTED, "apowers": DEFAULT_EXPECTED},
+        "max": MAX_EXPECTED,
+        "action": "expected",
+    }
 
 
 def _gateway_step(gateways: list) -> dict[str, Any]:
@@ -107,11 +178,13 @@ def capability_tabs(values: dict[str, Any], *, generator_installed: bool) -> dic
     }
 
 
-def steps(*, gateways: list, profile_values: dict[str, Any],
+def steps(*, store, gateways: list, profile_values: dict[str, Any],
           ha_configured: bool, notifications_configured: bool,
-          tariff_configured: bool) -> list[dict[str, Any]]:
+          tariff_configured: bool,
+          apowers_found: int | None = None) -> list[dict[str, Any]]:
     """Every step with its current state, so a re-run shows reality, not blank fields."""
     return [
+        _expected_step(expected(store), gateways, apowers_found),
         _gateway_step(gateways),
         _profile_step(profile_values or {}),
         _optional_step("home_assistant", "Home Assistant", ha_configured,
@@ -126,7 +199,7 @@ def steps(*, gateways: list, profile_values: dict[str, Any],
 def summary(store, **kw) -> dict[str, Any]:
     """The wizard's whole state in one read."""
     st = state(store)
-    sts = steps(**kw)
+    sts = steps(store=store, **kw)
     required_done = all(s["satisfied"] for s in sts if s["required"])
     return {
         "state": st,

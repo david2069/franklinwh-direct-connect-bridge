@@ -47,6 +47,22 @@
             <p x-show="st.note &amp;&amp; !st.satisfied" class="text-xs mt-1"
                style="color:var(--text-faint)" x-text="st.note"></p>
 
+            <!-- The one step that is ASKED. Defaults to 1 each; the comparison with what
+                 was actually found is the point. -->
+            <template x-if="st.id === 'expected'">
+              <div class="mt-2 flex flex-wrap items-end gap-3">
+                <label class="text-xs" style="color:var(--text-secondary)">aGates
+                  <input type="number" min="1" :max="st.max" class="form-control form-control-sm block mt-1"
+                         style="width:5.5rem" x-model.number="$store.app.setupExpected.agates"></label>
+                <label class="text-xs" style="color:var(--text-secondary)">aPowers
+                  <input type="number" min="1" :max="st.max" class="form-control form-control-sm block mt-1"
+                         style="width:5.5rem" x-model.number="$store.app.setupExpected.apowers"></label>
+                <button class="btn btn-primary btn-sm" @click="$store.app.saveSetupExpected()">Save</button>
+                <span x-show="$store.app.setupExpectedError" class="text-xs" style="color:#fca5a5"
+                      x-text="$store.app.setupExpectedError"></span>
+              </div>
+            </template>
+
             <!-- What the gateway told us, separated from what merely has a default. -->
             <template x-if="st.id === 'profile' &amp;&amp; st.values">
               <div class="mt-2 text-xs grid gap-1"

@@ -28,6 +28,7 @@
   <script src="static/js/chartjs-4.4.7.umd.min.js"></script>
 
   <!-- App JS — must load before Alpine -->
+  <script src="static/js/setup_wizard.js?v={{ cache_bust }}"></script>
   <script src="static/js/app.js?v={{ cache_bust }}"></script>
   <script src="static/js/live_cap.js?v={{ cache_bust }}"></script>
   <script src="static/js/mqtt_tab.js?v={{ cache_bust }}"></script>
@@ -351,6 +352,7 @@
       </template>
     </div>
 
+    {% include "partials/setup_wizard.html" %}
     {% include "partials/terminal.html" %}
     {% include "partials/bottom-nav.html" %}
   </div> <!-- closes x-data scope -->

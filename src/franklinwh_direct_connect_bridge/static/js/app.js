@@ -138,10 +138,31 @@ document.addEventListener('alpine:init', () => {
     setup: { state: 'pending', should_prompt: false, steps: [], required_satisfied: false },
     setupDismissed: false,
 
+    //: Bound to the inputs; seeded from the wizard so the fields show the stored value.
+    setupExpected: { agates: 1, apowers: 1 },
+    setupExpectedError: '',
+
+    async saveSetupExpected() {
+      this.setupExpectedError = '';
+      try {
+        const r = await fetch('api/setup/expected', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.setupExpected),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { this.setupExpectedError = d.detail || `HTTP ${r.status}`; return; }
+        await this.loadSetup();
+      } catch (e) { this.setupExpectedError = String(e); }
+    },
+
     async loadSetup() {
       try {
         const r = await fetch('api/setup' + this.gwQuery('?'));
-        if (r.ok) this.setup = await r.json();
+        if (r.ok) {
+          this.setup = await r.json();
+          const step = (this.setup.steps || []).find(s => s.id === 'expected');
+          if (step && step.values) this.setupExpected = { ...step.values };
+        }
       } catch (e) { /* never block the UI on the wizard */ }
     },
 

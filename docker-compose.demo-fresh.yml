@@ -1,0 +1,25 @@
+# First-run overlay for the demo stack. The demo seeds two gateways via FWH_HOSTS, which
+# makes the setup wizard start already satisfied — fine for exercising the UI with data,
+# useless for testing FIRST RUN, which is the case the wizard exists for.
+#
+# This clears the roster so the bridge boots knowing nothing: no gateway, no Home
+# Assistant, no tariffs. The mock aGates still run, so Discover has something to find.
+#
+#   rm -rf ./data-demo        # a fresh volume, or the previous run's config persists
+#   docker compose -f docker-compose.demo.yml -f docker-compose.demo-fresh.yml \
+#       -p fwh-demo up -d
+#
+# Then open http://localhost:8102 — the dashboard should offer setup, and
+# Settings → Setup should show the gateway step outstanding.
+services:
+  bridge-demo:
+    environment:
+      - FWH_HOSTS=
+      - FWH_HOST=
+      - FWH_PORT=9000
+      - MQTT_ENABLED=false
+      - METRICS_ENABLED=true
+      - ALLOW_WRITES=true
+      - READ_ONLY=false
+      - LOG_LEVEL=info
+      - POLL_INTERVAL=10
