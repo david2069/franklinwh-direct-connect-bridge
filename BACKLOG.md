@@ -3152,6 +3152,43 @@ bridge supervises the temporary override + restore.
 - Backup durations (cloud): EMERGENCY_BACKUP_PERIODS {1d=1440, 2d=2880, 3d=4320, indefinite, custom};
   min 30 min. TOU/Self have no duration (mode-only).
 
+### 4b. TOU-as-dispatch — force charge/discharge by writing a TOU block (owner, 2026-10-15)
+
+A **third** dispatch path, beside Modbus `WSet` and cloud `set_mode`: write a TOU block with
+a dispatch code, switch the gateway to **Time-of-Use**, let it run, then put everything
+back. Worth having because it is the only one of the three that needs neither Modbus nor a
+held connection — the gateway executes it on its own, so it survives a bridge restart.
+
+The pieces are already identified above: dispatch codes **GRID_CHARGE=8 / GRID_EXPORT=7**,
+`save_tou_dispatch()` / `set_tou_schedule()` to write, and `backup_tou_schedule()` +
+`tou_backup_restore` for the save/restore pair.
+
+**The shape:**
+
+1. `get_entrance_info()` first — not every site has TOU configured, and a write to a site
+   that does not is not a dispatch, it is a mess.
+2. **Back up the live schedule before touching it**, and refuse to proceed if the backup
+   did not come back. Restoring something you never captured is not restoring.
+3. Snapshot the current **mode** too (`mode_list.current_id`) — TOU-as-dispatch means
+   leaving whatever mode the user was in.
+4. Write the dispatch block for the window, switch to TOU.
+5. On exit — including a bridge restart, a crash, or the user cancelling — restore the
+   schedule AND the prior mode. Same reconcile-on-boot obligation as a force dispatch.
+
+**Constraints, before any of it is built:**
+
+- **Unverified end to end.** The cloud methods are documented in `franklinwh-cloud`; nobody
+  here has written a TOU block and watched the battery follow it. Until that is done on the
+  reference aGate with the owner, this is a design, not a capability.
+- **It fights our own scheduler** — a TOU block steering the battery is exactly what
+  `FEAT-CLOUD-SCHED-CONFLICT` detects. The conflict check is a prerequisite, not a
+  follow-up.
+- **Confirm-gated and audited**, like every consequential write, and never available
+  without cloud credentials.
+- **Restore is the feature.** A dispatch that cannot be unwound leaves the user's own TOU
+  plan overwritten — the worst outcome in this whole area, and the reason step 2 refuses
+  rather than warns.
+
 ### 5. Cloud writes (customise)
 - For what local can't do (TOU prices/seasons, timed backup, reserve-SoC ranges, inverter power caps),
   write via cloud `set_mode`/TOU-write; the bridge's `/api/cloud/set-mode` already reports cloud-only
