@@ -43,7 +43,12 @@ map:
 options:
   fwh_host: ""
   poll_interval: 30
-  mqtt_enabled: false
+  # Default ON: in the add-on the Supervisor supplies the broker, so publishing
+  # works without configuration — and an add-on whose entities never appear in
+  # Home Assistant reads as broken (owner, 2026-10-15, comparing it with the
+  # Modbus Bridge and FWHAI, which both publish out of the box). Existing installs
+  # keep whatever they have; this only changes the default for new ones.
+  mqtt_enabled: true
   log_level: "info"
   read_only: true
   allow_writes: false

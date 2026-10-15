@@ -11,6 +11,24 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+
+- **The add-on publishes to Home Assistant out of the box.** `mqtt_enabled` now defaults
+  to **true** for new installs: in the add-on the Supervisor supplies the broker, so
+  publishing works without configuration — and an add-on whose entities never appear reads
+  as broken. Existing installs keep whatever they have.
+
+### Fixed
+
+- **Turning publishing on takes effect immediately.** It said "restart the add-on", because
+  enabling replaced the settings object while every running poller held the old one. The
+  live object is mutated instead, and the poller's existing retry tick connects within the
+  minute.
+
+- **The broker is configured even while publishing is off.** Auto-configuration required
+  `mqtt_enabled`, so flipping the switch found no broker set and the user had to go looking
+  for one the Supervisor could have named all along.
+
 ### Added
 
 - **Picking a notification target is a picker, not a search of 3804 entities.** Discover

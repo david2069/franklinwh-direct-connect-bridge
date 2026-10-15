@@ -153,3 +153,58 @@ def test_the_ui_offers_it_rather_than_overwriting():
     assert "derivedPvKwp" in block and "use it" in block
     # shown only when it DIFFERS — no nagging when the two already agree
     assert "Number(form.pv_kwp) !== derivedPvKwp" in block
+
+
+# -- publishing works out of the box in the add-on ----------------------------------------
+# Owner, 2026-10-15, comparing this with the two sibling bridges: "Modbus Bridge and FWHAI
+# are working - why have u still not fixed your MQTT interface!" Both configure the broker
+# from the Supervisor and publish; ours shipped with publishing off and only filled the
+# broker in once it was on, so turning it on found nothing configured.
+
+def test_the_addon_defaults_to_publishing():
+    """A new add-on install publishes; existing installs keep whatever they have."""
+    from pathlib import Path
+    cfg = (Path(__file__).resolve().parents[1] / "config.yaml").read_text()
+    opts = cfg[cfg.index("options:"):cfg.index("schema:")]
+    assert "mqtt_enabled: true" in opts
+
+
+def test_broker_credentials_are_filled_even_while_publishing_is_off(monkeypatch):
+    """So the switch works the moment it is flipped, instead of finding nothing set."""
+    from franklinwh_direct_connect_bridge.config import Settings
+    monkeypatch.setattr(ha_supervisor, "IS_HA_ADDON", True)
+    monkeypatch.setattr(ha_supervisor, "discover_mqtt",
+                        lambda: {"found": True, "host": "core-mosquitto", "port": 1883,
+                                 "username": "addons", "password": "p"})
+    s = Settings(mqtt_enabled=False, mqtt_host="", mqtt_username="")
+    assert ha_supervisor.apply_supervisor_mqtt(s) is True
+    assert s.mqtt_host == "core-mosquitto" and s.mqtt_username == "addons"
+    assert s.mqtt_enabled is False          # filling creds does NOT start publishing
+
+
+def test_user_supplied_credentials_are_still_left_alone(monkeypatch):
+    from franklinwh_direct_connect_bridge.config import Settings
+    monkeypatch.setattr(ha_supervisor, "IS_HA_ADDON", True)
+    monkeypatch.setattr(ha_supervisor, "discover_mqtt",
+                        lambda: {"found": True, "host": "core-mosquitto", "port": 1883,
+                                 "username": "addons", "password": "p"})
+    s = Settings(mqtt_enabled=True, mqtt_host="192.0.2.50", mqtt_username="me")
+    assert ha_supervisor.apply_supervisor_mqtt(s) is False
+    assert s.mqtt_host == "192.0.2.50"
+
+
+def test_enabling_takes_effect_without_a_restart(store, monkeypatch):
+    """The poller holds the live settings object and re-checks it on its retry tick, so
+    mutating that object is what makes 'takes effect now' true."""
+    from franklinwh_direct_connect_bridge import config
+    monkeypatch.setattr(app_module, "discover_mqtt",
+                        lambda: {"found": True, "host": "core-mosquitto", "port": 1883,
+                                 "username": "addons", "password": "p"})
+    monkeypatch.setattr(app_module, "save_override", lambda k, v: None)
+    live = config.get_settings()
+    live.mqtt_enabled = False
+    r = TestClient(app_module.create_app()).post("/api/mqtt/supervisor/enable")
+    assert r.status_code == 200 and r.json()["restart_required"] is False
+    # the SAME object the pollers hold
+    assert config.get_settings() is live
+    assert live.mqtt_enabled is True and live.mqtt_host == "core-mosquitto"

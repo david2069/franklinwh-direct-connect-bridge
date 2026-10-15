@@ -202,12 +202,16 @@ def apply_host_timezone() -> str | None:
 def apply_supervisor_mqtt(settings) -> bool:
     """Fill in unset MQTT creds from the Supervisor, in place, when it makes sense.
 
-    Only acts when running as an add-on with MQTT enabled and the creds still look
-    like defaults (no host, or the ``core-mosquitto`` placeholder, AND no username).
-    On success mutates ``settings`` and returns True; otherwise returns False. Never
-    raises — a discovery failure just leaves the user-supplied creds untouched.
+    Only acts when running as an add-on and the creds still look like defaults (no host,
+    or the ``core-mosquitto`` placeholder, AND no username). On success mutates
+    ``settings`` and returns True; otherwise returns False. Never raises — a discovery
+    failure just leaves the user-supplied creds untouched.
+
+    This runs whether or not publishing is ON. It used to require ``mqtt_enabled``, which
+    meant a user turning publishing on found no broker configured and had to go looking
+    for one the Supervisor had been able to name all along.
     """
-    if not (IS_HA_ADDON and getattr(settings, "mqtt_enabled", False)):
+    if not IS_HA_ADDON:
         return False
     host = (getattr(settings, "mqtt_host", "") or "").strip()
     username = (getattr(settings, "mqtt_username", "") or "").strip()

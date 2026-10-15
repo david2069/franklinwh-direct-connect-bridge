@@ -4925,18 +4925,22 @@ def create_app() -> FastAPI:
         found = discover_mqtt()
         if not found.get("found"):
             raise HTTPException(409, found.get("error") or "no MQTT service registered")
+        live = get_settings()
         for key, val in (("mqtt_host", found["host"]), ("mqtt_port", int(found["port"])),
                          ("mqtt_username", found.get("username", "")),
                          ("mqtt_password", found.get("password", "")),
                          ("mqtt_enabled", True)):
             save_override(key, val)
-        from . import config as _config
-        _config._settings = None
+            # Mutate the LIVE settings object as well as persisting it. Replacing the
+            # singleton would leave every running poller holding the old one, which is
+            # why this used to need a restart: the poller re-checks `settings.mqtt_enabled`
+            # on its own retry tick and connects by itself once it turns true.
+            setattr(live, key, val)
         _audit("mqtt_supervisor_enable", detail=f"{found['host']}:{found['port']}",
                result="enabled", ok=True)
         return {"ok": True, "host": found["host"], "port": found["port"],
-                "restart_required": True,
-                "note": "Publishing is on. Restart the add-on to start the publisher."}
+                "restart_required": False,
+                "note": "Publishing is on — the poller connects within a minute."}
 
     @app.get("/api/mqtt/orphans")
     def api_mqtt_orphans():
