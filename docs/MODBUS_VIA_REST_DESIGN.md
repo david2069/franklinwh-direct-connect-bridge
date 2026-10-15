@@ -182,3 +182,59 @@ client — was written months ago.
 3. **When does direct Modbus get deleted rather than disabled?** Recommendation: not on
    a date, but after the REST route has carried a real force dispatch and a real
    failure, with both visible in the audit trail.
+
+---
+
+## 10. Review, 2026-10-15 — what measurement since changes
+
+Reviewed before merge. The recommendation stands; three claims above are now out of date
+against measurement and are corrected here rather than quietly edited, because the original
+reasoning is part of the record.
+
+### §3 overstates the connection benefit. The churn MOVES, it does not vanish.
+
+§3 says delegation makes the bad connection behaviour "structurally zero … not merely
+reduced", and names "no `CLOSE_WAIT` leak" among the things removed. That is true **of this
+container** and false **of the system**.
+
+Measured on 2026-10-15, 10:00–10:15 AEDT, sampling the Modbus Bridge's own socket table
+every 2 s while it polled normally:
+
+- **2–3 concurrent `ESTABLISHED`** to the aGate's `:502`, peak 3
+- **6–7 `TIME_WAIT`** at essentially every sample — continuous churn, a connection per poll
+- **one `CLOSE_WAIT`, persistent** from 10:02:29 to the end of the watch, same inode, remote
+  closed and never closed locally
+
+The `franklinwh-modbus-bridge` session traced the same pattern from inside its container and
+filed the `CLOSE_WAIT` as **its #64 — real and unexplained**. The churn is partly inherent:
+`franklinwh-modbus` does per-call TCP via `pysunspec2`, measured by that session
+(reproduction check C2, 2026-10-13, in its PR #33), so "one Modbus client" still opens a
+connection per read.
+
+**This does not change the recommendation.** Zero sockets from this container is still the
+right outcome, and one churning client beats two. But the honest claim is *"we stop
+contributing to it"*, not *"it stops happening"* — and we would be delegating to a client
+with an open connection defect of its own, which is worth knowing before depending on it.
+
+### §3's two-masters argument is stronger than it was, with a caveat
+
+A **third** potential writer to the aGate's Modbus server is now documented: FranklinWH's
+AU & NZ Commissioning Guide (p. 25) commissions **Voltello LinkPro** against it for CSIP-AUS
+export control — see `docs/MODBUS_EXPORT_CONTROL.md`. So consolidating our own writes is
+more clearly right.
+
+The caveat is the converse: **delegation does not make the Modbus Bridge the sole writer**
+on a site with a LinkPro bound. "One process owns the register" holds for us and for that
+bridge; it does not hold for the gateway. Nothing in our design can make it hold.
+
+### §5's ratings question can be asked now, and §8 Phase B is the gate
+
+Unchanged and still the one real unknown. The `franklinwh-modbus-bridge` session is active
+and has answered harder questions than this today; Phase B is a message, not an
+investigation.
+
+### What did not change
+
+§4's availability reasoning, which is the part most likely to be challenged, is unaffected:
+the REST dependency is another leg with existing vocabulary, not a new class of failure.
+§6's provider shape and §7's conclusion on async are untouched by anything measured today.
