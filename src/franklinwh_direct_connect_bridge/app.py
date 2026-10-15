@@ -804,6 +804,36 @@ def _grid_status_value(status) -> int:
     raise ValueError(f"unknown grid status {status!r}; expected NORMAL/DOWN/OFF (or 0/1/2)")
 
 
+def _seed_self_ha_instance(settings) -> bool:
+    """As an add-on, register the Home Assistant we are installed in. Idempotent.
+
+    The instance list exists to browse entities and find notification targets, and in the
+    add-on the answer is already known: it is this Home Assistant, reachable through the
+    Supervisor with the token it hands us. Asking the user to create a long-lived token
+    and paste a URL for the machine the add-on is running inside is make-work.
+
+    Only ever ADDS, and only when the list is empty — a user who has configured their own
+    instances is not overwritten. This is read-only access; it publishes nothing.
+    """
+    from . import ha_supervisor
+    me = ha_supervisor.self_instance()
+    if not me:
+        return False
+    try:
+        store = db.get_store(settings)
+        if store is None or store.ha_instances():
+            return False
+        import uuid
+        store.create_ha_instance(ha_id=uuid.uuid4().hex[:12], name=me["name"],
+                                 base_url=me["base_url"], token=me["token"],
+                                 is_default=True, enabled=True)
+    except Exception as e:  # noqa: BLE001 — never block startup over a convenience
+        log.warning("could not register this add-on's own Home Assistant: %s", e)
+        return False
+    log.info("registered this add-on's own Home Assistant via the Supervisor")
+    return True
+
+
 def _site_tz_hours(store) -> float | None:
     """The site's UTC offset in hours for the mock emulators, or None when unset.
 
@@ -852,6 +882,7 @@ def create_app() -> FastAPI:
         # Before MQTT, because this changes what every log line below is stamped with.
         await asyncio.to_thread(apply_host_timezone)
         await asyncio.to_thread(apply_supervisor_mqtt, s)
+        await asyncio.to_thread(_seed_self_ha_instance, s)
         # Apply the persisted Modbus (SunSpec 502) master switch — default on. When the
         # user disabled it from the Control tab, ratings + force dispatch stay off.
         try:
@@ -1592,7 +1623,15 @@ def create_app() -> FastAPI:
             rows = st.gateways()
             if rows:
                 return [_gw_merged(r) for r in rows]
-        gws = state.gateways() or [get_state()]
+        gws = state.gateways()
+        if not gws:
+            # Do NOT invent a row from the unconfigured placeholder. It rendered as a
+            # blank gateway — no name, no host, disabled, poll off — which reads as a
+            # BROKEN gateway rather than as "none configured", and was reported as such
+            # from the live add-on (2026-10-15). An empty roster is the honest answer.
+            fallback = get_state()
+            if fallback.configured_host or fallback.active_host:
+                gws = [fallback]
         return [_roster_entry(gw) for gw in gws]
 
     async def _reconcile_gateway(row: dict) -> None:
@@ -1626,6 +1665,12 @@ def create_app() -> FastAPI:
         st = _gw_store()
         if st is None:
             raise HTTPException(503, "metrics store is disabled; gateway roster needs it")
+        # A real gateway with no host is not a gateway: it can never connect, it shows as
+        # a blank row that cannot be told from a broken one, and it answers every unscoped
+        # read with "could not connect to :9000". Seen on the live add-on, 2026-10-15.
+        # Mocks are exempt — theirs is assigned when the emulator starts.
+        if not req.is_mock and not (req.host or "").strip():
+            raise HTTPException(422, "a gateway needs a host (the aGate's IP address)")
         import uuid
         gid = uuid.uuid4().hex[:12]
         seed = mockgw.seed_for(gid, req.mock_seed) if req.is_mock else None
@@ -2024,18 +2069,34 @@ def create_app() -> FastAPI:
         return _gw_merged(row)
 
     def _default_scan_subnet() -> str:
-        """A /24 to sweep — derived from a configured (non-mock) gateway host, else the
-        library's local-subnet guess, else a common default."""
+        """A /24 to sweep — a configured gateway's subnet, else the HOST's LAN, else a guess.
+
+        In the Home Assistant add-on the container sits on the Supervisor's internal docker
+        network, so the container's own interfaces are the WRONG answer: Discover offered
+        172.30.33.0/24 on a live install and could not have found anything there. The
+        Supervisor knows the host's real interfaces, so ask it before guessing locally.
+        """
         from franklinwh_direct_connect_api import discover as _disc
         st = _gw_store()
         hosts = [r.get("host") for r in (st.gateways() if st else [])
                  if r.get("host") and not r.get("is_mock")]
-        guess = _disc.default_gateway()
-        for h in hosts + ([guess] if guess else []):
+        for h in hosts:
             parts = (h or "").split(".")
             if len(parts) == 4 and all(p.isdigit() for p in parts):
                 return f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
-        return "192.168.1.0/24"
+        from .ha_supervisor import host_lan_subnets
+        for net in host_lan_subnets():
+            return net
+        guess = _disc.default_gateway()
+        parts = (guess or "").split(".")
+        if len(parts) == 4 and all(p.isdigit() for p in parts):
+            # Never offer the add-on's own docker network: a sweep of it is guaranteed empty.
+            if not guess.startswith(("172.30.", "172.17.", "172.18.")):
+                return f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
+        # Last resort. 192.168.0.0/24 and 192.168.1.0/24 are both common; the owner's own
+        # site is .0.x, and nothing here can distinguish them — it is a starting point in
+        # the box, not an answer, and the user edits it.
+        return "192.168.0.0/24"
 
     @app.post("/api/gateways/scan")
     async def api_gateway_scan(req: GatewayScanReq):
@@ -4641,6 +4702,47 @@ def create_app() -> FastAPI:
             raise HTTPException(500, f"restart failed: {e}")
         _audit("worker_restart", detail=name, result="restarted", ok=True)
         return {"ok": True, "name": name, "restarts": w.restarts}
+
+    @app.get("/api/mqtt/supervisor")
+    def api_mqtt_supervisor():
+        """Is a broker available from the Supervisor, and is publishing already on?
+
+        Never returns the password. "available" means the Supervisor named a broker — it
+        is not a claim that the broker accepted a connection.
+        """
+        s = get_settings()
+        found = discover_mqtt()
+        return {"addon": environment.IS_HA_ADDON,
+                "available": bool(found.get("found")),
+                "reason": found.get("error", ""),
+                "host": found.get("host", ""), "port": found.get("port"),
+                "username": found.get("username", ""),
+                "publishing": bool(s.mqtt_enabled),
+                "configured_host": (s.mqtt_host or "")}
+
+    @app.post("/api/mqtt/supervisor/enable")
+    def api_mqtt_supervisor_enable():
+        """Adopt the Supervisor's broker and turn publishing ON. Explicit, never automatic.
+
+        Enabling creates Home Assistant entities, so it is a decision, not a side effect of
+        startup — the same reasoning that keeps mock gateways from publishing.
+        """
+        _guard_writes()
+        found = discover_mqtt()
+        if not found.get("found"):
+            raise HTTPException(409, found.get("error") or "no MQTT service registered")
+        for key, val in (("mqtt_host", found["host"]), ("mqtt_port", int(found["port"])),
+                         ("mqtt_username", found.get("username", "")),
+                         ("mqtt_password", found.get("password", "")),
+                         ("mqtt_enabled", True)):
+            save_override(key, val)
+        from . import config as _config
+        _config._settings = None
+        _audit("mqtt_supervisor_enable", detail=f"{found['host']}:{found['port']}",
+               result="enabled", ok=True)
+        return {"ok": True, "host": found["host"], "port": found["port"],
+                "restart_required": True,
+                "note": "Publishing is on. Restart the add-on to start the publisher."}
 
     @app.get("/api/mqtt/orphans")
     def api_mqtt_orphans():

@@ -11,7 +11,36 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **The dashboard comes to life when a gateway appears.** Selecting a gateway has to
+  REFETCH, and `loadGateways()` only assigned the id — so on a fresh install the first
+  gateway was selected silently and the dashboard sat on its empty state until something
+  else happened to poll. Picking the same gateway from the switcher worked, which is
+  exactly the difference. The roster is also polled every 10s while there is no gateway
+  (120s once there is one), instead of leaving a two-minute gap on the one screen that has
+  nothing to show.
+
+- **No more blank gateway row.** With nothing configured the roster invented a row from the
+  unconfigured placeholder — no name, no host, disabled — which reads as a *broken* gateway
+  rather than as "none yet". An empty roster is the honest answer. Creating a real gateway
+  with no host is now refused outright (mocks are exempt; theirs is assigned when the
+  emulator starts).
+
+- **Discover scans the right network in the add-on.** It offered `172.30.33.0/24` — the
+  Supervisor's internal docker network, where an aGate can never be — because the subnet
+  was derived from the container's own interfaces. It now asks the Supervisor for the
+  HOST's LAN, filters out docker ranges, and falls back to `192.168.0.0/24`.
+
+### Added
+
+- **The add-on configures what the Supervisor already knows.** It registers the Home
+  Assistant it is installed in as an instance automatically (read-only, via the Supervisor
+  token — no long-lived token to create, no URL to paste), only when no instance exists, so
+  a user's own instances are never touched. For MQTT it goes one step less far on purpose:
+  the broker is **offered** on the MQTT tab with a one-click adopt, because turning
+  publishing on creates entities in the user's Home Assistant and that is a decision, not a
+  startup side effect.
 
 ## [0.3.0] — 2026-10-15
 

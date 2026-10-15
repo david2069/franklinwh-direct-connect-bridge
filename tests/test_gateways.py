@@ -144,7 +144,14 @@ def test_api_gateway_summary_falls_back_to_device_when_cold(monkeypatch):
 
 def test_single_gateway_summary_unchanged(monkeypatch):
     """With only the default gateway and a warm cache, /api/summary serves the default
-    gateway's cache exactly as before (cached:True)."""
+    gateway's cache exactly as before (cached:True).
+
+    A host must be configured for there to BE a default: with nothing configured the
+    placeholder is deliberately not registered and the roster is empty, because a blank
+    row reads as a broken gateway rather than as "none yet".
+    """
+    from franklinwh_direct_connect_bridge import config
+    monkeypatch.setattr(config, "get_settings", lambda: Settings(fwh_host="10.0.0.9"))
     gw = state_module.get_state()   # lazily creates the default
     gw.last_summary = {"ok": True, "power": {"soc": 55}, "mode": {"modes": []}}
 

@@ -155,7 +155,12 @@ _OVERRIDE_KEYS = {"allow_writes", "log_level", "ha_notify", "ha_url", "ha_token"
                   "nem_region",   # AEMO NEM wholesale spot region (live-editable)
                   "tariff_price_entity", "tariff_feedin_entity",   # HA dynamic-price provider
                   "billing_dynamic",   # price billing at the live wholesale rate
-                  "dispatch_interrupt_policy"}
+                  "dispatch_interrupt_policy",
+                  # MQTT publishing, live-editable so the add-on can adopt the Supervisor's
+                  # broker in one click instead of sending the user to the add-on options
+                  # and a restart. Enabling it CREATES Home Assistant entities, so it stays
+                  # an explicit action, never something startup decides.
+                  "mqtt_enabled", "mqtt_host", "mqtt_port", "mqtt_username", "mqtt_password"}
 
 
 def overrides_path() -> Path:

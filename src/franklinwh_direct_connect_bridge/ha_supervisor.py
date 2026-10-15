@@ -65,6 +65,88 @@ def discover_mqtt() -> dict:
         return {"found": False, "error": str(e)}
 
 
+#: The Supervisor's proxy to Home Assistant's own REST API. An add-on reaches HA here
+#: with SUPERVISOR_TOKEN — no long-lived token, nothing for the user to create or paste.
+SUPERVISOR_CORE_API = "http://supervisor/core"
+
+
+def self_instance() -> dict | None:
+    """This add-on's OWN Home Assistant, ready to store as an instance. None if not available.
+
+    Running as an add-on, the Home Assistant we publish to is the one we are installed in —
+    asking the user to create a long-lived token and paste its URL is asking them for
+    something the Supervisor already provides.
+
+    Returns ``{"name", "base_url", "token"}``. The token is the Supervisor's and rotates
+    with the add-on, so it is stored like any other and re-read from the environment at
+    startup rather than being treated as permanent.
+    """
+    if not IS_HA_ADDON:
+        return None
+    token = os.environ.get("SUPERVISOR_TOKEN")
+    if not token:
+        return None
+    return {"name": "Home Assistant (this add-on)",
+            "base_url": SUPERVISOR_CORE_API,
+            "token": token}
+
+
+def host_lan_subnets() -> list[str]:
+    """The HOST's own LAN subnets as ``a.b.c.0/24``, from the Supervisor. Never raises.
+
+    An add-on container sits on the Supervisor's internal Docker network (172.30.32.0/23),
+    so anything derived from the container's own interfaces points at that network — and a
+    scan of it can never find an aGate. Measured on a live install, 2026-10-15: Discover
+    offered ``172.30.33.0/24`` and found nothing, on a site where the aGate was reachable.
+
+    The Supervisor knows the HOST's interfaces, which is where the hardware actually is.
+    Docker/HA-internal ranges are filtered out rather than offered.
+    """
+    if not IS_HA_ADDON:
+        return []
+    token = os.environ.get("SUPERVISOR_TOKEN")
+    if not token:
+        return []
+    try:
+        req = urllib.request.Request(
+            "http://supervisor/network/info",
+            headers={"Authorization": f"Bearer {token}"},
+            method="GET",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            payload = json.loads(resp.read().decode())
+    except Exception as e:  # noqa: BLE001 — never raise; the caller falls back
+        log.warning("Supervisor network info failed: %s", e)
+        return []
+
+    out: list[str] = []
+    for iface in (payload.get("data") or {}).get("interfaces") or []:
+        if not iface.get("enabled", True):
+            continue
+        ipv4 = iface.get("ipv4") or {}
+        for addr in ipv4.get("address") or []:
+            net = _slash24(str(addr))
+            if net and net not in out:
+                out.append(net)
+    return out
+
+
+#: Ranges an add-on sees that are NEVER where the aGate lives: the Supervisor's own
+#: docker network and the usual docker bridge.
+_INTERNAL_PREFIXES = ("172.30.", "172.17.", "172.18.")
+
+
+def _slash24(cidr: str) -> str | None:
+    """``192.0.2.17/24`` -> ``192.0.2.0/24``; None for anything internal or unparsable."""
+    ip = cidr.split("/")[0].strip()
+    parts = ip.split(".")
+    if len(parts) != 4 or not all(p.isdigit() for p in parts):
+        return None
+    if ip.startswith(_INTERNAL_PREFIXES) or ip.startswith("127."):
+        return None
+    return f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
+
+
 def host_timezone() -> str | None:
     """The HOST's timezone from the Supervisor, e.g. ``Australia/Sydney``. Never raises.
 

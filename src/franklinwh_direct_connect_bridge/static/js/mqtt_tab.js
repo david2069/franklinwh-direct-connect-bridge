@@ -15,7 +15,32 @@ function mqttTab() {
     filter: 'all', search: '', groupSaving: false,
     conflicts: null, scanning: false,
 
+    // The Supervisor's broker, when this is an add-on. Offered in the UI; adopting it is
+    // an explicit click, because publishing creates entities in the user's Home Assistant.
+    sup: { available: false, publishing: false, host: '', port: '' },
+    supBusy: false,
+    supMsg: '',
+
+    async loadSupervisorMqtt() {
+      try {
+        const r = await fetch('api/mqtt/supervisor');
+        if (r.ok) this.sup = await r.json();
+      } catch (e) { /* the banner simply stays hidden */ }
+    },
+
+    async adoptSupervisorBroker() {
+      this.supBusy = true; this.supMsg = '';
+      try {
+        const r = await fetch('api/mqtt/supervisor/enable', { method: 'POST' });
+        const d = await r.json().catch(() => ({}));
+        this.supMsg = r.ok ? (d.note || 'Publishing enabled.')
+                           : (d.detail || `Could not enable it (HTTP ${r.status}).`);
+        if (r.ok) await this.loadSupervisorMqtt();
+      } catch (e) { this.supMsg = String(e); } finally { this.supBusy = false; }
+    },
+
     init() {
+      this.loadSupervisorMqtt();
       // Loads on first SHOW, not on page load — see lazyTab().
       const t = lazyTab(this, 'mqtt', () => this.load());
       // Re-fetch when the topbar gateway selection changes, so the entity list + values

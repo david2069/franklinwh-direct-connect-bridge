@@ -705,6 +705,8 @@ document.addEventListener('alpine:init', () => {
     },
     _histInterval: null,
     _hidden: false,   // browser tab backgrounded (visibilitychange) — pause heavy work
+    _booted: false,       // first paint done — a roster change may now drive the UI
+    _gwIntervalMs: 0,     // current roster cadence (10s with no gateway, 120s with one)
     _gwInterval: null,
     _lastSeries: [],                 // last-loaded series (for client-side CSV export)
 
@@ -772,7 +774,12 @@ document.addEventListener('alpine:init', () => {
       // Only refresh the Power History chart while the dashboard is visible — recreating it
       // on a hidden canvas every 60s is pure churn (DEF-BROWSER-MEMORY).
       this._histInterval = setInterval(() => { if (this.activeTab === 'dashboard' && !this._hidden) this.loadHistory(this.histRange); }, 90000);
+      this._gwIntervalMs = 120000;
       this._gwInterval = setInterval(() => { if (!this._hidden) this.loadGateways(); }, 120000);
+      // Everything above is the first paint; from here a roster change must drive the UI
+      // itself rather than waiting for the user to touch the switcher.
+      this._booted = true;
+      this._tuneGatewayPoll();
       this.pollBattery();
       this._batInterval = setInterval(() => { if (!this._hidden) this.pollBattery(); }, 15000);
       // Pause polling + free the Power History canvas while the browser tab is BACKGROUNDED —
@@ -800,17 +807,41 @@ document.addEventListener('alpine:init', () => {
         const r = await fetch('api/gateways');
         if (!r.ok) return;
         const list = await r.json();
+        const hadNone = !this.gateways.length;
         this.gateways = Array.isArray(list) ? list : [];
         // '__site__' (the aggregate) is a valid selection alongside the real gateway ids.
         const ids = this.gateways.map(g => g.id).concat(this.gateways.length > 1 ? ['__site__'] : []);
         // Restore the last-picked gateway across reloads; else the first.
-        if (!this.selectedGateway || !ids.includes(this.selectedGateway)) {
+        const prev = this.selectedGateway;
+        let next = prev;
+        if (!prev || !ids.includes(prev)) {
           const saved = localStorage.getItem('fwh-gateway');
-          this.selectedGateway = ids.includes(saved) ? saved : (this.gateways.length ? this.gateways[0].id : '');
+          next = ids.includes(saved) ? saved : (this.gateways.length ? this.gateways[0].id : '');
         }
+        this.selectedGateway = next;
+        // Selecting a gateway is not just setting a variable — it has to REFETCH. This
+        // assignment used to be the whole of it, so when the first gateway appeared (a
+        // fresh install, or one added in the wizard) the id changed silently and the
+        // dashboard sat on its empty state until something else happened to poll. Picking
+        // the same gateway from the switcher worked, because that path calls
+        // selectGateway() — which is exactly the difference, and exactly why it looked
+        // like "it only works if I touch it".
+        if (next && next !== prev && this._booted) this.selectGateway(next);
+        if (hadNone !== !this.gateways.length) this._tuneGatewayPoll();
       } catch (e) {
         console.warn('[Bridge] gateways load failed:', e.message);
       }
+    },
+
+    // With NO gateway there is nothing to show and every second of staleness is the whole
+    // screen, so look often. Once one exists the roster is near-static again — a 120s
+    // cadence is plenty, and the per-gateway polling carries the live data.
+    _tuneGatewayPoll() {
+      const want = this.gateways.length ? 120000 : 10000;
+      if (this._gwIntervalMs === want) return;
+      this._gwIntervalMs = want;
+      if (this._gwInterval) clearInterval(this._gwInterval);
+      this._gwInterval = setInterval(() => { if (!this._hidden) this.loadGateways(); }, want);
     },
 
     //: Detect whether the selected gateway has a generator (per-gateway). Cheap 1901 read.

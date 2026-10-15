@@ -46,6 +46,24 @@
     <span x-text="detectMsg"></span>
   </div>
 
+  <!-- Zero-config in the add-on: the Supervisor already knows the broker. Publishing is
+       OFFERED, never switched on for you — it creates entities in the user's Home
+       Assistant, which is their decision to make. -->
+  <div x-show="sup.available && !sup.publishing" x-cloak
+       class="rounded-lg border px-3 py-2 text-xs space-y-2"
+       style="border-color:var(--border);background:var(--surface-1)">
+    <div style="color:var(--text-secondary)">
+      Home Assistant's own broker is available
+      (<span class="font-mono" x-text="sup.host + ':' + sup.port"></span>), and publishing
+      is off. Turning it on creates this gateway's entities in Home Assistant.
+    </div>
+    <div class="flex items-center gap-2">
+      <button class="btn btn-primary btn-sm" :disabled="supBusy" @click="adoptSupervisorBroker()">
+        Use this broker and start publishing</button>
+      <span x-show="supMsg" style="color:var(--text-faint)" x-text="supMsg"></span>
+    </div>
+  </div>
+
   <!-- Broker conflicts: other FranklinWH producers sharing this broker -->
   <template x-if="conflicts">
     <div class="card" style="padding:12px 16px" x-cloak>

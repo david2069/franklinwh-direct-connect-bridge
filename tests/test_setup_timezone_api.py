@@ -164,3 +164,20 @@ def test_verify_credentials_never_raises():
     assert cloud_status.verify_credentials("", "")["ok"] is False
     out = cloud_status.verify_credentials("a@example.com", "definitely-not-a-password")
     assert out["ok"] is False and out["detail"]
+
+
+def test_a_real_gateway_without_a_host_is_refused(tmp_path, monkeypatch):
+    """Seen on the live add-on: a blank row that can never connect and cannot be told
+    apart from a broken gateway."""
+    c, _ = _client(tmp_path, monkeypatch)
+    r = c.post("/api/gateways", json={"label": "", "host": "", "enabled": True})
+    assert r.status_code == 422
+    assert "host" in r.json()["detail"]
+    # Nothing hostless was created. (Asserted per row rather than on an empty list: the
+    # gateway registry is module-level, so another test in this file may have left one.)
+    assert all((g.get("host") or "").strip() for g in c.get("/api/gateways").json())
+
+
+def test_whitespace_is_not_a_host(tmp_path, monkeypatch):
+    c, _ = _client(tmp_path, monkeypatch)
+    assert c.post("/api/gateways", json={"label": "x", "host": "   "}).status_code == 422
