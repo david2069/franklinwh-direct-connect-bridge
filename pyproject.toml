@@ -14,7 +14,12 @@ license = {text = "MIT"}
 authors = [{name = "david2069", email = "david.hona@gmail.com"}]
 
 dependencies = [
-    "franklinwh-direct-connect-api",          # the local API library (PyPI; editable in dev)
+    # >=0.5 for the emulator's explicit site timezone (tz_offset_hours), its live 1202
+    # clock and the 1702 install profile. The Home Assistant add-on installs this from
+    # PyPI, so an unpinned dependency served 0.4.0 and adding a mock gateway failed
+    # with TypeError (2026-10-15). mockgw degrades rather than failing now, but the
+    # pin is what actually makes the feature available.
+    "franklinwh-direct-connect-api>=0.5",
     "franklinwh-modbus>=0.9",        # direct-Modbus WSet force control (Battery Control widget)
     "fastapi>=0.111",
     "uvicorn>=0.29",

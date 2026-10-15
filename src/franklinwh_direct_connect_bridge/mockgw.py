@@ -38,8 +38,19 @@ def start_mock(gw_id: str, *, seed: int, units: int,
     """
     emu = _mocks.get(gw_id)
     if emu is None:
-        emu = Emulator(host="127.0.0.1", port=0, seed=int(seed), units=max(1, int(units)),
-                       tz_offset_hours=tz_offset_hours).start()
+        kw = {"host": "127.0.0.1", "port": 0, "seed": int(seed), "units": max(1, int(units))}
+        try:
+            emu = Emulator(**kw, tz_offset_hours=tz_offset_hours).start()
+        except TypeError:
+            # The installed library predates tz_offset_hours (added in
+            # franklinwh-direct-connect-api after 0.4.0, which is what PyPI serves at the
+            # time of writing). Adding a mock must not fail because an optional nicety is
+            # missing — the mock simply keeps its own seeded clock. Measured on the live
+            # add-on, 2026-10-15: this raised TypeError and the UI showed
+            # "Internal Server Error" while leaving a half-built roster row behind.
+            log.info("mock gateway %s: installed library has no tz_offset_hours — "
+                     "using the seeded clock", gw_id)
+            emu = Emulator(**kw).start()
         _mocks[gw_id] = emu
         log.info("mock gateway %s: emulator on 127.0.0.1:%d (seed=%d units=%d tz=%s)",
                  gw_id, emu.port, seed, units,
