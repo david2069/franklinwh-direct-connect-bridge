@@ -47,6 +47,16 @@ _lock = threading.Lock()
 _sessions: dict[str, dict[str, Any]] = {}
 
 
+class CommandRejected(RuntimeError):
+    """The bridge understood the request and refused it — a 4xx that is not about auth.
+
+    Their PR #100 (fixing their #97) returns **400** for an unknown slug, with the known
+    slugs listed in the message. Before that build an unknown slug returned ``ok: true``, so
+    this distinguishes "your build rejects it" from "your build silently accepted it", and
+    both are better than a raw traceback.
+    """
+
+
 class AuthError(RuntimeError):
     """Could not obtain a usable session. ``state`` is one of the four above."""
 
@@ -160,5 +170,14 @@ def post_command(base: str, username: str, password: str, slug: str, value) -> d
                     "forbidden",
                     "Modbus Bridge refused the command: this account lacks the "
                     "'control' capability") from e
+            if 400 <= e.code < 500:
+                detail = ""
+                try:
+                    detail = (json.loads(e.read().decode() or "{}") or {}).get("detail", "")
+                except Exception:  # noqa: BLE001 — the status is the point, not the body
+                    pass
+                raise CommandRejected(
+                    f"Modbus Bridge rejected '{slug}' (HTTP {e.code})"
+                    + (f": {detail}" if detail else "")) from e
             raise
     raise AuthError("unauthenticated", "Modbus Bridge login did not produce a usable session")

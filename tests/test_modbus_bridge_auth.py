@@ -143,3 +143,22 @@ def test_provider_availability_is_authorisation_not_liveness(monkeypatch):
     rest = next(c for c in prov["candidates"] if c["kind"] == "modbus-bridge")
     assert rest["available"] is False, "availability followed the health probe again"
     assert rest["auth"] == "forbidden"
+
+
+def test_unknown_slug_is_rejected_not_an_auth_error(monkeypatch):
+    """Their PR #100 returns 400 for an unknown slug. It is not a credentials problem and
+    must not be reported as one — nor arrive as a bare traceback."""
+    import io
+
+    def _open(opener, url, data=None, timeout=0):
+        if url.endswith(mb.LOGIN_PATH):
+            return _Resp({"capabilities": ["control"]})
+        raise urllib.error.HTTPError(
+            url, 400, "Bad Request", {},
+            io.BytesIO(json.dumps({"detail": "Unknown command 'nope'. Known: battery_command"}).encode()))
+
+    monkeypatch.setattr(mb, "_open", _open)
+    with pytest.raises(mb.CommandRejected) as e:
+        mb.post_command("http://bridge", "u", "p", "nope", "1")
+    assert "Unknown command" in str(e.value) and "400" in str(e.value)
+    assert not isinstance(e.value, mb.AuthError)
