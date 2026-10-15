@@ -11,6 +11,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.3.0] — 2026-10-15
+
+The Home Assistant add-on works properly: the panel renders under ingress, the add-on has
+its own icon, and setup asks where the site is. Battery dispatch is now gated on a Modbus
+path that has been confirmed rather than merely configured.
+
 ### Fixed
 
 - **The Home Assistant add-on panel renders properly.** Every asset and API call in the UI
