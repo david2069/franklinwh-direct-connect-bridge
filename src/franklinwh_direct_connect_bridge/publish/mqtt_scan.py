@@ -92,7 +92,7 @@ def analyze(msgs: dict[str, bytes], own_ident: str, prefix: str, own_node: str) 
 
     producers, collision = [], False
     for ident, d in devices.items():
-        is_self = (ident == own_ident) and ("Local Bridge" in (d.get("sw_version") or ""))
+        is_self = (ident == own_ident) and _is_ours(d.get("sw_version"))
         if ident == own_ident and not is_self:      # a non-self producer under OUR identifier
             collision = True
         d["is_self"] = is_self
@@ -118,7 +118,18 @@ def analyze(msgs: dict[str, bytes], own_ident: str, prefix: str, own_node: str) 
 # is decided by the `sw_version` prefix that device_info() stamps, the same signal
 # `is_self` uses above, and anything not provably ours is reported and left alone.
 
-OWN_SW_PREFIX = "Local Bridge"
+#: What this bridge stamps into sw_version today.
+OWN_SW_PREFIX = "Direct Connect Bridge"
+
+#: Spellings that are ALSO ours. Discovery configs are retained, so entities published by
+#: an older version keep the old wording until they are republished — and an orphan purge
+#: that stopped recognising them would walk past its own leftovers, or worse, treat them
+#: as a foreign integration's.
+OWN_SW_PREFIXES = (OWN_SW_PREFIX, "Local Bridge")
+
+
+def _is_ours(sw_version: str | None) -> bool:
+    return any(p in (sw_version or "") for p in OWN_SW_PREFIXES)
 
 
 def find_orphans(msgs: dict[str, bytes], live_nodes, prefix: str) -> dict[str, Any]:
@@ -147,7 +158,9 @@ def find_orphans(msgs: dict[str, bytes], live_nodes, prefix: str) -> dict[str, A
         # The node comes from the device identifier, not the topic: the identifier is
         # what HA keys the device on, and the 3-segment topic form carries no node.
         node = ident[len("franklinwh_"):] if ident.startswith("franklinwh_") else ""
-        ours = sw.startswith(OWN_SW_PREFIX)
+        # Both spellings: a purge that stopped recognising entities published by an older
+        # version would leave its own leftovers behind for ever.
+        ours = _is_ours(sw)
         key = ident or topic
         g = groups.setdefault(key, {
             "identifier": ident, "node": node, "name": dev.get("name"),

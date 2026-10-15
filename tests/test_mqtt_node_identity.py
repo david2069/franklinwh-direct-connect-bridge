@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from franklinwh_direct_connect_bridge import __version__
-from franklinwh_direct_connect_bridge.publish import entities
+from franklinwh_direct_connect_bridge.publish import entities, mqtt_scan
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -37,7 +37,7 @@ def test_addon_version_matches_pyproject():
 
 def test_sw_version_reports_the_real_version():
     d = entities.device_info("1006000600000000", "1006000600000000", None)
-    assert d["sw_version"] == f"Local Bridge v{__version__}"
+    assert d["sw_version"] == f"Direct Connect Bridge v{__version__}"
 
 
 # ── the identity contract these fixes protect ─────────────────────────────────
@@ -48,8 +48,10 @@ def test_device_identity_keys_off_the_node_not_the_package_name():
     # identity may follow it, or every existing HA entity orphans.
     blob = repr(d)
     assert "direct_connect_bridge" not in blob
-    assert "Local Bridge" in d["sw_version"], "mqtt_scan.is_self matches this prefix"
-    assert d["name"] == "FranklinWH aGate (Local Bridge)"
+    assert mqtt_scan._is_ours(d["sw_version"]), "mqtt_scan decides ownership from this"
+    # The NAME now carries the serial tail so ten gateways are ten distinct
+    # devices in Home Assistant; see tests/test_mqtt_device_name.py.
+    assert d["name"] == "FranklinWH Direct abc123"
 
 
 def test_two_distinct_serials_give_two_distinct_devices():

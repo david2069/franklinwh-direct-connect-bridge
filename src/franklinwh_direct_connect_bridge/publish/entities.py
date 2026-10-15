@@ -111,20 +111,36 @@ def build_state(power: dict, health: dict) -> dict[str, Any]:
     }
 
 
+def device_name(serial: str) -> str:
+    """The Home Assistant DEVICE name: ``FranklinWH Direct <last 8 of serial>``.
+
+    The name used to be the fixed string "FranklinWH aGate (Local Bridge)", so on a
+    multi-gateway site every gateway produced a device with the SAME name and the only
+    way to tell them apart in Home Assistant was to open each one.
+
+    Changing ``name`` is safe; changing ``identifiers`` is not. Home Assistant keys a
+    device on its identifiers, so a renamed device is the same device with a new label —
+    entities, their ids and their history all survive. (The identifiers are deliberately
+    untouched below.)
+    """
+    tail = (serial or "")[-8:]
+    return f"FranklinWH Direct {tail}" if tail else "FranklinWH Direct Connect"
+
+
 def device_info(node: str, serial: str, firmware: str | None = None) -> dict[str, Any]:
     from .. import __version__
-    # DO NOT RENAME the "Local Bridge" wording here. It is identity, not a label:
-    # mqtt_scan.is_self matches on this prefix to tell our own published entities
-    # from the Modbus bridge's and FWHAI's on a shared broker, and `name` below is
-    # Home Assistant's DEVICE identity — changing it creates a second device and
-    # orphans every entity already discovered. Renaming it needs a migration.
-    # sw_version clearly identifies THIS integration ("Local Bridge vX.Y.Z") so its HA
-    # device is distinguishable from the Modbus bridge's on a shared broker; the aGate's
-    # own firmware is appended when known.
-    bridge = f"Local Bridge v{__version__}"
+    # DO NOT change `identifiers`. They are Home Assistant's device IDENTITY: a new value
+    # creates a SECOND device and orphans every entity already discovered. The `name`
+    # beside it is only a label and is safe to change — see device_name().
+    #
+    # sw_version identifies THIS integration on a broker shared with the Modbus bridge and
+    # FWHAI: mqtt_scan decides ownership from its prefix, which is why the legacy "Local
+    # Bridge" spelling is still ACCEPTED there even though new publishes say "Direct
+    # Connect Bridge". The aGate's own firmware is appended when known.
+    bridge = f"Direct Connect Bridge v{__version__}"
     d = {
         "identifiers": [f"franklinwh_{node}"],
-        "name": "FranklinWH aGate (Local Bridge)",
+        "name": device_name(serial),
         "manufacturer": MANUFACTURER,
         "model": "aGate",
         "sw_version": f"{bridge} · aGate {firmware}" if firmware else bridge,
