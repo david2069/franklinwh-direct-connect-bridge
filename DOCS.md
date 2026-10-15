@@ -79,6 +79,8 @@ describes *this add-on*, not your gateway — the gateway's own setting is the s
 
 ## More
 
+- [**User Guide**](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/guide/README.md)
+  — the tabs, the Scheduler, Home Assistant entities, and which gate stops a write
 - [Installation, including Docker and development](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/INSTALL.md)
 - [Changelog](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/CHANGELOG.md)
 - The **Guide** tab in the panel documents the underlying **Direct Connect protocol library**,

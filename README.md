@@ -73,8 +73,9 @@ auto-discovery, `read_only` by default.
 
 > **Status: in service.** 180 REST paths (206 operations), the full UI, MQTT / Home Assistant
 > discovery, and a SQLite metrics store are all live and running against real hardware.
-> See [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) for the UI walkthrough and
-> [`docs/API_COMPARISON.md`](docs/API_COMPARISON.md) for how the three transports compare.
+> See the [**User Guide**](docs/guide/README.md) for the UI, the Scheduler, Home Assistant
+> and the control gates, and [`docs/API_COMPARISON.md`](docs/API_COMPARISON.md) for how the
+> three transports compare.
 
 ## ⚖️ Disclaimer
 
