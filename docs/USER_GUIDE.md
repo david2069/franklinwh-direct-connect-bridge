@@ -152,6 +152,12 @@ Publish the aGate to Home Assistant over **MQTT discovery**, so it appears as
 native HA entities (sensors + controls). Manage HA instances/notification
 settings here. (In the HA add-on, the supervisor wires this up for you.)
 
+**Before you remove and reinstall the bridge, read
+[Reinstalling](../INSTALL.md#reinstalling-read-this-before-you-remove-anything).** An
+upgrade keeps your entities; a reinstall can leave Home Assistant holding the old entity
+id and give the new sensor a `_2` suffix, which restarts its history. Renaming the new
+entity back to the old id carries the history and statistics with it.
+
 ### MQTT
 The MQTT broker connection used for HA publishing — status and what the bridge
 publishes. Distinct from the **Home Assistant** tab (which manages the HA side).

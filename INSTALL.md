@@ -112,6 +112,43 @@ bridge.
 - **Data** lives in `./data` (standalone) or the add-on's `/data`. The SQLite store migrates
   itself forward on start; there is no manual step.
 
+### Reinstalling: read this before you remove anything
+
+> **An upgrade keeps your Home Assistant entities. A remove-and-reinstall is the case that
+> costs you history.**
+
+Home Assistant identifies an entity by the id it was discovered with. The bridge builds
+that id from the gateway's node id, so reinstalling onto the same gateway usually restores
+the same entities — but if Home Assistant has an old entity still registered under that id,
+it keeps the old one and gives the new one a suffix (`_2`). The new sensor then starts its
+history from zero and the old series stops, which is what people notice weeks later in the
+Energy dashboard.
+
+**Keep the entity id and Home Assistant carries the history with it.** No data is copied
+and nothing is exported:
+
+1. Remove the old entity, or rename it out of the way first, so its id is free.
+2. **Settings → Devices & Services → Entities**, open the new entity, and set its entity id
+   to the old one.
+3. Home Assistant moves history and long-term statistics across an entity-id rename, so the
+   new entity continues the old series.
+
+This works when the two mean the same thing in the same units — kWh to kWh, with the same
+`state_class: total_increasing` behaviour. If the new sensor's running total starts from a
+different number you will see a step in the Energy dashboard; correct it in **Developer
+Tools → Statistics**, which can adjust a single sum.
+
+Two things worth knowing before you start:
+
+- **Check your Home Assistant version's behaviour on a single sensor first.** Carrying
+  statistics across a rename is current Home Assistant behaviour, not a guarantee this
+  project can make for every version — try one entity and look at its history before doing
+  the rest.
+- **The bridge cannot do this for you.** It publishes discovery; the entity registry is
+  Home Assistant's. An integration that tries to repurpose old entities on the way in has
+  to guess which old one matches which new one, and guessing wrong is worse than the step
+  in the graph.
+
 ---
 
 ## Troubleshooting
