@@ -706,6 +706,10 @@ document.addEventListener('alpine:init', () => {
     _histInterval: null,
     _hidden: false,   // browser tab backgrounded (visibilitychange) — pause heavy work
     _booted: false,       // first paint done — a roster change may now drive the UI
+    //: Whether this build bundles the docs site, and where to read them if not. Assumed
+    //: bundled until the server says otherwise, so a slow answer never flashes the
+    //: fallback at someone whose docs are fine.
+    guideInfo: { bundled: true, url: 'guide/', published_url: '', user_guide_url: '' },
     _gwIntervalMs: 0,     // current roster cadence (10s with no gateway, 120s with one)
     _gwInterval: null,
     _lastSeries: [],                 // last-loaded series (for client-side CSV export)
@@ -769,6 +773,7 @@ document.addEventListener('alpine:init', () => {
       // History is heavier than the 5s poll — load once, then refresh slowly.
       this.loadSiteTz();
       this.loadSetup();
+      this.loadGuideInfo();
       this.loadHostTz();
       this.loadHistory(this.histRange);
       // Only refresh the Power History chart while the dashboard is visible — recreating it
@@ -799,6 +804,13 @@ document.addEventListener('alpine:init', () => {
       });
       this.checkBuild();                                   // record the token now
       this._buildInterval = setInterval(() => this.checkBuild(), 60000);
+    },
+
+    async loadGuideInfo() {
+      try {
+        const r = await fetch('api/guide');
+        if (r.ok) this.guideInfo = await r.json();
+      } catch (e) { /* leave the optimistic default */ }
     },
 
     // ── Multi-gateway ──────────────────────────────────────

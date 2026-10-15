@@ -1201,15 +1201,42 @@ def create_app() -> FastAPI:
     # The franklinwh-local library docs (mkdocs site), if bundled into the image by
     # tools/build_image.sh. Served at /guide (FastAPI owns /docs for Swagger). Skipped
     # cleanly in dev / when the site was not built.
+    # FWH_DOCS_DIR is AUTHORITATIVE when set: pointing at a docs directory and silently
+    # being served a different one is worse than being told there is none.
     _docs_env = os.environ.get("FWH_DOCS_DIR")
-    _docs_candidates = ([Path(_docs_env)] if _docs_env else []) + [
+    _docs_candidates = [Path(_docs_env)] if _docs_env else [
         Path(__file__).resolve().parents[2] / "docs_site",   # /app/docs_site in the image
         Path(__file__).resolve().parents[3] / "docs_site",
     ]
+    _guide_bundled = False
     for _d in _docs_candidates:
         if _d.is_dir() and (_d / "index.html").exists():
             app.mount("/guide", StaticFiles(directory=str(_d), html=True), name="guide")
+            _guide_bundled = True
             break
+
+    #: Where the guide actually is. The mkdocs site is built by tools/build_image.sh from
+    #: the sibling library checkout and lands in docs_site/ — which is GITIGNORED, so the
+    #: Home Assistant add-on (built from the git repository) has no site at all. The Guide
+    #: tab then loaded /guide, got FastAPI's 404, and rendered {"detail":"Not Found"} as
+    #: the page. Measured on the live add-on, 2026-10-15.
+    #:
+    #: Published docs are the honest fallback: the same content, online, rather than a
+    #: broken panel. Reported so the UI can send people to a working page instead of an
+    #: iframe that cannot load.
+    GUIDE_PUBLISHED_URL = "https://david2069.github.io/franklinwh-direct-connect-api/"
+
+    @app.get("/api/guide")
+    def api_guide():
+        """Whether the guide is bundled in this build, and where to read it if not."""
+        return {"bundled": _guide_bundled,
+                "url": "guide/" if _guide_bundled else GUIDE_PUBLISHED_URL,
+                "published_url": GUIDE_PUBLISHED_URL,
+                "user_guide_url": ("https://github.com/david2069/"
+                                   "franklinwh-direct-connect-bridge/blob/main/"
+                                   "docs/guide/README.md"),
+                "reason": ("" if _guide_bundled else
+                           "This build does not bundle the documentation site.")}
 
     # -- gateway resolvers (multi-gateway, Phase 2) --------------------------
     # No ``gateway`` param ⇒ the default (first-registered) gateway ⇒ exactly the

@@ -121,3 +121,28 @@ def test_a_disabled_instance_suppresses_delivery_without_failing(ctx, monkeypatc
     assert sent == []
     log = ctx.notify_log(limit=5)
     assert any("instance disabled" in (e.get("device") or "") for e in log)
+
+
+# -- the Guide, when the docs site is not bundled -----------------------------------------
+# Live add-on, 2026-10-15: the Guide tab rendered {"detail":"Not Found"} as the page. The
+# mkdocs site is built from the sibling library checkout into docs_site/, which is
+# GITIGNORED — so the add-on, built from the repository, has no site to serve.
+
+def test_the_guide_reports_whether_it_is_bundled(ctx, monkeypatch):
+    import franklinwh_direct_connect_bridge.app as m
+    monkeypatch.setenv("FWH_DOCS_DIR", "/nonexistent-docs-dir")
+    body = TestClient(m.create_app()).get("/api/guide").json()
+    assert body["bundled"] is False
+    assert body["published_url"].startswith("https://")
+    assert body["url"] == body["published_url"]       # send people somewhere that works
+    assert body["reason"]
+
+
+def test_a_bundled_guide_is_served_locally(ctx, monkeypatch, tmp_path):
+    import franklinwh_direct_connect_bridge.app as m
+    site = tmp_path / "site"
+    site.mkdir()
+    (site / "index.html").write_text("<html><body>docs</body></html>")
+    monkeypatch.setenv("FWH_DOCS_DIR", str(site))
+    body = TestClient(m.create_app()).get("/api/guide").json()
+    assert body["bundled"] is True and body["url"] == "guide/"

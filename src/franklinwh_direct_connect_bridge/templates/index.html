@@ -325,7 +325,7 @@
         </button>
         <div class="card-label">Guide</div>
         <div class="flex-1"></div>
-        <a href="guide/" target="_blank" rel="noopener"
+        <a :href="$store.app.guideInfo.url || 'guide/'" target="_blank" rel="noopener"
            class="btn btn-secondary btn-sm inline-flex items-center gap-1.5" title="Open the docs in a separate tab">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/>
@@ -334,8 +334,30 @@
         </a>
       </div>
       <!-- src is bound so the docs are only fetched once the panel is first opened -->
-      <iframe :src="$store.app.guideOpen ? 'guide/' : 'about:blank'" title="Guide"
-              class="flex-1 w-full" style="border:0;background:#fff"></iframe>
+      <iframe x-show="$store.app.guideInfo.bundled"
+              :src="($store.app.guideOpen && $store.app.guideInfo.bundled) ? 'guide/' : 'about:blank'"
+              title="Guide" class="flex-1 w-full" style="border:0;background:#fff"></iframe>
+
+      <!-- Not every build bundles the documentation site: it is produced from the sibling
+           library checkout, so the Home Assistant add-on (built from the repository) has
+           none. Loading /guide there rendered FastAPI's {"detail":"Not Found"} as the
+           page. A link to the published docs is the honest answer. -->
+      <div x-show="!$store.app.guideInfo.bundled" x-cloak
+           class="flex-1 w-full flex items-start justify-center p-6">
+        <div class="max-w-md space-y-3 text-sm" style="color:var(--text-secondary)">
+          <p style="color:var(--text-primary)">The documentation is not bundled in this
+            build.</p>
+          <p class="text-xs" style="color:var(--text-faint)">The Home Assistant add-on is
+            built from the repository, which does not carry the generated documentation
+            site. The same content is published online.</p>
+          <div class="flex flex-wrap gap-2">
+            <a :href="$store.app.guideInfo.published_url" target="_blank" rel="noopener"
+               class="btn btn-primary btn-sm">Open the Direct Connect docs</a>
+            <a :href="$store.app.guideInfo.user_guide_url" target="_blank" rel="noopener"
+               class="btn btn-secondary btn-sm">Bridge user guide</a>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Toast notifications -->

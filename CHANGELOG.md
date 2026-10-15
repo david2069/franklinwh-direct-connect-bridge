@@ -32,6 +32,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **The Guide no longer shows `{"detail":"Not Found"}`.** The documentation site is built
+  from the sibling library checkout into `docs_site/`, which is gitignored — so the Home
+  Assistant add-on, built from the repository, had no site to serve and the Guide panel
+  rendered FastAPI's 404 body as the page. The bridge now reports whether the docs are
+  bundled, and the panel links to the published documentation when they are not.
+
 - **The add-device dialog no longer discards a half-filled form** on a click outside it —
   the same fix as the schedule editor.
 
