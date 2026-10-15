@@ -11,6 +11,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.4.0] — 2026-10-15
+
+Each gateway is now its own Home Assistant device, named after its serial — ten gateways
+are ten distinguishable devices instead of ten identical ones. "Set up" opens the wizard.
+
 ### Changed
 
 - **Each gateway is its own Home Assistant device, named after its serial.** The device was
