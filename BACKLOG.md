@@ -4140,7 +4140,12 @@ can complete inside one interval), so the series shows trend, not transient.
 
 ## FEAT-SETUP-WIZARD — first-run setup, and re-configuration later
 
-**Status:** `QUEUED` — **Filed:** 2026-10-12 (owner, low priority as stated). The Modbus
+**Status:** `PARTIAL` — core shipped 2026-10-15: state (pending/done/skipped), step model with
+per-step `satisfied` so a re-run is a review not a blank form, derived-vs-overridden marking,
+capability gating, a dismissible dashboard prompt and a Settings → Setup view.
+**Remaining:** the scan step is reported but not yet driven from the wizard (the Gateways
+panel already does it), and capability gating is computed but not yet applied to `navTabs`.
+**Was:** `QUEUED` — **Filed:** 2026-10-12 (owner, low priority as stated). The Modbus
 Bridge has one; its API cannot see most of what ours can, so ours should be meaningfully
 better rather than a clone.
 

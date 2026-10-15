@@ -74,6 +74,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- **First-run setup.** A dashboard prompt when required steps are outstanding, and a
+  **Settings → Setup** view that is re-runnable by design: each step reports whether it is
+  already satisfied, so a second pass is a review rather than a blank form. The install
+  profile is **read from the gateway** and each field is marked `READ` or `SET BY YOU`, so a
+  default is never presented as a measurement — and anything derived can be contradicted.
+  Optional steps say "you can set this up later" and skipping disables nothing.
+  (FEAT-SETUP-WIZARD)
+
 - **A copy-paste Home Assistant dashboard card**, on Home Assistant → Published by bridge.
   Grouped or single layout, diagnostics opt-in, with a Copy button that falls back to
   selecting the text when `navigator.clipboard` is unavailable — which it is on HA ingress,

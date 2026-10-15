@@ -133,6 +133,33 @@ document.addEventListener('alpine:init', () => {
     ],
     //: Whether this gateway has a generator (1901 genEn OR configured). Device-metric
     //  tabs/columns for absent hardware are hidden rather than showing a permanent 0 W.
+    //: First-run setup. `prompt` only controls whether we OFFER it — the wizard is
+    //  always reachable from Settings, and skipping never disables anything.
+    setup: { state: 'pending', should_prompt: false, steps: [], required_satisfied: false },
+    setupDismissed: false,
+
+    async loadSetup() {
+      try {
+        const r = await fetch('api/setup' + this.gwQuery('?'));
+        if (r.ok) this.setup = await r.json();
+      } catch (e) { /* never block the UI on the wizard */ }
+    },
+
+    get setupPrompt() {
+      return !!(this.setup.should_prompt && !this.setupDismissed);
+    },
+
+    async setSetupState(value) {
+      try {
+        await fetch('api/setup/state', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state: value }),
+        });
+      } catch (e) { /* the banner still dismisses locally */ }
+      this.setupDismissed = true;
+      await this.loadSetup();
+    },
+
     generatorInstalled: false,
     //: The registry filtered to what this gateway actually has — feeds barMax/barTabs/
     //  overflowTabs and the bottom nav. Generator drops out when no genset is present.
@@ -713,6 +740,7 @@ document.addEventListener('alpine:init', () => {
       this._interval = setInterval(() => this._dashTick(), 10000);
       // History is heavier than the 5s poll — load once, then refresh slowly.
       this.loadSiteTz();
+      this.loadSetup();
       this.loadHostTz();
       this.loadHistory(this.histRange);
       // Only refresh the Power History chart while the dashboard is visible — recreating it

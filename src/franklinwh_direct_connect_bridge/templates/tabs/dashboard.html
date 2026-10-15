@@ -302,6 +302,27 @@
          x-text="quality"></div>
   </div>
 
+  <!-- First-run setup. Offered, never imposed: "Not now" only stops the prompt, and the
+       wizard stays reachable from Settings afterwards. -->
+  <div x-show="$store.app.setupPrompt" x-cloak class="card p-4 lg:col-span-3"
+       style="border-left:3px solid var(--accent)">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <div class="font-semibold" style="color:var(--text-primary)">Finish setting up</div>
+        <p class="text-sm mt-1" style="color:var(--text-secondary)">
+          <span x-text="($store.app.setup.steps || []).filter(s => s.required &amp;&amp; !s.satisfied).length"></span>
+          step(s) still needed. The bridge reads what it can from the gateway, so there is
+          little to type.
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="btn btn-secondary btn-sm" @click="$store.app.setSetupState('skipped')">Not now</button>
+        <button class="btn btn-primary btn-sm"
+                @click="$store.app.go('settings'); $store.app.settingsSub = 'setup'">Set up</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Operating Mode & Reserves (mobile-first: LED · tap name to switch · reserve in a modal) -->
   <div class="card lg:col-span-3" style="padding:0;overflow:hidden"
        x-data="{

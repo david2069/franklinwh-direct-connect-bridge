@@ -10,6 +10,71 @@
     </template>
   </div>
 
+  <!-- ══ Setup ══ Re-runnable on purpose: every step shows whether it is already
+       satisfied, so a second pass is a review rather than a blank form. -->
+  <div x-show="sub==='setup'" x-cloak class="space-y-4">
+    <div class="card p-4">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div class="card-label" style="margin-bottom:.25rem">Setup</div>
+          <p class="text-sm" style="color:var(--text-secondary)">
+            What this bridge could read from the gateway, and what still needs you.
+            Everything here can be changed later.
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="btn btn-secondary btn-sm" @click="$store.app.loadSetup()">Re-check</button>
+          <button class="btn btn-primary btn-sm"
+                  x-show="$store.app.setup.required_satisfied"
+                  @click="$store.app.setSetupState('done')">Mark complete</button>
+        </div>
+      </div>
+    </div>
+
+    <template x-for="st in ($store.app.setup.steps || [])" :key="st.id">
+      <div class="card p-4">
+        <div class="flex items-start gap-3">
+          <span class="mt-1 w-2.5 h-2.5 rounded-full shrink-0"
+                :style="st.satisfied ? 'background:var(--ok,#10b981)'
+                                     : (st.required ? 'background:#f59e0b' : 'border:1.5px solid var(--border)')"></span>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-medium" style="color:var(--text-primary)" x-text="st.title"></span>
+              <span x-show="!st.required" class="chip muted" style="padding:0 6px;font-size:.6rem">OPTIONAL</span>
+              <span x-show="st.satisfied" class="chip ok" style="padding:0 6px;font-size:.6rem">DONE</span>
+            </div>
+            <p class="text-xs mt-1" style="color:var(--text-secondary)" x-text="st.detail"></p>
+            <p x-show="st.note &amp;&amp; !st.satisfied" class="text-xs mt-1"
+               style="color:var(--text-faint)" x-text="st.note"></p>
+
+            <!-- What the gateway told us, separated from what merely has a default. -->
+            <template x-if="st.id === 'profile' &amp;&amp; st.values">
+              <div class="mt-2 text-xs grid gap-1"
+                   style="grid-template-columns:repeat(auto-fill,minmax(210px,1fr))">
+                <template x-for="k in Object.keys(st.values)" :key="k">
+                  <div class="flex items-center justify-between gap-2 rounded px-2 py-1"
+                       style="background:var(--surface-2)">
+                    <span style="color:var(--text-secondary)" x-text="k"></span>
+                    <span class="flex items-center gap-1">
+                      <span class="font-mono" style="color:var(--text-primary)"
+                            x-text="String(st.values[k])"></span>
+                      <span x-show="(st.derived || []).includes(k)" class="chip ok"
+                            style="padding:0 5px;font-size:.55rem"
+                            title="Read from the gateway">READ</span>
+                      <span x-show="(st.overridden || []).includes(k)" class="chip"
+                            style="padding:0 5px;font-size:.55rem"
+                            title="You changed this; it overrides what was read">SET BY YOU</span>
+                    </span>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+
   <div x-show="sub==='general'" x-cloak class="space-y-6">
   <!-- ══ Environment ══ -->
   <div class="flex items-center gap-3">

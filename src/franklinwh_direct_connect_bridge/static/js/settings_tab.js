@@ -162,6 +162,7 @@ function settingsTab() {
 
     // ── Settings sub-tabs (FEAT-SETTINGS-TABS) ──────────────────────────────
     subTabs: [
+      { key: 'setup', label: 'Setup' },
       { key: 'general', label: 'General' },
       { key: 'gateways', label: 'Gateways' },
       { key: 'automation', label: 'Automation' },
