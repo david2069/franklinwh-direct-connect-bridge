@@ -11,6 +11,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+
+- **The sidebar says "Direct Connect", not "Local Bridge".** The project was renamed; the
+  dashboard's own name badge and the Network topology diagram were still on the old one.
+  The Home Assistant device name is deliberately NOT renamed — it is identity, not a label
+  (see `publish/entities.py`), and changing it would orphan every discovered entity.
+
 ### Added
 
 - **The setup wizard asks where the site is, and every gateway uses that one zone.** Nothing

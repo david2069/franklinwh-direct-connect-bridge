@@ -31,7 +31,7 @@
   <template x-if="net">
     <div class="space-y-4">
 
-      <!-- Topology diagram: aGate → Local Bridge → browser / MQTT ; + cloud uplinks -->
+      <!-- Topology diagram: aGate → Direct Connect Bridge → browser / MQTT ; + cloud uplinks -->
       <div class="card">
         <div class="flex items-center justify-between">
           <div class="card-label" style="margin-bottom:0">Topology</div>
@@ -104,11 +104,11 @@
               <text x="112" y="217" font-size="9.5" style="fill:#34d399" x-text="linkLabel(topo.agate && topo.agate.link)"></text>
               <text x="34" y="240" font-size="9.5" style="fill:var(--text-secondary)" x-text="topo.agate && topo.agate.latency_ms!=null ? ('round-trip ' + topo.agate.latency_ms + ' ms') : ''"></text>
             </g>
-            <!-- Local Bridge -->
+            <!-- Direct Connect Bridge -->
             <g style="cursor:help">
-              <title x-text="'Local Bridge ' + ((topo.bridge && topo.bridge.ip) || '?') + ':8101 · uptime ' + fmtUptime(topo.bridge && topo.bridge.uptime_s) + ' · MQTT ' + ((topo.mqtt && topo.mqtt.connected) ? 'connected' : (topo.mqtt && topo.mqtt.enabled ? 'disconnected' : 'off'))"></title>
+              <title x-text="'Direct Connect Bridge ' + ((topo.bridge && topo.bridge.ip) || '?') + ':8101 · uptime ' + fmtUptime(topo.bridge && topo.bridge.uptime_s) + ' · MQTT ' + ((topo.mqtt && topo.mqtt.connected) ? 'connected' : (topo.mqtt && topo.mqtt.enabled ? 'disconnected' : 'off'))"></title>
               <rect x="380" y="150" width="240" height="104" rx="8" style="fill:var(--surface-2);stroke:var(--accent)"/>
-              <text x="394" y="176" font-size="13" font-weight="700" style="fill:var(--text-primary)">Local Bridge</text>
+              <text x="394" y="176" font-size="13" font-weight="700" style="fill:var(--text-primary)">Direct Connect</text>
               <text x="394" y="196" font-size="11" font-family="ui-monospace,monospace" style="fill:var(--text-secondary)" x-text="((topo.bridge && topo.bridge.ip) || '–') + ' :8101'"></text>
               <text x="394" y="216" font-size="9.5" style="fill:var(--text-secondary)" x-text="'uptime ' + fmtUptime(topo.bridge && topo.bridge.uptime_s)"></text>
               <text x="394" y="234" font-size="9.5" style="fill:var(--text-secondary)" x-text="'MQTT ' + ((topo.mqtt && topo.mqtt.connected) ? 'connected' : (topo.mqtt && topo.mqtt.enabled ? 'disconnected' : 'off'))"></text>
