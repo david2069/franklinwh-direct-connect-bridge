@@ -11,6 +11,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+
+- **Each gateway is its own Home Assistant device, named after its serial.** The device was
+  the fixed string "FranklinWH aGate (Local Bridge)", so ten gateways produced ten devices
+  with the same name and the only way to tell them apart was to open each one. It now reads
+  **FranklinWH Direct 24170091** — the last 8 characters of that gateway's serial. The
+  device `identifiers` are untouched, so this is a rename, not a new device: entities,
+  their ids and their history all survive. Entities published by earlier versions are still
+  recognised as ours, so the orphan purge does not walk past its own leftovers.
+
 ### Fixed
 
 - **"Set up" opens the wizard.** The dashboard banner jumped to Settings → Setup — the same
