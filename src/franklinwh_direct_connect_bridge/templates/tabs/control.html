@@ -40,9 +40,25 @@
       </div>
     </div>
 
-    <div x-show="!available" class="text-xs rounded px-3 py-2"
-         style="background:var(--surface-1);color:var(--text-secondary)"
-         x-text="reason || 'Force charge/discharge/standby drive the aGate over Modbus (WSet). Enable + configure the aGate Modbus interface to use these — read-only until then.'"></div>
+    <!-- Disabled controls must say WHICH problem and WHAT to do. Four states, four
+         remedies; "unavailable" alone sends people to the network when the gateway's own
+         SunSpec setting is the thing that is off. -->
+    <div x-show="!available" class="text-xs rounded px-3 py-2 space-y-1"
+         style="background:var(--surface-1);color:var(--text-secondary)">
+      <div class="flex items-center gap-2">
+        <span class="chip muted" style="padding:0 6px;font-size:.6rem"
+              x-text="({'not_configured':'NOT CONFIGURED','unreachable':'UNREACHABLE',
+                        'no_sunspec':'NO SUNSPEC','ready':'READY'})[state] || 'UNAVAILABLE'"></span>
+        <span x-text="({
+          not_configured: 'Battery dispatch is not set up on this bridge.',
+          unreachable:    'The aGate did not answer on Modbus TCP 502.',
+          no_sunspec:     'Modbus answered, but SunSpec did not — so a dispatch would not land.',
+        })[state] || 'Force charge/discharge/standby drive the aGate over Modbus (WSet).'"></span>
+      </div>
+      <div x-show="hint" style="color:var(--text-faint)" x-text="hint"></div>
+      <div x-show="reason" class="font-mono" style="color:var(--text-faint);font-size:.65rem"
+           x-text="reason"></div>
+    </div>
 
     <!-- Command — styled dropdown (explicit set, so it always persists) -->
     <div class="flex items-center justify-between gap-3 text-sm">

@@ -3157,7 +3157,9 @@ def create_app() -> FastAPI:
         from . import battery_control
         host = _modbus_host()
         if not host:
-            return {"available": False, "reason": "no gateway host to reach over Modbus"}
+            return {"available": False, "reason": "no gateway host to reach over Modbus",
+                    "state": "not_configured",
+                    "hint": battery_control.CAPABILITY_HINTS["not_configured"]}
         return battery_control.status(host)
 
     @app.get("/api/battery/command")
@@ -3173,6 +3175,10 @@ def create_app() -> FastAPI:
         return {**_batt_cmd, "remaining_s": cur.get("remaining_s"),
                 "active_target_soc": cur.get("target_soc"),
                 "available": st.get("available", False), "reason": st.get("reason", ""),
+                # Four states, because the remedy differs: not_configured / unreachable /
+                # no_sunspec / ready. `available` is kept for existing callers and is
+                # exactly `state == "ready"`.
+                "state": st.get("state", "not_configured"), "hint": st.get("hint", ""),
                 "max_charge_w": st.get("max_charge_w", 5000),
                 "max_discharge_w": st.get("max_discharge_w", 5000)}
 

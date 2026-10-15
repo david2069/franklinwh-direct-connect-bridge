@@ -22,6 +22,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- **Battery dispatch is gated on a CONFIRMED Modbus path, in four states.** `not_configured`
+  / `unreachable` / `no_sunspec` / `ready`, because the remedy differs in each case and a
+  single "unavailable" sends people to the network when the gateway's own SunSpec setting
+  is what is off. Confirmation is a SunSpec read that returns — a socket that opens is not a
+  dispatch path. The **API refuses** a force unless the state is `ready` (the UI disabling
+  the buttons is not the gate), while **Release is never blocked**: refusing to stop a
+  dispatch because the path looks unhealthy is the wrong way round. The Control tab now
+  names the state and the fix instead of greying out.
+
 - **The setup wizard offers the FranklinWH app account, optionally, and says why.** It is
   checked by SIGNING IN and stored only if that works — an unverified password means
   discovering months later that a reserve-SoC write has been failing. The step states what

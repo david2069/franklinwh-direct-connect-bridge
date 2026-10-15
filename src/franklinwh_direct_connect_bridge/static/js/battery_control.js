@@ -21,8 +21,13 @@ function batteryControl() {
     powerMode: 'pct',       // 'w' or 'pct' — which power control the backend will use
     maxChargeW: 5000,
     maxDischargeW: 5000,
-    available: false,       // is the Modbus force path usable?
+    available: false,       // is the Modbus force path usable? (state === 'ready')
     reason: '',             // why not, if unavailable
+    // Four states, because the remedy differs for each: not_configured / unreachable /
+    // no_sunspec / ready. "Unavailable" alone sends people to the wrong fix — most often
+    // to the network, when the gateway's own SunSpec setting is simply off.
+    state: 'not_configured',
+    hint: '',
     active: 'Not Active',   // the currently-running dispatch, from the backend
     sending: false,
     commandLog: [],
@@ -37,11 +42,16 @@ function batteryControl() {
         const d = await r.json();
         this.available = !!d.available;
         this.reason = d.reason || '';
+        this.state = d.state || (d.available ? 'ready' : 'not_configured');
+        this.hint = d.hint || '';
         this.active = d.active || 'Not Active';
         if (d.power_mode) this.powerMode = d.power_mode;
         if (d.max_charge_w) this.maxChargeW = d.max_charge_w;
         if (d.max_discharge_w) this.maxDischargeW = d.max_discharge_w;
-      } catch (e) { this.available = false; this.reason = e.message; }
+      } catch (e) {
+        this.available = false; this.reason = e.message;
+        this.state = 'unreachable'; this.hint = '';
+      }
     },
 
     get canWrite() { return !!this.$store.app.summary.writes_enabled; },

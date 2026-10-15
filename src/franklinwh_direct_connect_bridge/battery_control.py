@@ -324,15 +324,70 @@ def _connect(host: str):
     return c, BatteryCommand
 
 
+#: The four states a dispatch path can be in. They are distinguished because the remedy
+#: differs in each case, and a single "unavailable" sends people to the wrong one.
+#:
+#:   not_configured — nothing to reach (no host), or the client is switched off here
+#:   unreachable    — the socket did not open. Firewall, wrong host, gateway down
+#:   no_sunspec     — the socket opened but SunSpec did not answer. Almost always the
+#:                    gateway's own SunSpec Modbus setting (1205 sunsMdEn) being off
+#:   ready          — a SunSpec read SUCCEEDED. Only this state may dispatch
+#:
+#: A socket that opens is NOT a dispatch path. :502 answering proves a listener exists,
+#: nothing more — the same mistake as probing a secured REST API with an unauthenticated
+#: health endpoint and calling it available (#56).
+STATES = ("not_configured", "unreachable", "no_sunspec", "ready")
+
+CAPABILITY_HINTS = {
+    "not_configured": "Set the gateway host, and switch the Modbus client on in Control "
+                      "settings.",
+    "unreachable": "Nothing answered on TCP 502. Check the address, the gateway, and "
+                   "anything filtering the port.",
+    "no_sunspec": "The port answered but SunSpec did not. Turn on SunSpec Modbus on the "
+                  "gateway — the Device tab's der_comms (1205) read shows sunsMdEn.",
+    "ready": "",
+}
+
+
+def capability(host: str | None) -> dict:
+    """``{"state", "reason", "hint", "ready"}`` — confirmed, not assumed.
+
+    Confirmation is a SunSpec read that returns, because that is the only evidence that a
+    dispatch would land. Nothing here writes.
+    """
+    def _out(state, reason=""):
+        return {"state": state, "reason": reason, "hint": CAPABILITY_HINTS.get(state, ""),
+                "ready": state == "ready"}
+
+    if not host:
+        return _out("not_configured", "no gateway host to reach over Modbus")
+    ok, why = available()
+    if not ok:
+        return _out("not_configured", why)
+    try:
+        c, _ = _connect(host)
+    except Exception as e:                                       # noqa: BLE001
+        return _out("unreachable", str(e))
+    try:
+        c.read_control_status()                  # a real SunSpec read — the confirmation
+    except Exception as e:                                       # noqa: BLE001
+        return _out("no_sunspec", f"{type(e).__name__}: {e}")
+    finally:
+        _close(c)
+    return _out("ready")
+
+
 def status(host: str) -> dict:
     """Read-only probe: is the WSet path reachable, and what is running now."""
     ok, why = available()
     if not ok:
-        return {"available": False, "reason": why}
+        return {"available": False, "reason": why,
+                "state": "not_configured", "hint": CAPABILITY_HINTS["not_configured"]}
     try:
         c, _ = _connect(host)
     except Exception as e:                                       # noqa: BLE001
-        return {"available": False, "reason": str(e)}
+        return {"available": False, "reason": str(e),
+                "state": "unreachable", "hint": CAPABILITY_HINTS["unreachable"]}
     try:
         cs = c.read_control_status()
         active = "Not Active"
@@ -342,10 +397,14 @@ def status(host: str) -> dict:
                       else "Force Discharge" if pct > 0 else "Force Standby")
         rated = _ratings(c)
         return {"available": True, "reason": "", "active": active,
+                "state": "ready", "hint": "",
                 "vpp_active": bool(cs.get("wset_enabled")),
                 "max_charge_w": rated[0], "max_discharge_w": rated[1], "wset": cs}
     except Exception as e:                                       # noqa: BLE001
-        return {"available": False, "reason": f"{type(e).__name__}: {e}"}
+        # The socket opened and SunSpec did not answer: a different problem, and a
+        # different remedy, from "could not connect".
+        return {"available": False, "reason": f"{type(e).__name__}: {e}",
+                "state": "no_sunspec", "hint": CAPABILITY_HINTS["no_sunspec"]}
     finally:
         _close(c)
 
@@ -405,10 +464,19 @@ def execute(command: str, *, host: str, power_w: int = 0, power_pct: int = 0,
         _soc_getter = soc_getter
     if on_event is not None:
         _on_event = on_event
-    ok, why = available()
-    if not ok:
-        return {"ok": False, "result": why}
     cmd = (command or "").strip()
+    # The UI disables the controls, but the UI is not the gate — the API is. A release is
+    # always allowed: refusing to STOP a dispatch because the path looks unhealthy is the
+    # wrong way round.
+    if cmd not in ("Release", "Not Active"):
+        cap = capability(host)
+        if not cap["ready"]:
+            return {"ok": False, "result": cap["reason"] or cap["state"],
+                    "state": cap["state"], "hint": cap["hint"]}
+    else:
+        ok, why = available()
+        if not ok:
+            return {"ok": False, "result": why, "state": "not_configured"}
     try:
         c, BatteryCommand = _connect(host)
     except Exception as e:                                       # noqa: BLE001
