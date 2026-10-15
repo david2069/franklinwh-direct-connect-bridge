@@ -274,6 +274,13 @@ class SetupExpectedReq(BaseModel):
     apowers: int | None = None
 
 
+class MqttExploreReq(BaseModel):
+    """A topic filter to watch briefly. Read-only: this never publishes."""
+    filter: str
+    seconds: float = 2.0
+    limit: int = 200
+
+
 class MqttNamespaceReq(BaseModel):
     """``fwh_dc`` to adopt the per-integration namespace, ``franklinwh`` to go back.
 
@@ -3455,8 +3462,28 @@ def create_app() -> FastAPI:
                 # no_sunspec / ready. `available` is kept for existing callers and is
                 # exactly `state == "ready"`.
                 "state": st.get("state", "not_configured"), "hint": st.get("hint", ""),
-                "max_charge_w": st.get("max_charge_w", 5000),
-                "max_discharge_w": st.get("max_discharge_w", 5000)}
+                # The rating, and WHERE it came from. A hardcoded 5000 used to appear here
+                # as though it were read from the inverter; an aPower 2 is 10 kW and a
+                # percentage of the wrong rating is wrong by half (owner, 2026-10-16).
+                **_battery_rating_block(),
+                }
+
+    def _battery_rating_block() -> dict:
+        """Max charge/discharge with provenance: Modbus → aPower model → user constant →
+        an assumption, labelled as one."""
+        from . import battery_control
+        s = get_settings()
+        try:
+            gw = state.default_gateway()
+            count = int(getattr(gw, "apower_count", None) or 1) if gw else 1
+        except Exception:  # noqa: BLE001
+            gw, count = None, 1
+        r = battery_control.ratings_with_source(
+            _modbus_host(), settings=s, store=db.get_store(s),
+            gateway_id=(gw.id if gw else None), apower_count=count)
+        return {"max_charge_w": r["charge_w"], "max_discharge_w": r["discharge_w"],
+                "rating_source": r["source"], "rating_assumed": r["assumed"],
+                "rating_detail": r["detail"]}
 
     @app.post("/api/battery/command")
     def api_battery_command(req: BatteryCmdReq, dry: bool = Query(False)):
@@ -5024,6 +5051,49 @@ def create_app() -> FastAPI:
                 "note": ("Publishing restarts under the new ids. Any entity Home Assistant "
                          "kept from the old namespace can be removed under Settings → "
                          "Devices & services → MQTT.")}
+
+    @app.post("/api/mqtt/explore")
+    async def api_mqtt_explore(req: MqttExploreReq):
+        """Watch a topic filter on the broker for a few seconds and report what arrives.
+
+        A diagnostic, because "is anything actually on that topic" is otherwise
+        unanswerable from inside the add-on without installing a separate MQTT client.
+        It is strictly READ ONLY — there is no publish path here at all.
+
+        A bare ``#`` is refused: on a shared broker that is every message from every
+        integration, which is a denial of service against this bridge rather than a
+        diagnostic. Narrow it to a prefix.
+        """
+        s = get_settings()
+        if not s.mqtt_enabled:
+            raise HTTPException(409, "MQTT is off — turn publishing on to reach the broker")
+        f = (req.filter or "").strip()
+        if not f:
+            raise HTTPException(422, "a topic filter is required, e.g. franklinwh-local/#")
+        if f in ("#", "/#", "+/#"):
+            raise HTTPException(422, "refusing to subscribe to the whole broker — narrow "
+                                     "the filter, e.g. homeassistant/# or franklinwh-local/#")
+        from .publish import mqtt_scan
+        out = await asyncio.to_thread(mqtt_scan.explore, s, f,
+                                      seconds=req.seconds, limit=req.limit)
+        if not out.get("ok"):
+            raise HTTPException(502, out.get("error", "broker unreachable"))
+        return out
+
+    @app.get("/api/mqtt/explore/suggestions")
+    def api_mqtt_explore_suggestions():
+        """Filters worth starting from, named by what each ANSWERS."""
+        s = get_settings()
+        from .publish.mqtt_publisher import topic_root
+        root = topic_root(s)
+        disc = s.ha_discovery_prefix or "homeassistant"
+        return {"suggestions": [
+            {"filter": f"{root}/#", "label": "Everything this bridge publishes"},
+            {"filter": f"{disc}/+/+/config", "label": "Home Assistant discovery configs"},
+            {"filter": f"{disc}/+/+/+/config", "label": "Discovery configs (node form)"},
+            {"filter": "franklinwh/#", "label": "The other FranklinWH integrations"},
+            {"filter": f"{root}/+/control/+/set", "label": "Commands sent to this bridge"},
+        ]}
 
     @app.get("/api/mqtt/orphans")
     def api_mqtt_orphans():

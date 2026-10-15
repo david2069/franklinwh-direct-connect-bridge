@@ -17,6 +17,76 @@ import time
 from typing import Any
 
 
+#: Hard caps for the explorer. A broker can hold a very large retained set, and a
+#: diagnostic that fetches all of it is a denial-of-service against the bridge it runs in.
+EXPLORE_MAX_TOPICS = 500
+EXPLORE_MAX_PAYLOAD = 2048          # bytes kept per topic; the rest is reported, not held
+EXPLORE_MAX_SECONDS = 10.0
+
+
+def explore(settings, topic_filter: str, *, seconds: float = 2.0,
+            limit: int = EXPLORE_MAX_TOPICS) -> dict:
+    """Subscribe to ``topic_filter`` briefly and return what arrives. READ ONLY.
+
+    This is a diagnostic, not a feature: it answers "is anything actually on that topic",
+    which is otherwise unanswerable from inside the add-on without installing a separate
+    MQTT client. It never publishes, and it never subscribes to ``#`` by accident — an
+    empty filter is refused by the caller.
+
+    Retained messages arrive immediately on subscribe; live ones only if they happen
+    during the window. Both are reported, with ``retain`` saying which, because "nothing
+    here" and "nothing happened while I watched" are different answers.
+    """
+    import paho.mqtt.client as mqtt
+
+    seconds = max(0.5, min(float(seconds), EXPLORE_MAX_SECONDS))
+    limit = max(1, min(int(limit), EXPLORE_MAX_TOPICS))
+    found: dict[str, dict] = {}
+    truncated = {"value": False}
+
+    def on_connect(client, userdata, flags, rc, properties=None):
+        client.subscribe(topic_filter)
+
+    def on_message(client, userdata, msg):
+        if len(found) >= limit:
+            truncated["value"] = True
+            return
+        raw = msg.payload or b""
+        body = raw[:EXPLORE_MAX_PAYLOAD]
+        try:
+            text = body.decode("utf-8")
+        except UnicodeDecodeError:
+            text = f"<{len(raw)} bytes of binary>"
+        found[msg.topic] = {
+            "topic": msg.topic,
+            "payload": text,
+            "bytes": len(raw),
+            "clipped": len(raw) > len(body),
+            "retain": bool(msg.retain),
+        }
+
+    c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
+                    client_id=f"{settings.mqtt_namespace}-explore-{int(time.time())}")
+    if settings.mqtt_username:
+        c.username_pw_set(settings.mqtt_username, settings.mqtt_password)
+    c.on_connect, c.on_message = on_connect, on_message
+    try:
+        c.connect(settings.mqtt_host, int(settings.mqtt_port or 1883), 10)
+    except Exception as e:  # noqa: BLE001 — the error IS the answer
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+    c.loop_start()
+    time.sleep(seconds)
+    c.loop_stop()
+    try:
+        c.disconnect()
+    except Exception:  # noqa: BLE001
+        pass
+    msgs = sorted(found.values(), key=lambda m: m["topic"])
+    return {"ok": True, "filter": topic_filter, "seconds": seconds,
+            "count": len(msgs), "truncated": truncated["value"],
+            "retained": sum(1 for m in msgs if m["retain"]), "messages": msgs}
+
+
 def _collect(settings, prefix: str, *, timeout: float, tag: str):
     """Sniff the broker for retained FranklinWH discovery configs.
     Returns ``(msgs, error)`` — ``msgs`` maps topic -> raw payload. Never raises."""

@@ -32,6 +32,12 @@ _FIELDS: dict[str, dict] = {
     "load_shedding":     {"default": False,          "derived": True,  "kind": "bool"},
     "non_backup_loads":  {"default": False,          "derived": False, "kind": "bool"},
     "battery_label":     {"default": "FranklinWH",   "derived": False, "kind": "text"},
+    # The aPower MODEL. The local API cannot read it (no model/SKU register), so it is
+    # asked rather than derived — and knowing it is what lets the bridge size a dispatch
+    # from the datasheet instead of assuming 5 kW. "" = not told, which stays distinct
+    # from any particular model.
+    "apower_model":      {"default": "",             "derived": False, "kind": "enum",
+                          "options": ["", "aPower X", "aPower 2", "aPower S"]},
 }
 
 

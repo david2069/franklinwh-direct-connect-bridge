@@ -145,14 +145,50 @@ def describe(manifest: dict | None) -> dict[str, Any]:
     }
 
 
-#: aPower model specs (usable/rated kWh + continuous kW), from datasheets — the local API
-#: cannot read the aPower model/SKU, so the user picks it; capacity = usable_kwh × count.
-#: See FEAT-DEVICE-CAPABILITIES. Values are per UNIT. Owner-provided where noted.
+#: aPower model specs (usable/rated kWh + continuous kW). The local API cannot read the
+#: aPower model or SKU, so the user picks it; capacity = usable_kwh × count. Per UNIT.
+#:
+#: PROVENANCE, since these numbers now size a dispatch:
+#:
+#: * The model→power MAPPING is verified in ``franklinwh-cloud``'s
+#:   ``const/device_catalog.json`` + ``discovery.compile_capabilities``, where the SKU
+#:   encodes the rating: ``APR-05K…`` = aPower X, ``APR-10K…`` = aPower 2,
+#:   ``APRS-10K/11K…`` = aPower S (stackable, MPPT). Checked 2026-10-16.
+#: * The owner's statement (FEAT-DEVICE-CAPABILITIES): "5 kW fixed per aPower, except
+#:   aPower S which is 10 kW variable."
+#: * **aPower S 8 kW charge / 10 kW discharge: CONFIRMED by the vendor datasheet.**
+#:   *FranklinWH aPower S datasheet, document version V1.9* (SKUs APRS-10K15V1-US,
+#:   APRS-10K15V1.1-US, APRS-10K15V1.1DCP-US; nameplate "aPower S-10"), retrieved
+#:   2026-10-16 from https://www.franklinwh.com/document/apower-s-datasheet — owner-supplied
+#:   link. Verbatim: "Max Real Power (Charge) 8 kW continuous"; "Max Real Power (Discharge)
+#:   – With PV Input 11.5 kW continuous / – Battery Only 10 kW continuous".
+#:
+#:   So the asymmetry is real and this table was right, though for a reason nobody had
+#:   written down. ``discharge_kw`` holds the **battery-only** 10 kW, which is the correct
+#:   number for sizing a battery dispatch: the 11.5 kW figure includes PV flowing through
+#:   the hybrid inverter, which is not what a force command controls. The extra headroom is
+#:   recorded as ``discharge_with_pv_kw`` rather than being dropped.
 APOWER_SPECS: dict[str, dict[str, Any]] = {
     "aPower X":  {"usable_kwh": 13.6, "rated_kwh": 15.0, "charge_kw": 5.0,  "discharge_kw": 5.0,  "has_mppt": False},
     "aPower 2":  {"usable_kwh": 16.0, "rated_kwh": 16.0, "charge_kw": 10.0, "discharge_kw": 10.0, "has_mppt": False},
-    "aPower S":  {"usable_kwh": 15.0, "rated_kwh": 15.0, "charge_kw": 8.0,  "discharge_kw": 10.0, "has_mppt": True},
+    # Datasheet V1.9: charge 8 kW, discharge 10 kW battery-only / 11.5 kW with PV input.
+    "aPower S":  {"usable_kwh": 15.0, "rated_kwh": 15.0, "charge_kw": 8.0,  "discharge_kw": 10.0,
+                  "discharge_with_pv_kw": 11.5, "has_mppt": True},
 }
+
+
+def apower_power_w(model: str | None, count: int = 1) -> tuple[int, int] | None:
+    """``(charge_w, discharge_w)`` for ``count`` aPowers of ``model``, or None if unknown.
+
+    The datasheet rating is PER UNIT, so a two-aPower site is twice one unit. None rather
+    than a default: "we do not know this model" and "this model is 5 kW" are different
+    answers, and only one of them should ever size a dispatch.
+    """
+    spec = APOWER_SPECS.get((model or "").strip())
+    if not spec:
+        return None
+    n = max(1, int(count or 1))
+    return (int(spec["charge_kw"] * 1000 * n), int(spec["discharge_kw"] * 1000 * n))
 
 
 def apower_specs() -> list[dict[str, Any]]:

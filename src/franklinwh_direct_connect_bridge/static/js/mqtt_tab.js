@@ -39,8 +39,43 @@ function mqttTab() {
       } catch (e) { this.supMsg = String(e); } finally { this.supBusy = false; }
     },
 
+    // ── Broker explorer ──────────────────────────────────────────────────────
+    // Read-only. Answers "is anything actually on that topic", which is otherwise
+    // unanswerable from inside the add-on without installing a separate MQTT client.
+    explore: { open: false, filter: '', seconds: 2, busy: false, result: null,
+               error: '', suggestions: [] },
+
+    async loadExploreSuggestions() {
+      try {
+        const r = await fetch('api/mqtt/explore/suggestions');
+        if (r.ok) {
+          this.explore.suggestions = (await r.json()).suggestions || [];
+          if (!this.explore.filter && this.explore.suggestions.length) {
+            this.explore.filter = this.explore.suggestions[0].filter;
+          }
+        }
+      } catch (e) { /* the panel still works with a typed filter */ }
+    },
+
+    async runExplore() {
+      if (!this.explore.filter.trim()) return;
+      this.explore.busy = true; this.explore.error = ''; this.explore.result = null;
+      try {
+        const r = await fetch('api/mqtt/explore', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filter: this.explore.filter.trim(),
+                                 seconds: Number(this.explore.seconds) || 2 }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { this.explore.error = d.detail || `HTTP ${r.status}`; return; }
+        this.explore.result = d;
+      } catch (e) { this.explore.error = String(e); }
+      finally { this.explore.busy = false; }
+    },
+
     init() {
       this.loadSupervisorMqtt();
+      this.loadExploreSuggestions();
       // Loads on first SHOW, not on page load — see lazyTab().
       const t = lazyTab(this, 'mqtt', () => this.load());
       // Re-fetch when the topbar gateway selection changes, so the entity list + values

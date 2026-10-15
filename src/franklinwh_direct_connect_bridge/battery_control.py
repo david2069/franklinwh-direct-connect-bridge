@@ -399,7 +399,10 @@ def status(host: str) -> dict:
         return {"available": True, "reason": "", "active": active,
                 "state": "ready", "hint": "",
                 "vpp_active": bool(cs.get("wset_enabled")),
-                "max_charge_w": rated[0], "max_discharge_w": rated[1], "wset": cs}
+                # None when SunSpec answered but the rating registers did not. The caller
+                # fills it in from the model table — see ratings_with_source().
+                "max_charge_w": rated[0], "max_discharge_w": rated[1],
+                "rating_source": ("modbus_702" if rated[0] else None), "wset": cs}
     except Exception as e:                                       # noqa: BLE001
         # The socket opened and SunSpec did not answer: a different problem, and a
         # different remedy, from "could not connect".
@@ -409,13 +412,84 @@ def status(host: str) -> dict:
         _close(c)
 
 
+#: Last-resort rating when nothing can be established. Named, so it can never be mistaken
+#: for a measurement: an aPower X is 5 kW, which is the commonest unit, and that is the
+#: whole justification. See ratings_with_source().
+ASSUMED_W = 5000
+
+
 def _ratings(c) -> tuple[int, int]:
+    """The inverter's rated charge/discharge in W from SunSpec 702, or ``(None, None)``.
+
+    None, not a number. "SunSpec did not answer" and "the inverter is 5 kW" are different
+    facts, and returning the second for the first is how a 10 kW aPower 2 ends up being
+    dispatched at half rate — or a 33 kW site at a sixth. The caller decides what to fall
+    back to, with the model table and the user's own setting ahead of any constant.
+    """
     try:
         c.discover_ratings()
-        return (int(getattr(c, "RATED_MAX_CHARGE_W", 5000) or 5000),
-                int(getattr(c, "RATED_MAX_DISCHARGE_W", 5000) or 5000))
     except Exception:                                           # noqa: BLE001
-        return (5000, 5000)
+        return (None, None)
+    chg = getattr(c, "RATED_MAX_CHARGE_W", None)
+    dis = getattr(c, "RATED_MAX_DISCHARGE_W", None)
+    if not chg or not dis:
+        return (None, None)
+    return (int(chg), int(dis))
+
+
+def ratings_with_source(host: str | None, *, settings=None, store=None,
+                        gateway_id: str | None = None,
+                        apower_count: int = 1) -> dict:
+    """Max charge/discharge W and WHERE the number came from.
+
+    Order, best evidence first:
+
+    1. **Modbus SunSpec 702** — the inverter's own rating, measured.
+    2. **The aPower model** the user recorded in System Setup, times how many are
+       reporting, from the datasheet table.
+    3. **``battery_max_power_kw``** — the user's own number in Automation Constants.
+    4. **5 kW, labelled an assumption.** Only when the model is unknown too.
+
+    The owner's instruction (2026-10-16): the fallback must come from the model mapping we
+    already have, not a fixed 5000 W, and an assumption must be visible as one.
+    """
+    chg, dis = cached_ratings(host) if host else (None, None)
+    if chg and dis:
+        return {"charge_w": int(chg), "discharge_w": int(dis),
+                "source": "modbus_702", "assumed": False,
+                "detail": "Read from the inverter over Modbus SunSpec 702."}
+
+    if store is not None:
+        try:
+            from . import devicedb, system_setup
+            vals = system_setup.values(store, None, gateway_id, None)
+            pair = devicedb.apower_power_w(vals.get("apower_model"), apower_count)
+            if pair:
+                model = vals.get("apower_model")
+                return {"charge_w": pair[0], "discharge_w": pair[1],
+                        "source": "apower_model", "assumed": False,
+                        "detail": (f"{apower_count} × {model} from the datasheet — "
+                                   f"Modbus could not be read.")}
+        except Exception:                                       # noqa: BLE001 — never fail a dispatch read
+            pass
+
+    if settings is not None and store is not None:
+        try:
+            from . import constants
+            kw = float(constants.values(store).get("battery_max_power_kw") or 0)
+            if kw > 0:
+                w = int(kw * 1000)
+                return {"charge_w": w, "discharge_w": w,
+                        "source": "user_constant", "assumed": False,
+                        "detail": "From Automation Constants → battery max power."}
+        except Exception:                                       # noqa: BLE001
+            pass
+
+    return {"charge_w": ASSUMED_W, "discharge_w": ASSUMED_W,
+            "source": "assumed", "assumed": True,
+            "detail": ("Assumed 5 kW (one aPower X). Modbus could not be read and no "
+                       "aPower model is recorded — set it in Settings → System Setup so "
+                       "dispatch is sized from the datasheet instead.")}
 
 
 #: host -> (expires_at_monotonic, (max_charge_w, max_discharge_w) | (None, None)).
@@ -441,7 +515,7 @@ def cached_ratings(host: str) -> tuple:
     try:
         c, _ = _connect(host)
         try:
-            result = _ratings(c)                # (chg, dis); (5000,5000) if discover fails
+            result = _ratings(c)                # (chg, dis), or (None, None) — never a guess
         finally:
             _close(c)
     except Exception:                                           # noqa: BLE001
@@ -492,6 +566,13 @@ def execute(command: str, *, host: str, power_w: int = 0, power_pct: int = 0,
             return {"ok": True, "result": "released", "active": "Not Active"}
 
         max_ch, max_dis = _ratings(c)
+        if (max_ch is None or max_dis is None) and power_mode != "w":
+            # A percentage needs a rating to be a percentage OF. Refusing beats quietly
+            # using 5 kW: on a 10 kW aPower 2 that halves the dispatch and nothing says so.
+            return {"ok": False, "state": "no_sunspec",
+                    "result": ("the inverter's rated power could not be read, so a "
+                               "percentage cannot be sized — set the aPower model in "
+                               "Settings → System Setup, or give the power in watts")}
         # Last-set-wins: use watts OR percent of the rated rate for the direction.
         if cmd == "Force Standby":
             watts = 0

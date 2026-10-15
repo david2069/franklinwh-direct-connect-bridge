@@ -11,6 +11,21 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+
+- **The inverter's rated power is no longer assumed to be 5 kW.** When Modbus could not be
+  read, `battery_control` returned a hardcoded 5 kW that was indistinguishable from a real
+  reading — and a force command given as a **percentage** is a percentage of that number,
+  so on an aPower 2 (10 kW) every dispatch was half what was asked for, silently. The
+  rating now comes from Modbus SunSpec 702, else the **aPower model** you record in System
+  Setup times how many are reporting, else your own `battery_max_power_kw` constant, else
+  5 kW **labelled as an assumption** with the remedy in the text. A percentage is refused
+  outright when the rating is unknown; an explicit wattage still works.
+
+- **New: the aPower model in Settings → System Setup.** The local API exposes no model
+  register, so it is asked rather than derived — and it is what turns that assumption into
+  a datasheet value.
+
 ### Changed
 
 - **One Home Assistant device per integration per aGate.** The device identifier now names
@@ -24,6 +39,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - **The identity namespace can be switched to `fwh_dc`** (Settings → MQTT, confirm-gated).
   That one DOES re-create entities under new ids — the old ones keep your history — so it
   is an explicit choice, never automatic, and the API states the cost before you take it.
+
+### Added
+
+- **Browse the broker, read-only** (MQTT tab). Watch a topic filter for a few seconds and
+  see what arrives, retained messages marked as such — the question "is anything actually
+  on that topic" was otherwise unanswerable from inside the add-on without installing a
+  separate MQTT client. It never publishes; `#` on its own is refused, because on a shared
+  broker that is every message from every integration; and the window, result count and
+  payload size are all capped.
 
 ### Fixed
 

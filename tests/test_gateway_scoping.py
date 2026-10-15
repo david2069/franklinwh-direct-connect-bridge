@@ -36,6 +36,8 @@ NOT_DEVICE_BOUND = {
     "api/mqtt/discover",           # broker discovery, bridge-wide
     "api/mqtt/supervisor",         # the Supervisor's broker (read) and adopting it (write):
                                    # one broker per bridge, nothing to do with a gateway
+    "api/mqtt/explore",            # a topic filter on the broker — brokers are bridge-wide,
+                                   # and the filter itself names whatever scope is wanted
     "api/billing",                 # billing overview/history — resolves the meter server-side, not a device read
     "api/notify",                  # notify triggers / log / test / devices — bridge-wide
     "api/notify/test",             # sends a test notification via HA, no gateway

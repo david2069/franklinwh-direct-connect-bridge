@@ -64,6 +64,73 @@
     </div>
   </div>
 
+  <!-- Broker explorer: read-only. There is no publish path here at all. -->
+  <div class="card p-3 space-y-2">
+    <button class="flex items-center gap-2 text-left w-full"
+            @click="explore.open = !explore.open">
+      <svg class="w-3.5 h-3.5 transition-transform" :class="explore.open && 'rotate-90'"
+           fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+      <span class="card-label" style="margin-bottom:0">Browse the broker</span>
+      <span class="text-[10px]" style="color:var(--text-faint)">read-only &middot; see what is
+        actually on a topic</span>
+    </button>
+
+    <div x-show="explore.open" x-cloak class="space-y-2">
+      <div class="flex flex-wrap items-end gap-2">
+        <label class="text-xs" style="color:var(--text-secondary)">Topic filter
+          <input class="form-control form-control-sm block mt-1 font-mono" style="width:20rem"
+                 x-model="explore.filter" placeholder="franklinwh-local/#"></label>
+        <label class="text-xs" style="color:var(--text-secondary)">Watch for
+          <input type="number" min="0.5" max="10" step="0.5" style="width:5rem"
+                 class="form-control form-control-sm block mt-1" x-model="explore.seconds"></label>
+        <button class="btn btn-primary btn-sm" :disabled="explore.busy || !explore.filter"
+                @click="runExplore()" x-text="explore.busy ? 'Listening…' : 'Listen'"></button>
+      </div>
+
+      <div class="flex flex-wrap gap-1">
+        <template x-for="s in explore.suggestions" :key="s.filter">
+          <button class="chip muted" style="padding:0 6px;font-size:.6rem"
+                  :title="s.filter" @click="explore.filter = s.filter; runExplore()"
+                  x-text="s.label"></button>
+        </template>
+      </div>
+
+      <p x-show="explore.error" x-cloak class="text-xs" style="color:#fca5a5" x-text="explore.error"></p>
+
+      <template x-if="explore.result">
+        <div class="space-y-1">
+          <!-- "nothing retained" and "nothing happened while I watched" are different
+               answers, so the summary says which. -->
+          <p class="text-xs" style="color:var(--text-faint)">
+            <span x-text="explore.result.count"></span> topic(s),
+            <span x-text="explore.result.retained"></span> retained, in
+            <span x-text="explore.result.seconds"></span>s.
+            <span x-show="explore.result.truncated" style="color:#fbbf24">Stopped at the
+              limit &mdash; narrow the filter.</span>
+            <span x-show="!explore.result.count">Nothing arrived. A retained message would
+              have shown immediately, so this topic is empty right now.</span>
+          </p>
+          <div class="rounded border max-h-80 overflow-auto"
+               style="border-color:var(--border);background:var(--surface-1)">
+            <template x-for="m in explore.result.messages" :key="m.topic">
+              <div class="px-2 py-1.5 border-b text-xs" style="border-color:var(--border)">
+                <div class="flex items-center gap-2">
+                  <span class="font-mono truncate" style="color:var(--text-primary)"
+                        x-text="m.topic"></span>
+                  <span x-show="m.retain" class="chip muted ml-auto shrink-0"
+                        style="padding:0 5px;font-size:.55rem">retained</span>
+                </div>
+                <div class="font-mono mt-0.5 break-all" style="color:var(--text-faint)"
+                     x-text="m.payload + (m.clipped ? ' …(' + m.bytes + ' bytes)' : '')"></div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
   <!-- Broker conflicts: other FranklinWH producers sharing this broker -->
   <template x-if="conflicts">
     <div class="card" style="padding:12px 16px" x-cloak>
