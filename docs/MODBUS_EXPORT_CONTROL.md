@@ -24,18 +24,40 @@ That is the whole of it. The page is a commissioning procedure, not a protocol d
 - Whether the serial-number binding gates anything at the aGate, or is bookkeeping in the app.
 - Whether the 1.5 kW fallback is readable or configurable.
 
-## The owner's reading, and where enquiry stopped
+## What Voltello says about it
 
-Stated by the owner, 2026-10-15:
+The FranklinWH knowledge base was searched and does not explain how Voltello interacts with
+Amber Electric or LocalVolts in respect of the aGate. **The device maker's own announcement
+does**, at the commercial level.
 
-- The device is believed to be a **bridge to support solar PV systems only**.
-- A **secondary benefit** is that it reads the aGate's **SoC and state**.
-- **The FranklinWH knowledge base was searched and does not say** how Voltello or Village
-  Energy interact with **Amber Electric** or **Localvolts** in respect of the aGate.
+**Source:** company post by *Voltello by Village Energy* on LinkedIn, ~September 2026,
+announcing the FranklinWH Australia integration. Read 2026-10-15. **This is marketing
+material, not technical documentation** — it states what the product offers, not what it
+writes.
 
-So beyond solar curtailment there is nothing to go on. The owner says as much: any
-functionality above that is speculation, and it is not recorded here as anything else. The
-enquiry has been made and did not produce an answer; that is itself the finding.
+Quoted from that post:
+
+- "**FranklinWH Australia batteries can now be added to the Voltello platform via our LinkPro
+  gateway** giving eligible households in **WA access to Synergy's VPP**."
+- "Customers in south-eastern states are eligible for **VPP1 and BESS2 rebate programs with
+  access to live Amber Electric and LocalVolts pricing**."
+- "with **full CSIP-AUS compliance built in**, once connected, customers are **VPP Ready**."
+- "one gateway, one app, and the same automations work across the battery your customer
+  already chose."
+- Voltello "now integrates with over a dozen inverters, batteries and retailers".
+
+### What that settles, and what it does not
+
+**Settled at the commercial level:** the Amber / LocalVolts connection is real and is a stated
+product feature, as is VPP participation. The earlier reading that the device supports solar
+PV only is not what the maker says — the post is explicit that **batteries** are added to the
+platform via LinkPro.
+
+**Not settled, and the post does not touch it:** how any of this reaches the aGate. Nothing
+states which registers LinkPro reads or writes, whether battery control goes over the Modbus
+link documented on page 25, or whether "the same automations" means commanding the battery or
+only responding to it. A marketing claim that automations work is not a description of the
+mechanism.
 
 ## Relevance to this project
 

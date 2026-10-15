@@ -4415,9 +4415,15 @@ device supports **solar PV systems only**, with reading the aGate's SoC and stat
 secondary benefit, and that the FranklinWH knowledge base does not explain how Voltello
 interacts with Amber or Localvolts in respect of the aGate.
 
-**So it is not a route to this feature and should not be treated as one.** It is recorded
-because it is the only vendor-documented mention of export control we have found, not because
-it answers anything here.
+Voltello's own announcement (company LinkedIn post, ~Sept 2026) goes further than the
+FranklinWH guide: it says FranklinWH **batteries** are added to the Voltello platform via
+LinkPro, giving access to **live Amber Electric and LocalVolts pricing**, VPP1/BESS2 rebate
+programs and Synergy's VPP in WA, with CSIP-AUS compliance built in.
+
+So a commercial path from dynamic pricing to this hardware **exists and is sold today** — it
+just is not ours, and the mechanism is undocumented. That is worth knowing before building:
+the question for this feature may turn out to be *"can we do what LinkPro does"* rather than
+*"can this be done at all"*. Neither the guide nor the post says what LinkPro writes.
 
 ### Order of work
 
