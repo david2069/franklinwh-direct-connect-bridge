@@ -157,6 +157,8 @@ settings here. (In the HA add-on, the supervisor wires this up for you.)
 upgrade keeps your entities; a reinstall can leave Home Assistant holding the old entity
 id and give the new sensor a `_2` suffix, which restarts its history. Renaming the new
 entity back to the old id carries the history and statistics with it.
+[HA_HISTORY.md](HA_HISTORY.md) covers the whole question, including why merging old and new
+series by hand is discouraged.
 
 ### MQTT
 The MQTT broker connection used for HA publishing — status and what the bridge

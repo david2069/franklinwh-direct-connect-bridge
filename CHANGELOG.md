@@ -20,6 +20,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Documentation
 
+- **`docs/HA_HISTORY.md` — keeping your Home Assistant history.** What is possible when you
+  switch to this bridge or reinstall it: keep the entity id (recommended), start clean
+  (also recommended), or merge series by hand (**discouraged**, with the reasons and the
+  third-party tools named but not endorsed). Includes the four things that must match
+  before any two series may be joined — the one that catches people is a *daily* counter
+  against a *lifetime* one, which matching units will not reveal.
+
 - **INSTALL.md now warns about reinstalling.** An upgrade keeps your Home Assistant
   entities; a remove-and-reinstall can leave Home Assistant holding the old entity id and
   give the newly discovered one a `_2` suffix, which restarts its history. The remedy —

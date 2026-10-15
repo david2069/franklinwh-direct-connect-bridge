@@ -138,6 +138,10 @@ This works when the two mean the same thing in the same units — kWh to kWh, wi
 different number you will see a step in the Energy dashboard; correct it in **Developer
 Tools → Statistics**, which can adjust a single sum.
 
+If you need more than this — merging an old series into a new one — read
+[docs/HA_HISTORY.md](docs/HA_HISTORY.md) first. It is possible, it is **discouraged**, and
+that page says why and what the alternatives are.
+
 Two things worth knowing before you start:
 
 - **Check your Home Assistant version's behaviour on a single sensor first.** Carrying

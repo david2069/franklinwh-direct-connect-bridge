@@ -4661,6 +4661,10 @@ old one exists and it lands as `_2`.
 
 **Design constraints.**
 
+- **Offer it, and discourage it** (owner, 2026-10-15). The feature exists because people
+  ask for it, not because it is a good idea. Whatever is built points at
+  `docs/HA_HISTORY.md` and leads with the two options that move no data — keep the entity
+  id, or start clean — before offering anything that writes to the statistics database.
 - **Propose, never act.** Produce a reviewed list — old id, new id, units, state class,
   what we matched on — and let the user apply it. FWHAI attempted automatic repurposing and
   it did not work (owner, 2026-10-15); the failure mode is silent and discovered late.
