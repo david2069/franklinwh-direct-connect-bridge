@@ -148,12 +148,42 @@ It is the only way to measure these, each of which is currently recorded as unco
 | `run_status` 5/6/7 | never seen, local **or** cloud | does an unrequested island use them? |
 | `dspRunstatus` | 5 while requested | same value when nobody asked? |
 | cloud `offgridreason` | 1 while requested; no other value ever captured | the unscheduled-outage code, currently unobserved |
-| cloud `offGridFlag` | `null` throughout a requested island | whether it goes to 1 — their docs use it for a firmware-detected outage |
+| cloud `offGridFlag` | `null` throughout a requested island; `1` captured exactly once ever, via `getOffGridFlag` | whether it goes to 1 — their docs use it for a firmware-detected outage |
+| cloud `solarHaveVo.offGridReason` | `−1` ×537 in their corpus, unexplained | what it reads during an outage |
+| cloud `get_stats()` outage branch | never exercised | does relay-open + `offgridState ≠ 1` correctly resolve to OUTAGE? |
 | reconnect behaviour | 34 s, grid live throughout | what happens when the utility has to come back first |
 | Modbus `701` voltage node | not established | does it drop with the utility, or hold at the formed island? |
 
 The last one settles a question the `franklinwh-modbus-bridge` session has correctly kept
 open: near-zero current locates the CT, not the voltage tap. A dead utility separates them.
+
+#### What the other channels will read, and who reads what
+
+Supplied by the `franklinwh-cloud` session, 2026-10-15, from its corpus in `hars/`. Recorded
+so the breaker test is one coordinated capture rather than three partial ones.
+
+- **The cloud has an untested branch of its own.** `get_stats()` decides grid state in order:
+  not-grid-tied, then `offGridFlag` truthy ⇒ OUTAGE, then if the grid relay is open *or*
+  `offgridreason` is set it fetches `selectOffgrid` and calls `offgridState == 1` SIMULATED
+  and anything else OUTAGE. **That last branch has never seen a real outage.** Our test is
+  the first chance to exercise it, and a wrong answer there is a wrong grid state in their
+  CLI and library.
+- **`getOffGridFlag` has returned `offGridFlag: 1` exactly once**, in their entire corpus —
+  the only captured 1 anywhere. Context not yet examined. In `getDeviceCompositeInfo` the
+  same-named field has never been 1 (0 ×20,286, null ×155).
+- **`solarHaveVo.offGridReason` has an unexplained `−1`**, ×537, alongside null ×18,977,
+  1 ×676, 0 ×251. Unexplained is their word and ours; worth capturing rather than assuming it
+  is noise.
+- **MQTT `cmdType 211` carries `dspRunStatus` and `ibgRunStatus`** — the same two registers we
+  read locally from `1707`, plus `gridVol1/2`, `gridLineVol` and the full relay set. So the
+  outage test can compare those fields across channels directly, which nothing today did.
+  It is a gateway round trip, so it is polled sparingly.
+- `getDeviceInfo.offGirdFlag` (vendor spelling) is documented as the PERMANENT off-grid site
+  flag, not an outage indicator. Not a signal for this test.
+
+Their capture script exists and is unrun: `outage_poll.py` — composite every 30 s,
+`selectOffgrid` every 60 s, `211` every 5 min. Their instruction matches ours: start it 10+
+minutes before the breaker.
 
 **This is the owner's test to run, on site.** Nothing here is a reason to interrupt supply;
 it is a list of what one such event would answer if it is performed deliberately, and what to
