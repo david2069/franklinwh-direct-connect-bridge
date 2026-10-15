@@ -164,25 +164,49 @@
             </div>
           </template>
 
-          <!-- 6. Confirm what was read -->
+          <!-- 6. Confirm what was read, PER GATEWAY -->
           <template x-if="step === 'confirm'">
-            <div class="space-y-2">
-              <p>This is what the gateway reports. Anything wrong can be changed in
+            <div class="space-y-3">
+              <p>This is what each gateway reports. Anything wrong can be changed in
                 Settings → Setup.</p>
-              <div class="grid gap-1 text-xs"
-                   style="grid-template-columns:repeat(auto-fill,minmax(190px,1fr))">
-                <template x-for="k in Object.keys(profile || {})" :key="k">
-                  <div class="flex items-center justify-between gap-2 rounded px-2 py-1"
-                       style="background:var(--surface-2)">
-                    <span x-text="k"></span>
-                    <span class="font-mono" style="color:var(--text-primary)"
-                          x-text="String(profile[k])"></span>
+              <p x-show="profiles.length > 1" class="text-xs" style="color:var(--text-faint)">
+                Solar, generator and backup wiring are per-gateway — one aGate can have PV
+                and another none.</p>
+
+              <template x-for="p in profiles" :key="p.id">
+                <div class="rounded-lg border p-2 space-y-1" style="border-color:var(--border)">
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-semibold" style="color:var(--text-primary)"
+                          x-text="p.label"></span>
+                    <span x-show="p.is_mock" class="text-[10px] px-1.5 py-0.5 rounded"
+                          style="background:var(--surface-2);color:var(--text-faint)">mock</span>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded ml-auto"
+                          :style="p.solar
+                            ? 'background:rgba(34,197,94,.12);color:#86efac'
+                            : 'background:var(--surface-2);color:var(--text-faint)'"
+                          x-text="p.solar
+                            ? ('Solar ' + (p.values.solar_kwp ? p.values.solar_kwp + ' kWp' : 'yes'))
+                            : 'No solar reported'"></span>
                   </div>
-                </template>
-              </div>
-              <p x-show="!profile || !Object.keys(profile).length" class="text-xs"
-                 style="color:var(--text-faint)">Nothing read yet — the first poll may still be
-                 running.</p>
+                  <div class="grid gap-1 text-xs"
+                       style="grid-template-columns:repeat(auto-fill,minmax(190px,1fr))">
+                    <template x-for="k in Object.keys(p.values || {})" :key="k">
+                      <div class="flex items-center justify-between gap-2 rounded px-2 py-1"
+                           style="background:var(--surface-2)">
+                        <span x-text="k"></span>
+                        <span class="font-mono" style="color:var(--text-primary)"
+                              x-text="String(p.values[k])"></span>
+                      </div>
+                    </template>
+                  </div>
+                  <p x-show="!p.values || !Object.keys(p.values).length" class="text-xs"
+                     style="color:var(--text-faint)">Nothing read from this gateway yet — the
+                     first poll may still be running.</p>
+                </div>
+              </template>
+
+              <p x-show="!profiles.length" class="text-xs" style="color:var(--text-faint)">
+                No gateways to report on yet.</p>
             </div>
           </template>
 

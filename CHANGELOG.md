@@ -11,6 +11,22 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+
+- **The setup wizard no longer opens on a bridge that is already working.** Adding the
+  site-timezone step as required made "something required is missing" true on every
+  existing install, and that was what decided whether to prompt — so installs that had been
+  running for weeks were offered first-run setup. The rule is now what the wizard always
+  meant: it prompts only when **no real gateway is configured**. Completeness is still
+  reported on Settings → Setup, where the user went looking for it.
+
+### Added
+
+- **The wizard's last step reports every gateway, not one.** Solar, generator and backup
+  wiring are per-gateway facts — one aGate can have 6.6 kWp of PV and another none — and a
+  single profile at the end of setup silently claimed they were alike. Each gateway now gets
+  its own card, with its solar stated plainly (including "No solar reported").
+
 ### Changed
 
 - **The sidebar says "Direct Connect", not "Local Bridge".** The project was renamed; the

@@ -301,12 +301,20 @@ def summary(store, **kw) -> dict[str, Any]:
     st = state(store)
     sts = steps(store=store, **kw)
     required_done = all(s["satisfied"] for s in sts if s["required"])
+    # A working bridge is NEVER prompted. "Nothing configured" means no real gateway, and
+    # that is the only condition that may open the modal unasked.
+    #
+    # This used to be "something required is still missing", which is a different and
+    # dangerous thing: adding a required step then re-opened the wizard on installs that
+    # had been running for weeks. It happened — the site-timezone step was added on
+    # 2026-10-15 and the owner's live bridge, with a real aGate polling happily, offered
+    # setup and had three mock gateways added to it. Completeness belongs on the Setup
+    # page, where the user went looking; it must never drive an unasked modal.
+    configured = any(not getattr(g, "is_mock", False) for g in (kw.get("gateways") or []))
     return {
         "state": st,
         "complete": st == "done",
         "required_satisfied": required_done,
-        # Offer it when it has never been finished AND something required is still missing.
-        # Re-running is always allowed; this is only about whether we PROMPT.
-        "should_prompt": st == "pending" and not required_done,
+        "should_prompt": st == "pending" and not configured,
         "steps": sts,
     }
