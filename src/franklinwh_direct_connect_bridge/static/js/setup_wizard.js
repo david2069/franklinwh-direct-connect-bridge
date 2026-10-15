@@ -23,6 +23,11 @@ window.setupWizard = function setupWizard() {
     found: null,                       // null = not scanned yet; [] = scanned, nothing found
     manual: { host: '' },
     demo: { label: 'Mock aGate' },
+    // FranklinWH app credentials. Optional, and only stored once a real sign-in proves
+    // they work — storing an untested password is how someone finds out months later that
+    // a reserve-SoC write has been failing silently.
+    cloud: { email: '', password: '', state: '', detail: '' },   // state: '' | ok | failed
+
     // ONE profile per gateway. Solar, generator and backup wiring are per-gateway facts:
     // a site can have an aGate with 6.6 kW of PV and another with none, and showing a
     // single profile at the end of setup silently claims they are the same.
@@ -99,6 +104,7 @@ window.setupWizard = function setupWizard() {
       if (this.step === 'hardware') return 'Continue';
       if (this.step === 'timezone') return 'Continue';
       if (this.step === 'find') return 'Continue';
+      if (this.step === 'cloud') return this.cloud.state === 'ok' ? 'Continue' : 'Skip for now';
       if (this.step === 'demo') return '';
       if (this.step === 'confirm') return 'Finish';
       if (this.step === 'done') return 'Close';
@@ -122,7 +128,8 @@ window.setupWizard = function setupWizard() {
     async next() {
       if (this.step === 'hardware') { await this.saveCounts(); return; }
       if (this.step === 'timezone') { await this.saveTimezone(); return; }
-      if (this.step === 'find') { this.go('confirm'); return; }
+      if (this.step === 'find') { this.go('cloud'); return; }
+      if (this.step === 'cloud') { this.go('confirm'); return; }
       if (this.step === 'confirm') { await this.finish('done'); return; }
       if (this.step === 'done') { this.hide(); return; }
     },
@@ -188,7 +195,7 @@ window.setupWizard = function setupWizard() {
         });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) { this.error = d.detail || `Could not add it (HTTP ${r.status}).`; return; }
-        this.go('confirm');
+        this.go('cloud');
       } catch (e) { this.error = String(e); } finally { this.busy = false; }
     },
 
@@ -219,8 +226,27 @@ window.setupWizard = function setupWizard() {
             return;
           }
         }
-        this.go('confirm');
+        this.go('cloud');
       } catch (e) { this.error = String(e); } finally { this.busy = false; }
+    },
+
+    // Sign in for real. Nothing is stored unless it works, and the password never comes
+    // back from the server.
+    async testCloud() {
+      if (!this.cloud.email || !this.cloud.password) return;
+      this.busy = true; this.error = ''; this.cloud.state = ''; this.cloud.detail = '';
+      try {
+        const r = await fetch('api/setup/cloud', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: this.cloud.email, password: this.cloud.password }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { this.cloud.state = 'failed'; this.cloud.detail = d.detail || `HTTP ${r.status}`; return; }
+        this.cloud.state = d.ok ? 'ok' : 'failed';
+        this.cloud.detail = d.detail || '';
+        if (d.ok) this.cloud.password = '';     // keep it out of the page once it is stored
+      } catch (e) { this.cloud.state = 'failed'; this.cloud.detail = String(e); }
+      finally { this.busy = false; }
     },
 
     async loadProfiles() {

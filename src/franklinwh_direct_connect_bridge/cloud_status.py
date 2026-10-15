@@ -57,6 +57,46 @@ def _read_sync(email: str, password: str, gateway: str | None) -> tuple:
     return asyncio.run(_run())
 
 
+def verify_credentials(email: str, password: str, gateway: str | None = None) -> dict:
+    """Try a real cloud login. ``{"ok": bool, "detail": str, "gateways": [...]}``.
+
+    A LOGIN, not a format check: the only thing that establishes whether an account works
+    is the account working. Credentials are never stored by this function — the caller
+    decides, and should only store what came back ok.
+
+    Never raises: a wrong password, an unreachable cloud and a missing library are all
+    answers the user needs to see, not exceptions.
+    """
+    if not (email and password):
+        return {"ok": False, "detail": "Email and password are both needed."}
+    try:
+        import asyncio
+
+        from franklinwh_cloud.wrapper import FranklinWHCloud
+    except ImportError:
+        return {"ok": False,
+                "detail": "The franklinwh-cloud library is not installed in this build, "
+                          "so cloud features are unavailable regardless of credentials."}
+    gw = gateway.upper() if gateway else None
+
+    async def _run():
+        cloud = FranklinWHCloud(email=email, password=password, gateway=gw)
+        await cloud.login()
+        names = []
+        try:
+            names = [str(g) for g in (await cloud.get_gateways() or [])]
+        except Exception:  # noqa: BLE001 — the list is a nice-to-have; the login is the test
+            names = []
+        return names
+
+    try:
+        names = asyncio.run(_run())
+    except Exception as e:  # noqa: BLE001 — report it, do not raise it
+        log.info("cloud credential check failed: %s: %s", type(e).__name__, e)
+        return {"ok": False, "detail": f"{type(e).__name__}: {e}"}
+    return {"ok": True, "detail": "Signed in to the FranklinWH cloud.", "gateways": names}
+
+
 def read_power_control(email: str, password: str, gateway: str | None) -> dict:
     """One authenticated cloud read of the GLOBAL grid power-control caps
     (globalGridChargeMax / globalGridDischargeMax, -1=unlimited) — used as an independent

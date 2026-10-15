@@ -34,7 +34,7 @@
         </svg>
       </button>
       <div x-show="$store.app.gwMenuOpen" x-cloak x-transition
-           class="absolute right-0 mt-1 w-56 rounded-lg border shadow-xl z-[120] overflow-hidden"
+           class="absolute right-0 mt-1 w-72 rounded-lg border shadow-xl z-[120] overflow-hidden"
            style="background:var(--surface-1);border-color:var(--border)">
         <div class="px-3 py-2 text-[10px] uppercase tracking-wide border-b"
              style="color:var(--text-secondary);border-color:var(--border)">Gateway</div>
@@ -69,6 +69,27 @@
                     style="padding:0 6px;font-size:.6rem">OFF-GRID</span>
               <span x-show="g.vpp_kind === 'vpp' && !g.off_grid" class="chip vpp" style="padding:0 6px;font-size:.6rem">VPP</span>
               <span x-show="g.vpp && g.vpp_kind !== 'vpp' && !g.off_grid" class="chip vpp" style="padding:0 6px;font-size:.6rem">FORCE</span>
+
+              <!-- Operating mode + battery direction, per gateway. On a multi-gateway site
+                   these differ, and the switcher is where you choose between them — so it
+                   is the one place the difference has to be visible without selecting each
+                   in turn. Both are omitted when unknown: no reading is not "idle". -->
+              <span x-show="g.mode" class="chip muted shrink-0"
+                    style="padding:0 6px;font-size:.6rem"
+                    :title="'Operating mode: ' + (g.mode || '')"
+                    x-text="$store.app.modeTag(g.mode)"></span>
+              <svg x-show="$store.app.flowDir(g) === 'charge'" class="w-3.5 h-3.5 shrink-0"
+                   style="color:#34d399" fill="none" stroke="currentColor" stroke-width="2.5"
+                   viewBox="0 0 24 24">
+                <title>Charging</title>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m0 0l-6 6m6-6l6 6"/>
+              </svg>
+              <svg x-show="$store.app.flowDir(g) === 'discharge'" class="w-3.5 h-3.5 shrink-0"
+                   style="color:#fbbf24" fill="none" stroke="currentColor" stroke-width="2.5"
+                   viewBox="0 0 24 24">
+                <title>Discharging</title>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m0 0l6-6m-6 6l-6-6"/>
+              </svg>
             </span>
             <svg x-show="g.id === $store.app.selectedGateway" class="w-4 h-4 shrink-0" style="color:#34d399"
                  fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">

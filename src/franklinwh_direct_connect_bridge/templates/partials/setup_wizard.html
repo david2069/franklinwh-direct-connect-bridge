@@ -164,7 +164,49 @@
             </div>
           </template>
 
-          <!-- 6. Confirm what was read, PER GATEWAY -->
+          <!-- 6. FranklinWH account — optional, and it says WHY. -->
+          <template x-if="step === 'cloud'">
+            <div class="space-y-3">
+              <p>Your FranklinWH app account — <strong>optional</strong>.</p>
+              <p class="text-xs" style="color:var(--text-faint)">
+                Everything this bridge reads from the aGate works without one. An account
+                adds the things the local connection physically cannot do:</p>
+              <ul class="text-xs space-y-1 pl-4" style="color:var(--text-faint);list-style:disc">
+                <li><strong>Setting the reserve SoC</strong> — there is no proven local write
+                  for it, so the reserve slider needs either this or an FWHAI install.</li>
+                <li><strong>Seeing a VPP dispatch for what it is</strong> — the local channel
+                  reports Charging or Discharging either way; only the cloud names the
+                  programme.</li>
+                <li><strong>Cross-checking a grid-limit write</strong> against the account's
+                  own settings.</li>
+              </ul>
+              <p class="text-xs" style="color:var(--text-faint)">
+                Stored on this machine in the bridge's own settings file, in plain text, and
+                used only to talk to FranklinWH. Nothing is saved unless the sign-in works,
+                and you can add or remove it later in Settings → Integrations.</p>
+              <div class="flex flex-wrap items-end gap-2">
+                <label class="text-xs">Email
+                  <input type="email" autocomplete="off" class="form-control form-control-sm block mt-1"
+                         style="width:13rem" x-model="cloud.email"></label>
+                <label class="text-xs">Password
+                  <input type="password" autocomplete="new-password"
+                         class="form-control form-control-sm block mt-1"
+                         style="width:11rem" x-model="cloud.password"></label>
+                <button class="btn btn-secondary btn-sm" :disabled="busy || !cloud.email || !cloud.password"
+                        @click="testCloud()">Check it works</button>
+              </div>
+              <p x-show="cloud.state === 'ok'" class="text-xs" style="color:#86efac"
+                 x-text="cloud.detail || 'Signed in.'"></p>
+              <p x-show="cloud.state === 'failed'" class="text-xs" style="color:#fca5a5">
+                <span x-text="cloud.detail || 'Could not sign in.'"></span>
+                <span> — nothing was saved.</span>
+              </p>
+              <p class="text-xs" style="color:var(--text-faint)">Skipping is fine; the
+                reserve slider will say it needs this when you reach for it.</p>
+            </div>
+          </template>
+
+          <!-- 7. Confirm what was read, PER GATEWAY -->
           <template x-if="step === 'confirm'">
             <div class="space-y-3">
               <p>This is what each gateway reports. Anything wrong can be changed in
@@ -210,7 +252,7 @@
             </div>
           </template>
 
-          <!-- 7. Done -->
+          <!-- 8. Done -->
           <template x-if="step === 'done'">
             <div class="space-y-2">
               <p>That's the essentials. Home Assistant, notifications and tariffs are optional

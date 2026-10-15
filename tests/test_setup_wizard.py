@@ -430,3 +430,32 @@ def test_a_mock_does_not_count_as_configured():
 
 def test_a_truly_empty_bridge_is_prompted():
     assert w.summary(_Store(), **_kw())["should_prompt"] is True
+
+
+# --- the optional cloud step -----------------------------------------------------------------
+
+def test_cloud_step_sits_between_finding_hardware_and_confirming():
+    js = _wizard_js()
+    assert "this.go('cloud')" in js
+    # BOTH paths reach it — the mock path used to jump straight to confirm
+    nxt = js[js.index("async next()"):js.index("async saveCounts()")]
+    assert "step === 'cloud'" in nxt
+
+
+def test_cloud_credentials_are_tested_before_they_are_trusted():
+    js = _wizard_js()
+    body = js[js.index("async testCloud()"):js.index("async loadProfiles()")]
+    assert "api/setup/cloud" in body
+    # the password is dropped from the page once the server has it
+    assert "this.cloud.password = ''" in body
+
+
+def test_the_cloud_step_says_why_and_that_it_is_optional():
+    html = (__import__("pathlib").Path(__file__).resolve().parents[1]
+            / "src/franklinwh_direct_connect_bridge/templates/partials/setup_wizard.html").read_text()
+    step = html[html.index("step === 'cloud'"):html.index("step === 'confirm'")]
+    assert "optional" in step.lower()
+    assert "reserve SoC" in step                 # the concrete reason, not "more features"
+    assert "VPP" in step
+    assert "plain text" in step                   # how it is stored, said plainly
+    assert "Skipping is fine" in step

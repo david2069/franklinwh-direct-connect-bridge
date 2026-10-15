@@ -22,6 +22,27 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- **The setup wizard offers the FranklinWH app account, optionally, and says why.** It is
+  checked by SIGNING IN and stored only if that works — an unverified password means
+  discovering months later that a reserve-SoC write has been failing. The step states what
+  an account actually adds (the reserve SoC, which has no proven local write; naming a VPP
+  dispatch the local channel reports as plain charging; cross-checking a grid-limit write),
+  that credentials are stored in plain text in the bridge's settings file, and that
+  skipping is fine.
+
+- **A mock gateway no longer publishes to Home Assistant by default.** The Settings UI
+  already sent `publish_ha: false` for mocks; the setup wizard did not, and the API
+  defaulted to true — so three mock gateways created on a live install published three fake
+  FranklinWH devices (63 entities, energy sensors included) to the owner's Home Assistant.
+  The default is now decided server-side from `is_mock`, which fixes every caller. Passing
+  `publish_ha: true` explicitly still works.
+
+- **The gateway switcher shows each gateway's operating mode and battery direction.**
+  SELF / TOU / EMGY, and an up or down arrow for charging or discharging, read from the
+  same run-status enum as the top-bar pill. On a multi-gateway site the switcher is where
+  you choose between gateways, so it is where the difference has to be visible. Unknown
+  shows nothing — no reading is not "idle".
+
 - **The wizard's last step reports every gateway, not one.** Solar, generator and backup
   wiring are per-gateway facts — one aGate can have 6.6 kWp of PV and another none — and a
   single profile at the end of setup silently claimed they were alike. Each gateway now gets

@@ -1434,6 +1434,28 @@ document.addEventListener('alpine:init', () => {
     // ── Control writes ─────────────────────────────────────
     modeMenuOpen: false,
     gwMenuOpen: false,  // styled gateway selector dropdown
+    // Short mode tag for the gateway switcher. The three modes are the only ones the
+    // hardware has; anything else (a site-specific TOU tariff name, an unknown string) is
+    // shown as-is, truncated, rather than being forced into one of the three.
+    modeTag(name) {
+      const m = String(name || '').toLowerCase();
+      if (!m) return '';
+      if (m.includes('self')) return 'SELF';
+      if (m.includes('time-of-use') || m.includes('tou')) return 'TOU';
+      if (m.includes('emergency') || m.includes('backup')) return 'EMGY';
+      return String(name).slice(0, 6).toUpperCase();
+    },
+
+    // 'charge' | 'discharge' | '' — from the run-status enum (1301), which is the same
+    // source the top-bar pill uses. Standby and the off-grid codes have no direction, and
+    // an absent reading is not "idle": both return '' so the row shows no arrow at all.
+    flowDir(g) {
+      const rs = g && g.run_status;
+      if (rs === 1) return 'charge';
+      if (rs === 2) return 'discharge';
+      return '';
+    },
+
     get selectedGatewayLabel() { if (this.siteMode) return 'Site · All Gateways'; const g = (this.gateways || []).find(x => x.id === this.selectedGateway); return g ? (g.label || g.host) : 'Gateway'; },
     get modeChoices() {
       const active = this.activeMode;
