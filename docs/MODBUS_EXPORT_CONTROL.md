@@ -59,6 +59,27 @@ link documented on page 25, or whether "the same automations" means commanding t
 only responding to it. A marketing claim that automations work is not a description of the
 mechanism.
 
+### VPP participation requires battery dispatch
+
+The owner's reading, 2026-10-15, and it follows from what the post claims rather than from
+anything about the device: **a VPP dispatches the battery.** Synergy's VPP, VPP1 and BESS2 are
+programmes that charge and discharge stored energy on command. A device that makes a battery
+"VPP Ready" must therefore reach a charge/discharge control somewhere. Export curtailment
+alone cannot deliver that.
+
+**And on this hardware, battery dispatch over Modbus is already proven — by us.** The
+`franklinwh-modbus` **M704 `WSet`** path forces charge and discharge, and
+`battery_control.py` in this repo uses it for our own force dispatch. It is a standard
+SunSpec register, not a vendor extension, and it needs nothing unlocked. So "a third-party
+Modbus client dispatches a FranklinWH battery" describes something we already do.
+
+**What this does NOT establish**, and it is the part worth being careful about: that LinkPro
+dispatches *via Modbus to the aGate*. The post says nothing about the route. Dispatch could
+equally reach the battery through FranklinWH's cloud, with the local Modbus link used only
+for reading SoC and state and for CSIP-AUS export limiting — which would fit page 25's
+wording, "controls this system's energy export", exactly as written. Nothing we have read
+distinguishes the two.
+
 ## Relevance to this project
 
 Narrow, and worth keeping narrow:
