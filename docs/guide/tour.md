@@ -4,6 +4,33 @@
 
 ---
 
+## First run: the setup wizard
+
+The first time you open a bridge with nothing configured, a modal walks you through the
+essentials. It waits for the legal disclaimer, and you can close it at any point — closing
+records "skipped", which stops the prompt and disables nothing.
+
+1. **What do you want to do** — connect a real aGate, explore with a mock gateway, or set
+   it up yourself.
+2. **How much hardware** — how many aGates and aPowers you have. Both default to 1. This is
+   what the bridge expects to find; it changes nothing on your system, and the Setup page
+   later reports what was found against what you declared.
+3. **Where the site is** — one timezone for the whole site, defaulting to your browser's.
+   Schedules run on the site's clock, not the container's. Mock gateways are created on
+   this clock; a real aGate's clock is set on the device, and Setup names any gateway whose
+   offset differs rather than pretending to correct it.
+4. **Find it** — Discover scans the LAN for aGates on TCP 9000, or you enter the address.
+   On the mock path, one mock per declared aGate is created, numbered, each with the aPower
+   count you gave.
+5. **Confirm** — what the gateway reports. Anything wrong is correctable in Settings.
+
+Everything optional — Home Assistant, notifications, tariffs — is deferred and says so.
+
+**Settings → Setup** is the same content, reachable for ever: every step reports whether it
+is already satisfied, so a second pass shows current state rather than blank fields.
+
+---
+
 ## Getting around
 
 The bridge has one navigation registry and renders it two ways. On a wide screen you get
