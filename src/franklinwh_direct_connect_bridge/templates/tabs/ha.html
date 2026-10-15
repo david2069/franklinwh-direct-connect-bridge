@@ -150,6 +150,58 @@
 
   <!-- Published by the bridge -->
   <div x-show="view === 'published'" x-cloak class="space-y-2">
+
+    <!-- Copy-paste dashboard card. Every id is one Home Assistant actually reports; an
+         entity we publish but cannot find there is listed, never written into the YAML. -->
+    <div class="card p-4 space-y-3">
+      <div class="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <div class="card-label" style="margin-bottom:.25rem">Dashboard card</div>
+          <p class="text-xs" style="color:var(--text-secondary)">
+            Paste into Home Assistant: any dashboard &rarr; Edit &rarr; Add card &rarr;
+            Manual.
+          </p>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <label class="text-xs flex items-center gap-1" style="color:var(--text-secondary)">
+            <input type="checkbox" x-model="dashDiagnostics" @change="loadDash()"> Diagnostics
+          </label>
+          <select class="form-control form-control-sm" style="width:8.5rem"
+                  x-model="dashLayout" @change="loadDash()">
+            <option value="grouped">Grouped</option>
+            <option value="single">Single card</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" @click="loadDash()"
+                  :disabled="dashLoading"
+                  x-text="dashLoading ? 'Building…' : 'Build'">Build</button>
+          <button class="btn btn-primary btn-sm" @click="copyDash()"
+                  x-show="dashYaml" x-text="dashCopied || 'Copy'">Copy</button>
+        </div>
+      </div>
+
+      <div x-show="dashError" x-cloak class="rounded-lg px-3 py-2 text-xs"
+           style="background:rgba(239,68,68,.1);color:#fca5a5" x-text="dashError"></div>
+
+      <template x-if="dashYaml">
+        <div class="space-y-2">
+          <textarea x-ref="dashBox" readonly rows="12" wrap="off"
+                    class="form-control font-mono text-xs w-full"
+                    style="white-space:pre" x-text="dashYaml"></textarea>
+          <div class="text-xs" style="color:var(--text-secondary)">
+            <span x-text="dashFound"></span> entities.
+            <template x-if="dashMissing.length">
+              <span style="color:#fbbf24">
+                <span x-text="dashMissing.length"></span> published but not found in Home
+                Assistant, so left out:
+                <span class="font-mono"
+                      x-text="dashMissing.map(m => m.expected).join(', ')"></span>
+              </span>
+            </template>
+          </div>
+        </div>
+      </template>
+    </div>
+
     <template x-if="published">
       <div class="space-y-2">
         <div class="text-xs" style="color:var(--text-secondary)">

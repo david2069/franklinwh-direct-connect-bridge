@@ -58,6 +58,8 @@ from .notify import Notifier
 from .poller import run_gateway
 from . import supervisor
 from . import site_time
+from . import ha_dashboard, ha_instances
+from .publish import entities
 from . import mockgw
 from .publish import entities
 from .state import GatewayState, get_state, get_gateway, gateways as get_gateways
@@ -3530,6 +3532,72 @@ def create_app() -> FastAPI:
         except (OSError, TransportError, TimeoutError) as e:
             _audit(action, gateway=gateway, detail=detail, result=str(e), ok=False)
             raise HTTPException(status_code=502, detail=str(e))
+
+    @app.get("/api/ha/dashboard-yaml")
+    def api_ha_dashboard_yaml(layout: str = Query("grouped"),
+                              diagnostics: bool = Query(False),
+                              instance_id: str | None = Query(None),
+                              gateway: str | None = Query(None)):
+        """A copy-paste Home Assistant dashboard card for the entities we publish.
+
+        Every id is one Home Assistant actually reports. Entities we publish but cannot find
+        in HA are returned under ``missing`` and are NOT written into the YAML — a guessed id
+        produces a card full of dashes that looks like broken hardware.
+        """
+        if layout not in ("grouped", "single"):
+            raise HTTPException(status_code=422, detail="layout must be 'grouped' or 'single'")
+        gw = _gw_or_404(gateway)
+        node = getattr(gw, "node", None) or (gw.serial or "agate").lower()
+        s = get_settings()
+        store = db.get_store(s)
+        rows = ha_dashboard.rows_for_node(node, entities.enabled_from_store(store))
+
+        seen: set[str] = set()
+        errors: dict[str, str] = {}
+        for inst in (store.ha_instances() if store else []):
+            if not inst.get("enabled"):
+                continue
+            if instance_id and inst["id"] != instance_id:
+                continue
+            try:
+                for st in ha_instances.states(inst["base_url"], inst.get("token")):
+                    eid = st.get("entity_id")
+                    if eid:
+                        seen.add(eid)
+            except Exception as e:  # noqa: BLE001 — one unreachable HA must not hide the rest
+                errors[inst.get("name") or inst["id"]] = str(e)
+
+        if not seen:
+            # No ids to confirm against. Returning YAML here would mean composing ids from
+            # object_id and hoping, which is the one thing this must never do.
+            raise HTTPException(
+                status_code=503,
+                detail=("No Home Assistant entities could be read, so entity ids cannot be "
+                        "confirmed. Add and enable a Home Assistant instance under "
+                        "Home Assistant \u2192 Instances. "
+                        + ("Errors: " + "; ".join(f"{k}: {v}" for k, v in errors.items())
+                           if errors else "")).strip())
+
+        found, missing = ha_dashboard.resolve_ids(rows, seen)
+        # Every entity missing, with a Home Assistant that answered, is almost always one
+        # thing: the HA we can read is not the HA subscribed to our broker. Say so, because
+        # "0 found" on its own reads as a bug in the card.
+        hint = ""
+        if rows and not found:
+            hint = (f"None of the {len(rows)} entities this bridge publishes were found in "
+                    f"the Home Assistant(s) configured here. They are published to the MQTT "
+                    f"prefix '{s.mqtt_prefix}' with discovery prefix "
+                    f"'{s.ha_discovery_prefix}' — check that the Home Assistant you added "
+                    f"under Instances is the one subscribed to that broker.")
+        return {
+            "yaml": ha_dashboard.build_yaml(found, layout=layout, diagnostics=diagnostics),
+            "node": node,
+            "hint": hint,
+            "found": len(found),
+            "missing": [{"name": m["name"], "expected": f"{m['domain']}.{m['object_id']}"}
+                        for m in missing],
+            "errors": errors,
+        }
 
     @app.get("/api/control-log")
     def api_control_log(limit: int = 100, gateway: str | None = Query(None),

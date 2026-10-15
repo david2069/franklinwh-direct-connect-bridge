@@ -63,6 +63,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- **A copy-paste Home Assistant dashboard card**, on Home Assistant → Published by bridge.
+  Grouped or single layout, diagnostics opt-in, with a Copy button that falls back to
+  selecting the text when `navigator.clipboard` is unavailable — which it is on HA ingress,
+  because that is plain `http`. Shape agreed with the other FranklinWH integrations: plain
+  core cards, no custom cards, no theme line. **Entity ids are never guessed**: each one is
+  confirmed against Home Assistant, a `_2` collision suffix is followed, and anything that
+  cannot be found is listed rather than written into the YAML. (FEAT-HA-DASHBOARD-YAML)
+
 - `tools/dev.sh` builds the image, restarts the container and **proves** the container is
   running the current working tree, exiting non-zero if not. `GET /api/version` reports the
   same stamp as `source_sha`. A fix had been "verified" against a container that was never

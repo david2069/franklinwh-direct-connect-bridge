@@ -16,6 +16,53 @@ document.addEventListener('alpine:init', () => {
     error: '',
     busy: false,
 
+    // copy-paste dashboard card
+    dashLayout: 'grouped', dashDiagnostics: false, dashYaml: '', dashFound: 0,
+    dashMissing: [], dashError: '', dashLoading: false, dashCopied: '',
+
+    async loadDash() {
+      this.dashLoading = true; this.dashError = ''; this.dashCopied = '';
+      try {
+        const q = new URLSearchParams({ layout: this.dashLayout,
+                                        diagnostics: this.dashDiagnostics });
+        const r = await fetch('api/ha/dashboard-yaml?' + q.toString());
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          this.dashYaml = ''; this.dashMissing = [];
+          this.dashError = d.detail || `Could not build the card (HTTP ${r.status}).`;
+          return;
+        }
+        this.dashYaml = d.yaml || '';
+        this.dashFound = d.found || 0;
+        this.dashMissing = d.missing || [];
+        if (!this.dashYaml) this.dashError = d.hint || 'No entities to include.';
+      } catch (e) {
+        this.dashYaml = ''; this.dashError = String(e);
+      } finally {
+        this.dashLoading = false;
+      }
+    },
+
+    async copyDash() {
+      // HA ingress is frequently plain http, where navigator.clipboard does not exist.
+      // Fall back to selecting the textarea, then to telling the user to press the keys.
+      const box = this.$refs.dashBox;
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(this.dashYaml);
+          this.dashCopied = 'Copied'; setTimeout(() => this.dashCopied = '', 2000); return;
+        }
+      } catch (e) { /* fall through to the selection path */ }
+      try {
+        box.focus(); box.select(); box.setSelectionRange(0, this.dashYaml.length);
+        if (document.execCommand('copy')) {
+          this.dashCopied = 'Copied'; setTimeout(() => this.dashCopied = '', 2000); return;
+        }
+      } catch (e) { /* fall through */ }
+      box.focus(); box.select();
+      this.dashError = 'Copying is blocked here — the card is selected, press Ctrl/Cmd+C.';
+    },
+
     // add / edit form
     form: null,
     testResult: null,
