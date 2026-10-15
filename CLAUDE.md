@@ -131,6 +131,23 @@ claims verified on the emulator, not every claim.
 **Emulator output is not evidence of what a register or field means.** It serves what it
 was told to serve.
 
+## Branch before you edit, and change main only by pull request
+
+**Every change goes on a branch and reaches `main` through a pull request.** Nothing is
+committed to `main` directly, including a one-line doc fix.
+
+**Check which branch you are on before the first edit, not before the commit.** By then the
+work is already in the wrong place, and moving it is a `git branch -f` and a `reset --hard`
+on a branch someone else may have pulled.
+
+The trap is specific and it has caught this session: **merging a pull request leaves you on
+`main`.** The natural next step after `gh pr merge` is `git checkout main && git pull`, and
+the step after that is starting the next task — on `main`. On 2026-10-15 a whole feature was
+built and committed there. It was caught before it was pushed, so `main` was never wrong, but
+only because the push failed for an unrelated reason.
+
+So: after merging anything, the next command is `git checkout -b <branch>`.
+
 ## Verifying against the running bridge
 
 **Use `tools/dev.sh`.** It builds the image, recreates the container, and then proves the
