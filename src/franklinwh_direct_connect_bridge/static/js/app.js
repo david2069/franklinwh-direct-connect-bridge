@@ -166,8 +166,13 @@ document.addEventListener('alpine:init', () => {
       } catch (e) { /* never block the UI on the wizard */ }
     },
 
+    //: The modal is open on first run and owns that moment. The banner is the quieter
+    //  reminder for afterwards — showing both at once says the same thing twice, with one
+    //  of them hidden behind the other.
+    setupModalOpen: false,
+
     get setupPrompt() {
-      return !!(this.setup.should_prompt && !this.setupDismissed);
+      return !!(this.setup.should_prompt && !this.setupDismissed && !this.setupModalOpen);
     },
 
     async setSetupState(value) {

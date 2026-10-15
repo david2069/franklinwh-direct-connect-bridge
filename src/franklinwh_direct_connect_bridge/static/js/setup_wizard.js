@@ -36,13 +36,25 @@ window.setupWizard = function setupWizard() {
         // unaccepted disclaimer puts a dialog over the one thing the user has to read.
         const app = () => (window.Alpine && Alpine.store('app')) || null;
         const ready = () => { const a = app(); return a && !a.showDisclaimer; };
-        if (ready()) { this.open = true; return; }
+        if (ready()) { this.show(); return; }
         const timer = setInterval(() => {
           if (!ready()) return;
           clearInterval(timer);
-          this.open = true;
+          this.show();
         }, 300);
       } catch (e) { /* never block the app on the wizard */ }
+    },
+
+    show() {
+      this.open = true;
+      const a = (window.Alpine && Alpine.store('app')) || null;
+      if (a) a.setupModalOpen = true;
+    },
+
+    hide() {
+      this.open = false;
+      const a = (window.Alpine && Alpine.store('app')) || null;
+      if (a) a.setupModalOpen = false;
     },
 
     get title() {
@@ -78,7 +90,7 @@ window.setupWizard = function setupWizard() {
       if (this.step === 'hardware') { await this.saveCounts(); return; }
       if (this.step === 'find') { this.go('confirm'); return; }
       if (this.step === 'confirm') { await this.finish('done'); return; }
-      if (this.step === 'done') { this.open = false; return; }
+      if (this.step === 'done') { this.hide(); return; }
     },
 
     async saveCounts() {
@@ -163,7 +175,7 @@ window.setupWizard = function setupWizard() {
       this.step = 'done';
     },
 
-    async skip() { await this.finish('skipped'); this.open = false; },
+    async skip() { await this.finish('skipped'); this.hide(); },
 
     async close() { await this.skip(); },
   };
