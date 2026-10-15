@@ -163,6 +163,7 @@ it.
 | --- | --- | --- |
 | **A** ✅ | The Modbus switch actually stops our TCP (shipped) | "off" means off, and the footprint is measurable |
 | **B0** | **Authentication (#56)** — credentials, session, honest availability | the REST path can actually be used |
+| **B1** | Confirm dispatch via `dispatch-outcomes`, never via `ok` | a dispatch that did not happen cannot read as success |
 | **B** | Ask the Modbus Bridge about a ratings endpoint (§5) | the one unknown closed before design hardens |
 | **C** | Route ratings through the provider; constant as fallback | the last *read* leaves direct Modbus |
 | **D** | Default the direct path OFF; REST becomes the normal route | zero `:502` sockets from this container in normal operation |
@@ -257,6 +258,47 @@ Filed as **#56**. It is a prerequisite for Phase B, not a detail of Phase C: cre
 config *and* in the add-on schema, a login session with re-auth on 401, availability probed
 through something that actually requires authorisation, and "reachable but not authorised"
 reported as its own state — a wrong password and a down host need different fixes.
+
+### `ok` from `/api/command` is not a per-call result — and there is a better signal
+
+Found while testing the authentication gap above, confirmed by the `franklinwh-modbus-bridge`
+session and filed as **its #97**.
+
+An authenticated POST with a **slug that does not exist** returns `{"ok": true, "result":
+"Sent"}`. Their correction to my first reading of the mechanism, which was wrong: `ok` is not
+inherited from the previous command. `handle_command` sets `last_success = True` as an
+**optimistic default** at the start of every call, and only a handler that runs *and fails*
+flips it. An unknown slug merely logs a warning, so `true` survives. `result` separately
+**can** be stale text from an earlier call, falling back to the literal `"Sent"`.
+
+They report the same for an unknown `battery_command` **action** (e.g. `"Force Fly"`), and
+for `POST /api/gateways/{id}/command`.
+
+**Their guidance, which we should follow: treat `ok` from `/api/command` as NOT a per-call
+result.** The fix proposed in their #97 is exactly the shape we would want — unknown slug
+`400`, a genuine per-call `{ok, result}`, and staging slugs returning `"Staged …"` to mean
+*stored, not dispatched* — but it is unbuilt and is their owner's call.
+
+#### What to use instead, today
+
+`GET /api/gateways/{id}/dispatch-outcomes` — **one row per command**, with the bridge's own
+read-back verification. Verified on `fwhbridge-app`, 2026-10-15:
+
+```json
+{"action": "Force Discharge", "requested_w": -5000, "actual_w": 4900.0,
+ "state": "released", "verified_at": 1791961299.0, "requester": "schedule:sch_…",
+ "reason": "reason=Release; Released"}
+```
+
+`state` is `verified` / `not_effective` / `failed` / `released`, with requested against actual
+power. That is a far stronger confirmation than any command reply would be: it says whether
+the battery *did the thing*, not whether the request was accepted.
+
+**This improves the design rather than blocking it.** §4 demands that an unavailable provider
+never read as a quiet no-op; `dispatch-outcomes` satisfies that demand better than `ok` ever
+could, and it exists now. So the rule for Phase C is: **fire by command, confirm by outcome,
+never trust `ok`.** Phase 3's `Outcome` vocabulary maps onto their states directly — which is
+the mapping to build, not a workaround for a defect.
 
 ### What did not change
 
