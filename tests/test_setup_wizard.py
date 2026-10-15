@@ -24,7 +24,9 @@ def _kw(**over):
 
 
 class _GW:
-    def __init__(self, mock=False): self.is_mock = mock
+    def __init__(self, mock=False, gw_id=""):
+        self.is_mock = mock
+        self.id = gw_id
 
 
 # --- state ---------------------------------------------------------------------------------
@@ -56,9 +58,14 @@ def test_prompts_when_nothing_is_set_up():
 
 
 def test_does_not_prompt_once_required_steps_are_satisfied():
-    """A site that is already working must not be nagged, even if never formally 'done'."""
-    s = w.summary(_Store(), **_kw(gateways=[_GW()],
-                                  profile_values={"solar_kwp": 6.6, "_derived": {"solar_kwp": 6.6}}))
+    """A site that is already working must not be nagged, even if never formally 'done'.
+
+    "Working" now includes the site timezone: a bridge that does not know where the site
+    is cannot run a schedule on the site's clock, so it is not yet set up.
+    """
+    s = w.summary(_Store({w.SITE_TZ_KEY: "Australia/Sydney"}),
+                  **_kw(gateways=[_GW()],
+                        profile_values={"solar_kwp": 6.6, "_derived": {"solar_kwp": 6.6}}))
     assert s["required_satisfied"] is True and s["should_prompt"] is False
 
 
@@ -203,3 +210,169 @@ def test_unknown_apower_count_does_not_block():
     step = next(x for x in out["steps"] if x["id"] == "expected")
     assert step["satisfied"] is True
     assert "aPower" not in step["detail"]
+
+
+# --- the wizard's gateway payloads --------------------------------------------------------
+#
+# These are text assertions on the controller, which is weak — but the defect they pin was
+# real and silent: the wizard posted `mock: true` where the roster field is `is_mock`, so
+# "Explore with a mock gateway" created a REAL gateway with no host. It sat Offline for ever
+# and looked like a broken mock rather than a wrong key.
+
+def _wizard_js():
+    from pathlib import Path
+    return (Path(__file__).resolve().parents[1]
+            / "src/franklinwh_direct_connect_bridge/static/js/setup_wizard.js").read_text()
+
+
+def test_mock_creation_uses_the_roster_field_name():
+    js = _wizard_js()
+    assert "is_mock: true" in js
+    # the wrong key, as an object property — not the substring inside `is_mock`
+    assert "\n            mock: true" not in js and "{ mock: true" not in js
+
+
+def test_real_gateway_creation_sends_host_and_port():
+    """A gateway row with no port never connects; the Discover path in Settings sends both."""
+    js = _wizard_js()
+    assert "port: 9000" in js
+    assert js.count("enabled: true") >= 2
+
+
+def test_mock_gets_the_declared_apower_count():
+    """The owner says how many aPowers they have; the mock should match that shape."""
+    assert "mock_units" in _wizard_js()
+
+
+def test_both_doors_ask_how_much_hardware():
+    """Choosing the mock used to skip the question entirely — it routed straight to the
+    demo step — so the counts were never asked of anyone exploring with a mock."""
+    html = (__import__("pathlib").Path(__file__).resolve().parents[1]
+            / "src/franklinwh_direct_connect_bridge/templates/partials/setup_wizard.html").read_text()
+    intent = html[html.index("step === 'intent'"):html.index("step === 'hardware'")]
+    # every door that leads onward goes to 'hardware' first; only "set it up myself" skips
+    assert intent.count("go('hardware')") == 2
+    assert "go('demo')" not in intent and "go('find')" not in intent
+
+
+# --- site timezone -------------------------------------------------------------------------
+# One zone for the whole site. Nothing on the local channel supplies one: the aGate reports
+# an OFFSET and leaves `timezoneStr` empty, and an offset cannot distinguish UTC+10 standard
+# from a UTC+10 daylight zone, which is the difference a schedule lives or dies by.
+
+def test_timezone_is_unset_until_asked():
+    assert w.site_timezone(_Store()) == ""
+    step = next(s for s in w.steps(store=_Store(), **_kw()) if s["id"] == "timezone")
+    assert step["required"] is True and step["satisfied"] is False
+
+
+def test_setting_a_real_zone_sticks():
+    st = _Store()
+    assert w.set_site_timezone(st, "Australia/Sydney") == "Australia/Sydney"
+    assert st.cfg[w.SITE_TZ_KEY] == "Australia/Sydney"
+    assert w.site_timezone(st) == "Australia/Sydney"
+
+
+def test_an_unknown_zone_is_refused_not_coerced():
+    """Storing something unusable is how a schedule silently runs on the wrong clock."""
+    st = _Store()
+    with pytest.raises(ValueError):
+        w.set_site_timezone(st, "Mars/Olympus_Mons")
+    assert w.SITE_TZ_KEY not in st.cfg
+
+
+def test_a_stored_junk_zone_reads_as_unset():
+    assert w.site_timezone(_Store({w.SITE_TZ_KEY: "Mars/Olympus_Mons"})) == ""
+
+
+def test_offset_is_derived_live_including_dst():
+    import datetime as dt
+    # Sydney is UTC+11 in January (daylight) and UTC+10 in July. A stored offset would be
+    # wrong for half the year, which is why only the NAME is stored.
+    jan = dt.datetime(2026, 1, 15, tzinfo=dt.timezone.utc)
+    jul = dt.datetime(2026, 7, 15, tzinfo=dt.timezone.utc)
+    assert w.tz_offset_minutes("Australia/Sydney", jan) == 660
+    assert w.tz_offset_minutes("Australia/Sydney", jul) == 600
+    assert w.tz_offset_minutes("Mars/Olympus_Mons") is None
+
+
+def test_half_hour_zone_is_not_rounded():
+    import datetime as dt
+    assert w.tz_offset_minutes("Australia/Adelaide",
+                               dt.datetime(2026, 7, 15, tzinfo=dt.timezone.utc)) == 570
+
+
+def test_a_gateway_in_another_zone_is_named_not_hidden():
+    """There is no verified write for the aGate's clock, so a mismatch is REPORTED."""
+    st = _Store({w.SITE_TZ_KEY: "UTC"})
+    gws = [_GW(gw_id="a"), _GW(gw_id="b")]
+    step = next(s for s in w.steps(store=st, **_kw(gateways=gws,
+                                                   gateway_offsets={"a": 0, "b": 600}))
+                if s["id"] == "timezone")
+    assert step["satisfied"] is False
+    assert step["mismatched"] == ["b"]
+
+
+def test_a_gateway_that_could_not_be_read_is_not_a_mismatch():
+    """"Did not answer" must not look like "disagrees"."""
+    st = _Store({w.SITE_TZ_KEY: "UTC"})
+    gws = [_GW(gw_id="a"), _GW(gw_id="b")]
+    step = next(s for s in w.steps(store=st, **_kw(gateways=gws, gateway_offsets={"a": 0}))
+                if s["id"] == "timezone")
+    assert step["satisfied"] is True and step["mismatched"] == []
+
+
+def test_timezone_is_required_for_completion():
+    st = _Store()
+    s = w.summary(st, **_kw(gateways=[_GW(gw_id="a")]))
+    assert s["required_satisfied"] is False
+    assert any(x["id"] == "timezone" and not x["satisfied"] for x in s["steps"])
+
+
+# --- the modal controller, after the 2026-10-15 demo run -------------------------------------
+# Reported: "I asked for 3 aGates and 2 apowers got this" — two mocks, both called
+# "Mock aGate", and the dashboard sitting on Site · All Gateways where the per-gateway tabs
+# error against an empty host.
+
+def test_mock_creation_loops_over_the_declared_agate_count():
+    js = _wizard_js()
+    body = js[js.index("async createMock()"):js.index("async loadProfile()")]
+    assert "counts.agates" in body
+    assert "for (" in body                       # N gateways, not one
+    assert "mock_units" in body and "counts.apowers" in body
+
+
+def test_multiple_mocks_are_numbered():
+    """Several gateways all called "Mock aGate" cannot be told apart in the switcher."""
+    body = _wizard_js()
+    body = body[body.index("async createMock()"):body.index("async loadProfile()")]
+    assert "${base} ${i}" in body
+
+
+def test_finishing_selects_a_real_gateway():
+    """Site mode has no host, so Battery/Device/Grid error there — never land on it."""
+    js = _wizard_js()
+    assert "_selectFirstGateway" in js
+    assert "selectGateway" in js and "__site__" in js
+
+
+def test_timezone_is_asked_before_any_gateway_is_created():
+    """A mock created first would be born on the seeded clock and need restarting."""
+    js = _wizard_js()
+    assert "api/setup/timezone" in js
+    # the counts step routes to the timezone step, which then routes to find/demo
+    counts = js[js.index("async saveCounts()"):js.index("async saveTimezone()")]
+    assert "this.go('timezone')" in counts
+    tz = js[js.index("async saveTimezone()"):js.index("async scan()")]
+    assert "demo" in tz and "find" in tz
+
+
+def test_mocks_are_named_but_never_counted_as_agates():
+    """A mock satisfying "find your hardware" would report a site that does not exist."""
+    st = _Store({w.EXPECTED_AGATES_KEY: "3"})
+    step = next(s for s in w.steps(store=st, **_kw(gateways=[_GW(mock=True, gw_id="m1"),
+                                                             _GW(mock=True, gw_id="m2")]))
+                if s["id"] == "expected")
+    assert step["found"]["agates"] == 0 and step["found"]["mocks"] == 2
+    assert "2 mock gateway(s)" in step["detail"]
+    assert step["satisfied"] is False

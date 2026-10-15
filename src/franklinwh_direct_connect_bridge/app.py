@@ -273,6 +273,11 @@ class SetupExpectedReq(BaseModel):
     apowers: int | None = None
 
 
+class SetupTimezoneReq(BaseModel):
+    """The site's IANA timezone, e.g. ``Australia/Sydney``. One per site."""
+    timezone: str
+
+
 class SetupStateReq(BaseModel):
     """``done`` when the user finishes, ``skipped`` when they decline."""
     state: str
@@ -784,6 +789,19 @@ def _grid_status_value(status) -> int:
     raise ValueError(f"unknown grid status {status!r}; expected NORMAL/DOWN/OFF (or 0/1/2)")
 
 
+def _site_tz_hours(store) -> float | None:
+    """The site's UTC offset in hours for the mock emulators, or None when unset.
+
+    Hours, not minutes, because that is the emulator's parameter; fractional for the
+    half-hour zones. None leaves each mock on its own seeded timezone — correct only when
+    nobody has said where the site is.
+    """
+    from . import setup_wizard as _sw
+    name = _sw.site_timezone(store)
+    off = _sw.tz_offset_minutes(name) if name else None
+    return None if off is None else off / 60.0
+
+
 def create_app() -> FastAPI:
     # Capture the bridge logger's INFO+ records into an in-memory ring buffer so the
     # Logs tab / GET /api/logs can serve them (idempotent — safe across create_app calls).
@@ -854,7 +872,8 @@ def create_app() -> FastAPI:
                 if r.get("is_mock"):
                     seed = mockgw.seed_for(r["id"], r.get("mock_seed"))
                     host = mockgw.start_mock(r["id"], seed=seed,
-                                             units=int(r.get("mock_units") or 1))
+                                             units=int(r.get("mock_units") or 1),
+                                             tz_offset_hours=_site_tz_hours(store))
                     state.register_gateway(r["id"], host, r.get("label"), is_mock=True,
                                            publish_ha=bool(r.get("publish_ha")))
                 else:
@@ -1576,7 +1595,8 @@ def create_app() -> FastAPI:
         if row.get("is_mock"):
             mockgw.stop_mock(gid)   # fresh emulator (unit count may have changed)
             seed = mockgw.seed_for(gid, row.get("mock_seed"))
-            host = mockgw.start_mock(gid, seed=seed, units=int(row.get("mock_units") or 1))
+            host = mockgw.start_mock(gid, seed=seed, units=int(row.get("mock_units") or 1),
+                                     tz_offset_hours=_site_tz_hours(db.get_store(s)))
             gw = state.register_gateway(gid, host, row.get("label"), is_mock=True,
                                         publish_ha=bool(row.get("publish_ha")))
         else:
@@ -2484,7 +2504,28 @@ def create_app() -> FastAPI:
             # How many aPowers are actually reporting, so the declared count can be
             # compared with reality rather than taken on trust.
             "apowers_found": _apowers_reporting(gateway),
+            # Each gateway's OWN offset, so the timezone step can say which of them
+            # disagree with the site instead of assuming they all match.
+            "gateway_offsets": _gateway_offsets(),
         }
+
+    def _gateway_offsets() -> dict[str, int]:
+        """gateway id -> the UTC offset that gateway's clock reports (minutes).
+
+        Gateways that cannot be read are simply absent: "did not answer" must not look
+        like "disagrees".
+        """
+        from . import site_time
+        s = get_settings()
+        out: dict[str, int] = {}
+        for gw in (get_gateways() or []):
+            host = getattr(gw, "active_host", None) or getattr(gw, "configured_host", None)
+            if not host:
+                continue
+            off = site_time.offset_minutes(s, host)
+            if off is not None:
+                out[getattr(gw, "id", "")] = off
+        return out
 
     def _apowers_reporting(gateway: str | None) -> int | None:
         """aPower units the gateway reports, or None when it could not be asked."""
@@ -2525,6 +2566,49 @@ def create_app() -> FastAPI:
         _audit("setup_expected", detail=f"agates={vals['agates']} apowers={vals['apowers']}",
                result=vals, ok=True)
         return vals
+
+    @app.get("/api/setup/timezone")
+    def api_setup_timezone_get():
+        """The site timezone, and what each gateway's own clock reports."""
+        st = db.get_store(get_settings())
+        name = setup_wizard.site_timezone(st)
+        return {"timezone": name,
+                "offset_minutes": setup_wizard.tz_offset_minutes(name) if name else None,
+                "gateway_offsets": _gateway_offsets()}
+
+    @app.post("/api/setup/timezone")
+    async def api_setup_timezone(req: SetupTimezoneReq):
+        """Set the site timezone — ONE zone for the whole site.
+
+        Mock gateways are restarted onto it, because the bridge owns their clock: a mock
+        site whose gateways disagree about the hour is not a site. Real gateways are not
+        touched — there is no verified write for the aGate's clock, so a mismatch is
+        REPORTED by the wizard's timezone step rather than silently 'fixed'.
+        """
+        _guard_writes()
+        st = db.get_store(get_settings())
+        try:
+            name = setup_wizard.set_site_timezone(st, req.timezone)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        site_time.reset_cache()      # offsets were cached against the old zone
+        restarted = await _restart_mocks_on_site_timezone()
+        _audit("setup_timezone", detail=f"timezone={name}", result=name, ok=True)
+        return {"timezone": name,
+                "offset_minutes": setup_wizard.tz_offset_minutes(name),
+                "mocks_restarted": restarted}
+
+    async def _restart_mocks_on_site_timezone() -> int:
+        """Put every mock gateway on the site's clock. Returns how many were restarted."""
+        stg = _gw_store()
+        if stg is None:
+            return 0
+        n = 0
+        for row in stg.gateways():
+            if row.get("is_mock") and row.get("enabled"):
+                await _reconcile_gateway(row)
+                n += 1
+        return n
 
     @app.get("/api/setup/capabilities")
     def api_setup_capabilities(gateway: str | None = Query(None)):

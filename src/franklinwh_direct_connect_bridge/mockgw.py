@@ -26,15 +26,24 @@ def seed_for(gw_id: str, mock_seed: int | None) -> int:
     return (abs(hash(gw_id)) % 90000) + 1
 
 
-def start_mock(gw_id: str, *, seed: int, units: int) -> str:
+def start_mock(gw_id: str, *, seed: int, units: int,
+               tz_offset_hours: float | None = None) -> str:
     """Start (or return the existing) emulator for a mock gateway.
-    Returns the ``127.0.0.1:<port>`` host string to register."""
+    Returns the ``127.0.0.1:<port>`` host string to register.
+
+    ``tz_offset_hours`` is the SITE's offset. Without it each mock takes a random
+    per-seed timezone, so a site built from several mocks disagrees with itself about
+    what hour it is — and anything deriving the site clock from a gateway gets a
+    different answer per gateway.
+    """
     emu = _mocks.get(gw_id)
     if emu is None:
-        emu = Emulator(host="127.0.0.1", port=0, seed=int(seed), units=max(1, int(units))).start()
+        emu = Emulator(host="127.0.0.1", port=0, seed=int(seed), units=max(1, int(units)),
+                       tz_offset_hours=tz_offset_hours).start()
         _mocks[gw_id] = emu
-        log.info("mock gateway %s: emulator on 127.0.0.1:%d (seed=%d units=%d)",
-                 gw_id, emu.port, seed, units)
+        log.info("mock gateway %s: emulator on 127.0.0.1:%d (seed=%d units=%d tz=%s)",
+                 gw_id, emu.port, seed, units,
+                 "per-seed" if tz_offset_hours is None else f"UTC{tz_offset_hours:+g}")
     return f"127.0.0.1:{emu.port}"
 
 

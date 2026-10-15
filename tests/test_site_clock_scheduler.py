@@ -141,3 +141,43 @@ def test_window_end_epoch_is_not_shifted_by_the_offset():
     # 19:30 at UTC-5 == 00:30 UTC the next day
     closes = dt.datetime.fromtimestamp(end_ts, dt.timezone.utc)
     assert (closes.hour, closes.minute) == (0, 30), f"window closes at {closes:%H:%M} UTC"
+
+
+# ── a wrong clock is not a timezone ──────────────────────────────────────────
+# Measured 2026-10-15 on the demo stack: a mock gateway answered 1202 from the emulator's
+# canned fallback, whose `time` is the reference capture's date. The derived offset was
+# -571 days, `dt.timezone()` refused it, and EVERY scheduler tick died with
+# "offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24)".
+def test_a_stale_clock_does_not_become_an_offset(monkeypatch):
+    def _stale(settings, name, host=None):
+        return {"time": "2025-03-24 01:15:51", "timezone": 10, "timezoneStr": ""}
+    monkeypatch.setattr(client_mod, "read", _stale)
+    # It falls back to the gateway's own base offset rather than inventing one from a
+    # clock that is plainly wrong.
+    assert site_time.offset_minutes(settings=None) == 600
+
+
+def test_an_impossible_offset_is_refused_outright(monkeypatch):
+    def _nonsense(settings, name, host=None):
+        return {"time": "2025-03-24 01:15:51", "timezone": 400}
+    monkeypatch.setattr(client_mod, "read", _nonsense)
+    # No real place is UTC+400. None means "could not be established", which the caller
+    # already knows how to handle — unlike a number that blows up on use.
+    assert site_time.offset_minutes(settings=None) is None
+
+
+def test_now_site_survives_a_wrong_gateway_clock(monkeypatch):
+    def _stale(settings, name, host=None):
+        return {"time": "2025-03-24 01:15:51", "timezone": 999}
+    monkeypatch.setattr(client_mod, "read", _stale)
+    now, off = site_time.now_site(settings=None)      # must not raise
+    assert off is None
+    assert now.utcoffset() is not None                # still aware, as the contract says
+
+
+def test_the_edges_of_the_real_range_are_kept(monkeypatch):
+    # UTC+14 (Kiritimati) and UTC-12 (Baker Island) exist; the guard must not clip them.
+    for hours, want in ((14, 840), (-12, -720)):
+        site_time.reset_cache()
+        monkeypatch.setattr(client_mod, "read", _agate_at(hours))
+        assert site_time.offset_minutes(settings=None) == want

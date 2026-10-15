@@ -24,6 +24,14 @@ log = logging.getLogger(__name__)
 #: tick-interval's worth of wrong decisions twice a year, against reading 1201 every tick.
 TTL_SECONDS = 600
 
+#: The real range of UTC offsets in use: UTC-12:00 (Baker Island) to UTC+14:00 (Kiritimati).
+#: Anything outside it is not a timezone — it is a gateway whose clock is wrong (a mock
+#: answering with a capture's date did exactly that, putting the offset 571 days out).
+#: ``dt.timezone`` refuses an offset of 24h or more, so an unchecked value does not produce
+#: a bad schedule, it raises and kills the tick that was supposed to run the schedule.
+MIN_OFFSET_MINUTES = -12 * 60
+MAX_OFFSET_MINUTES = 14 * 60
+
 _lock = threading.Lock()
 _cache: dict[str | None, tuple[float, int]] = {}      # host -> (expires_at, offset_minutes)
 
@@ -40,13 +48,25 @@ def _offset_from_reading(tl: dict) -> int | None:
         try:
             local = dt.datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
             utc_now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
-            return int(round((local - utc_now).total_seconds() / 60 / 15) * 15)
+            off = int(round((local - utc_now).total_seconds() / 60 / 15) * 15)
+            if _plausible(off):
+                return off
+            # The clock is wrong, not the zone. Fall through to the base offset rather
+            # than returning a number no caller can build a timezone from.
+            log.warning("site clock implausible: aGate says %s, which is %d minutes from "
+                        "UTC — ignoring it and using the reported base offset", t, off)
         except (ValueError, TypeError):
             pass
     base = tl.get("timezone")
     if isinstance(base, (int, float)):
-        return int(base) * 60
+        off = int(base) * 60
+        return off if _plausible(off) else None
     return None
+
+
+def _plausible(offset: int) -> bool:
+    """Is this a UTC offset a place on Earth actually uses?"""
+    return MIN_OFFSET_MINUTES <= offset <= MAX_OFFSET_MINUTES
 
 
 def offset_minutes(settings, host: str | None = None, *, store=None) -> int | None:

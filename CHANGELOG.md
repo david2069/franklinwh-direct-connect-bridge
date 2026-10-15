@@ -11,7 +11,36 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+
+- **The setup wizard asks where the site is, and every gateway uses that one zone.** Nothing
+  on the Direct Connect channel supplies a timezone — the aGate reports an OFFSET and leaves
+  `timezoneStr` empty — so it is asked, defaulting to the browser's zone. Mock gateways are
+  started on it (the bridge owns their clock, so there the rule is enforced literally); a real
+  gateway whose clock disagrees is **named** in the wizard's timezone step rather than
+  silently corrected, because there is no verified write for the aGate's clock.
+
 ### Fixed
+
+- **A gateway with a wrong clock no longer kills every scheduler tick.** The site offset is
+  derived from the aGate's wall-clock minus UTC; a gateway answering with a stale date made
+  that 571 days, `datetime.timezone()` refuses anything past ±24 h, and the exception took out
+  the tick that was supposed to run the schedule. Offsets outside the real range (UTC-12:00 to
+  UTC+14:00) are now refused — falling back to the gateway's reported base offset, or to
+  "could not be established", which callers already handle.
+
+- **The wizard builds the site you described.** Declaring 3 aGates created exactly one mock,
+  every mock was called "Mock aGate" so the switcher could not tell them apart, and finishing
+  left the UI on *Site · All Gateways*, where the per-gateway tabs (Battery, Device, Grid &
+  Inverter) error against an empty host. It now creates one numbered mock per declared aGate,
+  each with the declared aPower count, and selects a real gateway when it finishes.
+
+- **A mock gateway can answer the grid and clock reads.** The emulator had no 1701
+  `install_profile` or live 1201 `time_location`, so Grid & Inverter reported the gateway
+  unreachable against a mock that was plainly online, and the site clock came from the
+  reference capture's date. Both are now synthesised
+  (`franklinwh-direct-connect-api`), with `fhpRatePower`/`genRatePower` left at 0 to mirror
+  the real firmware.
 
 - **Battery dispatch over the Modbus Bridge REST API now authenticates.** It never had: the
   Modbus Bridge requires a session with the `control` capability and we sent nothing, so this

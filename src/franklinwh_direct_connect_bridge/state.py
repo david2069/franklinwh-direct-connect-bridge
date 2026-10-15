@@ -96,15 +96,43 @@ def default_gateway() -> GatewayState | None:
 def get_state() -> GatewayState:
     """The default gateway's state — the single-gateway shorthand every existing code path
     uses. If the registry is still empty (e.g. tests, or before lifespan wiring), lazily
-    create a default from the configured ``fwh_host`` so callers always get a usable state."""
+    create a default from the configured ``fwh_host`` so callers always get a usable state.
+
+    With NO host configured — a genuine first run — the placeholder is NOT registered. A
+    registered one is permanent damage: it becomes the default gateway, so every unscoped
+    read answers "could not connect to :9000" from its empty host, and the setup wizard
+    counts it as a real aGate that was never found. Measured on the fresh demo stack,
+    2026-10-15: the wizard reported "1 of 3 aGate(s) configured" with nothing in the
+    roster but mocks.
+
+    It is still a SINGLETON, because callers mutate what they get back (the poller writes
+    ``active_host``, ``last_state`` and the rest). Handing out a fresh object per call
+    would drop those writes silently, which is worse than the defect being fixed.
+    """
     gw = default_gateway()
     if gw is None:
         from .config import get_settings
         s = get_settings()
+        if not s.fwh_host:
+            return _unconfigured()
         gw = register_gateway(s.fwh_host, s.fwh_host, s.fwh_host)
     return gw
 
 
+#: The placeholder handed out before anything is configured. Deliberately outside
+#: ``_gateways`` — see :func:`get_state`.
+_placeholder: GatewayState | None = None
+
+
+def _unconfigured() -> GatewayState:
+    global _placeholder
+    if _placeholder is None:
+        _placeholder = GatewayState(id="", configured_host="", active_host="", label="")
+    return _placeholder
+
+
 def reset_gateways() -> None:
     """Test hook — forget all registered gateways."""
+    global _placeholder
     _gateways.clear()
+    _placeholder = None

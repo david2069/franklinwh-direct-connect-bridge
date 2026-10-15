@@ -50,10 +50,28 @@ def test_registry_register_get_default_order():
     assert state_module.default_gateway() is a                                 # first
 
 
-def test_get_state_lazily_creates_default_when_empty():
+def test_get_state_lazily_creates_default_when_empty(monkeypatch):
+    """A CONFIGURED host is registered lazily, so the single-gateway paths keep working."""
+    from franklinwh_direct_connect_bridge import config
+    monkeypatch.setattr(config, "get_settings", lambda: Settings(fwh_host="10.0.0.9"))
     assert state_module.default_gateway() is None
     gw = state_module.get_state()
     assert gw is state_module.default_gateway()   # now registered
+    assert gw.configured_host == "10.0.0.9"
+
+
+def test_get_state_with_no_host_does_not_register_a_phantom(monkeypatch):
+    """First run, nothing configured. Registering the placeholder made it the DEFAULT
+    gateway: every unscoped read then failed against its empty host ("could not connect
+    to :9000") and the setup wizard counted it as a real aGate that was never found."""
+    from franklinwh_direct_connect_bridge import config
+    monkeypatch.setattr(config, "get_settings", lambda: Settings(fwh_host=""))
+    gw = state_module.get_state()
+    assert gw.configured_host == ""
+    assert state_module.default_gateway() is None     # not in the registry
+    assert state_module.gateways() == []
+    # Still one object, because callers mutate what they get back.
+    assert state_module.get_state() is gw
 
 
 # -- /api/gateways roster + /api/gateways/{id}/summary -------------------------

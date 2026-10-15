@@ -38,14 +38,14 @@
           <template x-if="step === 'intent'">
             <div class="space-y-2">
               <p>What would you like to do?</p>
-              <button type="button" @click="go('hardware')"
+              <button type="button" @click="intent = 'hardware'; go('hardware')"
                       class="w-full text-left rounded-lg border px-3 py-2"
                       style="border-color:var(--accent)">
                 <p class="font-semibold" style="color:var(--accent)">Connect my FranklinWH aGate</p>
                 <p class="text-xs" style="color:var(--text-faint)">Read and control it over your
                   own network. No cloud account needed.</p>
               </button>
-              <button type="button" @click="go('demo')"
+              <button type="button" @click="intent = 'demo'; go('hardware')"
                       class="w-full text-left rounded-lg border px-3 py-2" style="border-color:var(--border)">
                 <p class="font-semibold" style="color:var(--text-primary)">Explore with a mock gateway</p>
                 <p class="text-xs" style="color:var(--text-faint)">Simulated battery, aPowers and
@@ -65,6 +65,9 @@
             <div class="space-y-3">
               <p>How much hardware is installed? Most sites have one of each — change it if
                 yours differs.</p>
+              <p x-show="intent === 'demo'" class="text-xs" style="color:var(--text-faint)">
+                The mock will be built with this many aPowers, so it matches the shape you
+                described.</p>
               <div class="flex flex-wrap items-end gap-3">
                 <label class="text-xs">aGates
                   <input type="number" min="1" max="16" x-model.number="counts.agates"
@@ -78,7 +81,36 @@
             </div>
           </template>
 
-          <!-- 3. Find it. Discover does the work; the address is the fallback. -->
+          <!-- 3. Where the site is. ONE zone for every gateway. -->
+          <template x-if="step === 'timezone'">
+            <div class="space-y-3">
+              <p>Where is this site? Schedules run on the site's clock, not this
+                computer's — and every gateway here uses the same one.</p>
+              <div class="flex flex-wrap items-end gap-2">
+                <label class="text-xs">Timezone
+                  <select class="form-control form-control-sm block mt-1" style="width:14rem"
+                          x-model="tz.name">
+                    <template x-for="z in tz.zones" :key="z">
+                      <option :value="z" x-text="z"></option>
+                    </template>
+                  </select></label>
+                <label class="text-xs">Or type one
+                  <input class="form-control form-control-sm block mt-1" style="width:12rem"
+                         placeholder="Area/City" x-model="tz.name"></label>
+              </div>
+              <p x-show="tz.detected" class="text-xs" style="color:var(--text-faint)">
+                This browser says <span class="font-mono" x-text="tz.detected"></span> — change
+                it if the site is somewhere else.</p>
+              <p x-show="intent === 'demo'" class="text-xs" style="color:var(--text-faint)">
+                Every mock gateway will be created on this clock, so they agree with each
+                other and with your schedules.</p>
+              <p x-show="intent !== 'demo'" class="text-xs" style="color:var(--text-faint)">
+                The aGate's own clock is set on the device. If one reports a different
+                offset, Settings &rarr; Setup will say which.</p>
+            </div>
+          </template>
+
+          <!-- 4. Find it. Discover does the work; the address is the fallback. -->
           <template x-if="step === 'find'">
             <div class="space-y-3">
               <p>Scanning your network for aGates on TCP 9000.</p>
@@ -109,7 +141,7 @@
             </div>
           </template>
 
-          <!-- 4. Mock -->
+          <!-- 5. Mock -->
           <template x-if="step === 'demo'">
             <div class="space-y-3">
               <p>A mock gateway runs inside this bridge — a simulated battery with aPowers,
@@ -120,13 +152,19 @@
                 <label class="text-xs">Name
                   <input class="form-control form-control-sm block mt-1" style="width:11rem"
                          x-model="demo.label"></label>
-                <button class="btn btn-primary btn-sm" :disabled="busy" @click="createMock()">
-                  Create mock gateway</button>
+                <button class="btn btn-primary btn-sm" :disabled="busy" @click="createMock()"
+                        x-text="counts.agates > 1
+                                ? `Create ${counts.agates} mock gateways`
+                                : 'Create mock gateway'"></button>
               </div>
+              <p class="text-xs" style="color:var(--text-faint)"
+                 x-text="counts.agates > 1
+                         ? `${counts.agates} mocks will be created, numbered 1 to ${counts.agates}, each with ${counts.apowers} aPower(s).`
+                         : `One mock with ${counts.apowers} aPower(s).`"></p>
             </div>
           </template>
 
-          <!-- 5. Confirm what was read -->
+          <!-- 6. Confirm what was read -->
           <template x-if="step === 'confirm'">
             <div class="space-y-2">
               <p>This is what the gateway reports. Anything wrong can be changed in
@@ -148,7 +186,7 @@
             </div>
           </template>
 
-          <!-- 6. Done -->
+          <!-- 7. Done -->
           <template x-if="step === 'done'">
             <div class="space-y-2">
               <p>That's the essentials. Home Assistant, notifications and tariffs are optional

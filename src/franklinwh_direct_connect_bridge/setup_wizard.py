@@ -18,7 +18,9 @@ Three rules the backlog settles, implemented here rather than re-decided:
 """
 from __future__ import annotations
 
+import datetime as dt
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 #: How many aGates and aPowers the owner says they have. Asked, not derived: before
 #: anything is discovered there is nothing to derive FROM, and the answer tells the wizard
@@ -29,6 +31,13 @@ EXPECTED_APOWERS_KEY = "setup_expected_apowers"
 DEFAULT_EXPECTED = 1
 #: One site, sanity bounds. Not a product limit — a guard against a typo becoming a scan.
 MAX_EXPECTED = 16
+
+#: The SITE's timezone, as an IANA name. Asked, like the counts: nothing on the local
+#: channel reports one — the aGate reports an OFFSET and leaves ``timezoneStr`` empty, and
+#: an offset cannot tell UTC+10 standard from UTC+10 daylight elsewhere. One value for the
+#: whole site: gateways at one address are in one timezone, and a schedule written in site
+#: time has to mean the same hour on every one of them.
+SITE_TZ_KEY = "site_timezone"
 
 #: Stored in the config table. Absent ⇒ never run ⇒ offer the wizard.
 STATE_KEY = "setup_wizard_state"
@@ -86,6 +95,90 @@ def set_expected(store, *, agates: int | None = None, apowers: int | None = None
     return expected(store)
 
 
+def site_timezone(store) -> str:
+    """The site's IANA timezone, or "" when it has not been set."""
+    if store is None:
+        return ""
+    name = (store.get_config(SITE_TZ_KEY, "") or "").strip()
+    return name if _valid_tz(name) else ""
+
+
+def set_site_timezone(store, name: str) -> str:
+    """Record the site timezone. An unknown name is refused, not coerced: a schedule that
+    silently ran against the wrong zone is the failure this step exists to prevent."""
+    name = (name or "").strip()
+    if not _valid_tz(name):
+        raise ValueError(f"unknown timezone {name!r}; use an IANA name such as "
+                         "'Australia/Sydney'")
+    if store is not None:
+        store.set_config(SITE_TZ_KEY, name)
+    return name
+
+
+def _valid_tz(name: str) -> bool:
+    if not name:
+        return False
+    try:
+        ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError, KeyError):
+        return False
+    return True
+
+
+def tz_offset_minutes(name: str, when: dt.datetime | None = None) -> int | None:
+    """The zone's CURRENT offset from UTC in minutes, DST included, or None if unknown.
+
+    Derived live rather than stored: an offset recorded in January is wrong in July.
+    """
+    if not _valid_tz(name):
+        return None
+    now = when or dt.datetime.now(dt.timezone.utc)
+    off = now.astimezone(ZoneInfo(name)).utcoffset()
+    return None if off is None else int(off.total_seconds() // 60)
+
+
+def _timezone_step(store, gateways: list, gateway_offsets: dict[str, int] | None) -> dict[str, Any]:
+    """The site timezone, and whether every gateway agrees with it.
+
+    ``gateway_offsets`` maps gateway id -> the offset that gateway's own clock reports.
+    A gateway that disagrees is NAMED rather than quietly corrected: this bridge has no
+    verified write for the aGate's clock, so the honest action is to show the mismatch
+    and let the owner fix it on the device.
+    """
+    name = site_timezone(store)
+    site_off = tz_offset_minutes(name) if name else None
+    offsets = gateway_offsets or {}
+    mismatched = [g for g in gateways
+                  if offsets.get(getattr(g, "id", "")) is not None
+                  and site_off is not None
+                  and offsets[getattr(g, "id", "")] != site_off]
+    if not name:
+        detail = "Not set — schedules need the site's own clock, not the container's."
+    elif mismatched:
+        detail = (f"{name} ({_fmt_offset(site_off)}) · "
+                  f"{len(mismatched)} gateway(s) report a different offset")
+    else:
+        detail = f"{name} ({_fmt_offset(site_off)}) · all gateways agree"
+    return {
+        "id": "timezone",
+        "title": "Where is this site?",
+        "required": True,
+        "satisfied": bool(name) and not mismatched,
+        "detail": detail,
+        "values": {"timezone": name, "offset_minutes": site_off},
+        "mismatched": [getattr(g, "id", "") for g in mismatched],
+        "action": "timezone",
+    }
+
+
+def _fmt_offset(minutes: int | None) -> str:
+    if minutes is None:
+        return "offset unknown"
+    sign = "+" if minutes >= 0 else "-"
+    m = abs(minutes)
+    return f"UTC{sign}{m // 60:02d}:{m % 60:02d}"
+
+
 def _expected_step(exp: dict[str, int], gateways: list, apowers_found: int | None) -> dict[str, Any]:
     """What the owner says they have, against what has been found so far.
 
@@ -95,11 +188,16 @@ def _expected_step(exp: dict[str, int], gateways: list, apowers_found: int | Non
     looks finished and one that is.
     """
     real = [g for g in gateways if not getattr(g, "is_mock", False)]
+    mocks = [g for g in gateways if getattr(g, "is_mock", False)]
     found_gw = len(real)
     short_gw = max(0, exp["agates"] - found_gw)
     short_ap = (max(0, exp["apowers"] - apowers_found)
                 if apowers_found is not None else None)
     bits = [f"{found_gw} of {exp['agates']} aGate(s) configured"]
+    if mocks:
+        # Named, not counted. A mock is not an aGate, and a wizard that let one satisfy
+        # "find your hardware" would report a site that does not exist as complete.
+        bits.append(f"{len(mocks)} mock gateway(s)")
     if apowers_found is not None:
         bits.append(f"{apowers_found} of {exp['apowers']} aPower(s) reporting")
     return {
@@ -111,7 +209,7 @@ def _expected_step(exp: dict[str, int], gateways: list, apowers_found: int | Non
         "satisfied": short_gw == 0 and (short_ap in (0, None)),
         "detail": " · ".join(bits),
         "values": {"agates": exp["agates"], "apowers": exp["apowers"]},
-        "found": {"agates": found_gw, "apowers": apowers_found},
+        "found": {"agates": found_gw, "apowers": apowers_found, "mocks": len(mocks)},
         "defaults": {"agates": DEFAULT_EXPECTED, "apowers": DEFAULT_EXPECTED},
         "max": MAX_EXPECTED,
         "action": "expected",
@@ -181,10 +279,12 @@ def capability_tabs(values: dict[str, Any], *, generator_installed: bool) -> dic
 def steps(*, store, gateways: list, profile_values: dict[str, Any],
           ha_configured: bool, notifications_configured: bool,
           tariff_configured: bool,
-          apowers_found: int | None = None) -> list[dict[str, Any]]:
+          apowers_found: int | None = None,
+          gateway_offsets: dict[str, int] | None = None) -> list[dict[str, Any]]:
     """Every step with its current state, so a re-run shows reality, not blank fields."""
     return [
         _expected_step(expected(store), gateways, apowers_found),
+        _timezone_step(store, gateways, gateway_offsets),
         _gateway_step(gateways),
         _profile_step(profile_values or {}),
         _optional_step("home_assistant", "Home Assistant", ha_configured,
