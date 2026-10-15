@@ -4600,22 +4600,75 @@ remedy (free the old entity id, rename the new entity to it, and Home Assistant 
 history and statistics across the rename) is written up in
 `INSTALL.md` → *Reinstalling*. This item is about doing better than a manual remedy.
 
-**What must be established first — none of it is verified yet:**
+### Relayed analysis — NOT verified here (2026-10-15)
 
-- the entity ids, units and `state_class` that integration actually publishes (read its
-  source and a real HA registry, not its README);
-- which of ours correspond, and where the meaning differs rather than just the name — a
-  mapping that is wrong is worse than no mapping, because it silently welds two different
-  series together;
-- whether Home Assistant exposes a supported way to do this. Renaming through the entity
-  registry is a user action today; an integration doing it to entities it does not own is a
-  different proposition.
+The owner relayed an analysis from another session, stated there to be from a read-only
+look at `sensor.py` and `switch.py` in that repository. **It is a claim, not a finding**:
+nobody in this repo has read that source or seen a live registry. Recorded so the spike
+below starts from something, and to be confirmed or contradicted before any of it is built.
+
+Claimed:
+
+- The integration is YAML-only, under the domain `franklin_wh`, and polls the FranklinWH
+  **cloud**.
+- **Default config sets no `unique_id`.** `unique_id` appears only when the user adds
+  `use_sn: true`, which the README's example does not. Without one, Home Assistant does not
+  put the entity in its registry, the entity id comes from the name
+  (`sensor.franklinwh_home_use` and so on), and the user cannot rename or delete it in the
+  UI.
+- With `use_sn: true`, `unique_id` is the gateway serial plus a suffix (`<SN>_home_use`;
+  switches `<SN>_<name>`), and those entities ARE in the registry.
+- Energy sensors are **kWh with `state_class: total_increasing`**, from the cloud library's
+  `totals`. Whether those are daily or lifetime totals was **not** established — and that
+  is exactly the difference that decides whether a takeover shows a step in the Energy
+  dashboard.
+
+Consequence, if the above holds: for most users the old entities vanish when the YAML is
+removed (nothing in the registry holds them), so the entity id is free and whatever claims
+it next continues the long-term statistics. For `use_sn: true` users the stale registry
+entries must be deleted first. Order matters either way — create the new entity while the
+old one exists and it lands as `_2`.
+
+### What this bridge can and cannot do — verified in our own code
+
+- We publish over **MQTT discovery**, so our entities belong to Home Assistant's `mqtt`
+  platform. The "register under the same domain with the same `unique_id` and adopt the
+  existing registry entry" shortcut in the relayed analysis is for a **native integration**
+  and is not available to us. If that route is ever wanted, it is a different product.
+- Our discovery payload sets both `unique_id` and `object_id` to
+  `franklinwh_{node}_{key}` (`publish/entities.py:148`). `object_id` is what seeds the
+  entity id, which is the lever a takeover would pull — confirm on a live instance in the
+  spike rather than on the strength of the field name.
+- Our energy sensors are already **kWh / `total_increasing`** and power is
+  **W / `measurement`** (`publish/entities.py:15-33`), so the units and state classes match
+  what was claimed of theirs. **But ours are explicitly `*_today_kwh`** — daily counters.
+  If theirs are lifetime totals, the series do not mean the same thing and must NOT be
+  joined, whatever the units say.
+- We already hold an authenticated connection to Home Assistant — long-lived token,
+  `ha_instances.probe()` / `states()` — and `ha_dashboard.resolve_ids()` already matches
+  real entity ids from HA, including the `_2` suffix, and refuses a near miss. A takeover
+  tool builds on those rather than inventing a second mechanism.
+
+### The spike, before any feature
+
+1. Read `richo/homeassistant-franklinwh` ourselves and record what it publishes, with the
+   commit read.
+2. On a real HA instance the owner connects (long-lived token, with their agreement),
+   list the actual `franklinwh_*` entities, their `state_class`, units and whether they are
+   in the registry.
+3. Establish for each of our sensors whether it means the same thing as the candidate —
+   starting with **daily vs lifetime**, which is the one that silently ruins a series.
 
 **Design constraints.**
 
-- **Propose, never act.** Produce a reviewed list — old id, new id, units, what we matched
-  on — and let the user apply it. FWHAI attempted automatic repurposing and it did not work
-  (owner, 2026-10-15); the failure mode is silent and discovered late.
+- **Propose, never act.** Produce a reviewed list — old id, new id, units, state class,
+  what we matched on — and let the user apply it. FWHAI attempted automatic repurposing and
+  it did not work (owner, 2026-10-15); the failure mode is silent and discovered late.
+- **Connecting to Home Assistant is the user's decision.** The tool needs a long-lived
+  token for their instance and must not run, or ask for one, unless they say so. Nothing
+  about this works without reading their registry, and reading their registry is not
+  something to arrange quietly.
+- **Never join a daily counter to a lifetime one**, however well the units match.
 - **Never guess a pair.** Unmatched is a valid, reportable outcome.
 - **Must be reversible.** Whatever it does, the user needs a way back.
 
