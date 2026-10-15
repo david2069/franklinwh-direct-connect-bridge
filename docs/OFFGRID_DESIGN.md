@@ -122,6 +122,17 @@ and it identifies the **programme**, never the run state.
 relay closed — then the key disappeared entirely once on grid. A field that is absent rather
 than 0 when inactive; worth knowing before testing it for falsiness.
 
+**It is a REASON code, not a state.** Reported by the `franklinwh-cloud` session from its
+`API_COOKBOOK` grid-state section and `AGENT_GROUND_TRUTH`, with a corpus of
+`getDeviceCompositeInfo` responses: `null` ×19,514 on grid; `1` ×639, always alongside
+`main_sw [0,0,1]` and `mode 7` — a requested island like this one; `0` ×249 around
+transitions. **No other value has ever been captured**, so the code for an unscheduled outage
+is unobserved. It answers *why*, never *whether*, and must not be used as an is-islanded test
+for that reason rather than the timing one.
+
+Their documentation uses a different field for a firmware-detected outage: **`offGridFlag ==
+1`**. It read `null` throughout this requested island.
+
 ### The untested case: a real outage
 
 Everything measured so far is a **requested** island — a software disconnect with the utility
@@ -136,7 +147,8 @@ It is the only way to measure these, each of which is currently recorded as unco
 | `grid_leg_v` | ~120 V per leg, requested island | do the legs collapse, so `grid_present` reads False? |
 | `run_status` 5/6/7 | never seen, local **or** cloud | does an unrequested island use them? |
 | `dspRunstatus` | 5 while requested | same value when nobody asked? |
-| cloud `offgridreason` | 1 while requested | what it reads with no request |
+| cloud `offgridreason` | 1 while requested; no other value ever captured | the unscheduled-outage code, currently unobserved |
+| cloud `offGridFlag` | `null` throughout a requested island | whether it goes to 1 — their docs use it for a firmware-detected outage |
 | reconnect behaviour | 34 s, grid live throughout | what happens when the utility has to come back first |
 | Modbus `701` voltage node | not established | does it drop with the utility, or hold at the formed island? |
 
