@@ -11,6 +11,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+
+- **Adding a mock gateway no longer fails with "Internal Server Error".** The Home
+  Assistant add-on installs `franklinwh-direct-connect-api` from PyPI, which served 0.4.0 —
+  a version without the emulator's `tz_offset_hours` parameter — so creating a mock raised
+  `TypeError` and left a half-built roster row behind. The library is now pinned to
+  **>=0.5** (released for this), and `mockgw` degrades to the seeded clock instead of
+  failing if it ever meets an older one again.
+
 ### Added
 
 - **The setup wizard ends on Home Assistant, with live checks and one question.** Four
