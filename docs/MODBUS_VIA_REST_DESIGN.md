@@ -162,6 +162,7 @@ it.
 | Phase | Change | Leaves behind |
 | --- | --- | --- |
 | **A** ✅ | The Modbus switch actually stops our TCP (shipped) | "off" means off, and the footprint is measurable |
+| **B0** | **Authentication (#56)** — credentials, session, honest availability | the REST path can actually be used |
 | **B** | Ask the Modbus Bridge about a ratings endpoint (§5) | the one unknown closed before design hardens |
 | **C** | Route ratings through the provider; constant as fallback | the last *read* leaves direct Modbus |
 | **D** | Default the direct path OFF; REST becomes the normal route | zero `:502` sockets from this container in normal operation |
@@ -232,6 +233,30 @@ bridge; it does not hold for the gateway. Nothing in our design can make it hold
 Unchanged and still the one real unknown. The `franklinwh-modbus-bridge` session is active
 and has answered harder questions than this today; Phase B is a message, not an
 investigation.
+
+### The design has no answer for AUTHENTICATION, and the REST path has never had one
+
+Asked by the owner on review, and it is the largest gap found: **the Modbus Bridge requires
+credentials and we send none.**
+
+Their `/api/command` is gated — `_user: dict = Depends(_REQUIRE_CONTROL)`
+(`franklinwh-modbus-bridge`, `api/ui.py:148`) — with a `POST /api/auth/login` session flow.
+Our `_post_command` (`providers.py:137`) sends a bare JSON POST with no cookie, no token and
+no login anywhere, and `config.py` has **only** `modbus_bridge_url` — there is no credential
+setting to populate.
+
+Worse, `available` is measured by an **unauthenticated** `GET /api/health`, which a properly
+secured Modbus Bridge answers happily. So the provider reports **ready** for a path that
+would 401 at the first command — which is the failure §4 explicitly forbids, arriving through
+the availability check rather than the dispatch.
+
+So §1's "for dispatch, REST is already the preferred and only implemented route" is accurate
+about the code and misleading about reality: **implemented, never able to authenticate.**
+
+Filed as **#56**. It is a prerequisite for Phase B, not a detail of Phase C: credentials in
+config *and* in the add-on schema, a login session with re-auth on 401, availability probed
+through something that actually requires authorisation, and "reachable but not authorised"
+reported as its own state — a wrong password and a down host need different fixes.
 
 ### What did not change
 
