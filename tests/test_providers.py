@@ -24,7 +24,9 @@ def writes_on(tmp_path, monkeypatch):
 
 
 def test_dispatch_prefers_reachable_modbus_bridge(monkeypatch):
-    monkeypatch.setattr(providers, "_probe_url", lambda base, *a, **k: True)
+    monkeypatch.setattr(providers.modbus_bridge, "status",
+                        lambda *a, **k: {"state": "ready", "reason": None,
+                                         "capabilities": ["control"]})
     monkeypatch.setattr(providers, "_lib_available", lambda m: True)
     r = providers.dispatch_provider(_s(modbus_bridge_url="http://mb:8101", modbus_host="10.0.0.9"))
     assert r["available"] is True
@@ -46,7 +48,9 @@ def test_dispatch_none_when_nothing_available(monkeypatch):
 
 
 def test_dispatch_url_unreachable_not_available(monkeypatch):
-    monkeypatch.setattr(providers, "_probe_url", lambda base, *a, **k: False)  # sibling down
+    monkeypatch.setattr(providers.modbus_bridge, "status",
+                        lambda *a, **k: {"state": "unreachable",
+                                         "reason": "sibling down", "capabilities": []})
     monkeypatch.setattr(providers, "_lib_available", lambda m: False)
     r = providers.dispatch_provider(_s(modbus_bridge_url="http://mb:8101"))
     assert r["available"] is False
@@ -65,7 +69,9 @@ def test_reserve_prefers_fwhai_then_cloud_lib(monkeypatch):
 
 
 def test_capabilities_and_endpoint(monkeypatch):
-    monkeypatch.setattr(providers, "_probe_url", lambda base, *a, **k: False)
+    monkeypatch.setattr(providers.modbus_bridge, "status",
+                        lambda *a, **k: {"state": "unreachable",
+                                         "reason": "sibling down", "capabilities": []})
     monkeypatch.setattr(providers, "_lib_available", lambda m: False)
     caps = providers.capabilities(_s())
     assert set(caps) == {"dispatch", "reserve"}
@@ -79,7 +85,9 @@ def test_capabilities_and_endpoint(monkeypatch):
 def test_dispatch_sequences_modbus_bridge_commands(monkeypatch):
     """A force-charge with staged params must POST power → duration → target-SoC, then the
     action LAST (the Bridge command model is stateful)."""
-    monkeypatch.setattr(providers, "_probe_url", lambda base, *a, **k: True)
+    monkeypatch.setattr(providers.modbus_bridge, "status",
+                        lambda *a, **k: {"state": "ready", "reason": None,
+                                         "capabilities": ["control"]})
     calls = []
     monkeypatch.setattr(providers, "_post_command",
                         lambda base, slug, value, **k: calls.append((slug, value)) or {"ok": True})
@@ -96,7 +104,9 @@ def test_dispatch_sequences_modbus_bridge_commands(monkeypatch):
 
 
 def test_dispatch_release_is_bare_action(monkeypatch):
-    monkeypatch.setattr(providers, "_probe_url", lambda base, *a, **k: True)
+    monkeypatch.setattr(providers.modbus_bridge, "status",
+                        lambda *a, **k: {"state": "ready", "reason": None,
+                                         "capabilities": ["control"]})
     calls = []
     monkeypatch.setattr(providers, "_post_command",
                         lambda base, slug, value, **k: calls.append((slug, value)) or {})
@@ -105,7 +115,9 @@ def test_dispatch_release_is_bare_action(monkeypatch):
 
 
 def test_dispatch_pct_path(monkeypatch):
-    monkeypatch.setattr(providers, "_probe_url", lambda base, *a, **k: True)
+    monkeypatch.setattr(providers.modbus_bridge, "status",
+                        lambda *a, **k: {"state": "ready", "reason": None,
+                                         "capabilities": ["control"]})
     calls = []
     monkeypatch.setattr(providers, "_post_command",
                         lambda base, slug, value, **k: calls.append((slug, value)) or {})
@@ -114,7 +126,9 @@ def test_dispatch_pct_path(monkeypatch):
 
 
 def test_dispatch_unavailable_raises(monkeypatch):
-    monkeypatch.setattr(providers, "_probe_url", lambda base, *a, **k: False)
+    monkeypatch.setattr(providers.modbus_bridge, "status",
+                        lambda *a, **k: {"state": "unreachable",
+                                         "reason": "sibling down", "capabilities": []})
     monkeypatch.setattr(providers, "_lib_available", lambda m: False)
     try:
         providers.dispatch(_s(), "charge")
@@ -124,7 +138,9 @@ def test_dispatch_unavailable_raises(monkeypatch):
 
 
 def test_dispatch_invalid_action_raises(monkeypatch):
-    monkeypatch.setattr(providers, "_probe_url", lambda base, *a, **k: True)
+    monkeypatch.setattr(providers.modbus_bridge, "status",
+                        lambda *a, **k: {"state": "ready", "reason": None,
+                                         "capabilities": ["control"]})
     try:
         providers.dispatch(_s(modbus_bridge_url="http://mb:8101"), "explode")
         assert False, "expected ValueError"
@@ -144,7 +160,9 @@ def test_dispatch_library_path_not_wired(monkeypatch):
 
 
 def test_dispatch_endpoint_503_no_provider(writes_on, monkeypatch):
-    monkeypatch.setattr(providers, "_probe_url", lambda base, *a, **k: False)
+    monkeypatch.setattr(providers.modbus_bridge, "status",
+                        lambda *a, **k: {"state": "unreachable",
+                                         "reason": "sibling down", "capabilities": []})
     monkeypatch.setattr(providers, "_lib_available", lambda m: False)
     c = TestClient(app_module.create_app())
     r = c.post("/api/dispatch", json={"action": "release"})
@@ -153,7 +171,9 @@ def test_dispatch_endpoint_503_no_provider(writes_on, monkeypatch):
 
 def test_dispatch_endpoint_422_bad_action(writes_on, monkeypatch):
     monkeypatch.setenv("MODBUS_BRIDGE_URL", "http://mb:8101")
-    monkeypatch.setattr(providers, "_probe_url", lambda base, *a, **k: True)
+    monkeypatch.setattr(providers.modbus_bridge, "status",
+                        lambda *a, **k: {"state": "ready", "reason": None,
+                                         "capabilities": ["control"]})
     config._settings = None  # re-read env with the sibling URL now set
     c = TestClient(app_module.create_app())
     r = c.post("/api/dispatch", json={"action": "explode"})
@@ -200,7 +220,9 @@ def test_set_reserve_bad_mode_and_soc(monkeypatch):
 
 
 def test_set_reserve_unavailable(monkeypatch):
-    monkeypatch.setattr(providers, "_probe_url", lambda base, *a, **k: False)
+    monkeypatch.setattr(providers.modbus_bridge, "status",
+                        lambda *a, **k: {"state": "unreachable",
+                                         "reason": "sibling down", "capabilities": []})
     monkeypatch.setattr(providers, "_lib_available", lambda m: False)
     try:
         providers.set_reserve(_s(), "self", 10); assert False
@@ -219,7 +241,9 @@ def test_set_reserve_fwhai_only_not_wired(monkeypatch):
 
 
 def test_reserve_endpoint_gated_and_no_provider(writes_on, monkeypatch):
-    monkeypatch.setattr(providers, "_probe_url", lambda base, *a, **k: False)
+    monkeypatch.setattr(providers.modbus_bridge, "status",
+                        lambda *a, **k: {"state": "unreachable",
+                                         "reason": "sibling down", "capabilities": []})
     monkeypatch.setattr(providers, "_lib_available", lambda m: False)
     c = TestClient(app_module.create_app())
     assert c.post("/api/cloud/reserve", json={"mode": "self", "soc": 10}).status_code == 503

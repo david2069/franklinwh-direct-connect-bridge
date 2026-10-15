@@ -21,7 +21,8 @@ import importlib.util
 import json
 import urllib.request
 
-from .config import Settings
+from .config import Settings, get_settings
+from . import modbus_bridge
 
 
 class DispatchUnavailable(RuntimeError):
@@ -82,9 +83,16 @@ def dispatch_provider(s: Settings) -> dict:
     """Resolve the battery-dispatch provider: Modbus Bridge REST → franklinwh-modbus lib."""
     candidates: list[dict] = []
     if s.modbus_bridge_url:
+        # Availability is AUTHORISED access, not liveness. An unauthenticated /api/health
+        # returns 200 from a properly secured bridge, so probing it reported "ready" for a
+        # path that 401s on the first command (#56).
+        st = modbus_bridge.status(s.modbus_bridge_url, s.modbus_bridge_username,
+                                  s.modbus_bridge_password)
         candidates.append({
             "kind": "modbus-bridge", "via": "rest", "source": s.modbus_bridge_url,
-            "available": _probe_url(s.modbus_bridge_url),
+            "available": st["state"] == "ready",
+            "auth": st["state"],          # unreachable | unauthenticated | forbidden | ready
+            "reason": st["reason"],
         })
     host = s.modbus_host or s.fwh_host
     lib = _lib_available("franklinwh_modbus")
@@ -134,15 +142,16 @@ def capabilities(s: Settings) -> dict:
 
 
 # ── Phase 2: battery dispatch (actuate) ───────────────────────────────────────
-def _post_command(base: str, slug: str, value, timeout: float = 8.0) -> dict:
-    """POST one Modbus-Bridge ``/api/command`` ``{slug, value}`` (value stringified)."""
-    url = base.rstrip("/") + "/api/command"
-    data = json.dumps({"slug": slug, "value": str(value)}).encode()
-    req = urllib.request.Request(
-        url, data=data, method="POST", headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 — user-configured host
-        body = r.read().decode()
-    return json.loads(body) if body else {}
+def _post_command(base: str, slug: str, value, s: Settings | None = None) -> dict:
+    """POST one Modbus-Bridge ``/api/command`` ``{slug, value}`` through an AUTHENTICATED
+    session. Their endpoint requires the ``control`` capability; this used to send nothing.
+
+    The reply's ``ok`` is not a per-call result on their current build — an unknown slug
+    returns ``ok: true`` (their #97). Confirm a dispatch from ``dispatch-outcomes``.
+    """
+    s = s or get_settings()
+    return modbus_bridge.post_command(base, s.modbus_bridge_username,
+                                      s.modbus_bridge_password, slug, value)
 
 
 def _dispatch_via_modbus_bridge(base: str, action: str, power_w, power_pct,

@@ -65,5 +65,7 @@ schema:
   metrics_enabled: bool?
   metrics_retention_days: int?
   modbus_bridge_url: str?
+  modbus_bridge_username: str?
+  modbus_bridge_password: password?
   fwhai_url: str?
   modbus_host: str?

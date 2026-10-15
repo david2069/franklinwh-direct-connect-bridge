@@ -13,6 +13,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Battery dispatch over the Modbus Bridge REST API now authenticates.** It never had: the
+  Modbus Bridge requires a session with the `control` capability and we sent nothing, so this
+  path could not have worked against any secured install — while reporting itself
+  **available**, because availability was probed with an unauthenticated `/api/health` that a
+  secured bridge answers `200`. New `modbus_bridge_username` / `modbus_bridge_password`
+  settings (also in the add-on options), a cookie session that re-authenticates once on 401,
+  and availability measured on **authorised access**. Four states are reported distinctly —
+  `unreachable`, `unauthenticated`, `forbidden`, `ready` — because a `viewer` account signs in
+  happily and still cannot dispatch, and no connectivity error would ever point at that
+  remedy. (#56)
+
 - **A simulated island and a real outage are no longer the same badge.** The top bar now
   reads **OFF-GRID · SIMULATED** when the island was requested (`1723 offgridSet = 1`) and
   **OFF-GRID · OUTAGE** when it was not — the same electrical state, completely different

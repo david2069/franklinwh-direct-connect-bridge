@@ -90,6 +90,10 @@ class Settings(BaseSettings):
     # writes) by delegating to an installed sibling bridge's REST API, else a library.
     # See BACKLOG HYBRID-CAPABILITIES. Phase 1 = detection only (no writes yet).
     modbus_bridge_url: str = ""       # REST base of an installed FranklinWH Modbus Bridge (dispatch)
+    # Its control endpoints require a session AND the "control" capability. A viewer
+    # account signs in and still cannot dispatch — see modbus_bridge.py (#56).
+    modbus_bridge_username: str = ""
+    modbus_bridge_password: str = ""
     fwhai_url: str = ""               # REST base of an installed FWHAI (reserve / cloud-only writes)
     modbus_host: str = ""             # aGate host for the franklinwh-modbus library fallback (:502)
     fwh_cloud_email: str = ""         # franklinwh-cloud library fallback credentials
