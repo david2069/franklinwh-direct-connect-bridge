@@ -11,7 +11,23 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **The setup wizard ends on Home Assistant, with live checks and one question.** Four
+  things decide whether this bridge shows up in Home Assistant, they fail independently,
+  and each remedy is in a different place — so they are reported as four lines, not one
+  verdict: our broker connection, our link *into* Home Assistant, Home Assistant's own MQTT
+  integration, and whether the entities actually arrived (including ones left over from
+  gateways that no longer exist, which nobody finds on their own). "Could not be checked"
+  is a third state, shown as such rather than as a failure. Publishing is then a plain
+  **Yes/No** — "No" changes nothing at all.
+
+- **Discover says where its subnet came from**, and takes several. A prefilled value with
+  no provenance cannot be told apart from a guess, and one of the sources *is* a guess:
+  the box now reads "from the Home Assistant host network", "from a gateway you already
+  have", or "a common default — check it matches your network". Comma-separated subnets are
+  accepted, with a note that an aGate on a VPN, Tailscale or another VLAN needs its own
+  network typed in — this bridge can only sweep what it can reach.
 
 ## [0.3.1] — 2026-10-15
 

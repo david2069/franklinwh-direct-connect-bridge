@@ -21,7 +21,14 @@ window.setupWizard = function setupWizard() {
     // setting this up is not necessarily sitting at the site.
     tz: { name: '', zones: [], detected: '' },
     found: null,                       // null = not scanned yet; [] = scanned, nothing found
+    // The subnet Discover will sweep, and WHERE it came from. A prefilled value with no
+    // provenance cannot be told apart from a guess — and one of the sources IS a guess.
+    scan_subnet: '',
+    scan_source: '',
+    scan_label: '',
     manual: { host: '' },
+    // The four live Home Assistant checks, and whether to publish at all.
+    ha: { checks: [], publishing: false, addon: false, busy: false, msg: '' },
     demo: { label: 'Mock aGate' },
     // FranklinWH app credentials. Optional, and only stored once a real sign-in proves
     // they work — storing an untested password is how someone finds out months later that
@@ -106,7 +113,8 @@ window.setupWizard = function setupWizard() {
       if (this.step === 'find') return 'Continue';
       if (this.step === 'cloud') return this.cloud.state === 'ok' ? 'Continue' : 'Skip for now';
       if (this.step === 'demo') return '';
-      if (this.step === 'confirm') return 'Finish';
+      if (this.step === 'confirm') return 'Continue';
+      if (this.step === 'publish') return 'Finish';
       if (this.step === 'done') return 'Close';
       return '';
     },
@@ -116,7 +124,8 @@ window.setupWizard = function setupWizard() {
       this.history.push(this.step);
       this.step = step;
       if (step === 'hardware') this.intent = this.intent || 'hardware';
-      if (step === 'find') this.scan();
+      if (step === 'find') { this.loadScanDefault().then(() => this.scan()); }
+      if (step === 'publish') this.loadHaChecks();
       if (step === 'confirm') this.loadProfiles();
     },
 
@@ -130,7 +139,8 @@ window.setupWizard = function setupWizard() {
       if (this.step === 'timezone') { await this.saveTimezone(); return; }
       if (this.step === 'find') { this.go('cloud'); return; }
       if (this.step === 'cloud') { this.go('confirm'); return; }
-      if (this.step === 'confirm') { await this.finish('done'); return; }
+      if (this.step === 'confirm') { this.go('publish'); return; }
+      if (this.step === 'publish') { await this.finish('done'); return; }
       if (this.step === 'done') { this.hide(); return; }
     },
 
@@ -162,12 +172,25 @@ window.setupWizard = function setupWizard() {
       } catch (e) { this.error = String(e); } finally { this.busy = false; }
     },
 
+    async loadScanDefault() {
+      try {
+        const r = await fetch('api/gateways/scan/default');
+        if (!r.ok) return;
+        const d = await r.json();
+        if (!this.scan_subnet) this.scan_subnet = d.subnet || '';
+        this.scan_source = d.source || '';
+        this.scan_label = d.label || '';
+      } catch (e) { /* the box simply starts empty */ }
+    },
+
     async scan() {
       this.busy = true; this.error = ''; this.found = null;
       try {
         const r = await fetch('api/gateways/scan', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
+          // Several subnets, comma-separated: an aGate on a VPN or a second VLAN is not
+          // on the network this container can see.
+          body: JSON.stringify(this.scan_subnet ? { subnet: this.scan_subnet } : {}),
         });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) { this.error = d.detail || `Scan failed (HTTP ${r.status}).`; this.found = []; return; }
@@ -247,6 +270,40 @@ window.setupWizard = function setupWizard() {
         if (d.ok) this.cloud.password = '';     // keep it out of the page once it is stored
       } catch (e) { this.cloud.state = 'failed'; this.cloud.detail = String(e); }
       finally { this.busy = false; }
+    },
+
+    // The four things that decide whether this bridge shows up in Home Assistant. Each
+    // fails independently and each has its own remedy, so they are shown as four lines
+    // rather than one verdict.
+    async loadHaChecks() {
+      this.ha.busy = true;
+      try {
+        const r = await fetch('api/setup/ha-checks');
+        if (r.ok) {
+          const d = await r.json();
+          this.ha.checks = d.checks || [];
+          this.ha.publishing = !!d.publishing;
+          this.ha.addon = !!d.addon;
+        }
+      } catch (e) { /* the step explains an empty list itself */ }
+      finally { this.ha.busy = false; }
+    },
+
+    // "Yes" is the only thing that turns publishing on. Entities appear in someone's Home
+    // Assistant as a result, so it is asked rather than assumed.
+    async publishYes() {
+      this.ha.busy = true; this.ha.msg = '';
+      try {
+        const r = await fetch('api/mqtt/supervisor/enable', { method: 'POST' });
+        const d = await r.json().catch(() => ({}));
+        this.ha.msg = r.ok ? (d.note || 'Publishing enabled.')
+                           : (d.detail || `Could not enable it (HTTP ${r.status}).`);
+      } catch (e) { this.ha.msg = String(e); }
+      finally { this.ha.busy = false; await this.loadHaChecks(); }
+    },
+
+    publishNo() {
+      this.ha.msg = 'Left off. You can turn publishing on later from the MQTT tab.';
     },
 
     async loadProfiles() {

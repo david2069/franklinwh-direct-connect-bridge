@@ -510,3 +510,40 @@ def test_no_native_confirm_boxes_remain():
                 assert before.rstrip().endswith("confirmDialog") or "confirmDialog" in line, (
                     f"{name}:{i} still calls the browser's confirm(): {stripped}"
                 )
+
+
+# --- the wizard's Home Assistant step --------------------------------------------------------
+
+def test_the_wizard_ends_on_the_home_assistant_question():
+    js = _wizard_js()
+    nxt = js[js.index("async next()"):js.index("async saveCounts()")]
+    assert "this.go('publish')" in nxt          # confirm -> publish
+    assert "step === 'publish'" in nxt          # publish -> finish
+
+
+def test_publishing_is_a_question_not_a_default():
+    js = _wizard_js()
+    assert "async publishYes()" in js and "publishNo()" in js
+    # Only the explicit Yes calls the enabling endpoint.
+    body = js[js.index("async publishYes()"):js.index("publishNo()")]
+    assert "api/mqtt/supervisor/enable" in body
+    no = js[js.index("publishNo()"):js.index("async loadProfiles()")]
+    assert "fetch(" not in no                    # "No" changes nothing at all
+
+
+def test_the_subnet_shows_its_provenance():
+    js = _wizard_js()
+    assert "api/gateways/scan/default" in js
+    html = (__import__("pathlib").Path(__file__).resolve().parents[1]
+            / "src/franklinwh_direct_connect_bridge/templates/partials/setup_wizard.html").read_text()
+    find = html[html.index("step === 'find'"):html.index("step === 'demo'")]
+    assert "scan_label" in find and "comma-separated" in find
+    assert "VPN" in find or "Tailscale" in find   # the case the container cannot reach
+
+
+def test_the_checks_distinguish_unknown_from_failure():
+    html = (__import__("pathlib").Path(__file__).resolve().parents[1]
+            / "src/franklinwh_direct_connect_bridge/templates/partials/setup_wizard.html").read_text()
+    step = html[html.index("step === 'publish'"):html.index("9. Done")]
+    assert 'c.ok === true' in step and 'c.ok === false' in step and 'c.ok === null' in step
+    assert "c.remedy" in step                     # every failure says what to do

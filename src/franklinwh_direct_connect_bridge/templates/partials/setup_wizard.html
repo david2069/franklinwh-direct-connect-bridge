@@ -114,6 +114,22 @@
           <template x-if="step === 'find'">
             <div class="space-y-3">
               <p>Scanning your network for aGates on TCP 9000.</p>
+              <div class="flex flex-wrap items-end gap-2">
+                <label class="text-xs">Subnet(s) to search, comma-separated
+                  <input class="form-control form-control-sm block mt-1" style="width:16rem"
+                         x-model="scan_subnet" placeholder="192.168.0.0/24"></label>
+                <button class="btn btn-secondary btn-sm" :disabled="busy" @click="scan()">
+                  Search</button>
+              </div>
+              <!-- Where the prefilled value came from. Without this, "a common default"
+                   looks exactly like "read from your network" — and only one of them is
+                   worth trusting. -->
+              <p x-show="scan_label" class="text-xs" style="color:var(--text-faint)">
+                <span class="font-mono" x-text="scan_subnet"></span>
+                — <span x-text="scan_label"></span></p>
+              <p class="text-xs" style="color:var(--text-faint)">
+                aGate on a VPN, Tailscale or another VLAN? Type its own network here —
+                this bridge can only sweep networks it can reach.</p>
               <div x-show="busy" class="text-xs" style="color:var(--text-faint)">Scanning…</div>
               <template x-if="!busy &amp;&amp; found !== null">
                 <div class="space-y-2">
@@ -252,7 +268,56 @@
             </div>
           </template>
 
-          <!-- 8. Done -->
+          <!-- 8. Home Assistant: the four live checks, and the one question. -->
+          <template x-if="step === 'publish'">
+            <div class="space-y-3">
+              <p x-show="ha.addon" class="text-xs" style="color:var(--text-faint)">
+                Running inside Home Assistant: the connection to it is set up for you, and
+                so is the MQTT broker once the Mosquitto add-on is installed.</p>
+
+              <div class="flex flex-wrap items-center gap-2">
+                <span>Publish this gateway's entities to Home Assistant?</span>
+                <button class="btn btn-primary btn-sm" :disabled="ha.busy || ha.publishing"
+                        @click="publishYes()">Yes</button>
+                <button class="btn btn-secondary btn-sm" :disabled="ha.busy"
+                        @click="publishNo()">No</button>
+                <span x-show="ha.publishing" class="chip ok" style="padding:0 6px;font-size:.6rem">ON</span>
+              </div>
+              <p class="text-xs" style="color:var(--text-faint)">
+                Its sensors and controls appear in Home Assistant through MQTT discovery.
+                You can change this later on the MQTT tab.</p>
+              <p x-show="ha.msg" class="text-xs" style="color:var(--text-secondary)" x-text="ha.msg"></p>
+
+              <div class="space-y-1">
+                <template x-for="c in ha.checks" :key="c.id">
+                  <div class="rounded px-2 py-1.5 text-xs" style="background:var(--surface-2)">
+                    <div class="flex items-center gap-2">
+                      <!-- Three states, not two: unknown is not a failure. -->
+                      <svg x-show="c.ok === true" class="w-3.5 h-3.5 shrink-0" style="color:#34d399"
+                           fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                      <svg x-show="c.ok === false" class="w-3.5 h-3.5 shrink-0" style="color:#fca5a5"
+                           fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6L6 18"/></svg>
+                      <svg x-show="c.ok === null" class="w-3.5 h-3.5 shrink-0" style="color:var(--text-faint)"
+                           fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 8v5"/></svg>
+                      <span style="color:var(--text-primary)" x-text="c.title"></span>
+                      <span class="ml-auto" style="color:var(--text-faint)" x-text="c.state"></span>
+                    </div>
+                    <div class="pl-5" style="color:var(--text-faint)" x-text="c.detail"></div>
+                    <div x-show="c.remedy" class="pl-5" style="color:#fbbf24" x-text="c.remedy"></div>
+                  </div>
+                </template>
+                <p x-show="!ha.checks.length && !ha.busy" class="text-xs"
+                   style="color:var(--text-faint)">Could not run the checks.</p>
+              </div>
+              <button class="btn btn-secondary btn-sm" :disabled="ha.busy" @click="loadHaChecks()">
+                Check again</button>
+            </div>
+          </template>
+
+          <!-- 9. Done -->
           <template x-if="step === 'done'">
             <div class="space-y-2">
               <p>That's the essentials. Home Assistant, notifications and tariffs are optional

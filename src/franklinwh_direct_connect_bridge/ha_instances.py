@@ -47,6 +47,20 @@ def probe(base_url: str, token: str | None) -> dict[str, Any]:
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
 
+def components(base_url: str, token: str | None) -> list[str]:
+    """Home Assistant's loaded components (``/api/config``). ``[]`` when it cannot be read.
+
+    Used to answer "is HA's own MQTT integration set up?" — which is a different question
+    from "is our broker connection working", and has a different remedy.
+    """
+    try:
+        body = _get(base_url, token, "/api/config") or {}
+    except Exception:                                            # noqa: BLE001 — a check, not a failure
+        return []
+    comps = body.get("components")
+    return [str(c) for c in comps] if isinstance(comps, list) else []
+
+
 def states(base_url: str, token: str | None) -> list[dict[str, Any]]:
     """Every entity state in one instance."""
     body = _get(base_url, token, "/api/states")

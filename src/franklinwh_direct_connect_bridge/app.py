@@ -2086,6 +2086,40 @@ def create_app() -> FastAPI:
         await _reconcile_gateway(row)
         return _gw_merged(row)
 
+    def _default_scan_subnet_with_source() -> tuple[str, str]:
+        """``(subnet, source)``. Source is shown to the user, because a prefilled subnet
+        with no provenance is indistinguishable from a wild guess — and one of these IS a
+        wild guess."""
+        st = _gw_store()
+        hosts = [r.get("host") for r in (st.gateways() if st else [])
+                 if r.get("host") and not r.get("is_mock")]
+        for h in hosts:
+            parts = (h or "").split(".")
+            if len(parts) == 4 and all(p.isdigit() for p in parts):
+                return f"{parts[0]}.{parts[1]}.{parts[2]}.0/24", "gateway"
+        from .ha_supervisor import host_lan_subnets
+        nets = host_lan_subnets()
+        if nets:
+            return ",".join(nets[:2]), "host"
+        from franklinwh_direct_connect_api import discover as _disc
+        guess = _disc.default_gateway()
+        parts = (guess or "").split(".")
+        if (len(parts) == 4 and all(p.isdigit() for p in parts)
+                and not guess.startswith(("172.30.", "172.17.", "172.18."))):
+            return f"{parts[0]}.{parts[1]}.{parts[2]}.0/24", "local"
+        return "192.168.0.0/24", "guess"
+
+    @app.get("/api/gateways/scan/default")
+    def api_scan_default():
+        """What Discover will sweep if you do not change it, and WHERE that came from."""
+        subnet, source = _default_scan_subnet_with_source()
+        return {"subnet": subnet, "source": source, "label": {
+            "gateway": "from a gateway you already have",
+            "host": "from the Home Assistant host network",
+            "local": "from this machine's network",
+            "guess": "a common default — check it matches your network",
+        }.get(source, "")}
+
     def _default_scan_subnet() -> str:
         """A /24 to sweep — a configured gateway's subnet, else the HOST's LAN, else a guess.
 
@@ -2094,27 +2128,7 @@ def create_app() -> FastAPI:
         172.30.33.0/24 on a live install and could not have found anything there. The
         Supervisor knows the host's real interfaces, so ask it before guessing locally.
         """
-        from franklinwh_direct_connect_api import discover as _disc
-        st = _gw_store()
-        hosts = [r.get("host") for r in (st.gateways() if st else [])
-                 if r.get("host") and not r.get("is_mock")]
-        for h in hosts:
-            parts = (h or "").split(".")
-            if len(parts) == 4 and all(p.isdigit() for p in parts):
-                return f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
-        from .ha_supervisor import host_lan_subnets
-        for net in host_lan_subnets():
-            return net
-        guess = _disc.default_gateway()
-        parts = (guess or "").split(".")
-        if len(parts) == 4 and all(p.isdigit() for p in parts):
-            # Never offer the add-on's own docker network: a sweep of it is guaranteed empty.
-            if not guess.startswith(("172.30.", "172.17.", "172.18.")):
-                return f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
-        # Last resort. 192.168.0.0/24 and 192.168.1.0/24 are both common; the owner's own
-        # site is .0.x, and nothing here can distinguish them — it is a starting point in
-        # the box, not an answer, and the user edits it.
-        return "192.168.0.0/24"
+        return _default_scan_subnet_with_source()[0]
 
     @app.post("/api/gateways/scan")
     async def api_gateway_scan(req: GatewayScanReq):
@@ -2729,6 +2743,102 @@ def create_app() -> FastAPI:
         return {"ok": bool(res.get("ok")), "detail": res.get("detail", ""),
                 "saved": bool(res.get("ok") and req.save),
                 "gateways": res.get("gateways") or []}
+
+    @app.get("/api/setup/ha-checks")
+    def api_setup_ha_checks(gateway: str | None = Query(None)):
+        """The four things that decide whether this bridge shows up in Home Assistant.
+
+        Measured, each with its own remedy, because they fail independently and the fixes
+        are in four different places. ``ok`` is None where it genuinely could not be
+        determined — which is not the same as a failure and must not be shown as one.
+        """
+        s = get_settings()
+        st = db.get_store(s)
+        checks = []
+
+        # 1. Our connection to the broker. The publisher's own state, not a guess.
+        gw = None
+        try:
+            gw = _gw_or_404(gateway) if gateway else state.default_gateway()
+        except Exception:  # noqa: BLE001
+            gw = None
+        broker_ok = bool(getattr(gw, "mqtt_connected", False)) if gw else False
+        # discover_mqtt() already answers "not an add-on" by itself; a second gate here
+        # only created a path where the two disagreed.
+        sup = discover_mqtt()
+        if not s.mqtt_enabled:
+            remedy = ("Home Assistant's broker is available — turn publishing on from the "
+                      "MQTT tab." if sup.get("found") else
+                      "Publishing is off. Install the Mosquitto broker add-on, then turn it "
+                      "on from the MQTT tab.")
+        else:
+            remedy = "" if broker_ok else "Publishing is on but the broker is not connected — check the MQTT tab."
+        checks.append({
+            "id": "mqtt_broker", "title": "MQTT broker connected",
+            "detail": "Carries this bridge's entities into Home Assistant.",
+            "ok": bool(s.mqtt_enabled and broker_ok),
+            "state": ("Connected" if (s.mqtt_enabled and broker_ok)
+                      else "Not publishing" if not s.mqtt_enabled else "Not connected"),
+            "remedy": remedy,
+            "can_enable": bool(sup.get("found") and not s.mqtt_enabled),
+        })
+
+        # 2. OUR link INTO Home Assistant — the opposite direction, and a different fix.
+        inst = next((i for i in (st.ha_instances() if st else []) if i.get("enabled", 1)), None)
+        probe = ha_instances.probe(inst["base_url"], inst.get("token")) if inst else None
+        is_self = bool(inst and inst.get("base_url", "").startswith("http://supervisor"))
+        checks.append({
+            "id": "ha_linked", "title": "Home Assistant connected to the bridge",
+            "detail": ("Lets the bridge read Home Assistant: its entities as schedule "
+                       "conditions, notifications, actions, and the check below."),
+            "ok": bool(probe and probe.get("ok")),
+            "state": ("This Home Assistant" if (is_self and probe and probe.get("ok"))
+                      else "Connected" if (probe and probe.get("ok"))
+                      else (probe or {}).get("error", "Not configured")),
+            "remedy": ("" if (probe and probe.get("ok")) else
+                       "Add one under Home Assistant → Instances."),
+        })
+
+        # 3. Home Assistant's OWN MQTT integration. Ours being fine says nothing about this.
+        comps = ha_instances.components(inst["base_url"], inst.get("token")) if inst else []
+        mqtt_comp = ("mqtt" in comps) if comps else None
+        checks.append({
+            "id": "ha_mqtt", "title": "Home Assistant's MQTT integration set up",
+            "detail": "Without it, discovery messages arrive and nothing listens.",
+            "ok": mqtt_comp,
+            "state": ("Set up" if mqtt_comp else
+                      "Not set up" if mqtt_comp is False else "Could not be checked"),
+            "remedy": ("" if mqtt_comp else
+                       "Home Assistant → Settings → Devices & services → Add integration → MQTT."),
+        })
+
+        # 4. Did the entities actually land? Including ones left behind by gateways that
+        #    no longer exist — the leftovers are the part people never find on their own.
+        ours = leftovers = None
+        if inst and probe and probe.get("ok"):
+            try:
+                ids = {e.get("entity_id", "") for e in
+                       ha_instances.states(inst["base_url"], inst.get("token"))}
+                nodes = {(g.serial or "").lower() for g in (get_gateways() or []) if g.serial}
+                ours = sum(1 for e in ids if "franklinwh_" in e
+                           and any(n in e for n in nodes)) if nodes else None
+                leftovers = (sum(1 for e in ids if "franklinwh_" in e) - (ours or 0)
+                             if ours is not None else None)
+            except Exception:  # noqa: BLE001 — a count is not worth failing the page for
+                ours = leftovers = None
+        checks.append({
+            "id": "entities", "title": "Bridge entities in Home Assistant",
+            "detail": "What this bridge has actually published.",
+            "ok": (ours > 0) if isinstance(ours, int) else None,
+            "state": ("Could not be checked" if ours is None else
+                      f"{ours} entities" + (f" — plus {leftovers} left over from removed "
+                                            f"gateways" if leftovers else "")),
+            "remedy": ("Remove their devices in Home Assistant → Settings → Devices & "
+                       "services → MQTT, or use the MQTT tab's orphan purge."
+                       if leftovers else ""),
+        })
+        return {"checks": checks, "publishing": bool(s.mqtt_enabled),
+                "addon": environment.IS_HA_ADDON}
 
     @app.get("/api/setup/capabilities")
     def api_setup_capabilities(gateway: str | None = Query(None)):
