@@ -69,10 +69,51 @@ we have not read):
 None of these is supported by page 25, which is the only source read. They are listed so the
 next person knows what to look for, not as findings.
 
+## The SPAN / Lumin write-unlock, and a conflict worth resolving
+
+The owner's hypothesis, labelled as the owner's (2026-10-15): SPAN and Lumin enrolment may do
+something similar to the LinkPro binding — enabling a control path — but not through the
+installer app; perhaps FranklinWH Support does it in the FleetView portal.
+
+That is speculation and the owner said so. What is **not** speculation is that
+`franklinwh-modbus`'s documentation already asserts such an unlock exists, repeatedly, and
+**disagrees with itself about who performs it**:
+
+- `docs/FRANKLINWH_SUNSPEC_QUIRKS.md:153` — "Write access to 15507–15509 requires **SPAN
+  Modbus** unlock **in FranklinWH installer app**."
+- `docs/FRANKLINWH_SUNSPEC_QUIRKS.md:235` — "Extension write access requires **SPAN Modbus**
+  unlock — **enabled by FranklinWH Support** for SPAN panel owners."
+
+Installer app, or vendor support? The same document says both. Also in that repo:
+`DER_CONTROL_REFERENCE.md:192` ("Need SPAN Modbus unlock") and `:295`, `backlog.md:30`
+("write access still require SPAN/Lumin provisioning"), and
+`CLI_COMMAND_REFERENCE.md:58`, which tells users these writes will not function unless
+FranklinWH Support unlocks them.
+
+And pulling the other way: on **2026-10-14 the owner confirmed there is no evidence a
+`span_unlock` state exists**, which is why the `franklinwh-gateway-emulator` session withdrew
+it from the emulator's scope.
+
+Those two may be reconcilable — "no readable state flag exists" and "support can provision
+write access" are different claims — but nothing currently says so, and a reader meeting both
+cannot tell which they are looking at. **It is a documentation conflict in a repo that is not
+ours**, so it is recorded here and raised, not edited.
+
+### Why the LinkPro page is relevant to it
+
+LinkPro is a documented case of the same shape: a third-party device, **bound by serial
+number**, granted a control path to the aGate over Modbus. If extension writes are gated by a
+binding rather than by a global flag, that would fit both the LinkPro flow and the absence of
+a `span_unlock` state. **That sentence is a hypothesis and nothing in the guide supports it** —
+page 25 does not say whether the binding gates writes at the aGate at all.
+
 ## What would settle it
 
 In rough order of cost:
 
+0. **Ask `fwh-modbus` to resolve its own conflict** — installer app or vendor support — and
+   to reconcile it with the 2026-10-14 `span_unlock` withdrawal. Costs nothing and no
+   hardware; it is their documentation and their call.
 1. **Read the Voltello LinkPro installer guide and the Village Energy documentation.** The
    FranklinWH guide links to the Village Energy website for configuration. If LinkPro's own
    documentation names the registers it writes, that answers most of the table above without
