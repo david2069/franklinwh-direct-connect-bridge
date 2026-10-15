@@ -5491,11 +5491,29 @@ def create_app() -> FastAPI:
                 # working tree before believing a live test: tools/dev.sh does.
                 "source_sha": os.environ.get("BRIDGE_SOURCE_SHA", "unknown")}
 
+    def _base_path(request: Request) -> str:
+        """The prefix the browser sees this page under, for ``<base href>``.
+
+        Every asset and API call in the UI is RELATIVE and resolves against that tag, so
+        this is the one value that decides whether the page can load its own CSS.
+
+        Home Assistant serves an add-on panel under ``/api/hassio_ingress/<token>/`` and
+        tells the add-on so with ``X-Ingress-Path``. Hardcoding "" published
+        ``<base href="/">``, which sent every asset to the root of the HA host — outside
+        ingress, so they 404ed and the panel rendered as unstyled HTML (reported
+        2026-10-15, live add-on).
+
+        The token rotates, so this must be read per request and never cached.
+        """
+        p = (request.headers.get("X-Ingress-Path") or "").strip()
+        return p.rstrip("/") if p.startswith("/") else ""
+
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
         resp = _TEMPLATES.TemplateResponse(
             request, "index.html",
-            {"version": __version__, "base_path": "", "cache_bust": _asset_version(),
+            {"version": __version__, "base_path": _base_path(request),
+             "cache_bust": _asset_version(),
              "host": get_settings().fwh_host})
         # The HTML must never be cached: it carries the hashed asset URLs, so a stale
         # page pins the browser to stale JS no matter how good the asset hashing is.

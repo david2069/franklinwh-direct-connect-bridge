@@ -13,6 +13,20 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **The Home Assistant add-on panel renders properly.** Every asset and API call in the UI
+  is relative and resolves against `<base href>`, which was hardcoded to `/` — so under
+  ingress (`/api/hassio_ingress/<token>/`) they all resolved to the root of the Home
+  Assistant host, outside ingress, and 404ed. The panel came up as unstyled HTML with
+  oversized raw SVGs; the add-on log showed `GET /` and then not a single `/static/…`
+  request. The base path is now read per request from the Supervisor's `X-Ingress-Path`
+  header (the token rotates, so it can never be cached), and the standalone install is
+  unchanged.
+
+- **The add-on has its own icon, and a description that is not clipped.** It was showing
+  the Supervisor's generic puzzle piece, and the store cut the description mid-phrase at
+  "…over the Direct Connect". `icon.png` (128×128) and `logo.png` (250×150) are generated
+  by `tools/make_addon_icons.py` from the same mark as the web UI's favicon.
+
 - **The setup wizard no longer opens on a bridge that is already working.** Adding the
   site-timezone step as required made "something required is missing" true on every
   existing install, and that was what decided whether to prompt — so installs that had been
