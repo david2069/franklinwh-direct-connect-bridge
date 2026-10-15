@@ -11,6 +11,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.3.3] — 2026-10-15
+
+The add-on publishes to Home Assistant out of the box, like its sibling bridges; turning
+publishing on takes effect immediately; notification targets are chosen from a real picker;
+and the Guide links to the published documentation instead of showing a 404 body.
+
 ### Changed
 
 - **The add-on publishes to Home Assistant out of the box.** `mqtt_enabled` now defaults
