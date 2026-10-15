@@ -11,6 +11,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.3.1] — 2026-10-15
+
+Everything a first add-on install runs into: the dashboard now comes to life on its own,
+Discover looks at the right network, the add-on configures what the Supervisor already
+knows, and no dialog throws your work away.
+
 ### Fixed
 
 - **The schedule editor no longer throws your work away.** Clicking outside it closed the
