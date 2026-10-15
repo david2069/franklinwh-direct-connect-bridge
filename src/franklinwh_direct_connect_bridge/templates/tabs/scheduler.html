@@ -381,8 +381,11 @@
 
   <!-- editor -->
   <template x-if="form">
+  <!-- The backdrop does NOT close this. A schedule form is minutes of work — conditions,
+       windows, HA actions — and a stray click outside threw all of it away with no warning
+       and no undo. Cancel and Escape ask first when anything has changed. -->
   <div class="fixed inset-0 z-50 flex items-start justify-center p-2 sm:p-4 overflow-y-auto"
-       style="background:rgba(0,0,0,.6)" @click.self="closeForm()">
+       style="background:rgba(0,0,0,.6)" @keydown.escape.window="closeForm()">
     <div class="card w-full max-w-xl p-0 my-2 sm:my-8 flex flex-col" style="max-height:90dvh">
       <div class="px-5 pt-4 pb-3 shrink-0 border-b" style="border-color:var(--border)">
         <h3 class="text-lg font-semibold" style="color:var(--text-primary)"

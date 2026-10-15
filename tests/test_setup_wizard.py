@@ -459,3 +459,54 @@ def test_the_cloud_step_says_why_and_that_it_is_optional():
     assert "VPP" in step
     assert "plain text" in step                   # how it is stored, said plainly
     assert "Skipping is fine" in step
+
+
+# --- dialogs: never lose work, never fall back to browser chrome -----------------------------
+# Owner, 2026-10-15: "if u click outside the dialog it dismisses. It should NEVER dismiss and
+# ALWAYS ask if anything has changed to save it FIRST" — and, separately, the native
+# confirm() boxes render as unstyled browser chrome.
+
+def _js(name: str) -> str:
+    from pathlib import Path
+    return (Path(__file__).resolve().parents[1]
+            / f"src/franklinwh_direct_connect_bridge/static/js/{name}").read_text()
+
+
+def test_the_schedule_editor_does_not_close_on_a_backdrop_click():
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1]
+            / "src/franklinwh_direct_connect_bridge/templates/tabs/scheduler.html").read_text()
+    modal = html[html.index('x-if="form"'):html.index("Edit schedule")]
+    assert "@click.self" not in modal, "a stray click outside would discard the whole form"
+
+
+def test_closing_a_changed_schedule_asks_first():
+    js = _js("scheduler_tab.js")
+    body = js[js.index("async closeForm("):js.index("duplicate(s)")]
+    assert "formDirty" in body and "confirmDialog" in body
+    # saving already persisted the work, so that path must NOT nag
+    assert "this.closeForm(true)" in js
+
+
+def test_dirtiness_is_measured_not_remembered():
+    """A flag someone has to set is a flag someone forgets to set."""
+    js = _js("scheduler_tab.js")
+    assert "_formBaseline" in js
+    assert "JSON.stringify(this.form) !== this._formBaseline" in js
+
+
+def test_no_native_confirm_boxes_remain():
+    """Browser chrome is unstyled and ignores the app's theme entirely."""
+    import re
+    for name in ("app.js", "scheduler_tab.js", "mqtt_tab.js", "settings_tab.js",
+                 "ha_tab.js", "battery_control.js"):
+        js = _js(name)
+        for i, line in enumerate(js.splitlines(), start=1):
+            stripped = line.strip()
+            if stripped.startswith("//") or stripped.startswith("*"):
+                continue                      # a comment ABOUT confirm() is not a call
+            for m in re.finditer(r"(?<![\w.])confirm\s*\(", line):
+                before = line[:m.start()]
+                assert before.rstrip().endswith("confirmDialog") or "confirmDialog" in line, (
+                    f"{name}:{i} still calls the browser's confirm(): {stripped}"
+                )

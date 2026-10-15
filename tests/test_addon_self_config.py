@@ -110,3 +110,46 @@ def test_enabling_without_a_broker_is_a_clear_refusal(store, monkeypatch):
     r = TestClient(app_module.create_app()).post("/api/mqtt/supervisor/enable")
     assert r.status_code == 409
     assert "MQTT service" in r.json()["detail"]
+
+
+# -- the PV array size comes from the gateway ---------------------------------------------
+# Owner, 2026-10-15: "Solar PV size to sync from gateway local api". The aGate reports the
+# array (1903 solar_pv); typing it from memory is how a forecast ends up scaled wrong.
+
+def test_derived_pv_kwp_is_reported_when_the_gateway_says_so(store, monkeypatch):
+    from franklinwh_direct_connect_bridge import system_setup
+    monkeypatch.setattr(system_setup, "values",
+                        lambda *a, **k: {"solar_kwp": 6.6, "_derived": {"solar_kwp": 6.6}})
+    c = TestClient(app_module.create_app())
+    assert c.get("/api/settings").json()["location"]["derived_pv_kwp"] == 6.6
+
+
+def test_a_default_is_not_a_measurement(store, monkeypatch):
+    """solar_kwp that came from the DEFAULT, not the device, must not be offered as the
+    gateway's answer — that is how a made-up number acquires authority."""
+    from franklinwh_direct_connect_bridge import system_setup
+    monkeypatch.setattr(system_setup, "values",
+                        lambda *a, **k: {"solar_kwp": 5.0, "_derived": {}})
+    c = TestClient(app_module.create_app())
+    assert c.get("/api/settings").json()["location"]["derived_pv_kwp"] is None
+
+
+def test_an_unreadable_gateway_reports_none_not_zero(store, monkeypatch):
+    """"Could not ask" and "no solar" are different facts."""
+    from franklinwh_direct_connect_bridge import system_setup
+
+    def _boom(*a, **k):
+        raise OSError("gateway unreachable")
+    monkeypatch.setattr(system_setup, "values", _boom)
+    c = TestClient(app_module.create_app())
+    assert c.get("/api/settings").json()["location"]["derived_pv_kwp"] is None
+
+
+def test_the_ui_offers_it_rather_than_overwriting():
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1]
+            / "src/franklinwh_direct_connect_bridge/templates/tabs/settings.html").read_text()
+    block = html[html.index("PV size (kWp)"):html.index("Wholesale region")]
+    assert "derivedPvKwp" in block and "use it" in block
+    # shown only when it DIFFERS — no nagging when the two already agree
+    assert "Number(form.pv_kwp) !== derivedPvKwp" in block

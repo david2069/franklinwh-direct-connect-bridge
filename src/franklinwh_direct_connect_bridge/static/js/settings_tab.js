@@ -13,6 +13,10 @@ function settingsTab() {
     cfg: { connection: {}, mqtt: {}, control: {}, notifications: {},
            metrics: {}, environment: {} },
     // Live-editable mirror of the whitelisted fields (bound to the inputs).
+    // What the gateway says the PV array is (1903 solar_pv). Null when it could not be
+    // read — which is NOT the same as "no solar", so the hint simply does not appear.
+    derivedPvKwp: null,
+
     form: { allow_writes: false, log_level: 'info', ha_notify: true, ha_url: '', ha_token: '',
             fwh_cloud_email: '', fwh_cloud_password: '', fwh_cloud_gateway: '',
             pv_latitude: '', pv_longitude: '', pv_kwp: '', pv_tilt: '', pv_azimuth: '',
@@ -893,6 +897,8 @@ function settingsTab() {
       this.form.pv_kwp = loc.pv_kwp ?? '';
       this.form.pv_tilt = loc.pv_tilt ?? '';
       this.form.pv_azimuth = loc.pv_azimuth ?? '';
+      this.derivedPvKwp = (typeof loc.derived_pv_kwp === 'number' && loc.derived_pv_kwp > 0)
+        ? loc.derived_pv_kwp : null;
       this.loadNemSpot();
       this.form.dispatch_interrupt_policy =
         (this.cfg.scheduler && this.cfg.scheduler.dispatch_interrupt_policy) || 'notify';
@@ -1087,7 +1093,9 @@ function settingsTab() {
       } catch (e) { Alpine.store('app').toast('Failed: ' + e.message, 'error'); }
     },
     async deleteDevice(dev) {
-      if (!confirm('Remove "' + dev.alias + '"?')) return;
+      if (!await this.$store.app.confirmDialog(
+            'Remove "' + dev.alias + '"? It will stop receiving notifications.',
+            { title: 'Remove this device?', danger: true })) return;
       await fetch('api/ha/notify-devices/' + dev.id, { method: 'DELETE' });
       await this.loadNotify();
     },
@@ -1159,7 +1167,9 @@ function settingsTab() {
       else { const j = await r.json().catch(() => ({})); Alpine.store('app').toast('Failed: ' + (j.detail || r.status), 'error'); }
     },
     async deleteInstance(inst) {
-      if (!confirm('Remove instance "' + inst.name + '"? Devices using it will stop working.')) return;
+      if (!await this.$store.app.confirmDialog(
+            'Remove instance "' + inst.name + '"? Devices using it will stop working.',
+            { title: 'Remove this Home Assistant?', danger: true })) return;
       await fetch('api/ha/instances/' + inst.id, { method: 'DELETE' });
       await this.loadNotify();
     },

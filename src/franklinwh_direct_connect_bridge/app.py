@@ -804,6 +804,24 @@ def _grid_status_value(status) -> int:
     raise ValueError(f"unknown grid status {status!r}; expected NORMAL/DOWN/OFF (or 0/1/2)")
 
 
+def _derived_pv_kwp(gateway: str | None = None) -> float | None:
+    """The array size the aGate reports (1903 ``solar_pv``), or None if it cannot say.
+
+    None is not 0: "the gateway did not answer" and "there is no solar" are different
+    facts, and only one of them should ever replace a user's number.
+    """
+    from . import system_setup
+    try:
+        s = get_settings()
+        vals = system_setup.values(db.get_store(s), s, gateway, None)
+    except Exception:  # noqa: BLE001 — a settings page must not fail on an unread gateway
+        return None
+    if "solar_kwp" not in (vals.get("_derived") or {}):
+        return None
+    kwp = vals.get("solar_kwp")
+    return float(kwp) if isinstance(kwp, (int, float)) and kwp > 0 else None
+
+
 def _seed_self_ha_instance(settings) -> bool:
     """As an add-on, register the Home Assistant we are installed in. Idempotent.
 
@@ -4953,6 +4971,11 @@ def create_app() -> FastAPI:
             "location": {
                 "latitude": s.pv_latitude, "longitude": s.pv_longitude,
                 "pv_kwp": s.pv_kwp, "pv_tilt": s.pv_tilt, "pv_azimuth": s.pv_azimuth,
+                # What the GATEWAY says the array is (1903 solar_pv), so the forecast's
+                # kWp can be taken from the installation instead of typed from memory.
+                # Offered, not applied: an owner who deliberately set a different number
+                # (a partly shaded array, a clipped inverter) must not have it overwritten.
+                "derived_pv_kwp": _derived_pv_kwp(),
             },
             "scheduler": {
                 "dispatch_interrupt_policy": s.dispatch_interrupt_policy,

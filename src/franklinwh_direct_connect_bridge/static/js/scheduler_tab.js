@@ -248,7 +248,11 @@ document.addEventListener('alpine:init', () => {
                priority: 0, conflict: 'override',
                trigger_type: 'daily', windows: [], interval_min: 30, anchor: '', cron: '0 3 * * *' };
     },
-    newEntry() { this.testResult = null; this.traceByCid = {}; this.advRepeat = false; this.form = this.blank(); },
+    newEntry() {
+      this.testResult = null; this.traceByCid = {}; this.advRepeat = false;
+      this.form = this.blank();
+      this._formBaseline = JSON.stringify(this.form);
+    },
     editEntry(s) {
       this.testResult = null;
       this.form = {
@@ -272,8 +276,34 @@ document.addEventListener('alpine:init', () => {
       };
       this.traceByCid = {};
       this._ensureCids();
+      // Snapshot AFTER the form is fully built, so "changed" means the user changed it
+      // and not that we finished constructing it.
+      this._formBaseline = JSON.stringify(this.form);
     },
-    closeForm() { this.form = null; this.testResult = null; },
+
+    //: A snapshot of the form as it was opened. Unsaved work is the thing being protected,
+    //: so "is it dirty" has to be a comparison, not a flag someone has to remember to set.
+    _formBaseline: '',
+
+    get formDirty() {
+      return !!this.form && JSON.stringify(this.form) !== this._formBaseline;
+    },
+
+    /** Close the editor. NEVER silently: unsaved edits are asked about first.
+     *
+     *  A schedule form is minutes of work — conditions, windows, HA actions. Dismissing
+     *  it on a stray click outside the dialog threw all of that away with no warning and
+     *  no undo, which is why the backdrop no longer closes it at all.
+     */
+    async closeForm(force = false) {
+      if (!force && this.formDirty) {
+        const go = await this.$store.app.confirmDialog(
+          'You have unsaved changes to this schedule. Close it and lose them?',
+          { title: 'Discard your changes?', danger: true });
+        if (!go) return;
+      }
+      this.form = null; this.testResult = null; this._formBaseline = '';
+    },
     /** Duplicate an existing schedule into the editor as a NEW (unsaved) entry —
      *  the original is untouched until you save the copy. */
     duplicate(s) {
@@ -499,7 +529,10 @@ document.addEventListener('alpine:init', () => {
     },
 
     async stopEntry(s) {
-      if (!confirm(`Stop "${s.name}" now? Its running battery dispatch will be released (the schedule stays enabled).`)) return;
+      const go = await this.$store.app.confirmDialog(
+        `Stop "${s.name}" now? Its running battery dispatch will be released (the schedule stays enabled).`,
+        { title: 'Stop this schedule?', danger: true });
+      if (!go) return;
       try {
         const r = await fetch(`api/schedules/${s.id}/stop`, { method: 'POST' });
         const d = await r.json();
@@ -514,7 +547,9 @@ document.addEventListener('alpine:init', () => {
       if (this.form.id) {
         const live = (this.schedules || []).find(x => x.id === this.form.id);
         if (live && live.active_now &&
-            !confirm('This schedule is running now — save the changes anyway?')) return;
+            !(await this.$store.app.confirmDialog(
+              'This schedule is running now — saving will apply the changes to the window in progress.',
+              { title: 'Save while it is running?' }))) return;
       }
       this.busy = true;
       try {
@@ -534,7 +569,7 @@ document.addEventListener('alpine:init', () => {
         const out = await r.json();
         if (!r.ok) throw new Error(out.detail || r.statusText);
         this.$store.app.toast('Schedule saved', 'success');
-        this.closeForm();
+        this.closeForm(true);     // saved — there is nothing left to lose
         await this.load();
       } catch (e) { this.$store.app.toast(`Save failed: ${e.message}`, 'error'); }
       finally { this.busy = false; }

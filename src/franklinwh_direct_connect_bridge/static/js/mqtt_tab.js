@@ -146,7 +146,9 @@ function mqttTab() {
     },
 
     async unpublish() {
-      if (!confirm('Remove all FranklinWH entities from Home Assistant?')) return;
+      if (!await this.$store.app.confirmDialog(
+            'Remove all FranklinWH entities from Home Assistant? Their history stays, but the entities disappear until you republish.',
+            { title: 'Clear Home Assistant entities?', danger: true })) return;
       try {
         const r = await fetch('api/mqtt/unpublish' + Alpine.store('app').gwQuery('?'),
                               { method: 'POST' });

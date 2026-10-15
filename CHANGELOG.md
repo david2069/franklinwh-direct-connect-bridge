@@ -13,6 +13,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **The schedule editor no longer throws your work away.** Clicking outside it closed the
+  dialog instantly — minutes of conditions, windows and HA actions gone, with no warning
+  and no undo. The backdrop no longer closes it at all, and Cancel or Escape asks first
+  whenever anything has changed (dirtiness is measured against a snapshot of the form as
+  opened, not a flag someone has to remember to set).
+
+- **Confirmation dialogs are the app's, not the browser's.** Five native `confirm()` boxes
+  were still in use — unstyled white browser chrome in a dark UI — including the one that
+  appears when saving a schedule that is running. They now use the themed dialog, and each
+  one says what will actually happen.
+
 - **The dashboard comes to life when a gateway appears.** Selecting a gateway has to
   REFETCH, and `loadGateways()` only assigned the id — so on a fresh install the first
   gateway was selected silently and the dashboard sat on its empty state until something
@@ -33,6 +44,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   HOST's LAN, filters out docker ranges, and falls back to `192.168.0.0/24`.
 
 ### Added
+
+- **The PV array size can come from the gateway.** The aGate reports it (1903 `solar_pv`),
+  so the solar forecast's kWp no longer has to be typed from memory. Offered, never
+  applied: a deliberately different number — a shaded array, a clipped inverter — is a real
+  answer and is not overwritten, and the hint only appears when the two differ. "Could not
+  read the gateway" stays distinct from "no solar".
 
 - **The add-on configures what the Supervisor already knows.** It registers the Home
   Assistant it is installed in as an instance automatically (read-only, via the Supervisor

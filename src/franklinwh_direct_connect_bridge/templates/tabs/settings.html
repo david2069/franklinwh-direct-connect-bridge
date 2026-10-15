@@ -1783,7 +1783,16 @@
     <div class="grid grid-cols-3 gap-3">
       <label class="text-xs text-slate-500">PV size (kWp)
         <input type="number" step="0.1" class="form-control form-control-sm w-full mt-1" x-model="form.pv_kwp"
-               @change="saveOne({pv_kwp: Number(form.pv_kwp) || 0})" placeholder="6.6"></label>
+               @change="saveOne({pv_kwp: Number(form.pv_kwp) || 0})" placeholder="6.6">
+        <!-- The gateway knows the array size (1903 solar_pv). Offered, not applied: a
+             deliberately different number (shaded array, clipped inverter) is a real
+             answer and must not be overwritten. -->
+        <span x-show="derivedPvKwp && Number(form.pv_kwp) !== derivedPvKwp" x-cloak
+              class="block mt-1 text-[10px]" style="color:var(--text-faint)">
+          Gateway reports <span class="font-mono" x-text="derivedPvKwp + ' kWp'"></span> —
+          <button type="button" class="underline" style="color:var(--accent)"
+                  @click="form.pv_kwp = derivedPvKwp; saveOne({pv_kwp: derivedPvKwp})">use it</button>
+        </span></label>
       <label class="text-xs text-slate-500">Wholesale region (AEMO NEM)
         <div class="relative mt-1" x-data="{ open:false }" @click.outside="open=false">
           <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
