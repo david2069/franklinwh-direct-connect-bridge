@@ -11,6 +11,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.3.2] — 2026-10-15
+
+Mock gateways can be created again, and setup now ends on Home Assistant: four live checks
+with their own remedies, and a plain yes/no about publishing.
+
 ### Fixed
 
 - **Adding a mock gateway no longer fails with "Internal Server Error".** The Home
