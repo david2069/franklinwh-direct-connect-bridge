@@ -18,6 +18,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   The Home Assistant device name is deliberately NOT renamed — it is identity, not a label
   (see `publish/entities.py`), and changing it would orphan every discovered entity.
 
+### Documentation
+
+- **INSTALL.md now warns about reinstalling.** An upgrade keeps your Home Assistant
+  entities; a remove-and-reinstall can leave Home Assistant holding the old entity id and
+  give the newly discovered one a `_2` suffix, which restarts its history. The remedy —
+  free the old id, rename the new entity to it, and Home Assistant carries history and
+  long-term statistics across the rename — is written out, with the units/`state_class`
+  caveat and the Developer Tools → Statistics fix for a jumped total.
+
 ### Added
 
 - **The setup wizard asks where the site is, and every gateway uses that one zone.** Nothing
