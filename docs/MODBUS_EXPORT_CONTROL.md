@@ -73,12 +73,28 @@ alone cannot deliver that.
 SunSpec register, not a vendor extension, and it needs nothing unlocked. So "a third-party
 Modbus client dispatches a FranklinWH battery" describes something we already do.
 
-**What this does NOT establish**, and it is the part worth being careful about: that LinkPro
-dispatches *via Modbus to the aGate*. The post says nothing about the route. Dispatch could
-equally reach the battery through FranklinWH's cloud, with the local Modbus link used only
-for reading SoC and state and for CSIP-AUS export limiting — which would fit page 25's
-wording, "controls this system's energy export", exactly as written. Nothing we have read
-distinguishes the two.
+The post says nothing about the route. Dispatch could equally have reached the battery
+through FranklinWH's cloud, with the local Modbus link used only for reading SoC and state
+and for CSIP-AUS export limiting — which fits page 25's "controls this system's energy
+export" exactly as written.
+
+### The route, per a FranklinWH AU employee
+
+**Synergy's VPP uses Modbus TCP.** Stated by a FranklinWH Australia employee and relayed by
+the owner, 2026-10-15. A verbal statement from the vendor, not documentation — but it is the
+only thing we have that chooses between the two routes, and it chooses the local one.
+
+Taken with the commissioning guide, it is coherent: LinkPro is the Modbus client, bound to
+the aGate's Modbus TCP server, and Synergy VPP dispatch runs over that link.
+
+**It also converges with our own record.** `franklinwh-modbus` M704 `WSet` is observed to be
+set by a cloud VPP dispatch, by the Modbus bridge, by the app's manual force, and by our own
+`force_charge` — four origins, one register. If VPP dispatch arrives over Modbus TCP, it is
+most likely arriving at the same place our own force dispatch does. **Likely, not shown**: no
+capture of a Synergy VPP dispatch exists, and this site is not enrolled in one.
+
+What would settle it: a Modbus capture on a site running a Synergy VPP through LinkPro.
+Neither we nor any peer session has access to one.
 
 ## Relevance to this project
 
