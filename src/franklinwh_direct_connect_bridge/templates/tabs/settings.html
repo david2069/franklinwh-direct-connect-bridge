@@ -23,6 +23,10 @@
           </p>
         </div>
         <div class="flex items-center gap-2">
+          <!-- The same wizard, on demand. Settings -> Setup is the checklist; this is the
+               guided walk through it, and it can be re-run whenever. -->
+          <button class="btn btn-primary btn-sm"
+                  @click="window.dispatchEvent(new CustomEvent('fwh:open-setup-wizard'))">Run the wizard</button>
           <button class="btn btn-secondary btn-sm" @click="$store.app.loadSetup()">Re-check</button>
           <button class="btn btn-primary btn-sm"
                   x-show="$store.app.setup.required_satisfied"

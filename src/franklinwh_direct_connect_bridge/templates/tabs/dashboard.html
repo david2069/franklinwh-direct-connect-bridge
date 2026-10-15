@@ -317,8 +317,11 @@
       </div>
       <div class="flex items-center gap-2">
         <button class="btn btn-secondary btn-sm" @click="$store.app.setSetupState('skipped')">Not now</button>
+        <!-- Opens the WIZARD. It used to jump to Settings -> Setup, which is the same
+             information as a checklist — not what a button labelled "Set up" promises,
+             and reported as "Wizard did not run when I clicked Set up my Gateway". -->
         <button class="btn btn-primary btn-sm"
-                @click="$store.app.go('settings'); $store.app.settingsSub = 'setup'">Set up</button>
+                @click="window.dispatchEvent(new CustomEvent('fwh:open-setup-wizard'))">Set up</button>
       </div>
     </div>
   </div>

@@ -11,7 +11,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **"Set up" opens the wizard.** The dashboard banner jumped to Settings → Setup — the same
+  information as a checklist, which is not what a button labelled *Set up* promises.
+  Settings → Setup also gains a **Run the wizard** button, and the wizard can be reopened
+  at any time: its state only governs whether it appears *unasked*.
 
 ## [0.3.3] — 2026-10-15
 

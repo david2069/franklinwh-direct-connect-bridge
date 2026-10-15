@@ -547,3 +547,34 @@ def test_the_checks_distinguish_unknown_from_failure():
     step = html[html.index("step === 'publish'"):html.index("9. Done")]
     assert 'c.ok === true' in step and 'c.ok === false' in step and 'c.ok === null' in step
     assert "c.remedy" in step                     # every failure says what to do
+
+
+# --- the wizard can be opened on demand ------------------------------------------------------
+# Reported after updating the add-on: "Wizard did not run when i clicked on Setup my Gateway".
+# The banner's button jumped to Settings → Setup — the same information as a checklist, which
+# is not what a button labelled "Set up" promises.
+
+def test_the_dashboard_banner_opens_the_wizard():
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1]
+            / "src/franklinwh_direct_connect_bridge/templates/tabs/dashboard.html").read_text()
+    start = html.index("Finish setting up")
+    banner = html[start:html.index("</div>", html.index("Set up</button>", start))]
+    assert "fwh:open-setup-wizard" in banner
+    assert "settingsSub = 'setup'" not in banner
+
+
+def test_settings_can_run_the_wizard_too():
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1]
+            / "src/franklinwh_direct_connect_bridge/templates/tabs/settings.html").read_text()
+    setup = html[html.index("sub==='setup'"):html.index("sub==='general'")]
+    assert "fwh:open-setup-wizard" in setup
+
+
+def test_the_wizard_listens_and_can_be_reopened_after_finishing():
+    js = _wizard_js()
+    assert "addEventListener('fwh:open-setup-wizard'" in js
+    body = js[js.index("async reopen()"):js.index("    show() {")]
+    # Reopening starts at the beginning, not wherever it was left.
+    assert "this.step = 'intent'" in body and "this.history = []" in body

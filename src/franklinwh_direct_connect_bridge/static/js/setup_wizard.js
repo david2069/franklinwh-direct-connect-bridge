@@ -41,6 +41,11 @@ window.setupWizard = function setupWizard() {
     profiles: [],
 
     async init() {
+      // Anything in the app can ask for the wizard — the dashboard banner does. A plain
+      // window event keeps the wizard self-contained instead of wiring a second owner for
+      // its open/closed state.
+      window.addEventListener('fwh:open-setup-wizard', () => this.reopen());
+
       // Ask the server, never guess from local state: a second browser must not re-prompt
       // for a bridge that is already set up.
       try {
@@ -66,6 +71,16 @@ window.setupWizard = function setupWizard() {
           this.show();
         }, 300);
       } catch (e) { /* never block the app on the wizard */ }
+    },
+
+    // Reopening after it was finished or skipped is always allowed — the state only
+    // governs whether it appears UNASKED.
+    async reopen() {
+      this.step = 'intent';
+      this.history = [];
+      this.error = '';
+      await this.loadScanDefault().catch(() => {});
+      this.show();
     },
 
     show() {
