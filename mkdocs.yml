@@ -144,6 +144,7 @@ nav:
       - developers/scheduler-integration.md
       - Scheduler test plan: dev/scheduler-test-plan.md
       - Scheduler parity: dev/scheduler-parity.md
+      - Polling inventory: dev/polling-inventory.md
   - Policies & plans:
       - TEST_POLICY.md
       - PARITY_GAP.md
