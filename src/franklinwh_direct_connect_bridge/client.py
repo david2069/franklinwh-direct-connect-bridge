@@ -208,10 +208,9 @@ def health(s: Settings, host: str | None = None) -> dict[str, Any]:
         "ping": discover.ping(host, timeout=1.0),
         "sendmqtt_9000": False,
         "latency_ms": None,
-        # Through _probe_modbus, so this path honours the Modbus-disabled switch like
-        # every other. It used to open the socket unconditionally, which made "Modbus
-        # is off" untrue the moment anyone opened the Network tab (#32). None = not
-        # probed; the UI renders that as "Not probed", not as "Down" (#30).
+        # The Modbus client's last real result, not a fresh probe (#221; and #32 before
+        # it). None = not measured; the UI renders that as "Not probed", not as "Down"
+        # (#30). A deliberate check is POST /api/modbus/test.
         "modbus_502": _probe_modbus(host),
         "sunsMdEn": None,
     }
@@ -242,7 +241,7 @@ def network_bundle(s: Settings, host: str | None = None) -> dict[str, Any]:
         "ping": discover.ping(host, timeout=1.0),
         "sendmqtt_9000": False,
         "latency_ms": None,
-        "modbus_502": _probe_modbus(host),   # honours the disable switch — #32
+        "modbus_502": _probe_modbus(host),   # last real result, no socket (#221, #32)
     }
     out: dict[str, Any] = {"host": host, "reachability": reach,
                            "connectivity": None, "interfaces_raw": None,
@@ -839,21 +838,32 @@ def _energy_today_from_power_flow(pf: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def _probe_modbus(host: str, *, mock: bool = False) -> bool | None:
-    """Is the gateway's :502 open? None when we deliberately did not look.
+    """Was the gateway's :502 reachable at the Modbus client's last REAL connection?
 
-    Three states, not two: True reachable, False probed and refused, None not probed
-    (Modbus switched off here, or a mock with no Modbus). The distinction matters —
-    the same rule the link history uses for a leg nobody measured.
+    This opens no socket (#221). The Modbus TCP Server (aGate :502) serves one client
+    at a time, and probing it on every poll made this bridge a second client every 30 s
+    beside the Modbus Bridge. The answer comes from the last force, release, ratings
+    read, availability check or user-started test instead.
+
+    Three states, not two: True reachable, False tried and refused, None not measured
+    (Modbus client off here, a mock with no Modbus, or no connection made yet). The
+    distinction matters — the same rule the link history uses for a leg nobody measured.
     """
+    last = _modbus_last(host, mock=mock)
+    return None if last is None else bool(last.get("reachable"))
+
+
+def _modbus_last(host: str, *, mock: bool = False) -> dict | None:
+    """The Modbus client's last real result for ``host``, or None (see _probe_modbus)."""
     if mock:
         return None
     try:
         from . import battery_control
-        if not battery_control.is_enabled():
+        if not battery_control.is_enabled() or battery_control.is_mock_target(host):
             return None
+        return battery_control.last_result(host)
     except Exception:  # noqa: BLE001 — never fail a poll over the probe
-        pass
-    return any(discover.port_open(host, 502, timeout=3.0) for _ in range(3))
+        return None
 
 
 #: Off-grid run_status codes. Kept because the enum IS right — what is wrong is the
@@ -977,15 +987,18 @@ def summary(s: Settings, host: str | None = None, *, mock: bool = False) -> dict
     # failure the rest of this bridge keeps running into.
     out["connects"] = 0
     out["ping"] = discover.ping(_ph, timeout=1.0)
-    # The :502 probe is a REAL TCP connect, three of them on failure. It used to run
-    # unconditionally, so "Modbus disabled" still opened sockets to the gateway every
-    # poll — the switch did not mean what it said, and anyone measuring our footprint
-    # after flipping it would have been misled (MODBUS_SUSPEND_PLAN Gap 1).
+    # :502 is NOT probed here (#221). This used to be a real TCP connect, up to three,
+    # on every poll: a second client on the single-client Modbus TCP Server (aGate :502)
+    # every 30 s. It now reports the Modbus client's last real connection.
     #
-    # Skipped entirely when the Modbus path is off, and for mocks, which have no
-    # Modbus at all. The result is then None — "not measured", which is NOT the same
-    # as False ("tried and failed") and must not be rendered as "not reachable".
-    out["modbus_502"] = _probe_modbus(_ph, mock=mock)
+    # None when the Modbus client is off, for mocks, or before any connection — "not
+    # measured", which is NOT the same as False ("tried and failed") and must not be
+    # rendered as "not reachable".
+    _mb = _modbus_last(_ph, mock=mock)
+    out["modbus_502"] = None if _mb is None else bool(_mb.get("reachable"))
+    # When that result was measured, and by what, so nobody reads it as live (#221).
+    out["modbus_502_at"] = None if _mb is None else _mb.get("ts")
+    out["modbus_502_source"] = None if _mb is None else _mb.get("source")
     try:
         with _client(s, host) as c:
             t0 = time.time()

@@ -72,19 +72,25 @@ def test_probe_modbus_returns_none_when_disabled_and_opens_no_socket(monkeypatch
     assert opened == [], f"probe opened a socket while Modbus is disabled: {opened}"
 
 
-def test_probe_modbus_probes_when_enabled(monkeypatch):
+def test_probe_modbus_opens_no_socket_when_enabled(monkeypatch):
+    """#221: enabled no longer means probed. The answer is the last real connection."""
     opened: list[tuple] = []
     monkeypatch.setattr(client_mod.discover, "port_open",
                         lambda h, p, timeout=0: opened.append((h, p)) or True)
     monkeypatch.setattr(bc, "is_enabled", lambda: True)
+    monkeypatch.setattr(bc, "_LAST", {})
 
+    assert client_mod._probe_modbus("192.0.2.10") is None      # nothing measured yet
+    bc._record("192.0.2.10", "ready", "status")
     assert client_mod._probe_modbus("192.0.2.10") is True
-    assert opened == [("192.0.2.10", 502)]
+    assert opened == [], f"probe opened a socket: {opened}"
 
 
-def test_probe_modbus_false_when_refused(monkeypatch):
-    monkeypatch.setattr(client_mod.discover, "port_open", lambda h, p, timeout=0: False)
+def test_probe_modbus_false_when_last_connect_refused(monkeypatch):
+    monkeypatch.setattr(client_mod.discover, "port_open", lambda h, p, timeout=0: True)
     monkeypatch.setattr(bc, "is_enabled", lambda: True)
+    monkeypatch.setattr(bc, "_LAST", {})
+    bc._record("192.0.2.10", "unreachable", "connect", "refused")
     assert client_mod._probe_modbus("192.0.2.10") is False
 
 

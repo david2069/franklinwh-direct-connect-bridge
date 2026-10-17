@@ -25,6 +25,28 @@ from .state import GatewayState
 
 log = logging.getLogger("franklinwh_direct_connect_bridge.poller")
 
+#: gateway id -> ts of the last Modbus client result recorded as a link sample (#221).
+_MB_RECORDED: dict[str, float] = {}
+
+
+def _record_modbus_leg(store, gw_id: str, summ: dict) -> bool:
+    """Record the ``modbus_502`` link sample, once per new result. True if recorded.
+
+    The summary carries the Modbus client's LAST real result, not a probe (#221).
+    Recording it every poll would log one measurement as many fresh samples. None is
+    "not measured" (client off, a mock, no connection yet): nothing is recorded, rather
+    than inventing an outage out of our own configuration. The sample is dated when it
+    was measured, with no expected cadence: these results are sparse by design, so the
+    gaps between them are not missed polls."""
+    mb = summ.get("modbus_502")
+    mb_at = summ.get("modbus_502_at")
+    if mb is None or not mb_at or mb_at == _MB_RECORDED.get(gw_id):
+        return False
+    _MB_RECORDED[gw_id] = mb_at
+    store.record_link_probe(gw_id, "ok" if mb else "failed", leg="modbus_502",
+                            error="" if mb else "port 502 not open", now=mb_at)
+    return True
+
 
 def _fmt_outage(seconds: float | None) -> str:
     """An outage length in words. '4920s' is a number; '1h 22m' is an answer."""
@@ -292,16 +314,7 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                                     gw.id, "ok" if png else "failed", leg="icmp",
                                     error="" if png else "no ICMP reply",
                                     expected_interval_s=interval)
-                            # None = not probed (Modbus off here, or a mock). Record
-                            # nothing rather than a failure: a leg nobody measured is
-                            # "not measured", and logging it as down would invent an
-                            # outage out of our own configuration.
-                            mb = summ.get("modbus_502")
-                            if mb is not None:
-                                store.record_link_probe(
-                                    gw.id, "ok" if mb else "failed", leg="modbus_502",
-                                    error="" if mb else "port 502 not open",
-                                    expected_interval_s=interval)
+                            _record_modbus_leg(store, gw.id, summ)   # #221
                             return main
                         link = await asyncio.to_thread(_record_legs)
                         gw.link_state = link["state"]

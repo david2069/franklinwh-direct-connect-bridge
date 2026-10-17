@@ -910,7 +910,8 @@ document.addEventListener('alpine:init', () => {
     },
 
     /** Poll the battery force state so the topbar can show a global Release. Cheap
-     *  (in-memory active + cached availability). */
+     *  (in-memory active + cached availability): it never opens the aGate's :502 (#223),
+     *  so it must not ask for ?refresh=1. */
     async pollBattery() {
       try {
         const d = await (await fetch('api/battery/command')).json();

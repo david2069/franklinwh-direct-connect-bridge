@@ -277,11 +277,12 @@ def _lib():
     return FranklinWHController, BatteryCommand
 
 
-#: User master switch for the direct-Modbus (SunSpec 502) path — ratings AND force
-#: dispatch. Toggled from the Control tab (persisted as the ``modbus_enabled`` config);
-#: applied at startup. Default on. When off, ``available()`` reports disabled and every
+#: User master switch for the Modbus client (this bridge) — ratings AND force dispatch.
+#: Toggled from the Control tab (persisted as the ``modbus_enabled`` config); applied at
+#: startup. Default OFF (#88): a new install opts in; an existing one keeps its setting
+#: (app._modbus_client_enabled). When off, ``available()`` reports disabled and every
 #: caller falls back (ratings → user constant; dispatch → 503).
-_ENABLED = True
+_ENABLED = False
 
 
 def set_enabled(on: bool) -> None:
@@ -356,12 +357,76 @@ def _no_connect_writes(c) -> None:
     c._test_extension_writability = _skipped
 
 
+def _host_part(host: str | None) -> str:
+    from .client import _split_hostport
+    return _split_hostport(host or "", MODBUS_PORT)[0]
+
+
+def is_mock_target(host: str | None) -> bool:
+    """True when ``host`` is a mock gateway's, which has no Modbus to reach (#95).
+
+    Matched on the full host and on its host part, because some callers pass the host
+    without its port. A host part shared with a real gateway (an emulator on 127.0.0.1)
+    is not treated as a mock. An explicit Modbus host override always wins: the user
+    pointed the client somewhere real."""
+    if not host or _HOST_OVERRIDE:
+        return False
+    try:
+        from . import state
+        gws = state.gateways()
+    except Exception:                                           # noqa: BLE001
+        return False
+    hp = _host_part(host)
+    mock_hosts, real_parts = set(), set()
+    for gw in gws:
+        hosts = {h for h in (gw.active_host, gw.configured_host) if h}
+        if gw.is_mock:
+            mock_hosts |= hosts
+        else:
+            real_parts |= {_host_part(h) for h in hosts}
+    if host in mock_hosts:
+        return True
+    return hp in {_host_part(h) for h in mock_hosts} and hp not in real_parts
+
+
+MOCK_REASON = "a mock gateway has no Modbus TCP Server to reach"
+
+#: The outcome of the last REAL connection per target host (#221, #223). Status and
+#: reachability are read from here, so showing them never opens a socket.
+#: host part -> {"state", "reachable", "ts", "source", "reason"}
+_LAST: dict[str, dict] = {}
+
+
+def _record(host: str | None, state: str, source: str, reason: str = "") -> None:
+    eff_host, _ = effective_target(host)
+    if not eff_host:
+        return
+    _LAST[eff_host] = {"state": state, "source": source, "reason": reason,
+                       # The socket opened in both of these; "ready" also means SunSpec
+                       # answered. This is what modbus_502 has always meant.
+                       "reachable": state in ("ready", "no_sunspec"),
+                       "ts": time.time()}
+
+
+def last_result(host: str | None) -> dict | None:
+    """The last real connection's outcome for this target, or None if none was made."""
+    eff_host, _ = effective_target(host)
+    hit = _LAST.get(eff_host) if eff_host else None
+    return dict(hit) if hit else None
+
+
 def _connect(host: str):
     FranklinWHController, BatteryCommand = _lib()
     eff_host, eff_port = effective_target(host)
     c = FranklinWHController(eff_host, port=eff_port, unit_id=UNIT_ID)
     _no_connect_writes(c)
-    if not c.connect():
+    try:
+        ok = c.connect()
+    except Exception as e:                                       # noqa: BLE001
+        _record(host, "unreachable", "connect", str(e))
+        raise
+    if not ok:
+        _record(host, "unreachable", "connect", "connect failed")
         raise ConnectionError(f"could not connect to aGate Modbus at {eff_host}:{eff_port}")
     return c, BatteryCommand
 
@@ -406,6 +471,8 @@ def capability(host: str | None) -> dict:
     ok, why = available()
     if not ok:
         return _out("not_configured", why)
+    if is_mock_target(host):
+        return _out("not_configured", MOCK_REASON)
     try:
         c, _ = _connect(host)
     except Exception as e:                                       # noqa: BLE001
@@ -413,9 +480,11 @@ def capability(host: str | None) -> dict:
     try:
         c.read_control_status()                  # a real SunSpec read — the confirmation
     except Exception as e:                                       # noqa: BLE001
+        _record(host, "no_sunspec", "capability", f"{type(e).__name__}: {e}")
         return _out("no_sunspec", f"{type(e).__name__}: {e}")
     finally:
         _close(c)
+    _record(host, "ready", "capability")
     return _out("ready")
 
 
@@ -424,6 +493,9 @@ def status(host: str) -> dict:
     ok, why = available()
     if not ok:
         return {"available": False, "reason": why,
+                "state": "not_configured", "hint": CAPABILITY_HINTS["not_configured"]}
+    if is_mock_target(host):
+        return {"available": False, "reason": MOCK_REASON,
                 "state": "not_configured", "hint": CAPABILITY_HINTS["not_configured"]}
     try:
         c, _ = _connect(host)
@@ -438,6 +510,7 @@ def status(host: str) -> dict:
             active = ("Force Charge" if pct < 0
                       else "Force Discharge" if pct > 0 else "Force Standby")
         rated = _ratings(c)
+        _record(host, "ready", "status")
         return {"available": True, "reason": "", "active": active,
                 "state": "ready", "hint": "",
                 "vpp_active": bool(cs.get("wset_enabled")),
@@ -445,6 +518,7 @@ def status(host: str) -> dict:
     except Exception as e:                                       # noqa: BLE001
         # The socket opened and SunSpec did not answer: a different problem, and a
         # different remedy, from "could not connect".
+        _record(host, "no_sunspec", "status", f"{type(e).__name__}: {e}")
         return {"available": False, "reason": f"{type(e).__name__}: {e}",
                 "state": "no_sunspec", "hint": CAPABILITY_HINTS["no_sunspec"]}
     finally:
@@ -478,7 +552,7 @@ def cached_ratings(host: str) -> tuple:
     available/reachable — the caller then falls back (e.g. to the user constant)."""
     import time as _t
     ok, _why = available()
-    if not ok or not host:
+    if not ok or not host or is_mock_target(host):
         return (None, None)
     now = _t.monotonic()
     hit = _RATINGS_CACHE.get(host)
@@ -512,9 +586,10 @@ def execute(command: str, *, host: str, power_w: int = 0, power_pct: int = 0,
     if on_event is not None:
         _on_event = on_event
     cmd = (command or "").strip()
-    # The UI disables the controls, but the UI is not the gate — the API is. A release is
-    # always allowed: refusing to STOP a dispatch because the path looks unhealthy is the
-    # wrong way round.
+    # The UI disables the controls, but the UI is not the gate — the API is. A force
+    # first confirms the path is ready. A release skips that check (refusing to STOP a
+    # dispatch because the path looks unhealthy is the wrong way round), but it still
+    # needs a connection, so it cannot run with the Modbus client switched off (#174).
     if cmd not in ("Release", "Not Active"):
         cap = capability(host)
         if not cap["ready"]:
@@ -523,20 +598,44 @@ def execute(command: str, *, host: str, power_w: int = 0, power_pct: int = 0,
     else:
         ok, why = available()
         if not ok:
+            held = current().get("active")
+            if held not in (None, "Not Active"):
+                why = (f"{why}. The {held} this bridge started is still active on the aGate: "
+                       "switch the Modbus client on in Control → Modbus client, then Release.")
             return {"ok": False, "result": why, "state": "not_configured"}
+        if is_mock_target(host):
+            return {"ok": False, "result": MOCK_REASON, "state": "not_configured"}
     try:
         c, BatteryCommand = _connect(host)
     except Exception as e:                                       # noqa: BLE001
         return {"ok": False, "result": str(e)}
     try:
         if cmd in ("Release", "Not Active"):
-            if not dry_run:
-                was = current().get("active")
-                c.reset_control_state()
+            if dry_run:
+                return {"ok": True, "result": "[dry-run] release", "active": "Not Active"}
+            was = current().get("active")
+            c.reset_control_state()
+            # Report what the aGate says, not what was sent (#174).
+            try:
+                still = bool(c.read_control_status().get("wset_enabled"))
+            except Exception as e:                               # noqa: BLE001
                 _clear_active()
                 if was not in (None, "Not Active"):
-                    _fire("dispatch-end", "released — manual (Release)")
-            return {"ok": True, "result": "released", "active": "Not Active"}
+                    _fire("dispatch-end", "released — manual (Release), not confirmed")
+                return {"ok": True, "confirmed": False, "active": "Not Active",
+                        "result": f"release sent; not confirmed (read-back failed: "
+                                  f"{type(e).__name__})"}
+            _record(host, "ready", "release")
+            if still:
+                log.warning("battery release: the aGate still reports the force enabled")
+                return {"ok": False, "confirmed": True, "active": was or "Not Active",
+                        "result": "release sent, but the aGate still reports a force "
+                                  "enabled (WSetEna on)"}
+            _clear_active()
+            if was not in (None, "Not Active"):
+                _fire("dispatch-end", "released — manual (Release)")
+            return {"ok": True, "confirmed": True, "result": "released",
+                    "active": "Not Active"}
 
         max_ch, max_dis = _ratings(c)
         clamp_note = ""
@@ -565,6 +664,8 @@ def execute(command: str, *, host: str, power_w: int = 0, power_pct: int = 0,
         # We own the timer via _arm_watchdog, so don't hand the library a duration
         # whose thread would die with this request.
         okc, msg = c.send_command(BatteryCommand(power_watts=watts), dry_run=dry_run)
+        if okc:
+            _record(host, "ready", "force")
         if okc and not dry_run:
             _arm_watchdog(host, cmd, watts, duration_s, target_soc)
             _fire("dispatch-start",

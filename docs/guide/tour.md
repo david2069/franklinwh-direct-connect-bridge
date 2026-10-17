@@ -102,7 +102,7 @@ protocol documentation.
 | **MQTT** | What the bridge publishes, which entity groups are enabled, and a scan for other FranklinWH publishers on the same broker. |
 | **Network** | The connection picture end to end: round-trip latency to `:9000`, `:502` Modbus reachability, MQTT, AWS IoT, the CloudFront edge your gateway reaches, link history, missed polls, consecutive failures. The first place to look when something feels slow. |
 | **Device** | Device identity and raw readings — model, firmware, serial — and a browser for individual `cmdType` reads. |
-| **Health** | A per-gateway connection panel: host, online/offline, round-trip latency, `Modbus :502` as Up / Down / **Not probed**, ping, whether the host was rediscovered, MQTT, whether writes are enabled, firmware and serials, with a Refresh that forces a fresh probe. |
+| **Health** | A per-gateway connection panel: host, online/offline, round-trip latency, `Modbus :502` as Up / Down / **Not probed** (from the Modbus client's last real connection; nothing probes :502 to show it), ping, whether the host was rediscovered, MQTT, whether writes are enabled, firmware and serials, with a Refresh that forces a fresh probe. |
 | **Logs** | The bridge's own log, stored in SQLite: searchable, paginated, filterable by level and source, with a **Live** follow mode and an export. Control actions, cloud calls and connection events all land here. |
 | **Settings** | The configuration hub. Sub-tabs: **General**, **Gateways**, **Automation**, **Sites & Billing**, **Integrations**, **Admin**. |
 

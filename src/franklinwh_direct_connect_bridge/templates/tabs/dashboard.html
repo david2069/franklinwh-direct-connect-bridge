@@ -475,7 +475,7 @@
         <span class="chip ok" x-show="$store.app.summary.modbus_502 === true">Up</span>
         <span class="chip error" x-show="$store.app.summary.modbus_502 === false">Down</span>
         <span class="chip muted" x-show="$store.app.summary.modbus_502 == null"
-              title="The Modbus client of this bridge is off (or this is a mock gateway), so the Modbus TCP Server of the aGate (:502) was not probed. This is not a statement about the gateway — its own SunSpec Modbus setting is on the SunSpec Modbus card.">Not probed</span>
+              title="Not measured: the Modbus client of this bridge is off, this is a mock gateway, or it has not connected yet. The bridge does not probe the Modbus TCP Server of the aGate (:502) to show this; it reports its last real connection (a force, release, ratings read or Test). This is not a statement about the gateway — its own SunSpec Modbus setting is on the SunSpec Modbus card.">Not probed</span>
       </div>
       <div class="metric-sub">Ping: <span x-text="$store.app.summary.ping ?? 'n/a'"></span></div>
     </div>

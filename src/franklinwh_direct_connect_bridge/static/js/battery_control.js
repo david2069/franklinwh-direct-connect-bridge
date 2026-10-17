@@ -33,12 +33,14 @@ function batteryControl() {
     commandLog: [],
 
     async init() {
-      await this.refresh();
+      // One fresh availability check when the control is shown. The server rate-limits
+      // it; plain polls read a cache and never open the aGate's :502 (#223).
+      await this.refresh(true);
     },
 
-    async refresh() {
+    async refresh(check = false) {
       try {
-        const r = await fetch('api/battery/command');
+        const r = await fetch('api/battery/command' + (check ? '?refresh=1' : ''));
         const d = await r.json();
         this.available = !!d.available;
         this.reason = d.reason || '';

@@ -55,8 +55,9 @@ Our own call sites are few:
 | Caller | Cadence |
 | --- | --- |
 | ~~VPP monitor → `battery_control.status()`~~ | ~~60 s~~ — **removed 2026-10-12**: VPP is read locally (1707 programme id), so this path opens no socket |
-| Poller `summary()` → `port_open(host, 502)` | every poll (30 s) |
+| ~~Poller `summary()` → `port_open(host, 502)`~~ | ~~every poll (30 s)~~ — **removed in 0.5.9** (#221): `modbus_502` is the last real connection's result, and no socket is opened to show it |
 | `cached_ratings()` | 1 h TTL |
+| ~~`GET /api/battery/command` → `battery_control.status()`~~ | ~~every 30 s per open browser tab~~ — **0.5.9** (#223): cached; refreshed at most hourly, when the Battery control is shown (at most once per 30 s), or by Control → Modbus client → Test |
 | `/api/battery/control/status` | on demand |
 
 The VPP monitor has since been moved to the local channel and no longer opens a

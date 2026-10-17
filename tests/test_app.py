@@ -533,20 +533,32 @@ def test_a_mock_gateway_never_probes_502(monkeypatch):
     assert called == []
 
 
-def test_the_probe_still_runs_when_modbus_is_enabled(monkeypatch):
+def test_enabled_reports_the_last_result_and_opens_no_socket(monkeypatch):
+    """#221: enabled no longer means probed every poll — see test_modbus_client_footprint."""
     from franklinwh_direct_connect_bridge import client as C, battery_control as BC
+    called = []
     monkeypatch.setattr(BC, "is_enabled", lambda: True)
-    monkeypatch.setattr(C.discover, "port_open", lambda h, p, timeout=0: True)
+    monkeypatch.setattr(BC, "_LAST", {})
+    monkeypatch.setattr(C.discover, "port_open",
+                        lambda h, p, timeout=0: called.append(1) or True)
+    BC._record("10.0.0.1", "ready", "status")
     assert C._probe_modbus("10.0.0.1") is True
+    assert called == []
 
 
-def test_not_measured_is_not_recorded_as_an_outage():
+def test_not_measured_is_not_recorded_as_an_outage(monkeypatch):
     """None must not reach record_link_probe as a failure — that would invent an
     outage out of our own configuration."""
-    import pathlib
-    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
-    src = (root / "poller.py").read_text()
-    assert "if mb is not None:" in src
+    from franklinwh_direct_connect_bridge import poller
+    rows = []
+
+    class _St:
+        def record_link_probe(self, *a, **kw):
+            rows.append(a)
+    monkeypatch.setattr(poller, "_MB_RECORDED", {})
+    assert poller._record_modbus_leg(_St(), "gw", {"modbus_502": None,
+                                                    "modbus_502_at": 123.0}) is False
+    assert rows == []
 # ── ac_type: serve the 99% without mislabelling the rest ─────────────────────
 def test_ac_type_defaults_to_split_because_most_installs_are_us():
     """~99% of the installed base is US, where the service IS split-phase and L1/L2 is

@@ -878,6 +878,25 @@ def _site_tz_hours(store) -> float | None:
     return None if off is None else off / 60.0
 
 
+def _modbus_client_enabled(store) -> bool:
+    """The Modbus client switch, deciding it once for an install that never set it (#88).
+
+    Before 0.5.9 an unset switch meant ON. An install that already has gateways was
+    running that way, so it stays on; a new one (no gateways yet) starts off. The
+    decision is stored, so adding the first gateway later does not change it."""
+    val = store.get_config("modbus_enabled", None)
+    if val is None:
+        try:
+            existing = bool(store.gateways())
+        except Exception:  # noqa: BLE001
+            existing = False
+        val = "1" if existing else "0"
+        store.set_config("modbus_enabled", val)
+        log.info("Modbus client (this bridge): %s by default (%s install)",
+                 "on" if val == "1" else "off", "existing" if existing else "new")
+    return val != "0"
+
+
 def create_app() -> FastAPI:
     # Capture the bridge logger's INFO+ records into an in-memory ring buffer so the
     # Logs tab / GET /api/logs can serve them (idempotent — safe across create_app calls).
@@ -914,13 +933,15 @@ def create_app() -> FastAPI:
         await asyncio.to_thread(apply_host_timezone)
         await asyncio.to_thread(apply_supervisor_mqtt, s)
         await asyncio.to_thread(_seed_self_ha_instance, s)
-        # Apply the persisted Modbus (SunSpec 502) master switch — default on. When the
-        # user disabled it from the Control tab, ratings + force dispatch stay off.
+        # Apply the persisted Modbus client (this bridge) switch: ratings + force dispatch.
+        # OFF for a new install (#88): the user opts in from Control. Some sites have
+        # no Modbus TCP Server (aGate :502) switched on, on some gateways it misbehaves,
+        # and it serves one client at a time. An existing install keeps what it had.
         try:
             _mstore = db.get_store(s)
             if _mstore is not None:
                 from . import battery_control as _bc
-                _bc.set_enabled(_mstore.get_config("modbus_enabled", "1") != "0")
+                _bc.set_enabled(_modbus_client_enabled(_mstore))
                 try:
                     _bc.set_host_override(_mstore.get_config("modbus_host_override", "") or "",
                                           int(_mstore.get_config("modbus_port_override", "0") or 0))
@@ -3461,7 +3482,11 @@ def create_app() -> FastAPI:
     # read-only control rather than a button that lies.
     _batt_cmd = {"power_w": 0, "power_pct": 100, "power_mode": "pct",
                  "duration_s": 0, "target_soc": 0, "active": "Not Active", "result": ""}
-    _avail_cache = {"ts": 0.0, "val": None}
+    _avail_cache = {"ts": 0.0, "val": None, "host": None}
+
+    def _avail_invalidate() -> None:
+        """Drop the cached availability: the next GET re-checks once (#223)."""
+        _avail_cache.update({"ts": 0.0, "val": None, "host": None})
 
     def _bc_is_enabled() -> bool:
         try:
@@ -3488,15 +3513,31 @@ def create_app() -> FastAPI:
                     "hint": battery_control.CAPABILITY_HINTS["not_configured"]}
         return battery_control.status(host)
 
+    #: How old the cached availability may get before a plain GET refreshes it, and the
+    #: shortest gap between refreshes a client may ask for (#223).
+    _AVAIL_MAX_AGE_S = 3600.0
+    _AVAIL_MIN_GAP_S = 30.0
+
     @app.get("/api/battery/command")
-    def api_battery_command_state():
+    def api_battery_command_state(refresh: bool = Query(False)):
+        """The Battery Command state. Polled by every open browser tab, so it must not
+        open the Modbus TCP Server (aGate :502) each time (#223): that made this bridge a
+        second client every 30 s beside the Modbus Bridge.
+
+        Availability and ratings come from a cache. It is refreshed with a real Modbus
+        client connection only when empty, older than an hour, or on ``refresh=1``
+        (Battery tab opened, or the user's Check), at most once per 30 s. A force
+        re-checks capability itself, so a stale "available" cannot dispatch."""
         from . import battery_control
         cur = battery_control.current()          # in-memory, no Modbus — cheap to poll
         _batt_cmd["active"] = cur.get("active", "Not Active")
-        # The availability probe DOES hit Modbus, so cache it (~30s) for polling.
         now = time.time()
-        if _avail_cache["val"] is None or now - _avail_cache["ts"] > 30:
-            _avail_cache.update({"ts": now, "val": _battery_force_status()})
+        age = now - _avail_cache["ts"]
+        host = _modbus_host()
+        if (_avail_cache["val"] is None or age > _AVAIL_MAX_AGE_S
+                or host != _avail_cache["host"]
+                or (refresh and age > _AVAIL_MIN_GAP_S)):
+            _avail_cache.update({"ts": now, "val": _battery_force_status(), "host": host})
         st = _avail_cache["val"] or {}
         return {**_batt_cmd, "remaining_s": cur.get("remaining_s"),
                 "active_target_soc": cur.get("target_soc"),
@@ -3506,7 +3547,8 @@ def create_app() -> FastAPI:
                 # exactly `state == "ready"`.
                 "state": st.get("state", "not_configured"), "hint": st.get("hint", ""),
                 "max_charge_w": st.get("max_charge_w", 5000),
-                "max_discharge_w": st.get("max_discharge_w", 5000)}
+                "max_discharge_w": st.get("max_discharge_w", 5000),
+                "checked_at": _avail_cache["ts"] or None}
 
     @app.post("/api/battery/command")
     def api_battery_command(req: BatteryCmdReq, dry: bool = Query(False)):
@@ -3581,6 +3623,8 @@ def create_app() -> FastAPI:
         if out.get("active"):
             _batt_cmd["active"] = out["active"]
         _batt_cmd["result"] = out.get("result", "")
+        if not out.get("ok"):
+            _avail_invalidate()      # the path may have changed: re-check on the next GET
         return out
 
     @app.get("/api/ha/published")
@@ -4388,6 +4432,9 @@ def create_app() -> FastAPI:
                 store.set_config("modbus_port_override", str(port_ov or ""))
             _audit("modbus_host_override", detail=f"host={host_ov!r} port={port_ov or 502}",
                    result="set" if host_ov else "cleared", ok=True)
+        if req.enabled is not None or req.host_override is not None \
+                or req.port_override is not None:
+            _avail_invalidate()
         ov = battery_control.host_override()
         base = _modbus_host()
         eff_host, eff_port = battery_control.effective_target(base)
@@ -4406,6 +4453,8 @@ def create_app() -> FastAPI:
         if not eff_host:
             return {"ok": False, "target": None, "reason": "no gateway host to reach over Modbus"}
         st = battery_control.status(base)   # live connect; applies the override via effective_target
+        # A deliberate check is the freshest answer there is: show it everywhere (#223).
+        _avail_cache.update({"ts": time.time(), "val": st, "host": base})
         return {"ok": bool(st.get("available")), "target": target,
                 "reason": st.get("reason") or "",
                 "max_charge_w": st.get("max_charge_w"),

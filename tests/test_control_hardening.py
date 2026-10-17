@@ -33,7 +33,9 @@ def test_control_log_roundtrip(tmp_path):
 def test_modbus_toggle_persists_and_audits(tmp_path, monkeypatch):
     c, store = _client(tmp_path, monkeypatch)
     try:
-        assert c.get("/api/modbus").json()["enabled"] is True           # default on
+        assert c.get("/api/modbus").json()["enabled"] is False          # new install: off (#88)
+        assert c.put("/api/modbus", json={"enabled": True}).json()["enabled"] is True
+        assert store.get_config("modbus_enabled") == "1"
         assert c.put("/api/modbus", json={"enabled": False}).json()["enabled"] is False
         assert battery_control.is_enabled() is False
         assert battery_control.available()[0] is False                  # gate closed

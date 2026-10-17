@@ -465,12 +465,12 @@
         </button>
       </div>
       <div class="flex items-center gap-2 mt-3 text-xs flex-wrap">
-        <!-- Reachability of the GATEWAY's port. The poller only probes it when Modbus is
-             enabled here, so with the flag off this reads "not probed" — it is NOT a claim
-             that the gateway's port is shut. -->
+        <!-- Reachability of the GATEWAY's port at the Modbus client's last REAL connection
+             (#221): nothing probes :502 to show it. With the client off, a mock, or no
+             connection yet it reads "not probed" — NOT a claim that the port is shut. -->
         <span class="chip"
               :class="$store.app.summary.modbus_502 === true ? 'ok' : ($store.app.summary.modbus_502 === false ? 'error' : 'muted')"
-              :title="$store.app.summary.modbus_502 == null ? 'The Modbus client of this bridge is off (or this is a mock gateway), so the Modbus TCP Server of the aGate (:502) was not probed. This is not a statement about the gateway — its own SunSpec Modbus setting is on the SunSpec Modbus card.' : 'The gateway\'s port 502, probed by the poller.'"
+              :title="$store.app.summary.modbus_502 == null ? 'Not measured: the Modbus client of this bridge is off, this is a mock gateway, or it has not connected yet. The bridge does not probe the Modbus TCP Server of the aGate (:502) to show this; it reports its last real connection (a force, release, ratings read or Test). This is not a statement about the gateway — its own SunSpec Modbus setting is on the SunSpec Modbus card.' : 'The gateway\'s port 502 at the Modbus client\'s last real connection' + ($store.app.summary.modbus_502_at ? ' (' + new Date($store.app.summary.modbus_502_at * 1000).toLocaleString() + (($store.app.summary.modbus_502_source) ? ', ' + $store.app.summary.modbus_502_source : '') + ')' : '') + '. Not probed on a timer (#221).'"
               x-text="$store.app.summary.modbus_502 === true ? 'Gateway port 502 reachable' : ($store.app.summary.modbus_502 === false ? 'Gateway port 502 not reachable' : 'Gateway port 502 not probed')"></span>
         <span class="text-slate-500" x-show="!$store.app.modbus.enabled && $store.app.modbus.reason"
               x-text="$store.app.modbus.reason"></span>

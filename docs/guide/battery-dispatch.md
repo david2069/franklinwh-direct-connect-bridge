@@ -61,8 +61,8 @@ end.
 ## What a force needs
 
 **The Modbus client (this bridge) must be on.** Force commands go from the Modbus client
-(this bridge) to the Modbus TCP Server (aGate :502). Turn the client on under
-**Control → Modbus client (this bridge)**. While it is off, the Battery Control card is
+(this bridge) to the Modbus TCP Server (aGate :502). The client is **off on a new
+install** (from 0.5.9); turn it on under **Control → Modbus client (this bridge)**. While it is off, the Battery Control card is
 disabled and shows why: "This bridge's Modbus client is off (Control → Modbus client);
 the aGate's Modbus TCP Server is not affected" (`battery_control.available()`).
 
