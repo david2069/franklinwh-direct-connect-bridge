@@ -1819,6 +1819,7 @@ def create_app() -> FastAPI:
         mockgw.stop_mock(gw_id)
         state.unregister_gateway(gw_id)
         st.delete_gateway(gw_id)
+        alerts.forget_gateway(db.get_store(get_settings()), gw_id)
         return {"ok": True, "id": gw_id}
 
     # ── sites + meters (Phase 1: multi-site / multi-meter roster) ─────────────

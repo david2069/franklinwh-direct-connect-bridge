@@ -123,6 +123,32 @@ def facts() -> dict[tuple[str, str], dict]:
         return {k: dict(v) for k, v in _facts.items()}
 
 
+def forget_gateway(store, gateway_id: str, now: float | None = None) -> list[int]:
+    """A gateway was removed: drop its facts and resolve its open conditions, which no
+    source will ever report on again (G1, 2026-10-21: they stayed open for good).
+    Events stay as they are — they are history, closed by acknowledgement."""
+    ts = float(now if now is not None else time.time())
+    with _facts_lock:
+        for k in [k for k in _facts if k[0] == gateway_id]:
+            del _facts[k]
+    closed: list[int] = []
+    if store is None or not gateway_id:
+        return closed
+    for code, spec in CATALOGUE.items():
+        if spec.get("kind") != CONDITION:
+            continue
+        try:
+            cur = store.open_condition(gateway_id, code)
+            if cur is not None:
+                store.resolve_alert(cur["id"], resolved_ts=ts)
+                log.info("alert #%s %s %sresolved: gateway removed", cur["id"], code,
+                         _gw_tag(gateway_id))
+                closed.append(cur["id"])
+        except Exception as e:  # noqa: BLE001
+            log.warning("alert %s %snot resolved on removal: %s", code, _gw_tag(gateway_id), e)
+    return closed
+
+
 def reset() -> None:
     """Test hook — forget every fact and back-off."""
     with _facts_lock:

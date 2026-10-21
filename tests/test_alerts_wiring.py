@@ -59,9 +59,10 @@ def _poll(monkeypatch, summ: dict, *, host="127.0.0.1:1", mqtt=False, publish_ha
     return {k[1]: v for k, v in alerts.facts().items() if k[0] == "g271"}
 
 
-def test_unreachable_gateway_is_both_unreachable_and_missing_data(monkeypatch):
+def test_unreachable_gateway_is_unreachable_not_also_missing_data(monkeypatch):
+    # One fault, one alert (G1, 2026-10-21): live data missing means it ANSWERS but has none.
     f = _poll(monkeypatch, {"ok": False, "error": "connection refused"})
-    assert f["GATEWAY_UNREACHABLE"]["bad"] and f["LIVE_DATA_MISSING"]["bad"]
+    assert f["GATEWAY_UNREACHABLE"]["bad"] and not f["LIVE_DATA_MISSING"]["bad"]
     assert "connection refused" in f["GATEWAY_UNREACHABLE"]["detail"]
 
 

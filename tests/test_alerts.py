@@ -1,6 +1,7 @@
 """The alert lifecycle (#271, shared spec v1 §2, §3, §6): thresholds, dedup, ack, outbox."""
 
 import logging
+from pathlib import Path
 
 import pytest
 
@@ -304,3 +305,23 @@ def test_monitor_pass_evaluates_delivers_and_prunes(st):
 
 def test_monitor_status_reports_absence_as_data():
     assert alerts.monitor_status(workers.Registry())["state"] == "absent"
+
+
+# -- G1 findings, 2026-10-21 --------------------------------------------------------
+
+def test_removing_a_gateway_resolves_its_open_conditions(tmp_path):
+    from franklinwh_direct_connect_bridge import db
+    from franklinwh_direct_connect_bridge.config import get_settings
+    store = db.get_store(get_settings())
+    alerts.reset()
+    alerts.set_condition("gw1", "GATEWAY_UNREACHABLE", True, now=0)
+    alerts.evaluate(store, now=10_000)
+    assert store.open_condition("gw1", "GATEWAY_UNREACHABLE") is not None
+    assert alerts.forget_gateway(store, "gw1", now=10_001)
+    assert store.open_condition("gw1", "GATEWAY_UNREACHABLE") is None
+    assert not [k for k in alerts.facts() if k[0] == "gw1"]
+
+
+def test_an_unreachable_gateway_is_not_also_live_data_missing():
+    src = (Path(alerts.__file__).parent / "poller.py").read_text()
+    assert '"LIVE_DATA_MISSING", outcome == "ok" and not summ.get("power")' in src

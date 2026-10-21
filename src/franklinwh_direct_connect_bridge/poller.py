@@ -325,8 +325,10 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                         gw.id, "GATEWAY_UNREACHABLE", outcome != "ok",
                         detail=f"{gw.label or gw.id} is not answering on the LAN: "
                                f"{err or 'unreachable'}")
+                    # Only while the gateway ANSWERS: unreachable is GATEWAY_UNREACHABLE,
+                    # and raising both for one fault doubled the modal (G1, 2026-10-21).
                     alerts.set_condition(
-                        gw.id, "LIVE_DATA_MISSING", not summ.get("power"),
+                        gw.id, "LIVE_DATA_MISSING", outcome == "ok" and not summ.get("power"),
                         detail=f"No live data from {gw.label or gw.id}: "
                                f"{err or 'the power read failed'}")
                 if store is not None:
