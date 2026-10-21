@@ -86,11 +86,23 @@ of Home Assistant". Think of it as a monthly donation that also gets you remote 
 | **Cost** | US$6.50 a month or US$65 a year (tax extra). 31-day free trial, no card needed. [Pricing](https://www.nabucasa.com/pricing/) | Personal plan free for up to 6 users, non-commercial use. [Pricing](https://tailscale.com/pricing) | The tunnel is free on Cloudflare's free plan. You pay for the domain name each year. [Cloudflare plans](https://www.cloudflare.com/plans/) |
 | **Best for** | Most people. Families, and phones that just need to work anywhere. | People who want access to stay private to their own devices. | People who already run their own domain on Cloudflare. |
 | **Who can reach your HA** | Anyone with your HA address, who then has to log in to HA. | **Only your own devices** signed in to your Tailscale network (unless you turn on Funnel). | **The whole internet** at your domain, who then has to log in to HA. Cloudflare Access (Zero Trust) can add a second login in front. |
-| **Strengths** | Simplest; no domain, no router changes; works with the Companion app straight away; also includes offsite backups, Alexa/Google Home and voice. **Supports Home Assistant.** | Free; nothing exposed to the internet; also reaches other devices at home if you choose. | Free tunnel; your own address; no router changes. |
+| **Strengths** | Simplest; no domain, no router changes; works with the Companion app straight away; also includes offsite backups, Alexa/Google Home and voice. **Supports Home Assistant.** | Free; nothing exposed to the internet; also reaches other devices at home if you choose. | Free tunnel; your own address; no router changes. The same Cloudflare account can also hold your HA backups (R2, below). |
 | **Weaknesses** | A paid subscription. | Every phone and computer needs the Tailscale app, and family members need accounts. | Needs a domain and more set-up; exposes HA publicly, so use strong HA logins with multi-factor authentication. |
 
 **Whichever you use:** turn on multi-factor authentication for your Home Assistant login
 (**your profile → Security**). Keep Home Assistant updated.
+
+### Backups off the premises
+
+Keep a copy of your Home Assistant backups somewhere other than your home:
+
+- **Home Assistant Link** includes offsite backups.
+- **Cloudflare R2:** Home Assistant's
+  [Cloudflare R2 integration](https://www.home-assistant.io/integrations/cloudflare_r2/)
+  stores backups in an R2 bucket. R2 is free up to **10 GB of storage a month**, with no
+  download (egress) charges; above that it's charged
+  ([R2 pricing](https://developers.cloudflare.com/r2/pricing/)). Keep the number of
+  backups you retain small enough to stay under 10 GB.
 
 ### Use two
 
