@@ -16,6 +16,10 @@ from .config import Settings
 
 log = logging.getLogger("franklinwh_direct_connect_bridge.notify")
 
+#: The outbox record for a delivery not made because ha_notify is off (#271; the wording
+#: is fixed by the owner's decision on franklinwh-modbus-bridge#324).
+SKIPPED_CHANNEL_OFF = "skipped: HA channel off"
+
 
 class Notifier:
     def __init__(self, settings: Settings):
@@ -75,10 +79,10 @@ class Notifier:
         "skipped: …" when there is nothing to call (no HA target, or ha_notify off),
         otherwise the error. Never raises."""
         enabled, token, base = self._target()
+        if not enabled:
+            return SKIPPED_CHANNEL_OFF
         if not (token and base):
             return "skipped: no Home Assistant API configured"
-        if not enabled:
-            return "skipped: Home Assistant notifications are off (ha_notify)"
         try:
             req = urllib.request.Request(
                 f"{base}/services/{domain}/{service}",

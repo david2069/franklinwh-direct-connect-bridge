@@ -236,8 +236,24 @@ def test_notifier_without_a_target_skips(monkeypatch):
 
     class Off:
         ha_notify, ha_url, ha_token = False, "http://192.0.2.1:8123", "t"
-    assert "ha_notify" in Notifier(Off()).call_service("persistent_notification",
-                                                       "create", {})
+    assert Notifier(Off()).call_service("persistent_notification", "create", {}) == \
+        "skipped: HA channel off"
+
+
+def test_ha_channel_off_is_recorded_exactly_and_the_alert_stays_open(st, monkeypatch):
+    """Owner decision (modbus-bridge #324): ha_notify off skips HA, never the bridge."""
+    monkeypatch.delenv("SUPERVISOR_TOKEN", raising=False)
+
+    class Off:
+        ha_notify, ha_url, ha_token = False, "http://192.0.2.1:8123", "t"
+    a = alerts.raise_event(st, "gw1", "COMMAND_REFUSED", "x", now=0.0)
+    alerts.deliver(st, Notifier(Off()), now=0.0)            # no network: skipped first
+    d = st.alert_deliveries(a)[0]
+    assert d["last_error"] == "skipped: HA channel off" and d["attempts"] == 0
+    assert st.pending_deliveries() == []
+    # The modal's set: critical and unacknowledged, whatever ha_notify says.
+    assert [(r["id"], r["severity"], r["acked_ts"]) for r in st.alerts(open_only=True)] == \
+        [(a, "critical", None)]
 
 
 # ── WORKER_STALLED ────────────────────────────────────────────────────────────

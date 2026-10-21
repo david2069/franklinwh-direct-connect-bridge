@@ -17,10 +17,11 @@ def api():
 def test_status_summary_follows_the_open_set(api):
     c, st = api
     assert c.get("/api/status").json()["alerts"] == {"level": "ok", "open": 0,
-                                                     "latest_id": None}
+                                                     "latest_id": None, "changed_ts": None}
     a = alerts.raise_event(st, "gw1", "COMMAND_REFUSED", "Force rejected", now=1.0)
     body = c.get("/api/status").json()
-    assert body["alerts"] == {"level": "critical", "open": 1, "latest_id": a}
+    assert body["alerts"] == {"level": "critical", "open": 1, "latest_id": a,
+                              "changed_ts": 1.0}
     # A monitor that is not running is DATA here, not a failed endpoint.
     assert body["alert_monitor"]["state"] in ("absent", "running", "stopped")
     assert c.get("/api/live").status_code == 200

@@ -4,7 +4,7 @@
  * The bridge stores every alert; this only shows them. On every page load it fetches the
  * open set, so a fault raised while no browser was open is shown on the next visit. After
  * that it polls the small /api/status summary on the dashboard's 10 s cycle and refetches
- * the list only when `open` or `latest_id` changes. No SSE or WebSocket.
+ * the list only when `open`, `latest_id` or `changed_ts` changes. No SSE or WebSocket.
  *
  *  - critical + unacknowledged  → the modal, which stays until acknowledged;
  *  - an active condition that has been acknowledged → the red bar under the top bar;
@@ -14,7 +14,7 @@
  */
 document.addEventListener('alpine:init', () => {
   Alpine.store('alerts', {
-    summary: { level: 'ok', open: 0, latest_id: null },
+    summary: { level: 'ok', open: 0, latest_id: null, changed_ts: null },
     list: [],            // GET /api/alerts?open=1, newest first
     understood: {},      // alert id -> "I understand" ticked (per alert)
     listOpen: false,     // the badge's panel
@@ -36,7 +36,7 @@ document.addEventListener('alpine:init', () => {
         if (!r.ok) return;
         const s = (await r.json()).alerts || {};
         this.summary = s;
-        const sig = `${s.open}|${s.latest_id}`;
+        const sig = `${s.open}|${s.latest_id}|${s.changed_ts}`;
         if ((force || sig !== this._sig) && await this.load()) this._sig = sig;
       } catch (e) { /* bridge restarting — the connection banner covers it */ }
     },
@@ -86,8 +86,7 @@ document.addEventListener('alpine:init', () => {
         }
       } finally {
         this.busy = false;
-        // An ack of an active condition changes neither `open` nor `latest_id`, so the
-        // list is re-read regardless of the summary.
+        // Re-read now rather than on the next 10 s poll.
         await this.poll(true);
       }
     },

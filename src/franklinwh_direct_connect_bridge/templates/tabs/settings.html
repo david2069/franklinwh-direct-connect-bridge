@@ -1536,6 +1536,14 @@
               :class="notif.master ? 'translate-x-5' : 'translate-x-0.5'"></span>
       </button>
     </div>
+    <!-- This switch is ha_notify. While it is off, critical alerts create no Home Assistant
+         notification (owner decision on modbus-bridge #324); the bridge's alert window
+         still shows. A standing warning, not a toast, so it cannot be missed (#271). -->
+    <div x-show="notif.loaded && !notif.master" x-cloak data-testid="ha-channel-off"
+         class="text-xs rounded px-2 py-1.5 font-semibold"
+         style="background:var(--danger, #dc2626);color:#fff">
+      Critical alerts reach only the bridge UI
+    </div>
 
     <!-- ── Auto-notify triggers ── -->
     <div class="space-y-1.5 pt-1 border-t border-white/[0.06]" x-init="loadTriggers()">

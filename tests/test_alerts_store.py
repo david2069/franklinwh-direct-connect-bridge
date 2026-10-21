@@ -91,13 +91,28 @@ def test_filters(tmp_path):
 
 def test_summary_levels(tmp_path):
     st = _store(tmp_path)
-    assert st.alert_summary() == {"level": "ok", "open": 0, "latest_id": None}
+    assert st.alert_summary() == {"level": "ok", "open": 0, "latest_id": None,
+                                  "changed_ts": None}
     w = _event(st, code="INTERNAL_ERROR", sev="warning")
-    assert st.alert_summary() == {"level": "warning", "open": 1, "latest_id": w}
+    assert st.alert_summary() == {"level": "warning", "open": 1, "latest_id": w,
+                                  "changed_ts": 1000.0}
     c = _event(st)
-    assert st.alert_summary() == {"level": "critical", "open": 2, "latest_id": c}
-    st.ack_alert(c, acked_by="source:ui", now=1.0)
+    assert st.alert_summary() == {"level": "critical", "open": 2, "latest_id": c,
+                                  "changed_ts": 1000.0}
+    st.ack_alert(c, acked_by="source:ui", now=1500.0)
     assert st.alert_summary()["level"] == "warning"
+    assert st.alert_summary()["changed_ts"] == 1500.0
+
+
+def test_changed_ts_sees_a_condition_resolve_while_unacknowledged(tmp_path):
+    """open and latest_id stay the same; changed_ts is what tells the UI to refetch."""
+    st = _store(tmp_path)
+    c = _condition(st, ts=1000.0)
+    before = st.alert_summary()
+    st.resolve_alert(c, resolved_ts=2000.0)
+    after = st.alert_summary()
+    assert (before["open"], before["latest_id"]) == (after["open"], after["latest_id"])
+    assert (before["changed_ts"], after["changed_ts"]) == (1000.0, 2000.0)
 
 
 def test_prune_keeps_open_alerts_however_old(tmp_path):

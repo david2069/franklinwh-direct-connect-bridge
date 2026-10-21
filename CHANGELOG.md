@@ -20,7 +20,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - **Alert API** (#271). `GET /api/alerts` lists alerts (filters `open`, `kind`, `since`),
   `POST /api/alerts/{id}/ack` acknowledges one and records where it came from
   (`source:ui`, `source:api` or `source:ha`), and the new `GET /api/status` gives the summary
-  `alerts: {level, open, latest_id}`. An alert monitor runs in the background as a listed
+  `alerts: {level, open, latest_id, changed_ts}`; `changed_ts` moves whenever an alert
+  opens, resolves or is acknowledged. An alert monitor runs in the background as a listed
   worker; if it stops, `/api/status` says so and the bridge's health check is unaffected.
 - **What raises an alert** (#271). The aGate unreachable for 5 minutes, or no live data for
   2 minutes (critical); the MQTT broker disconnected for 5 minutes (warning); a background
@@ -34,16 +35,24 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   bridge can reach Home Assistant, whether or not any notification device is configured.
   It is retried until delivered, and dismissed when the alert is acknowledged in the bridge.
   Dismissing it in Home Assistant does not acknowledge the alert.
+- **Switching Home Assistant notifications off keeps alerts in the bridge** (#271). With
+  the Push notifications switch (`ha_notify`) off, critical alerts create no Home Assistant
+  notification; each skipped one is recorded as "skipped: HA channel off". The bridge's
+  alert window still opens, and Settings → Notifications shows "Critical alerts reach only
+  the bridge UI" for as long as the switch is off.
 - **"Bridge problem" and "Bridge heartbeat" in Home Assistant** (#271). Each gateway's
   device gets a `problem` binary sensor that is on while an alert is open, with the open
-  alerts as attributes, and a heartbeat timestamp updated at least every minute. Both stay
-  available while the aGate is offline, so automations can react without any `notify`
-  service.
+  alerts as attributes; it stays available while the aGate is offline, so automations can
+  react without any `notify` service. A separate "FranklinWH Direct Connect Bridge" device
+  has one "Bridge heartbeat" timestamp, sent every minute by the alert monitor while MQTT
+  is on and connected, whatever any gateway is doing. A heartbeat that stops moving means
+  the bridge itself has stopped.
 - **Critical alerts open a window that stays until acknowledged** (#271). It says what
   happened, when (in the site's time), what it means and what to do, with a link. Each alert
   has its own "I understand" box, and OK is enabled once every box is ticked; Escape and
   clicking outside do not close it. Alerts raised while no browser was open, for example by a
-  schedule, show on the next visit. A condition that has been acknowledged but is still
+  schedule, show on the next visit, and a condition that clears while unacknowledged updates
+  to "…–13:27, resolved" without waiting for another alert. A condition that has been acknowledged but is still
   active shows as a red bar under the top bar until it clears, and a badge in the top bar
   counts open alerts and opens the list, where warnings are acknowledged.
 

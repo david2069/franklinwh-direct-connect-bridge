@@ -5058,7 +5058,8 @@ def create_app() -> FastAPI:
         """Every node id this bridge currently publishes — the keep-list for a purge.
         Covers all gateways, not just the selected one, so a multi-gateway install
         cannot have one gateway's purge delete another's entities."""
-        out = []
+        # The bridge's own node (the heartbeat, #271) is always live, never an orphan.
+        out = [entities.BRIDGE_NODE]
         for g in get_gateways():
             n = getattr(g, "node", None) or (getattr(g, "serial", "") or "")
             if n:
@@ -5117,7 +5118,8 @@ def create_app() -> FastAPI:
         read, and the alert monitor's own liveness. A stale monitor is reported here as
         data; it never fails /api/live (RUNTIME_DESIGN decision 4)."""
         st = db.get_store(get_settings())
-        summary = st.alert_summary() if st else {"level": "ok", "open": 0, "latest_id": None}
+        summary = st.alert_summary() if st else {"level": "ok", "open": 0, "latest_id": None,
+                                               "changed_ts": None}
         return {"alerts": summary, "alert_monitor": alerts.monitor_status()}
 
     def _dispatch_guard() -> str:

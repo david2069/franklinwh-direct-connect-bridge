@@ -96,8 +96,7 @@ class MqttPublisher:
         self.client.publish(self.state_topic, json.dumps(state), retain=True)
 
     def publish_alerts(self, payload: dict) -> None:
-        """Bridge problem + heartbeat (#271). Retained, so the last heartbeat stays
-        readable — and visibly old — if the bridge stops."""
+        """Bridge problem (#271). Retained, so HA has it at once after a restart."""
         self.client.publish(entities.alerts_topic(self.node, self.s.mqtt_prefix),
                             json.dumps(payload), retain=True)
 
@@ -107,6 +106,51 @@ class MqttPublisher:
     def stop(self) -> None:
         try:
             self.publish_availability(False)
+            self.client.loop_stop()
+            self.client.disconnect()
+        except Exception:
+            pass
+
+
+class BridgeHeartbeat:
+    """The bridge's own MQTT connection, for the single "Bridge heartbeat" (#271, §11).
+
+    Separate from every gateway's publisher on purpose: the heartbeat proves the bridge
+    process and its alert monitor are alive, so it must not stop because a gateway is
+    unreachable, deferred or switched off. The discovery config is (re)published on
+    every connect, so a broker that lost its retained messages gets it back."""
+
+    def __init__(self, settings: Settings):
+        self.s = settings
+        self.config_topic, self.config = entities.heartbeat_config(
+            settings.mqtt_prefix, settings.ha_discovery_prefix)
+        self.client = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION2,
+            client_id=f"franklinwh-direct-connect-bridge-{entities.BRIDGE_NODE}")
+        if settings.mqtt_username:
+            self.client.username_pw_set(settings.mqtt_username, settings.mqtt_password)
+        self.client.on_connect = self._on_connect
+
+    def _on_connect(self, client, userdata, flags, rc, properties=None):
+        client.publish(self.config_topic, json.dumps(self.config), retain=True)
+
+    def start(self) -> None:
+        self.client.connect(self.s.mqtt_host, self.s.mqtt_port)
+        self.client.loop_start()
+
+    def is_connected(self) -> bool:
+        try:
+            return bool(self.client.is_connected())
+        except Exception:
+            return False
+
+    def beat(self, now: float) -> None:
+        # Retained: if the bridge stops, the last heartbeat stays readable, and visibly old.
+        self.client.publish(entities.heartbeat_topic(self.s.mqtt_prefix),
+                            entities.heartbeat_payload(now), retain=True)
+
+    def stop(self) -> None:
+        try:
             self.client.loop_stop()
             self.client.disconnect()
         except Exception:

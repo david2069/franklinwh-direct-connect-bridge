@@ -2527,15 +2527,20 @@ class MetricsStore:
             return self._alert_rows(self._conn.execute(q, args))
 
     def alert_summary(self) -> dict:
-        """`{level, open, latest_id}` over the open set (spec §4)."""
+        """`{level, open, latest_id}` over the open set (spec §4), plus `changed_ts`: the
+        latest open, resolve or acknowledgement of any alert. `open` and `latest_id`
+        cannot see a condition resolving while it is unacknowledged; this can."""
         with self._lock:
             row = self._conn.execute(
                 "SELECT COUNT(*), MAX(id),"
                 " SUM(CASE WHEN severity='critical' THEN 1 ELSE 0 END)"
                 f" FROM alerts WHERE {self._ALERT_OPEN_SQL}").fetchone()
+            changed = self._conn.execute(
+                "SELECT MAX(MAX(opened_ts, COALESCE(resolved_ts, 0), COALESCE(acked_ts, 0)))"
+                " FROM alerts").fetchone()[0]
         n, latest, crit = int(row[0] or 0), row[1], int(row[2] or 0)
         level = "critical" if crit else ("warning" if n else "ok")
-        return {"level": level, "open": n, "latest_id": latest}
+        return {"level": level, "open": n, "latest_id": latest, "changed_ts": changed}
 
     def prune_alerts(self, *, days: int | None = None, now: float | None = None) -> int:
         """Age out CLOSED alerts — acknowledged and, for a condition, resolved — by the

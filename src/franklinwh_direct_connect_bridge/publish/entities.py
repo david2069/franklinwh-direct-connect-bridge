@@ -70,34 +70,64 @@ CONTROLS: list[dict[str, Any]] = [
 ]
 
 #: The bridge's own health (#271, shared alert spec §6). Published for every gateway
-#: device whatever the groups, on their own topic, and WITHOUT the gateway's availability
+#: device whatever the groups, on its own topic, and WITHOUT the gateway's availability
 #: topic: "Bridge problem" has to stay readable exactly when the aGate is unreachable.
-#: A bridge that has died shows as a heartbeat that stopped moving.
 BRIDGE_ENTITIES: list[dict[str, Any]] = [
     {"key": "bridge_problem", "name": "Bridge problem", "ha_type": "binary_sensor",
      "device_class": "problem"},
-    {"key": "bridge_heartbeat", "name": "Bridge heartbeat", "ha_type": "sensor",
-     "device_class": "timestamp"},
 ]
 
-#: Seconds between heartbeats, and so the longest a "Bridge problem" change waits.
+#: Seconds between heartbeats; also how often a gateway re-publishes its problem state.
 HEARTBEAT_EVERY_S = 60
+
+#: The BRIDGE's own Home Assistant node, apart from any gateway: one "Bridge heartbeat"
+#: per bridge (spec §11 — it proves the process and its alert monitor are alive, so it
+#: must not depend on a gateway or a poller). `fwh_dc` per the identity plan (#92).
+BRIDGE_NODE = "fwh_dc_bridge"
 
 
 def alerts_topic(node: str, prefix: str) -> str:
     return f"{prefix}/{node}/alerts"
 
 
-def alerts_payload(summary: dict, open_alerts: list[dict], now: float,
-                   gateway_id: str = "") -> dict[str, Any]:
-    """The JSON on alerts_topic: the problem flag, the heartbeat, and the open alerts
-    (this gateway's and the bridge-wide ones) as the binary_sensor's attributes."""
+def heartbeat_topic(prefix: str) -> str:
+    return f"{prefix}/{BRIDGE_NODE}/heartbeat"
+
+
+def bridge_device_info() -> dict[str, Any]:
+    from .. import __version__
+    # sw_version keeps the "Direct Connect Bridge" prefix: mqtt_scan decides ownership by it.
+    return {"identifiers": [f"franklinwh_{BRIDGE_NODE}"],
+            "name": "FranklinWH Direct Connect Bridge", "manufacturer": MANUFACTURER,
+            "model": "Direct Connect Bridge",
+            "sw_version": f"Direct Connect Bridge v{__version__}"}
+
+
+def heartbeat_config(prefix: str, discovery_prefix: str) -> tuple[str, dict[str, Any]]:
+    """(config_topic, payload) for the single bridge-level "Bridge heartbeat" sensor."""
+    return (f"{discovery_prefix}/sensor/{BRIDGE_NODE}/heartbeat/config", {
+        "name": "Bridge heartbeat",
+        "unique_id": f"franklinwh_{BRIDGE_NODE}_heartbeat",
+        "object_id": f"franklinwh_{BRIDGE_NODE}_heartbeat",
+        "state_topic": heartbeat_topic(prefix),
+        "device_class": "timestamp",
+        "entity_category": "diagnostic",
+        "device": bridge_device_info(),
+    })
+
+
+def heartbeat_payload(now: float) -> str:
     import datetime as _dt
+    return _dt.datetime.fromtimestamp(now, _dt.timezone.utc).isoformat(timespec="seconds")
+
+
+def alerts_payload(summary: dict, open_alerts: list[dict],
+                   gateway_id: str = "") -> dict[str, Any]:
+    """The JSON on alerts_topic: the problem flag and the open alerts (this gateway's
+    and the bridge-wide ones) as the binary_sensor's attributes."""
     mine = [a for a in open_alerts if a.get("gateway_id") in ("", gateway_id)]
     return {
         "problem": bool(mine),
-        "heartbeat": _dt.datetime.fromtimestamp(now, _dt.timezone.utc).isoformat(
-            timespec="seconds"),
         "level": summary.get("level", "ok"),
         "open": len(mine),
         "alerts": [{k: a.get(k) for k in ("id", "code", "severity", "kind", "title",
@@ -333,14 +363,11 @@ def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: st
             "entity_category": "diagnostic",
             "device": device,
         }
-        if b["ha_type"] == "binary_sensor":
-            cfg["value_template"] = "{{ 'ON' if value_json.problem else 'OFF' }}"
-            cfg["json_attributes_topic"] = a_topic
-            cfg["json_attributes_template"] = (
-                "{{ {'level': value_json.level, 'open': value_json.open,"
-                " 'alerts': value_json.alerts} | tojson }}")
-        else:
-            cfg["value_template"] = "{{ value_json.heartbeat }}"
+        cfg["value_template"] = "{{ 'ON' if value_json.problem else 'OFF' }}"
+        cfg["json_attributes_topic"] = a_topic
+        cfg["json_attributes_template"] = (
+            "{{ {'level': value_json.level, 'open': value_json.open,"
+            " 'alerts': value_json.alerts} | tojson }}")
         configs.append(
             (f"{discovery_prefix}/{b['ha_type']}/{node}/{b['key']}/config", cfg))
 

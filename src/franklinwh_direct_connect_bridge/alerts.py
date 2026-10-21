@@ -351,15 +351,58 @@ class AlertMonitor:
     Registered as a Worker and beats each cycle; a stale monitor is reported as data
     (/api/status), never as a failed container (RUNTIME_DESIGN decision 4)."""
 
-    def __init__(self, settings, *, store_fn, notifier, registry=None) -> None:
+    def __init__(self, settings, *, store_fn, notifier, registry=None,
+                 heartbeat_factory=None) -> None:
         self.settings = settings
         self._store_fn = store_fn
         self.notifier = notifier
         self.registry = registry or _workers.registry
         self._last_prune = 0.0
+        self._hb_factory = heartbeat_factory
+        self._hb = None
+        self._hb_try = float("-inf")
+        self._hb_last = float("-inf")
+
+    def heartbeat_once(self, now: float | None = None) -> bool:
+        """The bridge-level "Bridge heartbeat" (spec §11), every HEARTBEAT_EVERY_S, sent
+        only while MQTT is enabled and this connection is up. Returns True if it beat.
+        It rides the monitor's own cycle, so a heartbeat that stops moving means the
+        bridge process or its monitor has stopped — not that a gateway has."""
+        from .publish import entities
+        ts = float(now if now is not None else time.time())
+        if not getattr(self.settings, "mqtt_enabled", False):
+            self.stop_heartbeat()
+            return False
+        if self._hb is None and ts - self._hb_try >= entities.HEARTBEAT_EVERY_S:
+            self._hb_try = ts
+            try:
+                if self._hb_factory is None:
+                    from .publish.mqtt_publisher import BridgeHeartbeat
+                    self._hb_factory = lambda: BridgeHeartbeat(self.settings)
+                hb = self._hb_factory()
+                hb.start()
+                self._hb = hb
+            except Exception as e:  # noqa: BLE001 — MQTT_DOWN reports the broker
+                log.debug("bridge heartbeat: MQTT connect failed: %s", e)
+        if self._hb is None or not self._hb.is_connected():
+            return False
+        if ts - self._hb_last < entities.HEARTBEAT_EVERY_S:
+            return False
+        self._hb.beat(ts)
+        self._hb_last = ts
+        return True
+
+    def stop_heartbeat(self) -> None:
+        if self._hb is not None:
+            self._hb.stop()
+            self._hb = None
 
     def run_once(self, now: float | None = None) -> None:
         ts = float(now if now is not None else time.time())
+        try:
+            self.heartbeat_once(now=ts)
+        except Exception as e:  # noqa: BLE001 — a heartbeat never stops the monitor
+            log.debug("bridge heartbeat failed: %s", e)
         store = self._store_fn()
         if store is None:
             return
@@ -392,6 +435,7 @@ class AlertMonitor:
                 await asyncio.wait_for(stop.wait(), timeout=MONITOR_EVERY_S)
             except asyncio.TimeoutError:
                 pass
+        await asyncio.to_thread(self.stop_heartbeat)
         w.mark_stopped()
 
 

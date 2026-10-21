@@ -252,18 +252,20 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                 gw.id, "MQTT_DOWN", _want_mqtt and not (pub and pub.is_connected()),
                 detail=f"Not connected to the MQTT broker {settings.mqtt_host}:"
                        f"{settings.mqtt_port}; Home Assistant entities are not updating")
-            # Bridge problem + heartbeat (#271): on a change of the alert summary, and at
-            # least every HEARTBEAT_EVERY_S (checked once per poll cycle).
+            # Bridge problem (#271): on a change of the alert summary, and at least every
+            # HEARTBEAT_EVERY_S (checked once per poll cycle). The heartbeat itself is the
+            # alert monitor's, bridge-level, not this gateway's.
             if pub:
                 try:
                     _ast = get_store(settings)
                     _asum = _ast.alert_summary() if _ast is not None else {}
-                    _asig = (_asum.get("level"), _asum.get("open"), _asum.get("latest_id"))
+                    _asig = (_asum.get("level"), _asum.get("open"), _asum.get("latest_id"),
+                             _asum.get("changed_ts"))
                     if _asig != alerts_sig or \
                             time.time() - alerts_pub_ts >= entities.HEARTBEAT_EVERY_S:
                         _open = _ast.alerts(open_only=True) if _ast is not None else []
                         await asyncio.to_thread(pub.publish_alerts, entities.alerts_payload(
-                            _asum, _open, time.time(), gw.id))
+                            _asum, _open, gw.id))
                         alerts_sig, alerts_pub_ts = _asig, time.time()
                 except Exception as e:  # noqa: BLE001 — never break the poll loop
                     log.debug("[%s] bridge problem not published: %s", gw.id, e)

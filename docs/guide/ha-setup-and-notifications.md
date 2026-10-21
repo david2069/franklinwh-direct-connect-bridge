@@ -213,25 +213,32 @@ acknowledgement applies for everyone and is recorded as `source:ui`.
 
 **In Home Assistant.** Each critical alert creates a persistent notification with the id
 `fwh_dc_alert_<id>`, whether or not a notification device is set up. It needs a Home
-Assistant connection (step 1) and `ha_notify` on. If Home Assistant does not answer, the
-bridge keeps retrying, waiting longer each time up to 10 minutes. Acknowledging the alert in
-the bridge dismisses the notification. **Dismissing it in Home Assistant does not
-acknowledge the alert**: the bridge stays the record. Alerts are not sent to notification
-devices yet.
+Assistant connection (step 1) and the **Push notifications** switch (`ha_notify`) on. If
+Home Assistant does not answer, the bridge keeps retrying, waiting longer each time up to
+10 minutes. Acknowledging the alert in the bridge dismisses the notification. **Dismissing
+it in Home Assistant does not acknowledge the alert**: the bridge stays the record. Alerts
+are not sent to notification devices yet.
 
-Each gateway's device in Home Assistant also gets two diagnostic entities over MQTT:
+With the switch **off**, no Home Assistant notification is made, and each one skipped is
+recorded as "skipped: HA channel off". The bridge's alert window still opens; it never
+depends on the switch. While the switch is off, Settings → Notifications shows **Critical
+alerts reach only the bridge UI**.
 
-- **Bridge problem**, a `problem` binary sensor that is on while any alert for that gateway,
-  or for the bridge itself, is open. Its attributes list the open alerts.
-- **Bridge heartbeat**, a timestamp updated at least every minute.
+Each gateway's device in Home Assistant also gets **Bridge problem**, a diagnostic `problem`
+binary sensor that is on while any alert for that gateway, or for the bridge itself, is
+open. Its attributes list the open alerts. It does not use the gateway's availability
+topic, so it stays readable while the aGate is offline.
 
-Neither uses the gateway's availability topic, so both stay readable while the aGate is
-offline. If the bridge itself stops, the heartbeat stops moving, which an automation can
-watch for (for example, "heartbeat older than 5 minutes → notify").
+A separate device, **FranklinWH Direct Connect Bridge**, has one **Bridge heartbeat**
+timestamp. The alert monitor sends it every minute while MQTT publishing is on and
+connected, independently of every gateway. If the bridge itself stops, the heartbeat stops
+moving, which an automation can watch for (for example, "heartbeat older than 5 minutes →
+notify").
 
 The API is `GET /api/alerts` (filters `open=1`, `kind=event|condition`, `since=<epoch>`),
 `POST /api/alerts/{id}/ack` with `{"source": "ui"|"api"|"ha"}` (default `api`), and
-`GET /api/status`, whose `alerts` is `{level, open, latest_id}`. Closed alerts are kept 90
+`GET /api/status`, whose `alerts` is `{level, open, latest_id, changed_ts}`. `changed_ts`
+moves whenever an alert opens, resolves or is acknowledged. Closed alerts are kept 90
 days; open ones are never removed.
 
 ---

@@ -30,8 +30,8 @@ def test_every_page_load_fetches_the_open_set():
     init = JS[JS.index("init()"):JS.index("async poll(")]
     assert "this.poll()" in init
     assert "api/alerts?open=1" in JS and "api/status" in JS
-    # Refetch only when open or latest_id changes (spec §4) — no SSE, no WebSocket.
-    assert "`${s.open}|${s.latest_id}`" in JS
+    # Refetch only when open, latest_id or changed_ts changes (spec §4) — no SSE or WS.
+    assert "`${s.open}|${s.latest_id}|${s.changed_ts}`" in JS
     assert "new EventSource" not in JS and "new WebSocket" not in JS
 
 
@@ -82,3 +82,30 @@ def test_every_catalogue_code_has_help_text():
     from franklinwh_direct_connect_bridge import alerts
     for code in alerts.CATALOGUE:
         assert f"{code}: {{" in JS, code
+
+
+# ── ha_notify off (owner decision, franklinwh-modbus-bridge#324) ─────────────
+def test_the_modal_does_not_depend_on_ha_notify():
+    for src in (JS, PARTIAL):
+        assert "ha_notify" not in src and "notif.master" not in src
+
+
+def test_the_modal_set_is_served_with_ha_notify_off(monkeypatch):
+    from franklinwh_direct_connect_bridge import alerts, config, db
+    s = config.get_settings()
+    monkeypatch.setattr(s, "ha_notify", False)
+    a = alerts.raise_event(db.get_store(s), "gw1", "COMMAND_REFUSED", "x")
+    rows = TestClient(app_module.create_app()).get("/api/alerts?open=1").json()["alerts"]
+    assert [(r["id"], r["severity"], r["acked_ts"]) for r in rows] == [(a, "critical", None)]
+
+
+def test_settings_warns_while_the_ha_channel_is_off():
+    settings = (PKG / "templates/tabs/settings.html").read_text()
+    i = settings.index('data-testid="ha-channel-off"')
+    tag = settings[settings.rindex("<div", 0, i):settings.index(">", i)]
+    assert 'x-show="notif.loaded && !notif.master"' in tag      # only while off
+    assert "Critical alerts reach only the bridge UI" in settings[i:i + 400]
+    # Beside the switch that IS ha_notify.
+    assert settings.index("toggleMaster()") < i < settings.index("Auto-notify triggers")
+    js = (PKG / "static/js/settings_tab.js").read_text()
+    assert "this.form.ha_notify = next" in js and "this.notif.master = next" in js
