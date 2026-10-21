@@ -170,6 +170,70 @@ There is no per-event switch for these.
     dispatch reconcile and from schedules, do not check it. To stop pushes, switch the
     triggers off, or mute the devices.
 
+### Alerts
+
+Alerts are the bridge's record of faults (#271). They follow one spec shared with the
+Modbus Bridge, so an automation that reads one bridge's codes works on the other. Each alert
+is stored in the bridge's database (`alerts.py`, the `alerts` table) and survives a
+restart. Every alert is also a line in **Logs** (WARNING when raised, INFO when it clears
+or is acknowledged), whether or not it reached anyone.
+
+There are two kinds:
+
+- an **event**, such as a command that was refused, stays open until it is acknowledged;
+- a **condition**, such as the aGate being unreachable, is active while the fault lasts and
+  is marked resolved when it clears. Acknowledging a condition stops the alert window,
+  not the red bar.
+
+What raises one today:
+
+| Code | Kind | Severity | Raised when | Clears when |
+|---|---|---|---|---|
+| `GATEWAY_UNREACHABLE` | condition | critical | Polls of the aGate have failed for 5 minutes | Polls have succeeded for 2 minutes |
+| `LIVE_DATA_MISSING` | condition | critical | No live power reading for 2 minutes | Readings for 1 minute |
+| `MQTT_DOWN` | condition | warning | The MQTT broker has been disconnected for 5 minutes, on a gateway that publishes | Connected for 2 minutes |
+| `HA_UNREACHABLE` | condition | warning | Home Assistant has failed to take an alert notification for 5 minutes | One goes through and 2 minutes pass |
+| `WORKER_STALLED` | condition | critical | A background worker stops responding or crashes (Health → Workers) | Every worker for that gateway is beating again |
+| `COMMAND_REFUSED` | event | critical | The Audit Trail records a control as failed or refused. Cloud sign-ins are not counted. | Acknowledged |
+| `SCHEDULE_FAILED` | event | critical | A scheduled action fails, or its window closes without success | Acknowledged |
+
+The same event again within 10 minutes is added to the open alert (its count goes up)
+rather than raising a new one. The other codes in the shared list (`COMMAND_UNCONFIRMED`,
+`WRITE_IGNORED`, `RESTART_DURING_COMMAND`, `EXTERNAL_SETPOINT`, `DATA_MISSING_PARTIAL`,
+`INTERNAL_ERROR`) are defined, but nothing in this bridge raises them yet.
+
+**In the bridge.** A critical alert opens a window that stays until it is acknowledged.
+It shows what happened, when (in the site's time), what it means and what to do. Tick
+**I understand** for each alert, then **OK**. Escape and clicking outside do not close it.
+An alert raised while no browser was open, by a schedule for example, is shown on the next
+visit, and a condition that came and went shows as "09:54–13:27, resolved". While an
+acknowledged condition is still active, a red bar stays under the top bar. A badge in the
+top bar counts open alerts and opens the list, where warnings are acknowledged. The
+acknowledgement applies for everyone and is recorded as `source:ui`.
+
+**In Home Assistant.** Each critical alert creates a persistent notification with the id
+`fwh_dc_alert_<id>`, whether or not a notification device is set up. It needs a Home
+Assistant connection (step 1) and `ha_notify` on. If Home Assistant does not answer, the
+bridge keeps retrying, waiting longer each time up to 10 minutes. Acknowledging the alert in
+the bridge dismisses the notification. **Dismissing it in Home Assistant does not
+acknowledge the alert**: the bridge stays the record. Alerts are not sent to notification
+devices yet.
+
+Each gateway's device in Home Assistant also gets two diagnostic entities over MQTT:
+
+- **Bridge problem**, a `problem` binary sensor that is on while any alert for that gateway,
+  or for the bridge itself, is open. Its attributes list the open alerts.
+- **Bridge heartbeat**, a timestamp updated at least every minute.
+
+Neither uses the gateway's availability topic, so both stay readable while the aGate is
+offline. If the bridge itself stops, the heartbeat stops moving, which an automation can
+watch for (for example, "heartbeat older than 5 minutes → notify").
+
+The API is `GET /api/alerts` (filters `open=1`, `kind=event|condition`, `since=<epoch>`),
+`POST /api/alerts/{id}/ack` with `{"source": "ui"|"api"|"ha"}` (default `api`), and
+`GET /api/status`, whose `alerts` is `{level, open, latest_id}`. Closed alerts are kept 90
+days; open ones are never removed.
+
 ---
 
 ## 5. Notifications from a schedule
