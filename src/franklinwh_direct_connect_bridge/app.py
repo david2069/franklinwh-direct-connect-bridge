@@ -3115,6 +3115,13 @@ def create_app() -> FastAPI:
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
 
+    def _valid_spec(spec: dict) -> None:
+        """Refuse a schedule that cannot run as written (#198) — never quietly fix it."""
+        errors = scheduler.validate_spec(spec)
+        if errors:
+            raise HTTPException(status_code=422,
+                                detail="schedule not saved: " + "; ".join(errors))
+
     @app.post("/api/schedules", status_code=201)
     def api_schedule_create(req: ScheduleReq):
         _guard_writes()
@@ -3122,6 +3129,7 @@ def create_app() -> FastAPI:
         st = _ha_store()
         spec = req.model_dump(exclude={"name", "enabled"})
         spec["action"] = _normalized_action(spec.get("action"))
+        _valid_spec(spec)
         sid = uuid.uuid4().hex[:12]
         row = st.create_schedule(sid=sid, name=req.name, spec=spec, enabled=req.enabled)
         try:
@@ -3150,6 +3158,7 @@ def create_app() -> FastAPI:
         sent = req.model_dump(exclude_unset=True, exclude={"name", "enabled"})
         spec = {**req.model_dump(exclude={"name", "enabled"}), **prior_spec, **sent}
         spec["action"] = _normalized_action(spec.get("action"))
+        _valid_spec(spec)
         # `enabled` merges like every other field (#168): left out, the schedule keeps its
         # state. Its model default (True) used to apply and turned a disabled one back on.
         enabled = req.enabled if "enabled" in req.model_fields_set else bool(prior.get("enabled"))

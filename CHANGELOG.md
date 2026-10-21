@@ -53,6 +53,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   ever: its single stored run stayed finished, across restarts, so every later rising edge
   sent nothing. Each rising edge is now its own run. The release on the falling edge is
   unchanged.
+- **A schedule with its key setting missing no longer fires every day** (#198). **Weekly** with
+  no days, **Monthly** with no day of the month and **One-off** with no date now never fire, and
+  a **Recurring window** whose start equals its end is empty instead of open all day. Saving or
+  importing one of these is refused with the reason (HTTP 422 on save); schedules already
+  saved this way stop firing.
 
 ## [0.5.13] — 2026-10-21
 

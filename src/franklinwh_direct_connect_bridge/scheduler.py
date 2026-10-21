@@ -300,12 +300,16 @@ def _windows_for(entry: dict) -> list[tuple[int, int]]:
     trigger is a single fire_at + duration window."""
     if (entry.get("trigger_type") or "daily") == "window":
         out: list[tuple[int, int]] = []
+        empty = False
         for w in entry.get("windows") or []:
             s, e = _minutes(w.get("start", "")), _minutes(w.get("end", ""))
             if s is None or e is None:
                 continue
+            if s == e:              # start = end is an empty window, not 24 h (#198)
+                empty = True
+                continue
             out.append((s, (e - s) if e > s else (e + 24 * 60 - s)))   # wrap
-        if out:
+        if out or empty:
             return out
     s = _minutes(entry.get("fire_at", "")) or 0
     return [(s, int(entry.get("duration_min") or 0))]
@@ -426,7 +430,17 @@ def _window_anchor_date(entry: dict, now: dt.datetime) -> dt.date:
 def _calendar_ok(entry: dict, d: dt.date) -> tuple[bool, str]:
     """Does the entry's recurrence permit firing on date ``d``? Every recurrence field is
     a RESTRICTION; absent/empty means 'no restriction' (fires every day, as before).
-    Returns ``(ok, reason)``."""
+    Returns ``(ok, reason)``.
+
+    The exception is a trigger whose restriction IS the trigger (#198): Weekly with no days,
+    Monthly with no day of month and One-off with no date never fire, rather than every day."""
+    tt = entry.get("trigger_type") or "daily"
+    if tt == "weekly" and not entry.get("days"):
+        return False, "weekly with no days of the week"
+    if tt == "monthly" and not entry.get("day_of_month"):
+        return False, "monthly with no day of the month"
+    if tt == "once" and not entry.get("start_date"):
+        return False, "one-off with no date"
     sd, ed = entry.get("start_date"), entry.get("end_date")
     if sd:
         try:
@@ -825,6 +839,35 @@ def to_automations(entry: dict) -> dict:
     }
 
 
+def validate_spec(entry: dict) -> list[str]:
+    """What makes a schedule unable to run as written, as readable errors. Empty = valid.
+
+    Used on save and on import, so a schedule that would fire when the user expects nothing
+    (or never fire when they expect it to) is refused up front rather than "fixed" (#198)."""
+    errors: list[str] = []
+    tt = entry.get("trigger_type") or "daily"
+    if tt not in TRIGGER_TYPES:
+        errors.append(f"unknown trigger_type '{tt}'")
+    if tt == "weekly" and not entry.get("days"):
+        errors.append("weekly needs at least one day of the week")
+    if tt == "monthly" and not entry.get("day_of_month"):
+        errors.append("monthly needs a day of the month")
+    if tt == "once" and not entry.get("start_date"):
+        errors.append("one-off needs a date")
+    if tt == "window":
+        wins = entry.get("windows") or []
+        if not wins:
+            errors.append("recurring windows needs at least one window")
+        for i, w in enumerate(wins, 1):
+            w = w if isinstance(w, dict) else {}
+            s, e = _minutes(w.get("start", "")), _minutes(w.get("end", ""))
+            if s is None or e is None:
+                errors.append(f"window {i}: start and end must be HH:MM")
+            elif s == e:
+                errors.append(f"window {i}: start and end are the same time")
+    return errors
+
+
 def validate_import(entry: dict, *, gateway_ids: set, device_ids: set) -> dict:
     """Check one imported entry. Returns ``{name, ok, errors, warnings}`` — never
     raises, so a whole bundle is reported at once rather than failing on the first
@@ -846,6 +889,8 @@ def validate_import(entry: dict, *, gateway_ids: set, device_ids: set) -> dict:
                 dt.date.fromisoformat(str(dv))
             except ValueError:
                 errors.append(f"{dk} '{dv}' is not YYYY-MM-DD")
+
+    errors += validate_spec(entry)
 
     action = entry.get("action") or {}
     kind = action.get("kind")

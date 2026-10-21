@@ -62,9 +62,10 @@ def test_a_form_save_keeps_api_only_fields(c):
 
 def test_a_field_that_is_sent_still_changes(c):
     sid = _create(c)
-    c.put(f"/api/schedules/{sid}", json={"name": "Evening peak", "windows": [], "priority": 0})
+    # (Not `windows`: a Recurring-windows schedule with none is refused since #198.)
+    c.put(f"/api/schedules/{sid}", json={"name": "Evening peak", "months": [], "priority": 0})
     after = _get(c, sid)
-    assert after["windows"] == [] and after["priority"] == 0
+    assert after["months"] == [] and after["priority"] == 0
     assert after["days"] == FULL["days"]          # untouched fields stay
 
 
