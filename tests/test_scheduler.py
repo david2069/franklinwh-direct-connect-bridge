@@ -871,7 +871,13 @@ def test_import_maps_modbus_automations_bundle(tmp_path, monkeypatch):
     assert mapped["ha_actions"][0]["entity_id"] == "switch.pv"
     assert mapped["gateway_id"] == ""      # "default" → our default gateway
 
-    # end-to-end: dry-run importable, then create disabled
+    # The mapped HA action has no ha_kind, so this engine would run it as a notify with no
+    # device and skip it. Since #202 the import says so instead of saving it.
+    rep = c.post("/api/schedules/import?dry_run=true", json=bundle).json()["entries"][0]
+    assert rep["ok"] is False and any("HA action 1" in e for e in rep["errors"])
+
+    # end-to-end without it: dry-run importable, then create disabled
+    bundle["entries"][0]["ha_actions"] = []
     dry = c.post("/api/schedules/import?dry_run=true", json=bundle).json()
     assert dry["count"] == 1 and dry["importable"] == 1 and dry["mapped_from"] == "franklinwh-automations"
     done = c.post("/api/schedules/import?dry_run=false", json=bundle).json()

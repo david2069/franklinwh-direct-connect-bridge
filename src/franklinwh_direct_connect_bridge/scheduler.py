@@ -865,10 +865,181 @@ def validate_spec(entry: dict) -> list[str]:
                 errors.append(f"window {i}: start and end must be HH:MM")
             elif s == e:
                 errors.append(f"window {i}: start and end are the same time")
+    # The rest of what the engine would otherwise discover only at run time (#202).
+    if tt in ("daily", "weekly", "monthly", "once") and not _HHMM.match(str(entry.get("fire_at", ""))):
+        errors.append(f"fire_at '{entry.get('fire_at')}' is not HH:MM")
+    for k in ("duration_min", "entry_hold_s"):
+        if not _is_int(entry.get(k, 0), lo=0):
+            errors.append(f"{k} must be a whole number of 0 or more")
+    if any(not _is_int(d, 0, 6) for d in entry.get("days") or []):
+        errors.append("days must be 0 (Mon) to 6 (Sun)")
+    if any(not _is_int(m, 1, 12) for m in entry.get("months") or []):
+        errors.append("months must be 1 to 12")
+    if entry.get("day_of_month") is not None and not _is_int(entry["day_of_month"], 1, 31):
+        errors.append("day_of_month must be 1 to 31")
+    dates = {}
+    for dk in ("start_date", "end_date"):
+        if entry.get(dk):
+            try:
+                dates[dk] = dt.date.fromisoformat(str(entry[dk]))
+            except ValueError:
+                errors.append(f"{dk} '{entry[dk]}' is not YYYY-MM-DD")
+    if len(dates) == 2 and dates["end_date"] < dates["start_date"]:
+        errors.append("end_date is before start_date")
+    if tt == "interval":
+        if not _is_int(entry.get("interval_min"), lo=1):
+            errors.append("interval_min must be 1 or more")
+        if entry.get("anchor") and not _HHMM.match(str(entry["anchor"])):
+            errors.append(f"anchor '{entry['anchor']}' is not HH:MM")
+    if tt == "cron":
+        expr = str(entry.get("cron") or "").strip()
+        if not cron_available():
+            errors.append("custom cron needs the croniter package, which is not installed")
+        else:
+            from croniter import croniter
+            if not expr or not croniter.is_valid(expr):
+                errors.append(f"cron '{expr}' is not a valid cron expression")
+    for label, key in (("condition", "conditions"), ("exit condition", "exit_conditions")):
+        errors += _condition_errors(entry.get(key) or [], label)
+    errors += _action_errors(entry.get("action") or {})
+    for i, ha in enumerate(entry.get("ha_actions") or [], 1):
+        errors += [f"HA action {i}: {e}" for e in _ha_action_errors(ha)]
     return errors
 
 
-def validate_import(entry: dict, *, gateway_ids: set, device_ids: set) -> dict:
+_HHMM = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
+
+
+def _is_int(v: Any, lo: int | None = None, hi: int | None = None) -> bool:
+    if isinstance(v, bool) or not isinstance(v, int):
+        return False
+    return (lo is None or v >= lo) and (hi is None or v <= hi)
+
+
+def _num(v: Any) -> float | None:
+    return None if v in (None, "") else _coerce_number(v)
+
+
+def _condition_errors(nodes: Any, label: str) -> list[str]:
+    """A condition tree the evaluator can read: known operators, a sensor on every row,
+    a second value for ``between``, a sensor to look up for a Lookup row."""
+    if not isinstance(nodes, list):
+        return [f"{label}s must be a list"]
+    out: list[str] = []
+    for n in nodes:
+        if not isinstance(n, dict):
+            out.append(f"{label} {n!r} is not an object")
+        elif _is_tree(n):
+            if str(n.get("match", MATCH_ALL)).lower() not in (MATCH_ALL, MATCH_ANY):
+                out.append(f"{label} group match '{n.get('match')}' is not all or any")
+            out += _condition_errors(n.get("conditions") or [], label)
+        else:
+            op = n.get("op", "==")
+            if not n.get("sensor"):
+                out.append(f"{label} has no sensor")
+            if op not in OPERATORS:
+                out.append(f"{label} operator '{op}' is not one of {', '.join(OPERATORS)}")
+            if n.get("value_kind") == "sensor":
+                if not n.get("value_sensor"):
+                    out.append(f"{label} on {n.get('sensor')} looks up no sensor")
+            elif op == "between" and n.get("value2") in (None, ""):
+                out.append(f"{label} on {n.get('sensor')}: between needs two values")
+    return out
+
+
+def _action_errors(action: dict) -> list[str]:
+    """The parameters each action needs, checked before it is saved rather than when it
+    fails at run time (#202)."""
+    if not isinstance(action, dict):
+        return ["action must be an object"]
+    kind = action.get("kind") or ""
+    if not kind:
+        return []
+    if kind not in ACTIONS:
+        return [f"unknown action '{kind}'"
+                + (f" — {UNAVAILABLE[kind]}" if kind in UNAVAILABLE else "")]
+    out: list[str] = []
+    if kind == "set_mode" and not str(action.get("mode") or "").strip():
+        out.append("set_mode needs a mode")
+    if kind in ("smart_circuit", "offgrid"):
+        try:
+            on_value(action.get("on"))
+        except ValueError as e:
+            out.append(f"{kind}: {e}")
+    if kind == "smart_circuit":
+        c = _num(action.get("circuit"))
+        if c is None or c < 1 or c != int(c):
+            out.append("smart_circuit needs a circuit number")
+    if kind == "notify" and not action.get("device_id"):
+        out.append("notify needs a device")
+    if kind == "force":
+        direction = (action.get("direction") or "").lower()
+        unit = (action.get("unit") or "pct").lower()
+        if direction not in _FORCE_SLUG:
+            out.append(f"force direction '{direction}' is not charge, discharge or standby")
+        if unit not in ("pct", "w", "kw"):
+            out.append(f"force unit '{unit}' is not pct, w or kw")
+        if direction in ("charge", "discharge"):
+            p = _num(action.get("power"))
+            if p is None:
+                out.append(f"force {direction} needs a power")
+            elif p < 0 or (unit == "pct" and p > 100):
+                out.append(f"force power {action.get('power')} is out of range")
+    for k in ("target_soc", "soc"):
+        v = _num(action.get(k))
+        if action.get(k) not in (None, "") and (v is None or not 0 <= v <= 100):
+            out.append(f"{k} must be 0 to 100")
+    return out
+
+
+def _ha_action_errors(ha: Any) -> list[str]:
+    if not isinstance(ha, dict):
+        return ["is not an object"]
+    out: list[str] = []
+    if (ha.get("when") or "fire") not in ("fire", "exit", "both"):
+        out.append(f"when '{ha.get('when')}' is not fire, exit or both")
+    if ha.get("ha_kind") == "service":
+        for k in ("instance_id", "domain", "service"):
+            if not str(ha.get(k) or "").strip():
+                out.append(f"service call needs {k}")
+        data = ha.get("data")
+        if isinstance(data, str) and data.strip():
+            import json as _json
+            try:
+                _json.loads(data)
+            except ValueError:
+                out.append("data is not valid JSON")
+    elif not ha.get("device_id"):
+        out.append("notify needs a device")
+    guard = ha.get("guard")
+    if guard:
+        nodes = [guard] if not (isinstance(guard, dict) and "conditions" in guard) \
+            else guard.get("conditions") or []
+        out += _condition_errors(nodes, "guard")
+    return out
+
+
+def known_sensor_ids() -> set[str]:
+    """Every built-in sensor id the editor offers (HA entities are ``ha:…`` on top)."""
+    return {i for group in (SENSORS, SOLAR_SENSORS, TARIFF_SENSORS, BILLING_WINDOW_SENSORS,
+                            DEMAND_SENSORS, ENERGY_SENSORS, BONUS_SENSORS,
+                            EXPORT_CHARGE_SENSORS, FIXED_SENSORS, SYSTEM_SENSORS,
+                            CONST_SENSORS, DERIVED_SENSORS) for i, _ in group}
+
+
+def _sensor_ids_in(nodes: Any) -> list[str]:
+    out: list[str] = []
+    for n in nodes if isinstance(nodes, list) else []:
+        if isinstance(n, dict):
+            if _is_tree(n):
+                out += _sensor_ids_in(n.get("conditions") or [])
+            else:
+                out += [s for s in (n.get("sensor"), n.get("value_sensor")) if s]
+    return out
+
+
+def validate_import(entry: dict, *, gateway_ids: set, device_ids: set,
+                    exposed_ha: set | None = None) -> dict:
     """Check one imported entry. Returns ``{name, ok, errors, warnings}`` — never
     raises, so a whole bundle is reported at once rather than failing on the first
     bad row."""
@@ -882,21 +1053,20 @@ def validate_import(entry: dict, *, gateway_ids: set, device_ids: set) -> dict:
     if not re.match(r"^([01]?\d|2[0-3]):[0-5]\d$", str(at)):
         errors.append(f"fire_at '{at}' is not HH:MM")
 
-    for dk in ("start_date", "end_date"):
-        dv = entry.get(dk)
-        if dv:
-            try:
-                dt.date.fromisoformat(str(dv))
-            except ValueError:
-                errors.append(f"{dk} '{dv}' is not YYYY-MM-DD")
+    # validate_spec checks the dates again for every trigger; keep one message each.
+    errors += [e for e in validate_spec(entry) if e not in errors and "fire_at" not in e]
 
-    errors += validate_spec(entry)
-
-    action = entry.get("action") or {}
-    kind = action.get("kind")
-    if kind and kind not in ACTIONS:
-        errors.append(f"unknown action '{kind}'"
-                      + (f" — {UNAVAILABLE[kind]}" if kind in UNAVAILABLE else ""))
+    # A sensor this bridge does not know reads as missing, so its condition never passes.
+    # Flagged, not refused: an HA entity can be exposed after the import (CND-02, CND-35).
+    known = known_sensor_ids()
+    for sid in dict.fromkeys(_sensor_ids_in(entry.get("conditions"))
+                             + _sensor_ids_in(entry.get("exit_conditions"))):
+        if sid.startswith("ha:"):
+            if exposed_ha is not None and sid.split(":", 1)[1] not in exposed_ha:
+                warnings.append(f"HA entity '{sid}' is not exposed — its conditions read "
+                                f"as missing until it is")
+        elif sid not in known:
+            warnings.append(f"unknown sensor '{sid}' — its conditions will never pass")
 
     gid = entry.get("gateway_id")
     if gid and gid not in gateway_ids:

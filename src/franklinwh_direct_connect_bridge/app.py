@@ -3323,7 +3323,9 @@ def create_app() -> FastAPI:
         st = _ha_store()
         gw_ids = {g.id for g in get_gateways()}
         dev_ids = {d["id"] for d in st.notify_devices()}
-        reports = [scheduler.validate_import(e, gateway_ids=gw_ids, device_ids=dev_ids)
+        exposed = st.ha_exposed_ids()
+        reports = [scheduler.validate_import(e, gateway_ids=gw_ids, device_ids=dev_ids,
+                                             exposed_ha=exposed)
                    for e in entries]
         if dry_run:
             return {"entries": reports, "count": len(reports),

@@ -58,6 +58,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   a **Recurring window** whose start equals its end is empty instead of open all day. Saving or
   importing one of these is refused with the reason (HTTP 422 on save); schedules already
   saved this way stop firing.
+- **Schedules are checked when they are saved or imported** (#202). A schedule whose action,
+  Home Assistant actions, conditions, cron expression, interval, days, months, day of the month
+  or dates the engine cannot use is refused with the reason (HTTP 422 on save; listed as an
+  error per entry on import), instead of failing or being skipped when it runs. Import also
+  warns about a condition on a sensor this bridge does not know, or on a Home Assistant entity
+  that is not exposed. An imported Modbus Bridge entry whose Home Assistant action this bridge
+  cannot run is now reported as an error rather than saved.
 
 ## [0.5.13] — 2026-10-21
 
