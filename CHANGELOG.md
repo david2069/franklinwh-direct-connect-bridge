@@ -31,6 +31,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   published.
 - **No connection warnings before a gateway is set up** (#265). A fresh install logged
   "Name does not resolve" on every page load.
+- **Editing a schedule through the API no longer switches it back on** (#168). A
+  `PUT /api/schedules/{id}` that left out `enabled` turned a disabled schedule on; it now keeps
+  its on/off state unless `enabled` is sent.
 
 ## [0.5.13] — 2026-10-21
 

@@ -66,3 +66,13 @@ def test_a_field_that_is_sent_still_changes(c):
     after = _get(c, sid)
     assert after["windows"] == [] and after["priority"] == 0
     assert after["days"] == FULL["days"]          # untouched fields stay
+
+
+def test_a_put_without_enabled_keeps_a_disabled_schedule_off(c):
+    """#168: `enabled` left out of a PUT is not "turn it on"."""
+    sid = _create(c)
+    assert c.put(f"/api/schedules/{sid}", json={"name": "Evening peak", "enabled": False}
+                 ).status_code == 200
+    assert c.put(f"/api/schedules/{sid}", json={"name": "Renamed"}).status_code == 200
+    after = _get(c, sid)
+    assert after["name"] == "Renamed" and after["enabled"] is False

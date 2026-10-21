@@ -3150,11 +3150,14 @@ def create_app() -> FastAPI:
         sent = req.model_dump(exclude_unset=True, exclude={"name", "enabled"})
         spec = {**req.model_dump(exclude={"name", "enabled"}), **prior_spec, **sent}
         spec["action"] = _normalized_action(spec.get("action"))
-        row = st.update_schedule(sid, name=req.name, enabled=req.enabled, spec=spec)
+        # `enabled` merges like every other field (#168): left out, the schedule keeps its
+        # state. Its model default (True) used to apply and turned a disabled one back on.
+        enabled = req.enabled if "enabled" in req.model_fields_set else bool(prior.get("enabled"))
+        row = st.update_schedule(sid, name=req.name, enabled=enabled, spec=spec)
         try:
-            if prior.get("enabled") != req.enabled:
+            if bool(prior.get("enabled")) != enabled:
                 st.log_schedule_event(sid, req.name,
-                                      "enabled" if req.enabled else "disabled", "toggled")
+                                      "enabled" if enabled else "disabled", "toggled")
             else:
                 st.log_schedule_event(sid, req.name, "updated", "settings changed")
         except Exception:  # noqa: BLE001
