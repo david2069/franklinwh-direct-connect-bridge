@@ -116,6 +116,9 @@ def fire(store, event: str, title: str, message: str, *, cfg: dict | None = None
     cfg = cfg or config(store)
     if event in (cfg.get("triggers") or {}) and not _enabled(cfg, event):
         return 0
+    # Every notification is also a line in the app log (Logs tab), whether or not any
+    # device receives it: with no companion devices it was recorded nowhere else.
+    (log.info if event == "test" else log.warning)("notify [%s]: %s", event, message)
     sent = 0
     try:
         by_id = {i["id"]: i for i in store.ha_instances()}

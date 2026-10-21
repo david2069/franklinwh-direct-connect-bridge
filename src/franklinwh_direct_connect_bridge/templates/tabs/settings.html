@@ -1572,13 +1572,13 @@
     <div class="space-y-1 pt-1 border-t border-white/[0.06]" x-show="(triggers.log || []).length">
       <span class="metric-label">Recent notifications</span>
       <template x-for="(e, i) in (triggers.log || []).slice(0, 8)" :key="i">
-        <div class="flex items-center justify-between gap-2 text-[11px] py-0.5">
-          <span class="truncate" style="color:var(--text-secondary)" x-text="e.message"></span>
-          <span class="shrink-0 flex items-center gap-2">
-            <span class="chip" :class="e.ok === 1 ? 'ok' : (e.ok === 0 ? 'error' : 'muted')"
-                  style="font-size:.55rem" x-text="e.device"></span>
-            <span class="text-slate-500" x-text="fmtNotifyTime(e.ts)"></span>
-          </span>
+        <!-- Time first, then the message, then where it went (owner, 2026-10-21). -->
+        <div class="flex items-center gap-2 text-[11px] py-0.5">
+          <span class="shrink-0 text-slate-500 tabular-nums" x-text="fmtNotifyTime(e.ts)"></span>
+          <span class="truncate flex-1" style="color:var(--text-secondary)" :title="e.message"
+                x-text="e.message"></span>
+          <span class="chip shrink-0" :class="e.ok === 1 ? 'ok' : (e.ok === 0 ? 'error' : 'muted')"
+                style="font-size:.55rem" x-text="e.device"></span>
         </div>
       </template>
     </div>

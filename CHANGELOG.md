@@ -23,6 +23,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Every notification is also in the app log** (Logs tab), as a warning. With no companion
+  devices set up, the notifications were recorded only in Settings → Notifications and
+  delivered nowhere. In that list the time now comes first.
 - **The first-use disclaimer fits a phone screen** (#231). Its text scrolls and its Continue
   button stays in view; Documentation opens the published guide instead of a page that was
   not found.
