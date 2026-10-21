@@ -18,7 +18,7 @@ from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from starlette.requests import Request
 
 from franklinwh_direct_connect_api.transport import TransportError
@@ -631,6 +631,9 @@ class NotifyBroadcastReq(BaseModel):
     device_ids: list[str] | None = None
 
 class ScheduleReq(BaseModel):
+    # Unknown fields are refused, not ignored (#269): a mis-shaped request otherwise saved
+    # a schedule built from defaults, firing at a time nobody chose.
+    model_config = ConfigDict(extra="forbid")
     name: str
     enabled: bool = True
     fire_at: str = "00:00"              # HH:MM
