@@ -1555,6 +1555,9 @@ def _force_dispatch(action: dict, *, host: str | None, window_min: int,
     if not slug:
         return f"force skipped: unknown direction '{direction}'"
     unit = (action.get("unit") or "pct").lower()
+    # No power is not 0 W (#209): a charge or discharge with none set is refused, not sent.
+    if direction != "standby" and action.get("power") in (None, ""):
+        return f"force skipped: no power set for {direction}"
     power = float(action.get("power") or 0)
     if unit == "kw":
         power_w, power_pct, mode = int(power * 1000), 100, "w"
@@ -1656,7 +1659,10 @@ def run_action_outcome(action: dict, *, settings, client, store, snapshot: dict,
         # dispatch into conditions the rule no longer describes.
         policy = resilience.DISPATCH if kind == "force" else resilience.WRITE
         deadline = None
-        if window_end_ts:
+        # Only a window end still ahead bounds the retries. Always and zero-duration
+        # schedules pass an end that is already past, which made it 1 second (#209);
+        # they keep the policy's own deadline instead.
+        if window_end_ts and float(window_end_ts) > time.time():
             deadline = max(1.0, float(window_end_ts) - time.time())
         def _attempt():
             """Raise on a reported failure so resilience can classify and retry it;

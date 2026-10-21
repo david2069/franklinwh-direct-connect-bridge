@@ -45,6 +45,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - **Next fire is right for Every N minutes of 24 hours or more** (#208). The card showed the
   anchor plus N, but the schedule runs daily at the anchor; it now shows the next anchor. The
   same applies to the last slot of a day when N does not divide 24 hours.
+- **A force charge or discharge with no power set is refused** (#209). Sent through the API
+  with an empty `power`, it ran as a 0 W force; it is now skipped with the reason "no power
+  set". **Always** and zero-duration schedules no longer give a failed write only 1 second to
+  retry: they use the normal retry time limit.
 
 ## [0.5.13] — 2026-10-21
 
