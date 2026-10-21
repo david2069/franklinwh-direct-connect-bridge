@@ -68,6 +68,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Settings → Setup → "Where is this site?" reads the aGate and can be set there** (#263).
+  With a real aGate it shows the offset and location the aGate reports, marked READ, and
+  offers the timezones at that offset to confirm. It has its own Save, so the wizard no
+  longer has to be re-run. A demo with mock gateways only is still simply asked.
 - **Every notification is also in the app log** (Logs tab), as a warning. With no companion
   devices set up, the notifications were recorded only in Settings → Notifications and
   delivered nowhere. In that list the time now comes first.

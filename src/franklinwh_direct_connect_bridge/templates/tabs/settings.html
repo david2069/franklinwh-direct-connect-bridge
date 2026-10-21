@@ -67,6 +67,44 @@
               </div>
             </template>
 
+            <!-- The site's timezone, set here without re-running the wizard (#263). With a
+                 real aGate, what it reports is shown as READ and the matching zones are
+                 offered; the owner confirms one. A demo (mocks only) is simply asked. -->
+            <template x-if="st.id === 'timezone'">
+              <div class="mt-2 space-y-2 text-xs">
+                <div x-show="st.read" class="flex flex-wrap items-center gap-2"
+                     style="color:var(--text-secondary)">
+                  <span class="chip ok" style="padding:0 5px;font-size:.55rem"
+                        title="Read from the gateway">READ</span>
+                  <span>aGate clock <span class="font-mono" x-text="st.read &amp;&amp; st.read.label"></span></span>
+                  <template x-if="st.read &amp;&amp; st.read.location">
+                    <span>· location <span class="font-mono"
+                          x-text="[st.read.location.latitude, st.read.location.longitude].filter(v => v !== null &amp;&amp; v !== undefined).join(', ')"></span>
+                      <span x-show="st.read.location.postcode"> · postcode
+                        <span class="font-mono" x-text="st.read.location.postcode"></span></span></span>
+                  </template>
+                </div>
+                <div class="flex flex-wrap items-end gap-2">
+                  <label style="color:var(--text-secondary)">Timezone
+                    <select class="form-control form-control-sm block mt-1" style="width:15rem"
+                            x-model="$store.app.setupTz"
+                            x-init="$store.app.setupTz = (st.values &amp;&amp; st.values.timezone)
+                                     || (st.read &amp;&amp; st.read.candidates.length === 1 ? st.read.candidates[0] : '')">
+                      <option value="">Choose…</option>
+                      <template x-for="z in ((st.read &amp;&amp; st.read.candidates.length) ? st.read.candidates : $store.app.allZones())" :key="z">
+                        <option :value="z" x-text="z" :selected="z === $store.app.setupTz"></option>
+                      </template>
+                    </select></label>
+                  <button class="btn btn-primary btn-sm" :disabled="!$store.app.setupTz"
+                          @click="$store.app.saveSetupTimezone()">Save</button>
+                  <span x-show="$store.app.setupTzError" style="color:#fca5a5"
+                        x-text="$store.app.setupTzError"></span>
+                </div>
+                <p x-show="st.read &amp;&amp; st.read.candidates.length" style="color:var(--text-faint)">
+                  Zones that are at the aGate's offset right now. Pick the one for your area.</p>
+              </div>
+            </template>
+
             <!-- What the gateway told us, separated from what merely has a default. -->
             <template x-if="st.id === 'profile' &amp;&amp; st.values">
               <div class="mt-2 text-xs grid gap-1"

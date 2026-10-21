@@ -155,6 +155,27 @@ document.addEventListener('alpine:init', () => {
       } catch (e) { this.setupExpectedError = String(e); }
     },
 
+    setupTz: '',
+    setupTzError: '',
+
+    // Every IANA zone the browser knows, for a demo site where no aGate can be read.
+    allZones() {
+      try { return Intl.supportedValuesOf('timeZone'); } catch (e) { return []; }
+    },
+
+    async saveSetupTimezone() {
+      this.setupTzError = '';
+      try {
+        const r = await fetch('api/setup/timezone', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ timezone: this.setupTz }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { this.setupTzError = d.detail || `HTTP ${r.status}`; return; }
+        await this.loadSetup();
+      } catch (e) { this.setupTzError = String(e); }
+    },
+
     async loadSetup() {
       try {
         const r = await fetch('api/setup' + this.gwQuery('?'));

@@ -137,7 +137,26 @@ def tz_offset_minutes(name: str, when: dt.datetime | None = None) -> int | None:
     return None if off is None else int(off.total_seconds() // 60)
 
 
-def _timezone_step(store, gateways: list, gateway_offsets: dict[str, int] | None) -> dict[str, Any]:
+def zone_candidates(offset_minutes: int | None, when: dt.datetime | None = None) -> list[str]:
+    """IANA zones whose offset NOW equals ``offset_minutes`` (DST included), sorted.
+
+    The aGate reports an offset and a location but no zone name (``timezoneStr`` is empty),
+    so the zone is proposed from the offset and the owner confirms it (#263) — one offset
+    is shared by several zones with different DST rules, so picking one silently would be
+    a guess.
+    """
+    if offset_minutes is None:
+        return []
+    from zoneinfo import available_timezones
+    out = [z for z in available_timezones()
+           if "/" in z and not z.startswith(("Etc/", "SystemV/", "US/", "posix/", "right/"))
+           and tz_offset_minutes(z, when) == offset_minutes]
+    return sorted(out)
+
+
+def _timezone_step(store, gateways: list, gateway_offsets: dict[str, int] | None,
+                   real_gateway_ids: list[str] | None = None,
+                   gateway_location: dict[str, Any] | None = None) -> dict[str, Any]:
     """The site timezone, and whether every gateway agrees with it.
 
     ``gateway_offsets`` maps gateway id -> the offset that gateway's own clock reports.
@@ -152,7 +171,14 @@ def _timezone_step(store, gateways: list, gateway_offsets: dict[str, int] | None
                   if offsets.get(getattr(g, "id", "")) is not None
                   and site_off is not None
                   and offsets[getattr(g, "id", "")] != site_off]
-    if not name:
+    # What a REAL gateway reports (#263). A mock's clock is the bridge's own, so it says
+    # nothing about where the site is; with only mocks (demo) the owner is asked.
+    real = [offsets[i] for i in (real_gateway_ids or []) if offsets.get(i) is not None]
+    read_off = real[0] if real else None
+    if not name and read_off is not None:
+        detail = (f"Not set — your aGate reports {_fmt_offset(read_off)}. "
+                  "Confirm its timezone below.")
+    elif not name:
         detail = "Not set — schedules need the site's own clock, not the container's."
     elif mismatched:
         detail = (f"{name} ({_fmt_offset(site_off)}) · "
@@ -166,6 +192,12 @@ def _timezone_step(store, gateways: list, gateway_offsets: dict[str, int] | None
         "satisfied": bool(name) and not mismatched,
         "detail": detail,
         "values": {"timezone": name, "offset_minutes": site_off},
+        # Read from the aGate (#263): its offset, the zones that match it now, and the
+        # location it reports. Absent when no real gateway answered.
+        "read": ({"offset_minutes": read_off, "label": _fmt_offset(read_off),
+                  "candidates": zone_candidates(read_off),
+                  "location": gateway_location or None}
+                 if read_off is not None else None),
         "mismatched": [getattr(g, "id", "") for g in mismatched],
         "action": "timezone",
     }
@@ -280,11 +312,13 @@ def steps(*, store, gateways: list, profile_values: dict[str, Any],
           ha_configured: bool, notifications_configured: bool,
           tariff_configured: bool,
           apowers_found: int | None = None,
-          gateway_offsets: dict[str, int] | None = None) -> list[dict[str, Any]]:
+          gateway_offsets: dict[str, int] | None = None,
+          real_gateway_ids: list[str] | None = None,
+          gateway_location: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Every step with its current state, so a re-run shows reality, not blank fields."""
     return [
         _expected_step(expected(store), gateways, apowers_found),
-        _timezone_step(store, gateways, gateway_offsets),
+        _timezone_step(store, gateways, gateway_offsets, real_gateway_ids, gateway_location),
         _gateway_step(gateways),
         _profile_step(profile_values or {}),
         _optional_step("home_assistant", "Home Assistant", ha_configured,

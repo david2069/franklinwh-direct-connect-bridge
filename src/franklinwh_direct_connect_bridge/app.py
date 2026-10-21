@@ -2754,7 +2754,34 @@ def create_app() -> FastAPI:
             # Each gateway's OWN offset, so the timezone step can say which of them
             # disagree with the site instead of assuming they all match.
             "gateway_offsets": _gateway_offsets(),
+            "real_gateway_ids": [g.id for g in (get_gateways() or [])
+                                 if not getattr(g, "is_mock", False)],
+            "gateway_location": _gateway_location(),
         }
+
+    _loc_cache: dict[str, tuple[float, dict]] = {}
+
+    def _gateway_location() -> dict | None:
+        """The location the first REAL gateway reports (1201), for the Setup step (#263).
+
+        Cached for 10 minutes: it changes only when an installer edits it, and Settings →
+        Setup must not add a gateway round trip on every load. None when unreadable."""
+        gw = next((g for g in (get_gateways() or []) if not getattr(g, "is_mock", False)), None)
+        host = gw and (getattr(gw, "active_host", None) or getattr(gw, "configured_host", None))
+        if not host:
+            return None
+        hit = _loc_cache.get(host)
+        if hit and hit[0] > time.time():
+            return hit[1]
+        try:
+            tl = client.read(get_settings(), "time_location", host=host) or {}
+        except (OSError, TransportError, TimeoutError, ValueError):
+            return None
+        lat = tl.get("laitude", tl.get("latitude"))   # FranklinWH's spelling first
+        loc = {"latitude": lat, "longitude": tl.get("longitude"),
+               "postcode": tl.get("postcode") or None, "dst": tl.get("DST")}
+        _loc_cache[host] = (time.time() + 600, loc)
+        return loc
 
     def _gateway_offsets() -> dict[str, int]:
         """gateway id -> the UTC offset that gateway's clock reports (minutes).
