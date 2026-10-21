@@ -23,6 +23,22 @@ standalone.
 
     [Documentation](guide/index.md) · [GitHub Issues](https://github.com/david2069/franklinwh-direct-connect-bridge/issues) · [Full terms](#full-terms)
 
+## Questions, ideas and help: GitHub Discussions
+
+**[Join the conversation on GitHub Discussions](https://github.com/david2069/franklinwh-direct-connect-bridge/discussions)**. Everyone is welcome, technical or
+not; you don't need to know any code. Ask or talk about anything to do with the bridge or
+FranklinWH home batteries:
+
+- installing it, or getting it running in Home Assistant or Docker;
+- something not working, or looking wrong;
+- an idea or a feature you'd like;
+- the documentation: what's unclear or missing;
+- your own setup, and related topics.
+
+Not sure whether it's a defect? Start a discussion. It can be turned into an issue later.
+If you already know it's a defect, you can also raise it in
+[GitHub Issues](https://github.com/david2069/franklinwh-direct-connect-bridge/issues).
+
 ## Full terms
 
 The bridge's licence: the MIT License and its Additional Terms. This is the repository's
@@ -52,8 +68,14 @@ file, included here as it stands, and the page the in-app **Full terms** link op
 - **[Test and release policy](TEST_POLICY.md):** the gates every release passes.
 - **[Feature parity](PARITY_GAP.md)** with the FranklinWH Modbus Bridge and FWHAI.
 
-## Related FranklinWH docs
+## Related FranklinWH projects
 
-- [franklinwh-cloud](https://david2069.github.io/franklinwh-cloud/): the cloud API library.
-- [franklinwh-direct-connect-api](https://david2069.github.io/franklinwh-direct-connect-api/):
-  the Direct Connect local API library this bridge is built on.
+Libraries and tools from the same author. Each is unofficial, like this bridge.
+
+| Project | What it is | Docs | Package |
+|---|---|---|---|
+| [franklinwh-direct-connect-api](https://github.com/david2069/franklinwh-direct-connect-api) | The Direct Connect (local) API library and CLI this bridge is built on | [site](https://david2069.github.io/franklinwh-direct-connect-api/) | [PyPI](https://pypi.org/project/franklinwh-direct-connect-api/) |
+| [franklinwh-cloud](https://github.com/david2069/franklinwh-cloud) | The FranklinWH cloud API library, used by the bridge's cloud features | [site](https://david2069.github.io/franklinwh-cloud/) | [PyPI](https://pypi.org/project/franklinwh-cloud/) |
+| [franklinwh-modbus](https://github.com/david2069/franklinwh-modbus) | The Modbus TCP (SunSpec) library and battery control, used by the bridge's Modbus client | [site](https://david2069.github.io/franklinwh-modbus/) | [PyPI](https://pypi.org/project/franklinwh-modbus/) |
+| [franklinwh-modbus-bridge](https://github.com/david2069/franklinwh-modbus-bridge) | A separate bridge that reads the aGate over Modbus TCP and publishes it, with its own [Discussions](https://github.com/david2069/franklinwh-modbus-bridge/discussions) | [site](https://david2069.github.io/franklinwh-modbus-bridge/) | n/a |
+| [franklinwh-gateway-emulator](https://github.com/david2069/franklinwh-gateway-emulator) | An aGate emulator for testing without hardware | [repo](https://github.com/david2069/franklinwh-gateway-emulator) | n/a |

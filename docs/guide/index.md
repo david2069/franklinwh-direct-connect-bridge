@@ -3,11 +3,14 @@
 This is the guide to **the bridge**: its web UI, its scheduler, what it publishes to
 Home Assistant, and which controls can actually write to your gateway.
 
-It is deliberately *not* the in-app **Guide** button. That opens the bundled
-[Direct Connect API](https://github.com/david2069/franklinwh-direct-connect-api)
-documentation — the wire protocol, the `cmdType` catalogue, the frame formats. Useful if
-you are writing code against the aGate; not useful if you want to know what the
-Scheduler's "Only if" box does. This guide covers the second question.
+The app's **User Guide** link (sidebar, or **More** on a phone) opens this guide. **Docs**
+opens the site's home page. For the wire protocol itself (the `cmdType` catalogue and frame
+formats) see the [Direct Connect API](https://david2069.github.io/franklinwh-direct-connect-api/)
+library's docs.
+
+**Questions, ideas or problems?** Ask on
+[GitHub Discussions](https://github.com/david2069/franklinwh-direct-connect-bridge/discussions).
+Everyone is welcome; you don't need any technical knowledge.
 
 Open the UI at `http://<bridge-host>:8101`. As a Home Assistant add-on, use the add-on's
 **Open Web UI** button or the sidebar panel.
