@@ -89,6 +89,17 @@ of Home Assistant". Think of it as a monthly donation that also gets you remote 
 | **Strengths** | Simplest; no domain, no router changes; works with the Companion app straight away; also includes offsite backups, Alexa/Google Home and voice. **Supports Home Assistant.** | Free; nothing exposed to the internet; also reaches other devices at home if you choose. | Free tunnel; your own address; no router changes. The same Cloudflare account can also hold your HA backups (R2, below). |
 | **Weaknesses** | A paid subscription. | Every phone and computer needs the Tailscale app, and family members need accounts. | Needs a domain and more set-up; exposes HA publicly, so use strong HA logins with multi-factor authentication. |
 
+### Install links
+
+The buttons below open **your own** Home Assistant (via my.home-assistant.io) at the right
+page. It asks for your HA address the first time.
+
+| | Project | Add to your Home Assistant |
+|---|---|---|
+| **Home Assistant Link** | [nabucasa.com](https://www.nabucasa.com/) | Built in: **Settings → Home Assistant Cloud** (Link from 2026.12). Nothing to install. |
+| **Tailscale** | [hassio-addons/app-tailscale](https://github.com/hassio-addons/app-tailscale) | [Open the Tailscale app in your HA](https://my.home-assistant.io/redirect/supervisor_addon/?addon=a0d7b954_tailscale&repository_url=https%3A%2F%2Fgithub.com%2Fhassio-addons%2Frepository) |
+| **Cloudflare Tunnel (cloudflared)** | [homeassistant-apps/app-cloudflared](https://github.com/homeassistant-apps/app-cloudflared) | [Add the cloudflared repository to your HA](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fhomeassistant-apps%2Frepository), then install **Cloudflared** from the store. |
+
 **Whichever you use:** turn on multi-factor authentication for your Home Assistant login
 (**your profile → Security**). Keep Home Assistant updated.
 
