@@ -1790,7 +1790,8 @@ def _force_dispatch(action: dict, *, host: str | None, window_min: int,
 
     def _log(status, detail):
         try:
-            store.log_schedule_event("_batt", "Battery dispatch (schedule)", status, detail)
+            store.log_schedule_event("_batt", "Battery dispatch (schedule)", status, detail,
+                                     gateway_id=gateway_id or "")
             # A clean end (watchdog duration/target, or supersede) closes the persisted
             # row so the boot reconcile does not later see it as interrupted.
             if status == "dispatch-end" and hasattr(store, "end_active_dispatches"):
@@ -1895,7 +1896,7 @@ def run_action_outcome(action: dict, *, settings, client, store, snapshot: dict,
 
         out = resilience.call(
             _attempt, action=kind, target=target, policy=policy, write=True,
-            audit=_audit_action(store, schedule_id, schedule_name),
+            audit=_audit_action(store, schedule_id, schedule_name, gateway_id),
             notifier=notifier, deadline_s=deadline)
         # Carry the body's own words through, and honour a SKIPPED that came back
         # as a clean return rather than being mistaken for a successful write.
@@ -1923,7 +1924,7 @@ def run_action_outcome(action: dict, *, settings, client, store, snapshot: dict,
     return resilience.Outcome(verdict=v, action=kind, target=target, detail=str(detail))
 
 
-def _audit_action(store, schedule_id, schedule_name):
+def _audit_action(store, schedule_id, schedule_name, gateway_id=None):
     """An audit sink for resilience.call that writes to the schedule log. None when
     there is nothing to write to, so a dry run or a unit test stays silent."""
     if store is None or not schedule_id:
@@ -1935,7 +1936,7 @@ def _audit_action(store, schedule_id, schedule_name):
             status = v if v in ("unknown", "failed") else ("fired" if v == "ok" else "error")
             store.log_schedule_event(
                 schedule_id, schedule_name or "", status,
-                kw.get("detail") or kw.get("error") or v)
+                kw.get("detail") or kw.get("error") or v, gateway_id=gateway_id or "")
         except Exception:  # noqa: BLE001 — auditing must never break the call
             pass
     return _audit
@@ -2267,7 +2268,8 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                    else "window closed")
             if exit_res or exit_now:
                 store.log_schedule_event(entry["id"], entry["name"], "exit",
-                                         (f"{why}: " + "; ".join(exit_res)) if exit_res else why)
+                                         (f"{why}: " + "; ".join(exit_res)) if exit_res else why,
+                                         gateway_id=gateway_id or "")
         _window_inside[dkey] = effective_inside
         if effective_inside:
             _window_key[dkey] = wkey or now.date().isoformat()
@@ -2289,7 +2291,8 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                 if _gated_day.get(dkey) != day:
                     _gated_day[dkey] = day
                     store.log_schedule_event(entry["id"], entry["name"], "gated",
-                                             gate_reason(entry, snapshot))
+                                             gate_reason(entry, snapshot),
+                                             gateway_id=gateway_id or "")
             continue
         # Duration hold: conditions must stay true continuously for entry_hold_s.
         hold = int(entry.get("entry_hold_s") or 0)
@@ -2299,7 +2302,8 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                 started = _dwell_since[dkey] = now
                 store.log_schedule_event(
                     entry["id"], entry["name"], "waiting",
-                    f"conditions met — holding {hold}s before firing")
+                    f"conditions met — holding {hold}s before firing",
+                    gateway_id=gateway_id or "")
             if (now - started).total_seconds() < hold:
                 continue
             _dwell_since.pop(dkey, None)
@@ -2346,7 +2350,8 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                 # loser is `skipped`, not `failed` — nothing went wrong, it was outranked.
                 _settle_loser(loser, store=store, gateway_id=gateway_id, now=now,
                               reason=detail)
-                store.log_schedule_event(loser["id"], loser["name"], "deferred", detail)
+                store.log_schedule_event(loser["id"], loser["name"], "deferred", detail,
+                                         gateway_id=gateway_id or "")
         winners.append(group[0])
     # (2) conflict with an ACTIVE dispatch already held by ANOTHER schedule (a force
     # dispatch from a previous tick still running). Only force actions hold control.
@@ -2362,11 +2367,13 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
             if pol == "defer":
                 store.mark_schedule_fired(w["id"], now.date().isoformat(), "deferred")
                 store.log_schedule_event(w["id"], w["name"], "deferred",
-                    "deferred — the battery is already under another dispatch (conflict=defer)")
+                    "deferred — the battery is already under another dispatch (conflict=defer)",
+                    gateway_id=gateway_id or "")
                 continue
             if pol == "wait":
                 store.log_schedule_event(w["id"], w["name"], "waiting",
-                    "waiting — battery busy with another dispatch (conflict=wait); will retry")
+                    "waiting — battery busy with another dispatch (conflict=wait); will retry",
+                    gateway_id=gateway_id or "")
                 continue                             # not marked fired -> retries next tick
             # override: fall through and take control
         to_fire.append(w)
@@ -2573,7 +2580,8 @@ def _claim_run(entry: dict, *, store, gateway_id: str | None, now: dt.datetime):
                     store.log_schedule_event(
                         entry["id"], entry.get("name") or "", "coalesced",
                         f"run {old.get('occurrence_key')} was still open and was "
-                        f"collapsed into {occ.get('occurrence_key')}")
+                        f"collapsed into {occ.get('occurrence_key')}",
+                        gateway_id=gateway_id or "")
                 except Exception:  # noqa: BLE001
                     pass
         return occ
@@ -2677,7 +2685,8 @@ def _fire_entry(entry: dict, *, settings, client, store, snapshot: dict,
                                   or now.date().isoformat(), summary)
         # Severity comes from the store's status map (LOG_SEVERITY), so the
         # classification lives in one place rather than at every call site.
-        store.log_schedule_event(entry["id"], entry["name"], "unknown", summary)
+        store.log_schedule_event(entry["id"], entry["name"], "unknown", summary,
+                                 gateway_id=gateway_id or "")
         log.warning("[%s] schedule %r outcome UNKNOWN — the write may have landed; "
                     "NOT retrying: %s", gateway_id or "-", entry.get("name"), summary)
         return {"id": entry["id"], "name": entry["name"], "result": summary,
@@ -2687,7 +2696,8 @@ def _fire_entry(entry: dict, *, settings, client, store, snapshot: dict,
             entry["id"], entry.get("_wkey") or now.date().isoformat(), summary)
         if occ_id is not None:
             store.finish_occurrence(occ_id, status="ok", outcome=summary)
-        store.log_schedule_event(entry["id"], entry["name"], "fired", summary)
+        store.log_schedule_event(entry["id"], entry["name"], "fired", summary,
+                                 gateway_id=gateway_id or "")
     else:
         if occ_id is not None:
             store.finish_occurrence(occ_id, status="failed", reason=summary)
@@ -2695,6 +2705,7 @@ def _fire_entry(entry: dict, *, settings, client, store, snapshot: dict,
         store.log_schedule_event(
             entry["id"], entry["name"], "error",
             f"{summary} — attempt {attempts}; retrying in "
-            f"{retry_delay_s(attempts):.0f}s while the window is open")
+            f"{retry_delay_s(attempts):.0f}s while the window is open",
+            gateway_id=gateway_id or "")
     return {"id": entry["id"], "name": entry["name"], "result": summary,
             "ok": ok_all}

@@ -840,6 +840,8 @@ document.addEventListener('alpine:init', () => {
       return lines.join('\n');
     },
     toggleExplain(s) { this.explainId = (this.explainId === s.id) ? null : s.id; },
+    /** A history row's gateway, by name (#205). */
+    gatewayName(id) { return (this.gateways.find(g => g.id === id) || {}).name || id; },
 
     /** Give every leaf a stable _cid so a Test Verification result maps back to
      *  its row even inside a group. */

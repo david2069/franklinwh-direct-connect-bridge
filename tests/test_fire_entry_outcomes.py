@@ -16,7 +16,7 @@ class _Store:
     def mark_schedule_fired(self, sid, key, summary):
         self.fired.append((sid, key, summary))
 
-    def log_schedule_event(self, sid, name, status, detail):
+    def log_schedule_event(self, sid, name, status, detail, gateway_id=""):
         self.events.append((status, detail))
 
     def finish_occurrence(self, occ_id, *, status, outcome="", reason=""):

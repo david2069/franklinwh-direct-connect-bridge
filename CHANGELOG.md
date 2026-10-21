@@ -65,6 +65,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   warns about a condition on a sensor this bridge does not know, or on a Home Assistant entity
   that is not exposed. An imported Modbus Bridge entry whose Home Assistant action this bridge
   cannot run is now reported as an error rather than saved.
+- **Scheduler history names the gateway** (#205). Each row written by a gateway's scheduler run
+  now records that gateway, and History shows its name beside the schedule, so the rows of a
+  rule that runs on every gateway can be told apart. `GET /api/schedules/log` returns it as
+  `gateway_id`. The history table gains a `gateway_id` column; older rows have none.
 
 ## [0.5.13] — 2026-10-21
 

@@ -20,7 +20,7 @@ class FakeStore:
         return 0
     def record_dispatch(self, **kw):
         self.recorded.append(kw); return 999
-    def log_schedule_event(self, sid, name, status, detail, now=None):
+    def log_schedule_event(self, sid, name, status, detail, now=None, gateway_id=""):
         self.logs.append((sid, name, status, detail))
 
 

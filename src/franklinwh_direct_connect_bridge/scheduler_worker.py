@@ -139,7 +139,8 @@ def sweep(settings: Settings, *, now: float | None = None) -> list[dict]:
         try:
             store.log_schedule_event(
                 m["schedule_id"], m.get("name") or "", "missed",
-                f"window closed with {m.get('attempts') or 0} attempt(s) and no success")
+                f"window closed with {m.get('attempts') or 0} attempt(s) and no success",
+                gateway_id=m.get("gateway_id") or "")
         except Exception:  # noqa: BLE001
             pass
     return missed
@@ -170,7 +171,7 @@ def tick_once(settings: Settings, *, client, now: float | None = None) -> list[d
                 store.log_schedule_event(
                     "_scheduler", "scheduler", "exception",
                     f"tick for gateway {gw.id} raised {type(e).__name__}: {e}",
-                    severity="exception")
+                    severity="exception", gateway_id=gw.id)
             except Exception:  # noqa: BLE001
                 pass
     return fired

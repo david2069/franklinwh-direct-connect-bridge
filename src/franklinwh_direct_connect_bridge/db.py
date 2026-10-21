@@ -978,6 +978,12 @@ class MetricsStore:
                 "('error','failed','missed')")
             self._conn.execute(
                 "UPDATE schedule_log SET severity='exception' WHERE status='exception'")
+        # Which gateway's tick wrote the row (#205). A rule with gateway scope "all" writes
+        # one row per gateway, and without this they could not be told apart. Rows from
+        # before, and events that belong to no gateway (created, edited), are ''.
+        if "gateway_id" not in cols:
+            self._conn.execute(
+                "ALTER TABLE schedule_log ADD COLUMN gateway_id TEXT NOT NULL DEFAULT ''")
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS ix_sched_log ON schedule_log(ts DESC)")
         self._conn.execute(
@@ -1003,17 +1009,17 @@ class MetricsStore:
 
     def log_schedule_event(self, schedule_id: str, name: str, status: str,
                            result: str, now: float | None = None,
-                           severity: str | None = None) -> None:
+                           severity: str | None = None, gateway_id: str = "") -> None:
         """Record one schedule event, capped WITHIN its class (see LOG_CAP)."""
         sev = severity or self.LOG_SEVERITY.get(status, "event")
         if sev not in self.LOG_CAP:
             sev = "event"
         with self._lock:
             self._conn.execute(
-                "INSERT INTO schedule_log(ts, schedule_id, name, status, result, severity) "
-                "VALUES (?,?,?,?,?,?)",
+                "INSERT INTO schedule_log(ts, schedule_id, name, status, result, severity,"
+                " gateway_id) VALUES (?,?,?,?,?,?,?)",
                 (float(now if now is not None else time.time()),
-                 schedule_id, name, status, result, sev))
+                 schedule_id, name, status, result, sev, gateway_id or ""))
             # Per-class cap: pruning only within the class that just grew means routine
             # chatter cannot evict an error, which a single shared cap guaranteed.
             self._conn.execute(
@@ -1025,7 +1031,8 @@ class MetricsStore:
     def schedule_log(self, *, limit: int = 100, schedule_id: str | None = None,
                      status: str | None = None,
                      severity: str | None = None) -> list[dict]:
-        q = "SELECT ts, schedule_id, name, status, result, severity FROM schedule_log"
+        q = ("SELECT ts, schedule_id, name, status, result, severity, gateway_id "
+             "FROM schedule_log")
         clauses, args = [], []
         if schedule_id:
             clauses.append("schedule_id=?"); args.append(schedule_id)
