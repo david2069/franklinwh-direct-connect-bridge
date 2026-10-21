@@ -68,16 +68,15 @@ backup if the first is ever down.
 
 ### We recommend Home Assistant Link (Nabu Casa)
 
-Home Assistant's own remote access service, run by Nabu Casa, the company that funds
-Home Assistant's development. It's the simplest to set up, and **your subscription
-directly supports Home Assistant**. Most of the profit goes to the non-profit Open Home
-Foundation. Think of it as a monthly donation that also gets you remote access.
+Home Assistant's own remote access service, run by Nabu Casa. It's the simplest to set
+up, and in Nabu Casa's words your subscription "directly funds the full-time development
+of Home Assistant". Think of it as a monthly donation that also gets you remote access.
 
 !!! info "New name"
     Home Assistant **Cloud** is renamed Home Assistant **Link** from HA 2026.12
     (2 December 2026). Until then, HA's screens still say "Home Assistant Cloud". It is the
-    same service at the same price.
-    ([announcement](https://www.home-assistant.io/blog/2026/10/02/big-tech-ruined-the-cloud-so-were-renaming-ours/))
+    same subscription, and you don't need to do anything.
+    ([Nabu Casa's announcement](https://www.nabucasa.com/news/2026-10-02-cloud-becomes-link/))
 
 ### Comparison
 
