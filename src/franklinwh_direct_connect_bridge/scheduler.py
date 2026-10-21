@@ -473,7 +473,11 @@ def next_fire_ts(entry: dict, now: dt.datetime, last_fired_day: str | None = Non
         if now < anchor_dt:
             anchor_dt -= dt.timedelta(days=1)
         k = int((now - anchor_dt).total_seconds() // 60 // iv) + 1
-        return (anchor_dt + dt.timedelta(minutes=k * iv)).timestamp()
+        # The series restarts at the anchor every day (_interval_window), so the next slot
+        # is never later than tomorrow's anchor. Without this, 24 h or more showed
+        # anchor + N while the engine fired at the anchor (#208).
+        return min(anchor_dt + dt.timedelta(minutes=k * iv),
+                   anchor_dt + dt.timedelta(days=1)).timestamp()
     if tt == "cron":
         try:
             from croniter import croniter

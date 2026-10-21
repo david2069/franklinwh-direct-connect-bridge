@@ -42,6 +42,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   `tariff.spot_price` (and a dynamic NEM tariff) kept the last price however old it was, so a
   price-gated schedule could act on a price from hours earlier. The last price is now kept for
   30 minutes, as on the Modbus Bridge, and then the sensor has no value until AEMO answers.
+- **Next fire is right for Every N minutes of 24 hours or more** (#208). The card showed the
+  anchor plus N, but the schedule runs daily at the anchor; it now shows the next anchor. The
+  same applies to the last slot of a day when N does not divide 24 hours.
 
 ## [0.5.13] — 2026-10-21
 

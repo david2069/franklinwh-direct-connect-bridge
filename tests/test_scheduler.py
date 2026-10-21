@@ -1068,3 +1068,18 @@ def test_unavailable_or_unknown_ha_entity_never_satisfies_a_condition(tmp_path, 
                             (f"ha:{iid}:sensor.amber_price", "==", 0),
                             (f"ha:{iid}:sensor.amber_price", "!=", 99)):
         assert sch.evaluate([{"sensor": sensor, "op": op, "value": val}], snap) is False, (sensor, op)
+
+
+def test_next_fire_for_long_intervals_matches_the_engine():
+    """#208: an interval of 24 h or more opens daily at the anchor; Next must say so."""
+    import datetime as _d
+    e = {"enabled": True, "trigger_type": "interval", "interval_min": 1500, "anchor": "06:00",
+         "duration_min": 0}
+    now = _d.datetime(2026, 10, 20, 7, 0)
+    nxt = _d.datetime.fromtimestamp(sch.next_fire_ts(e, now))
+    assert nxt == _d.datetime(2026, 10, 21, 6, 0)
+    assert sch.window_now(e, nxt)[0] == "inside"           # the engine fires then
+    # a period that does not divide the day: the slot after 23:45 is the 00:00 anchor
+    e25 = {"enabled": True, "trigger_type": "interval", "interval_min": 25, "anchor": ""}
+    nxt = _d.datetime.fromtimestamp(sch.next_fire_ts(e25, _d.datetime(2026, 10, 20, 23, 50)))
+    assert nxt == _d.datetime(2026, 10, 21, 0, 0)
