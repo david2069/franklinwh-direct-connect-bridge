@@ -277,7 +277,9 @@
 
               <div class="flex flex-wrap items-center gap-2">
                 <span>Publish this gateway's entities to Home Assistant?</span>
-                <button class="btn btn-primary btn-sm" :disabled="ha.busy || ha.publishing"
+                <!-- Never disabled because the broker is already on (#264): that is the add-on
+                     default, and Yes is still what opts THIS wizard's gateways in. -->
+                <button class="btn btn-primary btn-sm" :disabled="ha.busy"
                         @click="publishYes()">Yes</button>
                 <button class="btn btn-secondary btn-sm" :disabled="ha.busy"
                         @click="publishNo()">No</button>

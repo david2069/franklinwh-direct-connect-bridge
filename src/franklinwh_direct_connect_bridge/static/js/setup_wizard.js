@@ -314,7 +314,10 @@ window.setupWizard = function setupWizard() {
     async publishYes() {
       this.ha.busy = true; this.ha.msg = '';
       try {
-        const r = await fetch('api/mqtt/supervisor/enable', { method: 'POST' });
+        // The broker may already be on (the add-on default, #264): then only the
+        // per-gateway flags below are needed.
+        const r = this.ha.publishing ? { ok: true, status: 200, json: async () => ({}) }
+                                     : await fetch('api/mqtt/supervisor/enable', { method: 'POST' });
         const d = await r.json().catch(() => ({}));
         // Enabling the broker is not enough: each gateway publishes only when its own
         // flag says so. Set it for the gateways this wizard added (the user just said Yes).
