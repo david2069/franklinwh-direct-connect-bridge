@@ -11,6 +11,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+
+- **Alerts are stored records** (#271, the shared alert spec agreed with the Modbus
+  Bridge). A new `alerts` table in the bridge's database keeps each fault, how often it
+  repeated, when it cleared and who acknowledged it, across restarts. Closed alerts are
+  kept 90 days; open ones are never removed.
+
 ### Changed
 
 - **Guide opens this bridge's published docs** (#257). The sidebar, the More sheet and

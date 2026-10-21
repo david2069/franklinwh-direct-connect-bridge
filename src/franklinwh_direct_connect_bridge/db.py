@@ -84,6 +84,7 @@ class MetricsStore:
         self._migrate_app_config()
         self._migrate_tariff_dates()
         self._migrate_service_details()
+        self._migrate_alerts()
         self._conn.commit()
 
     def _migrate_gateway_id(self) -> None:
@@ -2377,6 +2378,214 @@ class MetricsStore:
             if c not in ucols:
                 self._conn.execute(f"ALTER TABLE utilities ADD COLUMN {c} TEXT")
         self._conn.commit()
+
+    # ── alerts (#271; shared spec v1, franklinwh-modbus-bridge#324) ─────────────
+    #: Closed alerts kept this long (spec §7). Open ones are never pruned.
+    ALERT_RETENTION_DAYS = 90
+
+    #: "Open" as the UI means it: still owed an acknowledgement, or a condition that is
+    #: still active (acknowledged or not — the red bar stays until it resolves).
+    _ALERT_OPEN_SQL = "(acked_ts IS NULL OR (kind='condition' AND resolved_ts IS NULL))"
+
+    def _migrate_alerts(self) -> None:
+        """Stored alert records and their per-channel delivery outbox.
+
+        A record, not a flag, so several faults, their history and who acknowledged them
+        all survive a restart. The row is written before anything is delivered: a
+        delivery that fails is retried from `alert_deliveries` and never loses the alert.
+        """
+        self._conn.execute(
+            """CREATE TABLE IF NOT EXISTS alerts(
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   gateway_id TEXT NOT NULL DEFAULT '',
+                   kind TEXT NOT NULL,
+                   severity TEXT NOT NULL,
+                   code TEXT NOT NULL,
+                   title TEXT,
+                   message TEXT,
+                   opened_ts REAL NOT NULL,
+                   last_ts REAL NOT NULL,
+                   count INTEGER NOT NULL DEFAULT 1,
+                   resolved_ts REAL,
+                   acked_by TEXT,
+                   acked_ts REAL)"""
+        )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_alerts_code ON alerts(gateway_id, code, opened_ts DESC)")
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_alerts_opened ON alerts(opened_ts DESC)")
+        self._conn.execute(
+            """CREATE TABLE IF NOT EXISTS alert_deliveries(
+                   alert_id INTEGER NOT NULL,
+                   channel TEXT NOT NULL,
+                   attempts INTEGER NOT NULL DEFAULT 0,
+                   delivered_ts REAL,
+                   last_error TEXT,
+                   PRIMARY KEY(alert_id, channel))"""
+        )
+        self._conn.commit()
+
+    def _alert_rows(self, cur) -> list[dict]:
+        cols = [c[0] for c in cur.description]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+    def insert_alert(self, *, gateway_id: str, kind: str, severity: str, code: str,
+                     title: str, message: str, opened_ts: float,
+                     last_ts: float | None = None) -> int:
+        with self._lock:
+            cur = self._conn.execute(
+                "INSERT INTO alerts(gateway_id, kind, severity, code, title, message,"
+                " opened_ts, last_ts, count) VALUES (?,?,?,?,?,?,?,?,1)",
+                (gateway_id or "", kind, severity, code, title, message,
+                 float(opened_ts), float(last_ts if last_ts is not None else opened_ts)))
+            self._conn.commit()
+            return int(cur.lastrowid)
+
+    def alert(self, alert_id: int) -> dict | None:
+        with self._lock:
+            rows = self._alert_rows(self._conn.execute(
+                "SELECT * FROM alerts WHERE id=?", (int(alert_id),)))
+        return rows[0] if rows else None
+
+    def open_condition(self, gateway_id: str, code: str) -> dict | None:
+        """The active (unresolved) condition for (gateway_id, code). At most one exists."""
+        with self._lock:
+            rows = self._alert_rows(self._conn.execute(
+                "SELECT * FROM alerts WHERE gateway_id=? AND code=? AND kind='condition'"
+                " AND resolved_ts IS NULL ORDER BY opened_ts DESC LIMIT 1",
+                (gateway_id or "", code)))
+        return rows[0] if rows else None
+
+    def open_conditions(self) -> list[dict]:
+        with self._lock:
+            return self._alert_rows(self._conn.execute(
+                "SELECT * FROM alerts WHERE kind='condition' AND resolved_ts IS NULL"))
+
+    def latest_alert(self, gateway_id: str, code: str, *, unacked: bool = False) -> dict | None:
+        q = "SELECT * FROM alerts WHERE gateway_id=? AND code=?"
+        if unacked:
+            q += " AND acked_ts IS NULL"
+        with self._lock:
+            rows = self._alert_rows(self._conn.execute(
+                q + " ORDER BY last_ts DESC LIMIT 1", (gateway_id or "", code)))
+        return rows[0] if rows else None
+
+    def merge_alert(self, alert_id: int, *, message: str | None, now: float) -> None:
+        """Fold a repeat into an existing alert: count + 1, last_ts moves (spec §3)."""
+        with self._lock:
+            self._conn.execute(
+                "UPDATE alerts SET count=count+1, last_ts=?,"
+                " message=COALESCE(?, message) WHERE id=?",
+                (float(now), message, int(alert_id)))
+            self._conn.commit()
+
+    def touch_alert(self, alert_id: int, *, now: float) -> None:
+        """A condition still bad: last_ts says when it was last seen bad."""
+        with self._lock:
+            self._conn.execute("UPDATE alerts SET last_ts=? WHERE id=?",
+                               (float(now), int(alert_id)))
+            self._conn.commit()
+
+    def resolve_alert(self, alert_id: int, *, resolved_ts: float) -> None:
+        with self._lock:
+            self._conn.execute(
+                "UPDATE alerts SET resolved_ts=? WHERE id=? AND resolved_ts IS NULL",
+                (float(resolved_ts), int(alert_id)))
+            self._conn.commit()
+
+    def ack_alert(self, alert_id: int, *, acked_by: str, now: float) -> dict | None:
+        """Acknowledge once. Returns the row, or None if there is no such alert. An
+        alert already acknowledged keeps its first acknowledgement."""
+        with self._lock:
+            self._conn.execute(
+                "UPDATE alerts SET acked_by=?, acked_ts=? WHERE id=? AND acked_ts IS NULL",
+                (acked_by, float(now), int(alert_id)))
+            self._conn.commit()
+            rows = self._alert_rows(self._conn.execute(
+                "SELECT * FROM alerts WHERE id=?", (int(alert_id),)))
+        return rows[0] if rows else None
+
+    def alerts(self, *, open_only: bool = False, kind: str | None = None,
+               since: float | None = None, gateway_id: str | None = None,
+               limit: int = 100) -> list[dict]:
+        """Alerts newest first. `open_only` is the UI's set (see _ALERT_OPEN_SQL)."""
+        clauses, args = [], []
+        if open_only:
+            clauses.append(self._ALERT_OPEN_SQL)
+        if kind:
+            clauses.append("kind=?"); args.append(kind)
+        if since is not None:
+            clauses.append("last_ts>=?"); args.append(float(since))
+        if gateway_id is not None:
+            clauses.append("gateway_id=?"); args.append(gateway_id)
+        q = "SELECT * FROM alerts"
+        if clauses:
+            q += " WHERE " + " AND ".join(clauses)
+        q += " ORDER BY opened_ts DESC, id DESC LIMIT ?"
+        args.append(max(1, min(int(limit), 500)))
+        with self._lock:
+            return self._alert_rows(self._conn.execute(q, args))
+
+    def alert_summary(self) -> dict:
+        """`{level, open, latest_id}` over the open set (spec §4)."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COUNT(*), MAX(id),"
+                " SUM(CASE WHEN severity='critical' THEN 1 ELSE 0 END)"
+                f" FROM alerts WHERE {self._ALERT_OPEN_SQL}").fetchone()
+        n, latest, crit = int(row[0] or 0), row[1], int(row[2] or 0)
+        level = "critical" if crit else ("warning" if n else "ok")
+        return {"level": level, "open": n, "latest_id": latest}
+
+    def prune_alerts(self, *, days: int | None = None, now: float | None = None) -> int:
+        """Age out CLOSED alerts — acknowledged and, for a condition, resolved — by the
+        later of the two times. An open alert is never pruned, however old (spec §7)."""
+        d = int(self.ALERT_RETENTION_DAYS if days is None else days)
+        cutoff = float(now if now is not None else time.time()) - d * 86400
+        where = (f"NOT {self._ALERT_OPEN_SQL}"
+                 " AND MAX(COALESCE(acked_ts,0), COALESCE(resolved_ts,0)) < ?")
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM alert_deliveries WHERE alert_id IN"
+                f" (SELECT id FROM alerts WHERE {where})", (cutoff,))
+            cur = self._conn.execute(f"DELETE FROM alerts WHERE {where}", (cutoff,))
+            self._conn.commit()
+            return cur.rowcount or 0
+
+    # The delivery outbox: one row per (alert, channel); `delivered_ts` NULL = still owed.
+    # A delivery deliberately not made (no HA configured, acknowledged before it went out)
+    # is closed with a `skipped: …` last_error, so it is recorded rather than retried.
+    def queue_delivery(self, alert_id: int, channel: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO alert_deliveries(alert_id, channel) VALUES (?,?)",
+                (int(alert_id), channel))
+            self._conn.commit()
+
+    def pending_deliveries(self) -> list[dict]:
+        with self._lock:
+            return self._alert_rows(self._conn.execute(
+                "SELECT * FROM alert_deliveries WHERE delivered_ts IS NULL"
+                " AND (last_error IS NULL OR last_error NOT LIKE 'skipped:%')"
+                " ORDER BY alert_id, channel"))
+
+    def record_delivery(self, alert_id: int, channel: str, *, ok: bool, error: str = "",
+                        now: float | None = None, attempted: bool = True) -> None:
+        with self._lock:
+            self._conn.execute(
+                "UPDATE alert_deliveries SET attempts=attempts+?, delivered_ts=?,"
+                " last_error=? WHERE alert_id=? AND channel=?",
+                (1 if attempted else 0,
+                 float(now if now is not None else time.time()) if ok else None,
+                 None if ok else (error or "failed")[:300], int(alert_id), channel))
+            self._conn.commit()
+
+    def alert_deliveries(self, alert_id: int | None = None) -> list[dict]:
+        q, args = "SELECT * FROM alert_deliveries", []
+        if alert_id is not None:
+            q += " WHERE alert_id=?"; args.append(int(alert_id))
+        with self._lock:
+            return self._alert_rows(self._conn.execute(q + " ORDER BY alert_id, channel", args))
 
     # ── app_config (generic KV; JSON-encoded values) ─────────────────────────
     def _migrate_app_config(self) -> None:
