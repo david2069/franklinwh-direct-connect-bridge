@@ -763,6 +763,36 @@ def test_trigger_always_fires_on_rising_edge(tmp_path, monkeypatch):
     assert "Release" in seen
 
 
+def test_trigger_always_fires_on_every_rising_edge(tmp_path, monkeypatch):
+    """#190: each rising edge is its own run. The fixed occurrence key 'always' was finished
+    by the first run, so every later rising edge sent nothing — across restarts too."""
+    import datetime as _d
+    from franklinwh_direct_connect_bridge import battery_control as bc
+    from franklinwh_direct_connect_bridge.db import MetricsStore
+    seen = []
+    monkeypatch.setattr(bc, "execute", lambda cmd, **kw: (seen.append(cmd), {"ok": True, "result": "ok", "active": cmd})[1])
+    monkeypatch.setattr(bc, "current", lambda: {"active": "Force Discharge"})
+    st = MetricsStore(str(tmp_path / "m.db"))
+    st.create_schedule(sid="al2", name="always high soc", spec={
+        "trigger_type": "always", "enabled": True,
+        "conditions": [{"sensor": "battery.soc_pct", "op": ">=", "value": 90}],
+        "action": {"kind": "force", "direction": "discharge", "unit": "pct", "power": 50}})
+    sch._window_inside.clear(); sch._window_key.clear(); sch._dwell_since.clear()
+    now = _d.datetime(2026, 9, 22, 12, 0)
+    for i, soc in enumerate((95, 95, 50, 95)):
+        sch.tick(settings=None, client=None, store=st, state={"soc": soc}, host="h",
+                 gateway_id=None, now=now + _d.timedelta(minutes=i))
+    assert seen == ["Force Discharge", "Release", "Force Discharge"]
+    # A restart (fresh in-memory state, same database) does not leave it finished forever.
+    sch._window_inside.clear(); sch._window_key.clear()
+    seen.clear()
+    sch.tick(settings=None, client=None, store=st, state={"soc": 50}, host="h",
+             gateway_id=None, now=now + _d.timedelta(minutes=10))
+    sch.tick(settings=None, client=None, store=st, state={"soc": 95}, host="h",
+             gateway_id=None, now=now + _d.timedelta(minutes=11))
+    assert seen == ["Force Discharge"]
+
+
 def test_ha_guided_entity_action_calls_domain_service(monkeypatch):
     """A guided entity action (data as an object) executes exactly like the Modbus
     bridge: POST /api/services/<domain>/<service> with {entity_id, **data}."""

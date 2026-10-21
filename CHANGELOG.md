@@ -49,6 +49,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   with an empty `power`, it ran as a 0 W force; it is now skipped with the reason "no power
   set". **Always** and zero-duration schedules no longer give a failed write only 1 second to
   retry: they use the normal retry time limit.
+- **An Always schedule fires every time its conditions start to hold** (#190). It fired once,
+  ever: its single stored run stayed finished, across restarts, so every later rising edge
+  sent nothing. Each rising edge is now its own run. The release on the falling edge is
+  unchanged.
 
 ## [0.5.13] — 2026-10-21
 

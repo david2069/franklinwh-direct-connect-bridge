@@ -2012,6 +2012,11 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
             # No time window — the entry conditions ARE the window (continuous).
             time_inside = bool(entry.get("enabled") and cal_ok and evaluate(
                 entry.get("conditions") or [], snapshot, entry.get("match", "all")))
+            # Each activation is its own occurrence (#190). The fixed key 'always' was
+            # finished by the first run, so no later rising edge ever fired again.
+            if time_inside:
+                wkey = (_window_key.get(dkey) if was_inside else None) \
+                    or f"always:{int(now.timestamp())}"
         else:
             time_inside = bool(entry.get("enabled") and cal_ok and state == "inside")
         entry["_wkey"], entry["_wend"] = wkey, wend
