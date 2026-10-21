@@ -17,6 +17,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   Bridge). A new `alerts` table in the bridge's database keeps each fault, how often it
   repeated, when it cleared and who acknowledged it, across restarts. Closed alerts are
   kept 90 days; open ones are never removed.
+- **Alert API** (#271). `GET /api/alerts` lists alerts (filters `open`, `kind`, `since`),
+  `POST /api/alerts/{id}/ack` acknowledges one and records where it came from
+  (`source:ui`, `source:api` or `source:ha`), and the new `GET /api/status` gives the summary
+  `alerts: {level, open, latest_id}`. An alert monitor runs in the background as a listed
+  worker; if it stops, `/api/status` says so and the bridge's health check is unaffected.
 
 ### Changed
 

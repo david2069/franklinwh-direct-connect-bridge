@@ -57,6 +57,7 @@ from . import energy_flow as _eflow
 from . import state
 from . import scheduler_worker
 from . import workers as _workers
+from . import alerts
 from .config import get_settings, gateway_list, metrics_active, save_override
 from .ha_supervisor import apply_host_timezone, apply_supervisor_mqtt, discover_mqtt
 from .notify import Notifier
@@ -734,6 +735,11 @@ class ReserveReq(BaseModel):
 # Only these runtime-applicable fields are editable via PUT /api/settings; restart-only
 # fields (broker / host / poll_interval / metrics) stay read-only. log_level maps an
 # HA-style level name to a python logging level applied live to the bridge logger.
+class AlertAck(BaseModel):
+    #: Who acknowledged (#271). This bridge has no users, so it records the source.
+    source: str = "api"
+
+
 class BmsRecordReq(BaseModel):
     """Start a BMS recording session. Defined at module scope — a model nested in
     create_app() cannot have its forward reference resolved by FastAPI."""
@@ -1193,6 +1199,8 @@ def create_app() -> FastAPI:
             # A worker dying is exactly the class of failure that used to pass
             # unnoticed, so it is audited like a consequential action.
             _audit("worker_failed", detail=w.name, result=reason, ok=False)
+            # WORKER_STALLED (#271) takes the supervisor's verdict as given.
+            alerts.on_worker_transition(w, reason)
 
         _sup_worker = _workers.registry.register(_workers.Worker(
             name="supervisor", concern="watch every worker's liveness",
@@ -1216,6 +1224,12 @@ def create_app() -> FastAPI:
         _sched_task = asyncio.create_task(
             scheduler_worker.run(get_settings(), _sched_stop, client=client))
 
+        # ── alerts (#271): thresholds, delivery outbox, retention ─────────────
+        _alert_stop = asyncio.Event()
+        _alert_task = asyncio.create_task(alerts.AlertMonitor(
+            get_settings(), store_fn=lambda: db.get_store(get_settings()),
+            notifier=Notifier(get_settings())).run(_alert_stop))
+
         _sup_task = asyncio.create_task(_supervisor_loop())
         _sup_worker._task = _sup_task
         log.info("worker supervision active (%d workers registered)",
@@ -1224,6 +1238,7 @@ def create_app() -> FastAPI:
             yield
         finally:
             _sched_stop.set()
+            _alert_stop.set()
             _sup_stop.set()
             _sup_task.cancel()
             # Release any dispatch WE are holding before the bridge stops — a running
@@ -5054,6 +5069,48 @@ def create_app() -> FastAPI:
         feed /api/live — a failed worker deliberately does not fail the container
         (RUNTIME_DESIGN decision 4), because restarting the world hides the cause."""
         return _workers.registry.snapshot()
+
+    # ── alerts (#271; shared spec v1 §4, franklinwh-modbus-bridge#324) ─────────
+    @app.get("/api/alerts")
+    def api_alerts(open: int = Query(0, ge=0, le=1),            # noqa: A002 — spec name
+                   kind: str | None = Query(None, pattern="^(event|condition)$"),
+                   since: float | None = Query(None),
+                   limit: int = Query(100, ge=1, le=500)):
+        """Stored alerts, newest first. `open=1` is what the UI shows: everything still
+        owed an acknowledgement, plus conditions that are still active. Each row carries
+        its delivery record so a list can say where it went."""
+        st = db.get_store(get_settings())
+        rows = st.alerts(open_only=bool(open), kind=kind, since=since, limit=limit) if st else []
+        if st is not None:
+            by_alert: dict = {}
+            for d in st.alert_deliveries():
+                by_alert.setdefault(d["alert_id"], []).append(d)
+            for r in rows:
+                r["deliveries"] = by_alert.get(r["id"], [])
+        return {"alerts": rows}
+
+    @app.post("/api/alerts/{alert_id}/ack")
+    def api_alert_ack(alert_id: int, req: AlertAck | None = None):
+        """Acknowledge one alert, for everyone. A condition stays active (and on the red
+        bar) until it resolves; acknowledging only stops the modal."""
+        _guard_writes()
+        source = (req.source if req else "api") or "api"
+        if source not in alerts.ACK_SOURCES:
+            raise HTTPException(400, f"source must be one of {', '.join(alerts.ACK_SOURCES)}")
+        st = _ha_store()
+        row = alerts.ack(st, alert_id, source)
+        if row is None:
+            raise HTTPException(404, f"no alert {alert_id}")
+        return row
+
+    @app.get("/api/status")
+    def api_status():
+        """The bridge's derived status: the alert summary the top bar and Home Assistant
+        read, and the alert monitor's own liveness. A stale monitor is reported here as
+        data; it never fails /api/live (RUNTIME_DESIGN decision 4)."""
+        st = db.get_store(get_settings())
+        summary = st.alert_summary() if st else {"level": "ok", "open": 0, "latest_id": None}
+        return {"alerts": summary, "alert_monitor": alerts.monitor_status()}
 
     def _dispatch_guard() -> str:
         """Why restarting the dispatch watchdog is unsafe right now, or "" if it is not.
