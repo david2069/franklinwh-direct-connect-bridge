@@ -908,9 +908,11 @@ def snapshot_from_state(state: dict, power: dict | None = None) -> dict[str, Any
         "status.programme_id": st.get("programme_id"),
         "bridge.latency_ms": st.get("latency_ms"),
     }
-    # grid.connected is derived, so say so rather than implying a device field.
-    grid = st.get("grid_w")
-    snap["grid.connected"] = None if grid is None else int(grid != 0)
+    # grid.connected is derived from the off-grid state, not from grid power: 0 W is a
+    # normal reading on grid, and `grid_w != 0` read it as disconnected (#206). No
+    # off-grid reading is no reading (None), never a guess.
+    og = st.get("off_grid")
+    snap["grid.connected"] = None if og is None else int(not og)
     # Booleans as 1/0 so they compare with `== 1` like every other boolean sensor
     # here, rather than needing a separate true/false vocabulary in the editor.
     for key, src in (("status.vpp", "vpp"), ("status.off_grid", "off_grid"),

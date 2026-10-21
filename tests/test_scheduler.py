@@ -128,7 +128,13 @@ def test_action_failure_is_captured_not_raised():
 def test_snapshot_marks_derived_values():
     snap = sch.snapshot_from_state({"soc": 50, "grid_w": 0})
     assert snap["battery.soc_pct"] == 50
-    assert snap["grid.connected"] == 0, "derived from grid power, not a device field"
+    assert snap["grid.connected"] is None, "no off-grid reading is no reading"
+
+
+def test_grid_connected_follows_off_grid_not_zero_watts():
+    """#206: 0 W on grid is connected; an island with grid power still reading is not."""
+    assert sch.snapshot_from_state({"grid_w": 0, "off_grid": False})["grid.connected"] == 1
+    assert sch.snapshot_from_state({"grid_w": 120, "off_grid": True})["grid.connected"] == 0
 
 
 def test_operating_mode_is_a_picker_not_a_text_box():
@@ -683,11 +689,11 @@ def test_exit_condition_nested_group_ends_window(tmp_path, monkeypatch):
             {"sensor": "grid.connected", "op": "==", "value": 1}]}]})
     sch._window_inside.clear(); sch._dwell_since.clear()
     now = _d.datetime(2026, 9, 22, 14, 0)
-    sch.tick(settings=None, client=None, store=st, state={"soc": 50, "grid_w": 100}, host="h",
+    sch.tick(settings=None, client=None, store=st, state={"soc": 50, "grid_w": 100, "off_grid": False}, host="h",
              gateway_id=None, now=now)                          # fires (group false: soc high)
     seen.clear()
     # SoC≤20 AND grid connected → nested group true → exit
-    sch.tick(settings=None, client=None, store=st, state={"soc": 15, "grid_w": 100}, host="h",
+    sch.tick(settings=None, client=None, store=st, state={"soc": 15, "grid_w": 100, "off_grid": False}, host="h",
              gateway_id=None, now=now + _d.timedelta(minutes=5))
     assert "Release" in seen
 

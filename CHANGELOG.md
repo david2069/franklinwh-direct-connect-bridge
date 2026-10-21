@@ -34,6 +34,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - **Editing a schedule through the API no longer switches it back on** (#168). A
   `PUT /api/schedules/{id}` that left out `enabled` turned a disabled schedule on; it now keeps
   its on/off state unless `enabled` is sent.
+- **The scheduler sensor `grid.connected` follows the off-grid state** (#206). It was worked
+  out from grid power and read 0 (disconnected) whenever grid power was exactly 0 W while on
+  grid. It now reads 1 on grid and 0 off grid, and has no value when the off-grid state is
+  not known.
 
 ## [0.5.13] — 2026-10-21
 
