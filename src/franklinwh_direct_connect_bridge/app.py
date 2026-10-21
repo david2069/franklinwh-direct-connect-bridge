@@ -4243,6 +4243,8 @@ def create_app() -> FastAPI:
         own wall-clock minus UTC (DST-correct); ``timezoneStr`` is usually empty so we don't rely
         on an IANA name. Falls back to the ``timezone`` base-offset hours if the time won't parse."""
         host = _gw_host(gateway)
+        if not host:                       # no gateway set up yet (#265): don't try
+            return {"available": False}
         try:
             tl = client.read(get_settings(), "time_location", host=host)
         except (OSError, TransportError, TimeoutError, ValueError):

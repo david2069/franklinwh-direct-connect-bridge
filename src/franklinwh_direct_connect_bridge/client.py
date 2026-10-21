@@ -936,6 +936,11 @@ def summary(s: Settings, host: str | None = None, *, mock: bool = False) -> dict
         "mqtt_enabled": s.mqtt_enabled, "read_only": s.read_only,
         "writes_enabled": writes_enabled(s),
     }
+    if not host:
+        # No gateway set up yet (#265): nothing to read, so don't try — an empty host only
+        # produced "Name does not resolve" warnings on every page load of a fresh install.
+        out["error"] = "no gateway configured"
+        return out
     _ph, _pp = _split_hostport(host, s.fwh_port)
     # How many TCP connections this call made. Today it is always 1: `with _client(...)`
     # opens a fresh socket and logs in, every time. Reported by the code that actually
