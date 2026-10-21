@@ -8,6 +8,9 @@ opens the site's home page. For the wire protocol itself (the `cmdType` catalogu
 formats) see the [Direct Connect API](https://david2069.github.io/franklinwh-direct-connect-api/)
 library's docs.
 
+**Alerts on your phone, or using the bridge away from home?** See
+[Your phone, notifications and access from away](phone-and-remote-access.md).
+
 **Questions, ideas or problems?** Ask on
 [GitHub Discussions](https://github.com/david2069/franklinwh-direct-connect-bridge/discussions).
 Everyone is welcome; you don't need any technical knowledge.

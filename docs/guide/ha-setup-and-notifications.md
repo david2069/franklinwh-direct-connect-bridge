@@ -88,6 +88,8 @@ A **notification device** is a name for one of Home Assistant's `notify` service
 one instance. A phone with the
 [Home Assistant Companion app](https://companion.home-assistant.io/) has a service
 called `notify.mobile_app_<device>`. That is the usual choice.
+Step by step, and how to reach it away from home: [Your phone, notifications and access
+from away](phone-and-remote-access.md).
 
 1. Open **Settings → Integrations**, and scroll to **Notifications → Companion Devices**.
 2. Press **+ Add device**. It is disabled until you have an instance ("Add an HA

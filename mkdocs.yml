@@ -132,6 +132,7 @@ nav:
           - guide/scheduler/examples.md
       - guide/home-assistant.md
       - guide/ha-setup-and-notifications.md
+      - guide/phone-and-remote-access.md
       - guide/multi-gateway.md
       - guide/energy-and-costs.md
       - USER_GUIDE.md
