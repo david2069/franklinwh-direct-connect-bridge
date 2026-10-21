@@ -11,6 +11,27 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+
+- **Guide opens this bridge's published docs** (#257). The sidebar, the More sheet and
+  Settings → Help link straight to **Docs** and **User Guide** on the bridge's own site, in a
+  new window. The in-app panel that said the docs weren't bundled, and pointed at the
+  library's site, is gone.
+- **Logs show a short source name** (#239): `poller` instead of
+  `franklinwh_direct_connect_bridge.poller`. The full name is the tooltip and the filter
+  value, and the column now shows on phones.
+
+### Fixed
+
+- **The first-use disclaimer fits a phone screen** (#231). Its text scrolls and its Continue
+  button stays in view; Documentation opens the published guide instead of a page that was
+  not found.
+- **The wizard's "Yes" to Home Assistant works on the add-on** (#264). It was disabled
+  whenever MQTT was already on, the add-on's default, so the wizard's gateway was never
+  published.
+- **No connection warnings before a gateway is set up** (#265). A fresh install logged
+  "Name does not resolve" on every page load.
+
 ## [0.5.13] — 2026-10-21
 
 Hotfix: the FranklinWH cloud can be connected from the add-on again, it signs in once instead of every 5 minutes, and a rejected password stops all sign-ins before the account can lock. Save mappings works.
