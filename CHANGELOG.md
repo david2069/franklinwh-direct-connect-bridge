@@ -22,6 +22,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   (`source:ui`, `source:api` or `source:ha`), and the new `GET /api/status` gives the summary
   `alerts: {level, open, latest_id}`. An alert monitor runs in the background as a listed
   worker; if it stops, `/api/status` says so and the bridge's health check is unaffected.
+- **What raises an alert** (#271). The aGate unreachable for 5 minutes, or no live data for
+  2 minutes (critical); the MQTT broker disconnected for 5 minutes (warning); a background
+  worker that stopped responding or crashed (critical); any control the Audit Trail records
+  as failed, such as a refused worker restart (critical, "Command refused"); a scheduled
+  action that failed or missed its window (critical). Each clears or is counted by the
+  shared spec's rules: a condition resolves after 2 minutes good (1 for live data), and
+  repeats of the same event within 10 minutes add to one alert rather than making new ones.
 
 ### Changed
 

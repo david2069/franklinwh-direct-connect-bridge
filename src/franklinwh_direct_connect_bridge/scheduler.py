@@ -26,6 +26,7 @@ import re
 import time
 from typing import Any
 
+from . import alerts
 from . import site_time
 from . import ha_instances
 from . import resilience
@@ -2707,5 +2708,10 @@ def _fire_entry(entry: dict, *, settings, client, store, snapshot: dict,
             f"{summary} — attempt {attempts}; retrying in "
             f"{retry_delay_s(attempts):.0f}s while the window is open",
             gateway_id=gateway_id or "")
+        # SCHEDULE_FAILED (#271). Retries inside the window merge into the same alert.
+        alerts.raise_event(
+            store, gateway_id, "SCHEDULE_FAILED",
+            f"Schedule '{entry['name']}' failed (attempt {attempts}): {summary}. "
+            "It is retried while its window is open.")
     return {"id": entry["id"], "name": entry["name"], "result": summary,
             "ok": ok_all}

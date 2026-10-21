@@ -23,6 +23,7 @@ import asyncio
 import logging
 import time
 
+from . import alerts
 from . import scheduler as _sched
 from . import workers as _workers
 from .config import Settings
@@ -143,6 +144,11 @@ def sweep(settings: Settings, *, now: float | None = None) -> list[dict]:
                 gateway_id=m.get("gateway_id") or "")
         except Exception:  # noqa: BLE001
             pass
+        # SCHEDULE_FAILED (#271): a scheduled action that was never sent.
+        alerts.raise_event(
+            store, m.get("gateway_id") or "", "SCHEDULE_FAILED",
+            f"Schedule '{m.get('name') or m.get('schedule_id')}' missed its window: "
+            f"{m.get('attempts') or 0} attempt(s), none succeeded.")
     return missed
 
 

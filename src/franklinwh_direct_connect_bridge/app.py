@@ -4324,6 +4324,8 @@ def create_app() -> FastAPI:
                 status_code=428,
                 detail=f"'{action}' changes the physical gateway — re-send with confirm=true.")
 
+    _NOT_COMMANDS = frozenset({"worker_failed"})
+
     def _audit(action: str, *, gateway: str | None = None, detail: str = "",
                result: str = "", ok: bool | None = None) -> None:
         """Record one consequential control to BOTH the Audit Trail (structured, on the
@@ -4341,6 +4343,12 @@ def create_app() -> FastAPI:
             if store is not None:
                 store.log_control_event(action, gateway_id=gateway, source="ui",
                                         detail=detail, result=str(result)[:200], ok=ok)
+                # 3 · COMMAND_REFUSED (#271): every control_log row with ok=0. Not a
+                # worker dying (WORKER_STALLED has it) nor a cloud sign-in, which is
+                # not a command.
+                if ok is False and action not in _NOT_COMMANDS \
+                        and not action.startswith("cloud_"):
+                    alerts.raise_event(store, gateway, "COMMAND_REFUSED", f"control: {msg}")
         except Exception:  # pragma: no cover — auditing must never break a control
             pass
 
