@@ -38,6 +38,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   out from grid power and read 0 (disconnected) whenever grid power was exactly 0 W while on
   grid. It now reads 1 on grid and 0 off grid, and has no value when the off-grid state is
   not known.
+- **A stale AEMO NEM price is no longer used forever** (#207). When AEMO could not be reached,
+  `tariff.spot_price` (and a dynamic NEM tariff) kept the last price however old it was, so a
+  price-gated schedule could act on a price from hours earlier. The last price is now kept for
+  30 minutes, as on the Modbus Bridge, and then the sensor has no value until AEMO answers.
 
 ## [0.5.13] — 2026-10-21
 

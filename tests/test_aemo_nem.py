@@ -116,3 +116,22 @@ def test_settings_put_tariff_entities_are_strings(tmp_path, monkeypatch):
     finally:
         providers._cloud_auth.clear(); providers._cloud_auth.update(_auth)
         providers._breaker_loaded = _loaded
+
+
+def test_a_stale_price_is_dropped_after_30_minutes(monkeypatch):
+    """#207: on a failed fetch the last good price is kept for 30 minutes, then None."""
+    payload = {"ELEC_NEM_SUMMARY": [{"REGIONID": "NSW1", "PRICE": 67.18}]}
+    clock = [1000.0]
+    monkeypatch.setattr(aemo_nem._time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(aemo_nem.urllib.request, "urlopen",
+                        lambda req, timeout=0: _Resp(json.dumps(payload).encode()))
+    aemo_nem._cache.clear()
+    assert aemo_nem.spot_price("NSW1")["price_c_kwh"] == 6.72
+
+    def _down(req, timeout=0):
+        raise OSError("AEMO unreachable")
+    monkeypatch.setattr(aemo_nem.urllib.request, "urlopen", _down)
+    clock[0] += 600                                          # 10 min: last good price kept
+    assert aemo_nem.spot_price("NSW1")["price_c_kwh"] == 6.72
+    clock[0] += 1500                                         # 35 min old: no price
+    assert aemo_nem.spot_price("NSW1") is None

@@ -17,12 +17,16 @@ REGIONS = ("NSW1", "QLD1", "SA1", "TAS1", "VIC1")
 
 _URL = "https://visualisations.aemo.com.au/aemo/apps/api/report/ELEC_NEM_SUMMARY"
 _TTL = 240.0                       # NEM dispatch is 5-min; cache ~4min so we're never stale-by-much
-_cache: dict[str, tuple] = {}      # region -> (expires_monotonic, dict)
+#: How old the last good price may be when a fetch fails (#207). Kept forever, a price-gated
+#: force ran on a price that no longer existed. 30 minutes, as on the Modbus Bridge.
+_STALE_MAX = 1800.0
+_cache: dict[str, tuple] = {}      # region -> (expires_monotonic, dict, fetched_monotonic)
 
 
 def spot_price(region: str | None) -> dict[str, Any] | None:
-    """Current wholesale spot for a NEM region, or None. Never raises; keeps the last good
-    value on a fetch error. Returns {region, rrp_mwh, price_c_kwh, settlement, source}."""
+    """Current wholesale spot for a NEM region, or None. Never raises; on a fetch error keeps
+    the last good value for up to ``_STALE_MAX`` seconds, then None. Returns {region, rrp_mwh,
+    price_c_kwh, settlement, source}."""
     region = (region or "").upper()
     if region not in REGIONS:
         return None
@@ -41,8 +45,9 @@ def spot_price(region: str | None) -> dict[str, Any] | None:
                 out = {"region": region, "rrp_mwh": round(rrp, 2),
                        "price_c_kwh": round(rrp / 10.0, 2),
                        "settlement": row.get("SETTLEMENTDATE"), "source": "AEMO NEM"}
-                _cache[region] = (now + _TTL, out)
+                _cache[region] = (now + _TTL, out, now)
                 return out
     except Exception:                                          # noqa: BLE001 — market data is optional
-        return (hit[1] if hit else None)                       # keep stale rather than nothing
-    return (hit[1] if hit else None)
+        pass
+    # Keep stale rather than nothing — but only while it is recent enough to act on.
+    return hit[1] if (hit and now - hit[2] <= _STALE_MAX) else None
