@@ -95,6 +95,12 @@ class MqttPublisher:
         # + LWT guard against acting on stale data if the bridge drops).
         self.client.publish(self.state_topic, json.dumps(state), retain=True)
 
+    def publish_alerts(self, payload: dict) -> None:
+        """Bridge problem + heartbeat (#271). Retained, so the last heartbeat stays
+        readable — and visibly old — if the bridge stops."""
+        self.client.publish(entities.alerts_topic(self.node, self.s.mqtt_prefix),
+                            json.dumps(payload), retain=True)
+
     def publish_availability(self, online: bool) -> None:
         self.client.publish(self.avail_topic, "online" if online else "offline", retain=True)
 

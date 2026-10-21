@@ -29,6 +29,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   action that failed or missed its window (critical). Each clears or is counted by the
   shared spec's rules: a condition resolves after 2 minutes good (1 for live data), and
   repeats of the same event within 10 minutes add to one alert rather than making new ones.
+- **Critical alerts reach Home Assistant even with no phone set up** (#271). Each critical
+  alert creates a Home Assistant persistent notification (`fwh_dc_alert_<id>`) whenever the
+  bridge can reach Home Assistant, whether or not any notification device is configured.
+  It is retried until delivered, and dismissed when the alert is acknowledged in the bridge.
+  Dismissing it in Home Assistant does not acknowledge the alert.
+- **"Bridge problem" and "Bridge heartbeat" in Home Assistant** (#271). Each gateway's
+  device gets a `problem` binary sensor that is on while an alert is open, with the open
+  alerts as attributes, and a heartbeat timestamp updated at least every minute. Both stay
+  available while the aGate is offline, so automations can react without any `notify`
+  service.
 
 ### Changed
 

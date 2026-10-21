@@ -20,8 +20,9 @@ def test_discovery_configs_shape():
     assert state_topic == "franklinwh-local/sn123/state"
     assert avail_topic == "franklinwh-local/sn123/availability"
     # one config per entity, correct discovery topic + value_template + device + availability
-    assert len(configs) == len(entities.ENTITIES) + len(entities.CONTROLS), \
-        "sensors plus the writable controls"
+    assert len(configs) == (len(entities.ENTITIES) + len(entities.CONTROLS)
+                            + len(entities.BRIDGE_ENTITIES)), \
+        "sensors, the writable controls and the bridge-health pair (#271)"
     by_topic = dict(configs)
     soc_topic = "homeassistant/sensor/sn123/soc/config"
     assert soc_topic in by_topic

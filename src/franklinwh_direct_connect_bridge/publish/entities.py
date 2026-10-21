@@ -69,6 +69,43 @@ CONTROLS: list[dict[str, Any]] = [
      "state_key": "circuit_3_on", "circuit": 3},
 ]
 
+#: The bridge's own health (#271, shared alert spec §6). Published for every gateway
+#: device whatever the groups, on their own topic, and WITHOUT the gateway's availability
+#: topic: "Bridge problem" has to stay readable exactly when the aGate is unreachable.
+#: A bridge that has died shows as a heartbeat that stopped moving.
+BRIDGE_ENTITIES: list[dict[str, Any]] = [
+    {"key": "bridge_problem", "name": "Bridge problem", "ha_type": "binary_sensor",
+     "device_class": "problem"},
+    {"key": "bridge_heartbeat", "name": "Bridge heartbeat", "ha_type": "sensor",
+     "device_class": "timestamp"},
+]
+
+#: Seconds between heartbeats, and so the longest a "Bridge problem" change waits.
+HEARTBEAT_EVERY_S = 60
+
+
+def alerts_topic(node: str, prefix: str) -> str:
+    return f"{prefix}/{node}/alerts"
+
+
+def alerts_payload(summary: dict, open_alerts: list[dict], now: float,
+                   gateway_id: str = "") -> dict[str, Any]:
+    """The JSON on alerts_topic: the problem flag, the heartbeat, and the open alerts
+    (this gateway's and the bridge-wide ones) as the binary_sensor's attributes."""
+    import datetime as _dt
+    mine = [a for a in open_alerts if a.get("gateway_id") in ("", gateway_id)]
+    return {
+        "problem": bool(mine),
+        "heartbeat": _dt.datetime.fromtimestamp(now, _dt.timezone.utc).isoformat(
+            timespec="seconds"),
+        "level": summary.get("level", "ok"),
+        "open": len(mine),
+        "alerts": [{k: a.get(k) for k in ("id", "code", "severity", "kind", "title",
+                                          "opened_ts", "resolved_ts", "acked_ts", "count")}
+                   for a in mine],
+    }
+
+
 #: Publishable groups. Users can opt groups in/out (heavy ones default off) — the
 #: differentiator vs a plain filtered viewer. Controls are the writable entities.
 GROUPS: dict[str, dict] = {
@@ -282,6 +319,30 @@ def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: st
             cfg["state_off"] = "False"
         configs.append(
             (f"{discovery_prefix}/{c['ha_type']}/{node}/{c['key']}/config", cfg))
+
+    a_topic = alerts_topic(node, prefix)
+    for b in BRIDGE_ENTITIES:
+        if b["key"] in skip:
+            continue
+        cfg = {
+            "name": b["name"],
+            "unique_id": f"franklinwh_{node}_{b['key']}",
+            "object_id": f"franklinwh_{node}_{b['key']}",
+            "state_topic": a_topic,
+            "device_class": b["device_class"],
+            "entity_category": "diagnostic",
+            "device": device,
+        }
+        if b["ha_type"] == "binary_sensor":
+            cfg["value_template"] = "{{ 'ON' if value_json.problem else 'OFF' }}"
+            cfg["json_attributes_topic"] = a_topic
+            cfg["json_attributes_template"] = (
+                "{{ {'level': value_json.level, 'open': value_json.open,"
+                " 'alerts': value_json.alerts} | tojson }}")
+        else:
+            cfg["value_template"] = "{{ value_json.heartbeat }}"
+        configs.append(
+            (f"{discovery_prefix}/{b['ha_type']}/{node}/{b['key']}/config", cfg))
 
     return configs, state_topic, avail_topic
 
