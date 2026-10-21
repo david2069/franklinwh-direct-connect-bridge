@@ -301,7 +301,12 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                         log.debug("[%s] network read failed: %s", gw.id, e)
                 st.update(net_state)
                 gw.last_state = st
-                gw.state_ts = time.time()
+                # Only a poll that READ the gateway makes the snapshot fresh (#284). A
+                # failed poll stored an empty snapshot as new, so the scheduler kept
+                # evaluating a dead gateway and blocked its tick on that gateway's clock
+                # read (three 20 s connects) — stalling every other gateway's schedules.
+                if summ.get("ok"):
+                    gw.state_ts = time.time()
                 # Cache the full summary for /api/summary + /api/gateways/{id}/summary so the
                 # dashboard reads the poller's copy instead of a fresh device session on every
                 # browser poll (fixes flicker + slow load). Keep last-GOOD values but reflect

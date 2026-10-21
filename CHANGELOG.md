@@ -68,6 +68,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **An unreachable gateway no longer stalls the scheduler** (#284). Each tick read the dead
+  gateway's clock and waited about a minute for it, delaying every other gateway's
+  schedules and raising "Background worker stalled". Only a poll that reads the gateway
+  now counts as fresh data, so the scheduler skips a gateway that is down and says why.
 - **Settings → Setup → "Where is this site?" reads the aGate and can be set there** (#263).
   With a real aGate it shows the offset and location the aGate reports, marked READ, and
   offers the timezones at that offset to confirm. It has its own Save, so the wizard no
