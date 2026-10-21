@@ -12,6 +12,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **A bridge-wide "Bridge problem" sensor in Home Assistant** (#286), on the bridge's own
+  device next to "Bridge heartbeat". It carries every open alert, including those of a
+  gateway that has never answered and so has no device of its own. The per-gateway
+  sensors stay.
 
 - **Alerts are stored records** (#271, the shared alert spec agreed with the Modbus
   Bridge). A new `alerts` table in the bridge's database keeps each fault, how often it

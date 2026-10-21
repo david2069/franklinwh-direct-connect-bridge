@@ -184,3 +184,46 @@ def test_poller_publishes_the_problem_state(monkeypatch):
     assert _Pub.sent[0]["problem"] is True
     assert _Pub.sent[0]["alerts"][0]["code"] == "COMMAND_REFUSED"
     assert len(_Pub.sent) == 1, "unchanged summary inside the heartbeat interval: no repeat"
+
+
+# ── the bridge-level "Bridge problem" (#286, spec v1.2): every open alert ────────
+class _Store:
+    def __init__(self, open_alerts):
+        self.open = open_alerts
+
+    def alert_summary(self):
+        return {"level": "critical" if self.open else "ok", "open": len(self.open),
+                "latest_id": self.open[-1]["id"] if self.open else None, "changed_ts": 1.0}
+
+    def alerts(self, open_only=False):
+        return list(self.open)
+
+
+class _HBP(_HB):
+    def __init__(self):
+        super().__init__()
+        self.problems = []
+
+    def publish_problem(self, payload): self.problems.append(payload)
+
+
+def test_bridge_level_problem_carries_every_gateways_alerts():
+    # A gateway that never answered has no device; its alert must still reach HA.
+    st = _Store([{"id": 1, "gateway_id": "never-answered", "code": "GATEWAY_UNREACHABLE"}])
+    hb = _HBP()
+    mon = _monitor(True, hb)
+    mon.heartbeat_once(now=0.0)
+    assert mon.problem_once(st, now=0.0)
+    assert hb.problems[-1]["problem"] is True and hb.problems[-1]["open"] == 1
+    assert not mon.problem_once(st, now=15.0)            # unchanged, between heartbeats
+    st.open = []
+    assert mon.problem_once(st, now=30.0)                # resolved: published at once
+    assert hb.problems[-1]["problem"] is False
+
+
+def test_bridge_problem_discovery_is_on_the_bridge_device():
+    topic, cfg = entities.bridge_problem_config("franklinwh", "homeassistant")
+    assert topic == "homeassistant/binary_sensor/fwh_dc_bridge/bridge_problem/config"
+    assert cfg["device_class"] == "problem"
+    assert cfg["device"]["identifiers"] == ["franklinwh_fwh_dc_bridge"]
+    assert cfg["state_topic"] == "franklinwh/fwh_dc_bridge/alerts"

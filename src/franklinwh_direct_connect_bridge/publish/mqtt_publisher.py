@@ -124,6 +124,8 @@ class BridgeHeartbeat:
         self.s = settings
         self.config_topic, self.config = entities.heartbeat_config(
             settings.mqtt_prefix, settings.ha_discovery_prefix)
+        self.problem_topic, self.problem_config = entities.bridge_problem_config(
+            settings.mqtt_prefix, settings.ha_discovery_prefix)
         self.client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
             client_id=f"franklinwh-direct-connect-bridge-{entities.BRIDGE_NODE}")
@@ -133,6 +135,7 @@ class BridgeHeartbeat:
 
     def _on_connect(self, client, userdata, flags, rc, properties=None):
         client.publish(self.config_topic, json.dumps(self.config), retain=True)
+        client.publish(self.problem_topic, json.dumps(self.problem_config), retain=True)
 
     def start(self) -> None:
         self.client.connect(self.s.mqtt_host, self.s.mqtt_port)
@@ -148,6 +151,11 @@ class BridgeHeartbeat:
         # Retained: if the bridge stops, the last heartbeat stays readable, and visibly old.
         self.client.publish(entities.heartbeat_topic(self.s.mqtt_prefix),
                             entities.heartbeat_payload(now), retain=True)
+
+    def publish_problem(self, payload: dict) -> None:
+        """The bridge-level "Bridge problem" (#286). Retained, like the per-gateway one."""
+        self.client.publish(entities.alerts_topic(entities.BRIDGE_NODE, self.s.mqtt_prefix),
+                            json.dumps(payload), retain=True)
 
     def stop(self) -> None:
         try:

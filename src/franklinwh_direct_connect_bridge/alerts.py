@@ -388,6 +388,7 @@ class AlertMonitor:
         self._hb = None
         self._hb_try = float("-inf")
         self._hb_last = float("-inf")
+        self._problem_sig = None
 
     def heartbeat_once(self, now: float | None = None) -> bool:
         """The bridge-level "Bridge heartbeat" (spec §11), every HEARTBEAT_EVERY_S, sent
@@ -418,6 +419,23 @@ class AlertMonitor:
         self._hb_last = ts
         return True
 
+    def problem_once(self, store, now: float | None = None) -> bool:
+        """Publish the bridge-level "Bridge problem" (#286) on a change of the alert
+        summary, and with every heartbeat. Rides the heartbeat's connection, so it is
+        sent only while that is up. Returns True if it published."""
+        from .publish import entities
+        if self._hb is None or not self._hb.is_connected():
+            return False
+        summ = store.alert_summary()
+        sig = (summ.get("level"), summ.get("open"), summ.get("latest_id"), summ.get("changed_ts"))
+        ts = float(now if now is not None else time.time())
+        if sig == self._problem_sig and ts - self._hb_last > 1:
+            return False
+        self._hb.publish_problem(entities.alerts_payload(
+            summ, store.alerts(open_only=True), gateway_id=None))
+        self._problem_sig = sig
+        return True
+
     def stop_heartbeat(self) -> None:
         if self._hb is not None:
             self._hb.stop()
@@ -434,6 +452,10 @@ class AlertMonitor:
             return
         check_workers(self.registry, now=ts)
         evaluate(store, now=ts)
+        try:
+            self.problem_once(store, now=ts)
+        except Exception as e:  # noqa: BLE001 — publishing never stops the monitor
+            log.debug("bridge problem not published: %s", e)
         try:
             deliver(store, self.notifier, now=ts)
         except Exception as e:  # noqa: BLE001 — delivery never stops the monitor

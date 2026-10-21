@@ -116,16 +116,38 @@ def heartbeat_config(prefix: str, discovery_prefix: str) -> tuple[str, dict[str,
     })
 
 
+def bridge_problem_config(prefix: str, discovery_prefix: str) -> tuple[str, dict[str, Any]]:
+    """(config_topic, payload) for the bridge-level "Bridge problem" (#286, spec v1.2): ALL
+    open alerts, every gateway's included, on the bridge's own device. A gateway that
+    never answered has no device of its own, so its alerts showed on no sensor."""
+    topic = alerts_topic(BRIDGE_NODE, prefix)
+    return (f"{discovery_prefix}/binary_sensor/{BRIDGE_NODE}/bridge_problem/config", {
+        "name": "Bridge problem",
+        "unique_id": f"franklinwh_{BRIDGE_NODE}_bridge_problem",
+        "object_id": f"franklinwh_{BRIDGE_NODE}_bridge_problem",
+        "state_topic": topic,
+        "device_class": "problem",
+        "entity_category": "diagnostic",
+        "device": bridge_device_info(),
+        "value_template": "{{ 'ON' if value_json.problem else 'OFF' }}",
+        "json_attributes_topic": topic,
+        "json_attributes_template": ("{{ {'level': value_json.level, 'open': value_json.open,"
+                                     " 'alerts': value_json.alerts} | tojson }}"),
+    })
+
+
 def heartbeat_payload(now: float) -> str:
     import datetime as _dt
     return _dt.datetime.fromtimestamp(now, _dt.timezone.utc).isoformat(timespec="seconds")
 
 
 def alerts_payload(summary: dict, open_alerts: list[dict],
-                   gateway_id: str = "") -> dict[str, Any]:
+                   gateway_id: str | None = "") -> dict[str, Any]:
     """The JSON on alerts_topic: the problem flag and the open alerts (this gateway's
-    and the bridge-wide ones) as the binary_sensor's attributes."""
-    mine = [a for a in open_alerts if a.get("gateway_id") in ("", gateway_id)]
+    and the bridge-wide ones) as the binary_sensor's attributes. ``gateway_id=None`` is
+    the bridge-level sensor: every open alert (#286)."""
+    mine = (list(open_alerts) if gateway_id is None
+            else [a for a in open_alerts if a.get("gateway_id") in ("", gateway_id)])
     return {
         "problem": bool(mine),
         "level": summary.get("level", "ok"),
