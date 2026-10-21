@@ -1,0 +1,80 @@
+<!-- ── Alerts (#271, shared alert spec v1 §5) ─────────────────────────────
+     The critical-alert modal stays until it is acknowledged: no Escape handler and no
+     backdrop click, on purpose. Every alert in the queue has its own "I understand";
+     OK acknowledges them all once each is ticked. Times are SITE time. -->
+<div x-show="$store.alerts.pending.length" x-cloak
+     class="fixed inset-0 z-[105] flex items-center justify-center p-4"
+     role="alertdialog" aria-modal="true" aria-labelledby="alertModalTitle">
+  <div class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+  <div class="relative w-full max-w-lg rounded-xl border shadow-2xl flex flex-col"
+       style="background:var(--surface-0, #0f172a);border-color:var(--danger, #dc2626);max-height:calc(100dvh - 2rem)">
+    <div class="px-5 py-3 text-white flex items-center gap-2 shrink-0 rounded-t-xl" style="background:var(--danger, #dc2626)">
+      <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <div id="alertModalTitle" class="text-sm font-semibold"
+           x-text="$store.alerts.pending.length > 1 ? $store.alerts.pending.length + ' critical alerts' : 'Critical alert'"></div>
+    </div>
+    <div class="px-5 py-3 space-y-3 overflow-y-auto min-h-0">
+      <template x-for="a in $store.alerts.pending" :key="a.id">
+        <div class="rounded-lg border px-3 py-2 space-y-1.5" style="border-color:var(--border)">
+          <div class="text-[11px] font-mono" style="color:var(--text-secondary)" x-text="$store.alerts.when(a)"></div>
+          <div class="text-sm font-semibold" style="color:var(--text-primary)"
+               x-text="a.title + (a.gateway_id ? ' · ' + a.gateway_id : '')"></div>
+          <div class="text-sm" style="color:var(--text-primary)" x-text="a.message"></div>
+          <div class="text-xs" style="color:var(--text-secondary)">
+            <span class="font-semibold">What it means:</span> <span x-text="$store.alerts.help(a).means"></span>
+          </div>
+          <div class="text-xs" style="color:var(--text-secondary)">
+            <span class="font-semibold">What to do:</span> <span x-text="$store.alerts.help(a).todo"></span>
+            <button class="underline ml-1" style="color:var(--accent, #34d399)"
+                    @click="$store.alerts.go(a)" x-text="$store.alerts.help(a).link"></button>
+          </div>
+          <div class="text-[10px]" style="color:var(--text-faint)" x-text="$store.alerts.delivery(a)"></div>
+          <label class="flex items-start gap-2 text-sm cursor-pointer select-none pt-1" style="color:var(--text-primary)">
+            <input type="checkbox" class="mt-0.5 shrink-0" x-model="$store.alerts.understood[a.id]">
+            <span>I understand</span>
+          </label>
+        </div>
+      </template>
+    </div>
+    <div class="px-5 py-3 border-t flex items-center justify-between gap-2 shrink-0" style="border-color:var(--border)">
+      <span class="text-[11px]" style="color:var(--text-faint)">Acknowledging records it in the Logs, for everyone.</span>
+      <button class="btn btn-primary btn-sm" :disabled="!$store.alerts.allUnderstood || $store.alerts.busy"
+              :class="(!$store.alerts.allUnderstood || $store.alerts.busy) ? 'opacity-50 cursor-not-allowed' : ''"
+              @click="$store.alerts.ackPending()">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Open alerts, from the top-bar badge. Time first, then what happened, then where it
+     was delivered (owner's instruction). Warnings are acknowledged here. -->
+<div x-show="$store.alerts.listOpen" x-cloak
+     class="fixed inset-0 z-[100] flex items-center justify-center p-4"
+     @keydown.escape.window="$store.alerts.listOpen = false">
+  <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="$store.alerts.listOpen = false"></div>
+  <div class="relative w-full max-w-2xl rounded-xl border shadow-2xl flex flex-col"
+       style="background:var(--surface-0, #0f172a);border-color:var(--border);max-height:calc(100dvh - 2rem)">
+    <div class="px-5 py-3 border-b flex items-center justify-between shrink-0" style="border-color:var(--border)">
+      <div class="text-sm font-semibold" style="color:var(--text-primary)">Open alerts</div>
+      <button class="btn btn-secondary btn-sm" @click="$store.alerts.listOpen = false">Close</button>
+    </div>
+    <div class="px-5 py-3 overflow-y-auto min-h-0 space-y-1">
+      <div x-show="!$store.alerts.list.length" class="text-xs" style="color:var(--text-secondary)">No open alerts.</div>
+      <template x-for="a in $store.alerts.list" :key="a.id">
+        <div class="flex items-start gap-3 text-xs py-1.5 border-b border-white/[0.06]">
+          <span class="shrink-0 font-mono w-40" style="color:var(--text-secondary)" x-text="$store.alerts.when(a)"></span>
+          <span class="min-w-0 flex-1">
+            <span class="chip" :class="a.severity === 'critical' ? 'error' : 'warn'" style="font-size:.55rem"
+                  x-text="a.severity"></span>
+            <span class="font-semibold" style="color:var(--text-primary)" x-text="a.title"></span>
+            <span style="color:var(--text-secondary)" x-text="' — ' + a.message"></span>
+            <span class="block text-[10px]" style="color:var(--text-faint)"
+                  x-text="$store.alerts.delivery(a) + (a.acked_ts ? ' · acknowledged ' + $store.alerts.at(a.acked_ts) + ' (' + a.acked_by + ')' : '')"></span>
+          </span>
+          <!-- Critical ones are acknowledged in the modal, behind "I understand". -->
+          <button x-show="!a.acked_ts && a.severity !== 'critical'" class="btn btn-secondary btn-sm shrink-0" :disabled="$store.alerts.busy"
+                  @click="$store.alerts.ackOne(a.id)">Acknowledge</button>
+        </div>
+      </template>
+    </div>
+  </div>
+</div>

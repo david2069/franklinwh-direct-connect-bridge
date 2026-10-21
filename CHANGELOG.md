@@ -39,6 +39,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   alerts as attributes, and a heartbeat timestamp updated at least every minute. Both stay
   available while the aGate is offline, so automations can react without any `notify`
   service.
+- **Critical alerts open a window that stays until acknowledged** (#271). It says what
+  happened, when (in the site's time), what it means and what to do, with a link. Each alert
+  has its own "I understand" box, and OK is enabled once every box is ticked; Escape and
+  clicking outside do not close it. Alerts raised while no browser was open, for example by a
+  schedule, show on the next visit. A condition that has been acknowledged but is still
+  active shows as a red bar under the top bar until it clears, and a badge in the top bar
+  counts open alerts and opens the list, where warnings are acknowledged.
 
 ### Changed
 
