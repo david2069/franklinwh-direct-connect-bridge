@@ -69,6 +69,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   now records that gateway, and History shows its name beside the schedule, so the rows of a
   rule that runs on every gateway can be told apart. `GET /api/schedules/log` returns it as
   `gateway_id`. The history table gains a `gateway_id` column; older rows have none.
+- **Next fire, the timeline and Test follow the site's clock** (#161). They used the bridge
+  container's clock while schedules fire on the aGate's, so when the two zones differed the
+  card's **Next:**, **● active**, the timeline and **Test** were off by the difference. They now
+  use the clock of the schedule's gateway (the default gateway for an unbound schedule), and
+  **Test** evaluates that gateway's values instead of always the default gateway's. When the
+  aGate's clock cannot be read, the scheduler keeps using the zone it last read, and logs it,
+  instead of silently switching to the container's.
 
 ## [0.5.13] — 2026-10-21
 

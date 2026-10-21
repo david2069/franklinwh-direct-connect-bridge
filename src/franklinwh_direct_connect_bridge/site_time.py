@@ -34,6 +34,10 @@ MAX_OFFSET_MINUTES = 14 * 60
 
 _lock = threading.Lock()
 _cache: dict[str | None, tuple[float, int]] = {}      # host -> (expires_at, offset_minutes)
+#: The last offset each host reported, kept past the TTL. When the gateway cannot be read the
+#: site is still in the zone it was in a moment ago — far likelier than the container's (#161).
+_last: dict[str | None, int] = {}
+_fallback_logged: set = set()
 
 
 def _offset_from_reading(tl: dict) -> int | None:
@@ -91,23 +95,48 @@ def offset_minutes(settings, host: str | None = None, *, store=None) -> int | No
         return None
     with _lock:
         _cache[host] = (now + TTL_SECONDS, off)
+        _last[host] = off
+        _fallback_logged.discard(host)
     return off
 
 
 def now_site(settings, host: str | None = None) -> tuple[dt.datetime, int | None]:
     """``(aware now in the site's zone, offset)``, or container-local with offset ``None``.
 
-    The fallback is exactly what the scheduler did before this existed, so an unreachable
-    gateway behaves as it always has — but it is aware too, so nothing downstream has to
-    care which it got, and the caller can tell the two apart instead of guessing.
+    When the gateway cannot be read, the last offset it reported is used and logged (#161);
+    only a gateway never read falls back to the container's clock, which is what the
+    scheduler did before this existed. Either way the result is aware, so nothing
+    downstream has to care which it got.
     """
     off = offset_minutes(settings, host)
     if off is None:
-        return dt.datetime.now().astimezone(), None
+        with _lock:
+            off = _last.get(host)
+            first = off is not None and host not in _fallback_logged
+            if first:
+                _fallback_logged.add(host)
+        if off is None:
+            return dt.datetime.now().astimezone(), None
+        if first:
+            log.warning("site clock unreadable for %s — using its last known offset, "
+                        "%+d minutes from UTC", host or "the default gateway", off)
     return dt.datetime.now(dt.timezone(dt.timedelta(minutes=off))), off
+
+
+def now_known(host: str | None = None) -> dt.datetime:
+    """Site now from the offset the scheduler last read for ``host``, without asking the
+    gateway — for previews (next fire, timeline, Test) that must agree with the tick but
+    must not add a gateway round trip to a page load. Container-local until one is known."""
+    with _lock:
+        off = _last.get(host)
+    if off is None:
+        return dt.datetime.now().astimezone()
+    return dt.datetime.now(dt.timezone(dt.timedelta(minutes=off)))
 
 
 def reset_cache() -> None:
     """Drop cached offsets (tests, and a gateway whose host changed)."""
     with _lock:
         _cache.clear()
+        _last.clear()
+        _fallback_logged.clear()
