@@ -148,6 +148,29 @@ def install(logger_name: str = "franklinwh_direct_connect_bridge",
     _installed = True
 
 
+_PKG = "franklinwh_direct_connect_bridge"
+
+
+def short_source(name: str | None) -> str:
+    """A short logger name for the Logs tab's Source column (#239): this package's prefix
+    dropped (``…bridge.poller`` → ``poller``, the root → ``bridge``) and a third-party
+    ``franklinwh_`` prefix dropped (``franklinwh_modbus.controller`` →
+    ``modbus.controller``). Anything else is returned unchanged."""
+    n = str(name or "")
+    if n == _PKG:
+        return "bridge"
+    if n.startswith(_PKG + "."):
+        return n[len(_PKG) + 1:]
+    if n.startswith("franklinwh_"):
+        return n[len("franklinwh_"):]
+    return n
+
+
+def with_short(entries: list[dict]) -> list[dict]:
+    """Each entry with its ``short`` source name added; the full ``name`` is kept."""
+    return [{**e, "short": short_source(e.get("name"))} for e in entries]
+
+
 def get_logs(limit: int = 200, level: str | None = None,
              since: float | None = None) -> list[dict]:
     """The most-recent buffered entries, newest-first. ``level`` (optional) is a minimum

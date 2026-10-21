@@ -33,6 +33,10 @@ from . import logbuffer
 # ── Legal disclaimer (unofficial app) ─────────────────────────────────────────
 #: One-line audit stamp logged once at startup and on first UI connection.
 DISCLAIMER_ISSUES_URL = "https://github.com/david2069/franklinwh-direct-connect-bridge/issues"
+#: This bridge's published docs (#257). Absolute https URLs: a relative ``guide/`` opened
+#: in a new window leaves the ingress session and answers 404 (#231).
+BRIDGE_DOCS_URL = "https://david2069.github.io/franklinwh-direct-connect-bridge/"
+BRIDGE_GUIDE_URL = BRIDGE_DOCS_URL + "guide/"
 DISCLAIMER_LINE = (
     "franklinwh-direct-connect-bridge | UNOFFICIAL software - NOT affiliated with or endorsed by "
     "FranklinWH | provided AS-IS, no warranty, use at your own risk | may break without notice "
@@ -1272,26 +1276,13 @@ def create_app() -> FastAPI:
             _guide_bundled = True
             break
 
-    #: Where the guide actually is. The mkdocs site is built by tools/build_image.sh from
-    #: the sibling library checkout and lands in docs_site/ — which is GITIGNORED, so the
-    #: Home Assistant add-on (built from the git repository) has no site at all. The Guide
-    #: tab then loaded /guide, got FastAPI's 404, and rendered {"detail":"Not Found"} as
-    #: the page. Measured on the live add-on, 2026-10-15.
-    #:
-    #: Published docs are the honest fallback: the same content, online, rather than a
-    #: broken panel. Reported so the UI can send people to a working page instead of an
-    #: iframe that cannot load.
-    GUIDE_PUBLISHED_URL = "https://david2069.github.io/franklinwh-direct-connect-api/"
-
     @app.get("/api/guide")
     def api_guide():
-        """Whether the guide is bundled in this build, and where to read it if not."""
+        """Where the docs are: this bridge's published site (#257), or the bundled one."""
         return {"bundled": _guide_bundled,
-                "url": "guide/" if _guide_bundled else GUIDE_PUBLISHED_URL,
-                "published_url": GUIDE_PUBLISHED_URL,
-                "user_guide_url": ("https://github.com/david2069/"
-                                   "franklinwh-direct-connect-bridge/blob/main/"
-                                   "docs/guide/README.md"),
+                "url": "guide/" if _guide_bundled else BRIDGE_DOCS_URL,
+                "published_url": BRIDGE_DOCS_URL,
+                "user_guide_url": BRIDGE_GUIDE_URL,
                 "reason": ("" if _guide_bundled else
                            "This build does not bundle the documentation site.")}
 
@@ -5667,7 +5658,7 @@ def create_app() -> FastAPI:
                 "forks (see Full terms).",
             ],
             "issues_url": DISCLAIMER_ISSUES_URL,
-            "docs_url": "guide/",
+            "docs_url": BRIDGE_GUIDE_URL,
             "terms_url": "https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/LICENSE",
             "version": __version__,
         }
@@ -5713,11 +5704,12 @@ def create_app() -> FastAPI:
                                      since=since, until=until, name=source, search=q)
                 total = store.logs_count(level_no_min=min_lvl, since=since, until=until,
                                         name=source, search=q)
-                return {"entries": entries, "total": total, "offset": offset, "limit": limit,
+                return {"entries": logbuffer.with_short(entries), "total": total, "offset": offset, "limit": limit,
                         "has_more": (offset + len(entries)) < total,
                         "sources": store.log_sources()}
             # Fallback: in-memory ring (store disabled)
-            return {"entries": logbuffer.get_logs(limit=limit, level=level, since=since),
+            return {"entries": logbuffer.with_short(
+                        logbuffer.get_logs(limit=limit, level=level, since=since)),
                     "total": None, "offset": 0, "has_more": False, "sources": []}
         except Exception:  # noqa: BLE001
             return {"entries": [], "total": 0, "offset": 0, "has_more": False, "sources": []}
@@ -6045,7 +6037,8 @@ def create_app() -> FastAPI:
             request, "index.html",
             {"version": __version__, "base_path": _base_path(request),
              "cache_bust": _asset_version(),
-             "host": get_settings().fwh_host})
+             "host": get_settings().fwh_host,
+             "docs_url": BRIDGE_DOCS_URL, "guide_url": BRIDGE_GUIDE_URL})
         # The HTML must never be cached: it carries the hashed asset URLs, so a stale
         # page pins the browser to stale JS no matter how good the asset hashing is.
         # This is what made three consecutive fixes look absent until a hard refresh.

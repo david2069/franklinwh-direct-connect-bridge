@@ -265,19 +265,22 @@
          class="fixed inset-0 z-[120] flex items-center justify-center p-4"
          x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
       <div class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
-      <div class="relative w-full max-w-lg rounded-xl border shadow-2xl"
-           style="background:var(--surface-0, #0f172a);border-color:var(--border)"
+      <!-- Never taller than the screen (#231): on a phone the text outgrew it and pushed
+           the button behind the HA app's bottom bar. The text scrolls; the button row
+           stays in view. -->
+      <div class="relative w-full max-w-lg rounded-xl border shadow-2xl flex flex-col"
+           style="background:var(--surface-0, #0f172a);border-color:var(--border);max-height:calc(100dvh - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom))"
            x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
-        <div class="px-5 py-4 border-b flex items-center gap-2" style="border-color:var(--border)">
+        <div class="px-5 py-4 border-b flex items-center gap-2 shrink-0" style="border-color:var(--border)">
           <svg class="w-5 h-5 shrink-0" style="color:var(--warn, #f59e0b)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           <div class="text-sm font-semibold" style="color:var(--text-primary)" x-text="($store.app.disclaimer && $store.app.disclaimer.title) || 'Unofficial software'"></div>
         </div>
-        <div class="px-5 py-4 text-sm space-y-2" style="color:var(--text-secondary)">
+        <div class="px-5 py-4 text-sm space-y-2 overflow-y-auto min-h-0" style="color:var(--text-secondary)">
           <template x-for="(line, i) in ($store.app.disclaimer && $store.app.disclaimer.lines) || []" :key="i">
             <p x-text="line"></p>
           </template>
         </div>
-        <div class="px-5 py-3 border-t space-y-3" style="border-color:var(--border)">
+        <div class="px-5 py-3 border-t space-y-3 shrink-0" style="border-color:var(--border)">
           <!-- What is being agreed to, and when. The acknowledgement is persisted with
                the app version for the audit trail, so the version must be visible at the
                moment of consent — agreeing to an unnamed revision is not consent to
@@ -294,7 +297,7 @@
           </label>
           <div class="flex items-center justify-between gap-2 flex-wrap">
             <div class="flex items-center gap-3 text-xs">
-              <a :href="($store.app.disclaimer && $store.app.disclaimer.docs_url) || 'guide/'" target="_blank" rel="noopener"
+              <a :href="($store.app.disclaimer && $store.app.disclaimer.docs_url) || '{{ guide_url }}'" target="_blank" rel="noopener"
                  class="inline-flex items-center gap-1" style="color:var(--accent, #34d399)">Documentation</a>
               <a :href="($store.app.disclaimer && $store.app.disclaimer.issues_url) || '#'" target="_blank" rel="noopener"
                  x-show="$store.app.disclaimer && $store.app.disclaimer.issues_url"
@@ -305,56 +308,6 @@
             </div>
             <button class="btn btn-primary btn-sm" @click="$store.app.ackDisclaimer()"
                     x-text="$store.app.agreedChecked ? 'Agree & continue' : 'Continue'"></button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Guide panel: the bundled docs in-app, with a way back. -->
-    <div x-show="$store.app.guideOpen" x-cloak
-         @keydown.escape.window="$store.app.closeGuide()"
-         class="fixed inset-0 z-[125] flex flex-col" style="background:var(--surface-0, #0f172a)">
-      <div class="flex items-center gap-2 px-3 py-2 border-t-0 border-b shrink-0"
-           style="border-color:var(--border);padding-top:max(.5rem, env(safe-area-inset-top))">
-        <button @click="$store.app.closeGuide()"
-                class="btn btn-secondary btn-sm inline-flex items-center gap-1.5">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
-          </svg>
-          Back
-        </button>
-        <div class="card-label">Guide</div>
-        <div class="flex-1"></div>
-        <a :href="$store.app.guideInfo.url || 'guide/'" target="_blank" rel="noopener"
-           class="btn btn-secondary btn-sm inline-flex items-center gap-1.5" title="Open the docs in a separate tab">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/>
-          </svg>
-          New tab
-        </a>
-      </div>
-      <!-- src is bound so the docs are only fetched once the panel is first opened -->
-      <iframe x-show="$store.app.guideInfo.bundled"
-              :src="($store.app.guideOpen && $store.app.guideInfo.bundled) ? 'guide/' : 'about:blank'"
-              title="Guide" class="flex-1 w-full" style="border:0;background:#fff"></iframe>
-
-      <!-- Not every build bundles the documentation site: it is produced from the sibling
-           library checkout, so the Home Assistant add-on (built from the repository) has
-           none. Loading /guide there rendered FastAPI's {"detail":"Not Found"} as the
-           page. A link to the published docs is the honest answer. -->
-      <div x-show="!$store.app.guideInfo.bundled" x-cloak
-           class="flex-1 w-full flex items-start justify-center p-6">
-        <div class="max-w-md space-y-3 text-sm" style="color:var(--text-secondary)">
-          <p style="color:var(--text-primary)">The documentation is not bundled in this
-            build.</p>
-          <p class="text-xs" style="color:var(--text-faint)">The Home Assistant add-on is
-            built from the repository, which does not carry the generated documentation
-            site. The same content is published online.</p>
-          <div class="flex flex-wrap gap-2">
-            <a :href="$store.app.guideInfo.published_url" target="_blank" rel="noopener"
-               class="btn btn-primary btn-sm">Open the Direct Connect docs</a>
-            <a :href="$store.app.guideInfo.user_guide_url" target="_blank" rel="noopener"
-               class="btn btn-secondary btn-sm">Bridge user guide</a>
           </div>
         </div>
       </div>

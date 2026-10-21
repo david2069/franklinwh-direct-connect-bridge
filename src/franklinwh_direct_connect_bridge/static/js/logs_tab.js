@@ -85,9 +85,13 @@ function logsTab() {
       return c;
     },
 
-    // Unique logger names present, sorted — for the Source dropdown.
+    // Unique logger names present, as {name, short} sorted by the short name — for the
+    // Source dropdown, which shows the short name and filters on the full one (#239).
     sources() {
-      return [...new Set(this.entries.map((e) => e.name))].sort();
+      const m = new Map();
+      for (const e of this.entries) if (!m.has(e.name)) m.set(e.name, e.short || e.name);
+      return [...m].map(([name, short]) => ({ name, short }))
+        .sort((x, y) => x.short.localeCompare(y.short));
     },
 
     // Click a level tile: filter to that bucket, or clear if it's already active.

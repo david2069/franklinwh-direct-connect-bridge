@@ -57,20 +57,29 @@
       <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Terminal</span>
     </button>
 
-    <!-- Guide: the franklinwh-local library docs (static mkdocs site at /guide),
-         bundled into the image. Opens in a new tab; relative to <base> so it works
-         behind the HA add-on ingress path too. Hidden if the docs weren't bundled? No —
-         the link always shows; the server 404s cleanly if /guide isn't mounted. -->
-    <button @click="$store.app.openGuide()"
-       @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Guide'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+    <!-- Docs and User Guide: this bridge's published site, opened outside the add-on
+         (#257). Absolute https URLs: a relative guide/ in a new window leaves the
+         ingress session and answers 404 (#231). -->
+    <a href="{{ docs_url }}" target="_blank" rel="noopener"
+       @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'Docs'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
+       @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
+       class="nav-item w-full border-l-2 border-transparent"
+       :class="$store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l9-8 9 8M5 10v10h5v-6h4v6h5V10"/>
+      </svg>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Docs</span>
+    </a>
+    <a href="{{ guide_url }}" target="_blank" rel="noopener"
+       @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'User Guide'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
        @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
        class="nav-item w-full border-l-2 border-transparent"
        :class="$store.app.sidebarCollapsed ? 'justify-center px-0 !border-l-0' : 'pl-3'">
       <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.5A2.5 2.5 0 0114.5 4H20v14h-6a2 2 0 00-2 2M12 6.5A2.5 2.5 0 009.5 4H4v14h6a2 2 0 012 2M12 6.5V20"/>
       </svg>
-      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>Guide</span>
-    </button>
+      <span x-show="!$store.app.sidebarCollapsed" x-transition.opacity.duration.200ms>User Guide</span>
+    </a>
 
   </nav>
 

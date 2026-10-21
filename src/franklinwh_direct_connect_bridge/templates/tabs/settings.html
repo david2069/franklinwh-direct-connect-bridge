@@ -1333,12 +1333,10 @@
       <div class="text-sm" style="color:var(--text-primary)">Guide &amp; docs</div>
       <div class="text-xs text-slate-500">How the bridge works, the local / cloud / Modbus APIs, and setup.</div>
     </div>
-    <button @click="$store.app.openGuide()" class="btn btn-secondary btn-sm inline-flex items-center gap-1.5">
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.5A2.5 2.5 0 0114.5 4H20v14h-6a2 2 0 00-2 2M12 6.5A2.5 2.5 0 009.5 4H4v14h6a2 2 0 012 2M12 6.5V20"/>
-      </svg>
-      Open Guide
-    </button>
+    <div class="flex gap-2 flex-wrap">
+      <a href="{{ docs_url }}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">Docs</a>
+      <a href="{{ guide_url }}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">User Guide</a>
+    </div>
   </div>
 
   <!-- Support info (redacted bundle for GitHub issues) -->

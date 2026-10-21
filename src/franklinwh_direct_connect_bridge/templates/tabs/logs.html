@@ -58,8 +58,8 @@
            class="form-control flex-1" style="min-width:12rem">
     <select x-model="source" class="form-control" style="width:auto">
       <option value="">All sources</option>
-      <template x-for="s in sources()" :key="s">
-        <option :value="s" x-text="s"></option>
+      <template x-for="s in sources()" :key="s.name">
+        <option :value="s.name" :title="s.name" x-text="s.short"></option>
       </template>
     </select>
     <select x-model="levelFilter" class="form-control" style="width:auto">
@@ -103,7 +103,7 @@
          style="color:var(--text-faint)">
       <span class="w-20 shrink-0">Time</span>
       <span class="w-16 shrink-0">Level</span>
-      <span class="w-48 shrink-0 hidden sm:inline">Source</span>
+      <span class="w-28 shrink-0">Source</span>
       <span class="flex-1">Message</span>
     </div>
 
@@ -115,7 +115,8 @@
             <span class="chip" :class="levelClass(e.level)"
                   style="text-transform:none;letter-spacing:0" x-text="e.level"></span>
           </span>
-          <span class="w-48 shrink-0 text-slate-500 truncate hidden sm:inline" x-text="e.name"></span>
+          <!-- Short module name; the full logger name is the tooltip (#239). -->
+          <span class="w-28 shrink-0 text-slate-500 truncate" :title="e.name" x-text="e.short || e.name"></span>
           <span class="flex-1 text-slate-200 break-all whitespace-pre-wrap" x-text="e.message"></span>
         </div>
       </template>

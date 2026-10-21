@@ -54,16 +54,24 @@
           <span x-text="tab.title"></span>
         </button>
       </template>
-      <!-- Guide (docs): the sidebar has it, but the sidebar is hidden on mobile — so
-           surface it here too, else the docs are unreachable when the bottom nav is up. -->
-      <button @click="$store.app.moreOpen = false; $store.app.openGuide()"
+      <!-- Docs and User Guide (#257): the sidebar has them, but the sidebar is hidden on
+           mobile, so they are here too. -->
+      <a href="{{ docs_url }}" target="_blank" rel="noopener" @click="$store.app.moreOpen = false"
+         class="flex items-center justify-center gap-2 text-center px-2 py-3 rounded-lg text-sm min-h-[48px] transition border"
+         style="color:var(--text-secondary);background:var(--surface-1);border-color:var(--border)">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l9-8 9 8M5 10v10h5v-6h4v6h5V10"/>
+        </svg>
+        <span>Docs</span>
+      </a>
+      <a href="{{ guide_url }}" target="_blank" rel="noopener" @click="$store.app.moreOpen = false"
          class="flex items-center justify-center gap-2 text-center px-2 py-3 rounded-lg text-sm min-h-[48px] transition border"
          style="color:var(--text-secondary);background:var(--surface-1);border-color:var(--border)">
         <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.5A2.5 2.5 0 0114.5 4H20v14h-6a2 2 0 00-2 2M12 6.5A2.5 2.5 0 009.5 4H4v14h6a2 2 0 012 2M12 6.5V20"/>
         </svg>
-        <span>Guide</span>
-      </button>
+        <span>User Guide</span>
+      </a>
     </div>
     <!-- Back is its own row, pinned to the RIGHT column so it sits directly under the
          More button that opened the sheet — the thumb returns to where it started. -->

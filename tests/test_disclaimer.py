@@ -11,7 +11,8 @@ def test_disclaimer_text_and_links():
     d = c.get("/api/disclaimer").json()
     assert d["title"] and isinstance(d["lines"], list) and len(d["lines"]) >= 3
     assert "franklinwh-direct-connect-bridge" in d["issues_url"]
-    assert d["docs_url"] == "guide/"
+    # the published bridge guide, never the relative guide/ that 404s outside ingress (#231)
+    assert d["docs_url"] == "https://david2069.github.io/franklinwh-direct-connect-bridge/guide/"
     assert d["agreed"] is False   # no client_id -> not agreed
 
 
