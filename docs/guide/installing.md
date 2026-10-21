@@ -7,6 +7,11 @@ prerequisites, upgrading and troubleshooting, is
 [INSTALL.md](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/INSTALL.md).
 Where this page and INSTALL.md disagree, INSTALL.md is the reference.
 
+!!! tip "Back up Home Assistant first"
+    Before installing the bridge, or any major update, take a Home Assistant backup:
+    **Settings → System → Backups → Back up now**. Keeping copies off the premises is
+    covered in [Your phone, notifications and access from away](phone-and-remote-access.md#backups-off-the-premises).
+
 Every screenshot here was taken on 2026-10-16 with release 0.5.0 and **mock gateways
 only**: no aGate, no MQTT broker, no cloud account. Each install started from scratch.
 
