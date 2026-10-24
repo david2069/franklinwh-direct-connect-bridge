@@ -49,7 +49,7 @@
               <span style="color:var(--text-secondary)" x-text="l.state + (l.signal != null ? (' · ' + l.signal) : '')"></span>
             </span>
           </template>
-          <span class="text-[10px]" style="color:var(--text-faint)">active = carrying traffic · available = link up, standby · off = disabled</span>
+          <span class="text-[10px]" style="color:var(--text-faint)">active = carrying traffic · available = link up, standby · off = disabled · not reported = the aGate sent no status</span>
         </div>
         <div class="overflow-x-auto mt-2">
           <svg viewBox="0 0 980 350" width="100%" style="min-width:760px" font-family="ui-sans-serif,system-ui,sans-serif">
@@ -321,12 +321,12 @@
               <template x-for="r in diag.rows" :key="r.name">
                 <tr class="border-t border-white/[0.05]">
                   <td class="py-1.5 pr-3" style="color:var(--text-primary)" x-text="r.name"></td>
-                  <td class="py-1.5 pr-3" :style="r.enabled ? '' : 'color:var(--text-faint)'" x-text="r.enabled ? 'yes' : 'no'"></td>
-                  <td class="py-1.5 pr-3" :style="r.link ? 'color:#34d399' : 'color:var(--text-faint)'" x-text="r.link ? 'up' : 'down'"></td>
+                  <td class="py-1.5 pr-3" :style="r.enabled ? '' : 'color:var(--text-faint)'" x-text="yesNo(r.enabled, 'yes', 'no')"></td>
+                  <td class="py-1.5 pr-3" :style="r.link ? 'color:#34d399' : 'color:var(--text-faint)'" x-text="yesNo(r.link, 'up', 'down')"></td>
                   <td class="py-1.5 pr-3">
                     <span class="px-1.5 py-0.5 rounded text-[10px]" x-show="r.active" style="background:#34d39922;color:#34d399">active</span>
                     <span class="px-1.5 py-0.5 rounded text-[10px]" x-show="!r.active && r.available" style="background:#60a5fa22;color:#60a5fa">available</span>
-                    <span class="text-[10px]" x-show="!r.active && !r.available" style="color:var(--text-faint)">off</span>
+                    <span class="text-[10px]" x-show="!r.active && !r.available" style="color:var(--text-faint)" x-text="r.reported ? 'off' : 'not reported'"></span>
                   </td>
                   <td class="py-1.5 pr-3 font-mono" :style="r.ip ? 'color:var(--text-secondary)' : 'color:var(--text-faint)'" x-text="r.ip || '—'"></td>
                   <td class="py-1.5 pr-3 font-mono" style="color:var(--text-faint)" x-text="r.mac || '—'"></td>
@@ -340,9 +340,9 @@
         <div class="flex items-center gap-2 flex-wrap mt-2 pt-2 border-t text-[11px]" style="border-color:var(--border)">
           <span style="color:var(--text-secondary)">Write safety</span>
           <span class="px-2 py-0.5 rounded-full text-[11px]"
-                :style="diag.redundant ? 'background:#34d39918;color:#34d399' : 'background:#f59e0b18;color:#f59e0b'"
-                x-text="diag.redundant ? 'redundant' : 'single link'"></span>
-          <span style="color:var(--text-faint)" x-text="diag.fallback.length ? ('fallback available: ' + diag.fallback.join(', ')) : 'no fallback link'"></span>
+                :style="!diag.reported ? 'background:#64748b18;color:#94a3b8' : (diag.redundant ? 'background:#34d39918;color:#34d399' : 'background:#f59e0b18;color:#f59e0b')"
+                x-text="!diag.reported ? 'unknown' : (diag.redundant ? 'redundant' : 'single link')"></span>
+          <span style="color:var(--text-faint)" x-text="!diag.reported ? 'link status not reported by this aGate' : (diag.fallback.length ? ('fallback available: ' + diag.fallback.join(', ')) : 'no fallback link')"></span>
         </div>
       </div>
 

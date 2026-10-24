@@ -171,10 +171,12 @@ function networkTab() {
       const c = this.net && this.net.connectivity;
       const s = (this.net && this.net.switches) || {};
       const sw = (s.result && typeof s.result === 'object') ? (s.result.commSetPara || s.result) : s;
+      // A field the aGate didn't send is not evidence that a link is off (#302).
       const mk = (name, connKey, swKeys, sigKey) => {
-        const conn = this.statusOk(this.dig(c, connKey));
-        const avail = swKeys.some((k) => this.statusOk(sw[k]));
-        return { name, state: conn ? 'active' : (avail ? 'available' : 'off'),
+        const conn = this.tri([this.dig(c, connKey)]);
+        const avail = this.tri(swKeys.map((k) => sw[k]));
+        return { name, state: conn ? 'active' : (avail ? 'available'
+                 : (conn === null && avail === null ? 'not reported' : 'off')),
                  signal: sigKey ? this.dig(c, sigKey) : null };
       };
       return [
@@ -184,6 +186,7 @@ function networkTab() {
       ];
     },
     linkColor(state) { return state === 'active' ? '#34d399' : (state === 'available' ? '#60a5fa' : '#64748b'); },
+    yesNo(v, yes, no) { return v === null ? 'not reported' : (v ? yes : no); },
 
     // Cloud-CLI-parity interface model: enabled / link / active (carrying) / available
     // (would carry if the active one stopped) / signal — with the reliable-vs-self-report
@@ -201,14 +204,16 @@ function networkTab() {
         { name: 'WiFi', en: ['wifiNetSwitch'], link: 'wifiConnectRouterStatus', o: ifc.wifi, sig: g('WifiSignalStrength'), unit: '%' },
         { name: '4G', en: ['4GNetSwitch'], link: '4GConnectBSStatus', o: ifc.operator, sig: g('4GSignalStrength'), unit: '/52' },
       ];
+      // enabled / link are true, false, or null = not reported (#302).
       const rows = specs.map((r) => {
-        const enabled = r.en.some((k) => ok(sw[k]));
-        const link = ok(g(r.link));
+        const enabled = this.tri(r.en.map((k) => sw[k]));
+        const link = this.tri([g(r.link)]);
         const ip = r.o && r.o.ip;
         const hasAddr = !!(ip && ip !== '0.0.0.0');
         // 4G holds no IP while idle + SIM status isn't exposed locally → enabled ≈ available.
-        const available = r.name === '4G' ? enabled : (enabled && (link || hasAddr));
-        return { name: r.name, enabled, link, active: link, available,
+        const available = r.name === '4G' ? enabled === true : (enabled === true && (link === true || hasAddr));
+        return { name: r.name, enabled, link, active: link === true, available,
+                 reported: enabled !== null || link !== null || hasAddr,
                  ip: hasAddr ? ip : null, mac: (r.o && r.o.mac) || null,
                  dhcp: r.o ? r.o.dhcp : null, signal: r.sig, unit: r.unit };
       });
@@ -216,6 +221,7 @@ function networkTab() {
       const available = rows.filter((x) => x.available).map((x) => x.name);
       return {
         rows, carrying, available, redundant: available.length > 1,
+        reported: rows.some((x) => x.reported),
         fallback: available.filter((n) => !carrying.includes(n)),
         awsReliable: ok(ifc.awsStatus),        // 317 — authoritative
         awsSelfReport: ok(g('awsStatus')),     // 339 — self-report, unreliable
