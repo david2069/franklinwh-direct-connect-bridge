@@ -180,6 +180,11 @@ self-verifying read-back, `dry_run` previews the exact frame, and a real write n
 `confirm`. When cloud credentials exist the response also returns the cloud's global caps
 as an independent witness.
 
+What is known, from one site (aGate X-01-AU): with Debug Mode on, on firmware
+V12R02B60D00, the write is stored and reads back. With Debug Mode off, earlier firmware
+acknowledged it but did not store it. Whether the aGate enforces a stored limit is not yet
+tested. The limits are in watts in `1701`; the tab shows and takes them in kW.
+
 Treat it accordingly. The read-back is the only safety net, and the boolean fields in
 that block can stop export or discharge.
 

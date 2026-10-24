@@ -30,10 +30,11 @@ function gridTab() {
       return !!(g && (g.grid_connection.service_amps != null || g.inverter.max_charge_kw != null));
     },
 
-    // -1 = unlimited (the FranklinWH power-plane convention); a number = a custom kW cap.
+    // 1701 limits are in W; -1 = unlimited (the FranklinWH power-plane convention). Shown in kW.
+    kw(w) { return +(Number(w) / 1000).toFixed(2) + ' kW'; },
     limit(v) {
       if (v == null || v === '') return '–';
-      return Number(v) < 0 ? 'Unlimited' : (v + ' kW');
+      return Number(v) < 0 ? 'Unlimited' : this.kw(v);
     },
     // ── PCS write modal (1701 grid import/export limits) — UNVERIFIED write path ──
     modal: false,
@@ -47,22 +48,22 @@ function gridTab() {
       // Seed the kW inputs from the live values, but leave every MODE on "keep" so
       // opening the modal changes nothing until the user opts a field in.
       this.f = {
-        imp: 'keep', impKw: (gl.grid_soft_limit > 0 ? gl.grid_soft_limit : 2),
-        chg: 'keep', chgKw: (gl.kw_rate_power > 0 ? gl.kw_rate_power : 2),
-        exp: 'keep', expKw: (gl.grid_hard_limit > 0 ? gl.grid_hard_limit : 3),
+        imp: 'keep', impKw: (gl.grid_soft_limit > 0 ? gl.grid_soft_limit / 1000 : 2),
+        chg: 'keep', chgKw: (gl.kw_rate_power > 0 ? gl.kw_rate_power / 1000 : 2),
+        exp: 'keep', expKw: (gl.grid_hard_limit > 0 ? gl.grid_hard_limit / 1000 : 3),
         pcs: 'keep',
       };
       this.preview = null; this.result = null; this.modal = true;
     },
     _payload() {
-      const p = {}, f = this.f;
+      const p = {}, f = this.f, w = (kw) => Math.round(Number(kw) * 1000);   // inputs kW, 1701 W
       if (f.imp === 'unlimited') p.grid_soft_limit = -1;
-      else if (f.imp === 'custom') p.grid_soft_limit = Number(f.impKw);
+      else if (f.imp === 'custom') p.grid_soft_limit = w(f.impKw);
       if (f.chg === 'unlimited') p.kw_rate_power = -1;
-      else if (f.chg === 'custom') p.kw_rate_power = Number(f.chgKw);
+      else if (f.chg === 'custom') p.kw_rate_power = w(f.chgKw);
       if (f.exp === 'off') p.export_enable = false;
       else if (f.exp === 'on_unlim') { p.export_enable = true; p.grid_hard_limit = -1; }
-      else if (f.exp === 'on_custom') { p.export_enable = true; p.grid_hard_limit = Number(f.expKw); }
+      else if (f.exp === 'on_custom') { p.export_enable = true; p.grid_hard_limit = w(f.expKw); }
       if (f.pcs === 'on') p.pcs_discharge = true;
       else if (f.pcs === 'off') p.pcs_discharge = false;
       return p;
@@ -90,7 +91,7 @@ function gridTab() {
       const p = this._payload();
       if (!Object.keys(p).length) return;
       const ok = await this.$store.app.confirmDialog(
-        'UNVERIFIED write to cmdType 1701. On this firmware it may be silently ignored, OR it may STOP grid export/discharge. A read-back re-reads 1701 to show what actually changed.\n\nProceed?',
+        'Write to cmdType 1701. With Debug Mode on it has been stored (V12R02B60D00, one test); with it off, earlier firmware ignored it. Enforcement is not yet tested, and the enable fields can STOP grid export/discharge. A read-back re-reads 1701 to show what actually changed.\n\nProceed?',
         { title: 'Write grid limits?', danger: true });
       if (!ok) return;
       this.busy = true; this.preview = null;
@@ -118,7 +119,10 @@ function gridTab() {
       finally { this.busy = false; }
     },
     // Pretty label for a limit value in the verify table.
-    limLabel(v) { return v === -1 ? 'Unlimited' : (v === 0 ? '0 (off)' : (v + ' kW')); },
+    limLabel(v) {
+      if (typeof v !== 'number') return String(v);   // booleans (export / PCS enables)
+      return v === -1 ? 'Unlimited' : (v === 0 ? '0 (off)' : this.kw(v));
+    },
 
     val(v, unit) { return (v == null || v === '') ? '–' : (v + (unit || '')); },
   };

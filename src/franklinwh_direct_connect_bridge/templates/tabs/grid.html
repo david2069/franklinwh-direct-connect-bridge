@@ -94,7 +94,7 @@
             <div class="text-[11px] mt-0.5" style="color:var(--text-secondary)" x-text="'PCS discharge: ' + (grid.grid_limits.pcs_discharge ? 'on' : 'off')"></div>
           </div>
         </div>
-        <p class="text-[10px] mt-2" style="color:var(--text-faint)">-1 = unlimited (same convention as the cloud global charge/discharge caps). <span style="color:var(--warn)">Set limits</span> writes 1701 by full-block read-modify-write with a read-back verify — an <strong>UNVERIFIED</strong> path: it may be silently ignored, or it may stop grid export/discharge. Confirm-gated; booleans tested last.</p>
+        <p class="text-[10px] mt-2" style="color:var(--text-faint)">1701 stores these in W (shown here in kW); -1 = unlimited (same convention as the cloud global charge/discharge caps). <span style="color:var(--warn)">Set limits</span> writes 1701 by full-block read-modify-write with a read-back verify. With Debug Mode on it has been <strong>stored</strong> (V12R02B60D00, one test); with it off, earlier firmware ignored it. Whether the aGate <strong>enforces</strong> it is not yet tested, and the enable fields can stop grid export/discharge. Confirm-gated; booleans tested last.</p>
       </div>
 
       <!-- Inverter limits (Modbus SunSpec 702) -->
@@ -127,17 +127,19 @@
       <div class="flex items-start justify-between gap-3">
         <div>
           <h2 class="text-base font-semibold" style="color:var(--text-primary)">Grid import &amp; export limits <a :href="$store.app.guideUrl('control/#grid-inverter-limits-are-unverified')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></h2>
-          <p class="text-[11px]" style="color:var(--text-faint)">cmdType 1701 · full-block RMW · read-back verified · LOCAL WRITE CONFIRMED IGNORED</p>
+          <p class="text-[11px]" style="color:var(--text-faint)">cmdType 1701 · full-block RMW · read-back verified · values in W, entered in kW</p>
         </div>
         <button class="btn btn-secondary btn-sm" @click="modal=false">&times;</button>
       </div>
 
-      <div class="rounded border p-2 mt-2 text-[11px]" style="border-color:var(--danger,#ef4444);color:var(--danger,#ef4444)">
-        CONFIRMED (2026-09-28): this firmware <strong>silently ignores</strong> the local 1701 write —
-        it ACKs <span class="font-mono">result:0</span> but the values do not store or take effect
-        (proven on-hardware: a 2 kW cap did not clamp a 4 kW grid charge). This is a <strong>diagnostic</strong>:
-        the read-back will show "device IGNORED it". The working path for grid caps is the cloud global
-        caps (<span class="font-mono">setPowerControl</span>), a separate plane.
+      <div class="rounded border p-2 mt-2 text-[11px]" style="border-color:var(--warn);color:var(--warn)">
+        What is known about the local 1701 write (one site, aGate X-01-AU):
+        <ul class="list-disc pl-4 mt-1 space-y-0.5">
+          <li><strong>Debug Mode on</strong>, firmware V12R02B60D00 (2026-10-23): <strong>stored</strong> — it read back the values written. Whether the aGate <strong>enforces</strong> it (clamps a grid charge) is not yet tested.</li>
+          <li><strong>Debug Mode off</strong>, earlier firmware (2026-09-28): <strong>ignored</strong> — it ACKed <span class="font-mono">result:0</span> but did not store or take effect (a 2 kW cap did not clamp a 4 kW grid charge).</li>
+          <li><strong>Debug Mode off</strong>, V12R02B60D00: not yet tested.</li>
+        </ul>
+        <div class="mt-1">Installer power settings are made in Debug Mode (FranklinWH Commissioning Guide). The read-back shows what the aGate stored. The cloud global caps (<span class="font-mono">setPowerControl</span>) are a separate plane.</div>
       </div>
 
       <div class="space-y-3 mt-3">
