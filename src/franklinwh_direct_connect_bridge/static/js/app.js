@@ -1021,6 +1021,8 @@ document.addEventListener('alpine:init', () => {
         const okGws = (d.gateways || []).filter(g => g.ok);
         const socs = okGws.map(g => g.soc).filter(v => typeof v === 'number');
         const avgSoc = socs.length ? Math.round(socs.reduce((a, b) => a + b, 0) / socs.length) : null;
+        // Same priority as one gateway (#333): our own force, then cloud VPP, then 1707 = 9.
+        const anyOwn = okGws.some(g => g.vpp_kind === 'force');
         const anyVpp = okGws.some(g => g.vpp_kind === 'vpp');
         const anyForce = okGws.some(g => g.vpp);
         this.summary = {
@@ -1028,7 +1030,9 @@ document.addEventListener('alpine:init', () => {
           power: {
             ...(d.totals || {}), soc: avgSoc, mode: 'Site',
             off_grid: okGws.some(g => g.off_grid),
-            vpp: anyVpp || anyForce, vpp_kind: anyVpp ? 'vpp' : (anyForce ? 'force' : null),
+            vpp: anyVpp || anyForce,
+            vpp_kind: anyOwn ? 'force' : anyVpp ? 'vpp' : (anyForce ? 'remote' : null),
+            vpp_label: anyOwn ? 'Force dispatch' : null,
           },
           battery: {}, energy_today: {},
           capabilities: (this.summary && this.summary.capabilities) || {},
@@ -1204,6 +1208,10 @@ document.addEventListener('alpine:init', () => {
     get _runStatus() {
       if (this.isDebugMode) return ['Debug Mode', 'Debug Mode — 1301 run_status 8'];
       if (this.isOffGrid) return ['Off-grid', 'Off-grid — 1723 offgridState and the main relays'];
+      if (this.isOwnForce) {
+        return [this.power.vpp_label || 'Force dispatch',
+                'FORCE — this bridge is holding a force (Battery force or a schedule)'];
+      }
       if (this.isForced) {
         // 1707 programme id 9 is VPP (owner, 2026-10-24: a WSet force sets it too). The
         // cloud adds the app's mode label and the programme name when it confirms one.
@@ -1238,10 +1246,15 @@ document.addEventListener('alpine:init', () => {
     get isOffGrid() {
       return this.power.off_grid === true || [5, 6, 7].includes(this.power.run_status);
     },
-    //: A dispatch is holding the battery — either a cloud-confirmed VPP or an unattributed
-    //  FORCE (Modbus M704 WSet: cloud VPP / Modbus bridge / app / our own force_charge).
+    //: A dispatch is holding the battery — this bridge's own force, a cloud-confirmed VPP,
+    //  or any other remote controller (1707 programme id 9).
     get isForced() {
       return this.power.vpp === true || this.power.run_status === 9;
+    },
+    //: FORCE: a force THIS bridge is holding (#333). Another client's force shows as VPP —
+    //  the bridge does not poll SunSpec Model 704, so it cannot tell whose it is.
+    get isOwnForce() {
+      return this.power.vpp_kind === 'force';
     },
     //: Cloud-CONFIRMED VPP (getDeviceCompositeInfo run_status/tou_mode==9). Only the Cloud API
     //  can tell a genuine VPP from a local force; without it we only claim FORCE.

@@ -69,7 +69,8 @@ Everything here except the connection chip and the cog can be turned on or off f
 | **Connection** | Online / offline for the selected gateway. |
 | **Operating mode** | The active mode. Tap to switch. |
 | **OFF-GRID** | Islanded. Distinguishes `OFF-GRID · OUTAGE` (the grid went) from `OFF-GRID · SIMULATED` (someone asked for it). |
-| **VPP** | The aGate is in VPP: its programme id (1707) is 9. A force from this bridge sets it too. With the Cloud API the tooltip also names the programme. |
+| **FORCE** | This bridge is holding a force (Battery force or a schedule). |
+| **VPP** | Another remote controller has the aGate: its programme id (1707) is 9 and this bridge holds no force. With the Cloud API the tooltip also names the programme. |
 | **DEBUG MODE** | Run status 8. |
 | **Run status / SoC / latency** | Charging / discharging / standby, state of charge, round-trip time to the aGate. |
 | **Cards** | On the Dashboard only: opens the card show/reorder panel. |

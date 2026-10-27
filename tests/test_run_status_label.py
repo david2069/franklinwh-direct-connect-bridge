@@ -50,7 +50,9 @@ function label(power, battery) {
 var __out = {
   debug: label({run_status: 8, debug: true, run_status_desc: 'Debug'}),
   offgrid_over_vpp: label({off_grid: true, vpp: true, run_status: 2}),
-  vpp_local: label({vpp: true, vpp_kind: 'force', vpp_label: 'Force dispatch', run_status: 2,
+  vpp_local: label({vpp: true, vpp_kind: 'remote', run_status: 2,
+                    run_status_desc: 'Discharging'}),
+  own_force: label({vpp: true, vpp_kind: 'force', vpp_label: 'Force dispatch', run_status: 2,
                     run_status_desc: 'Discharging'}),
   vpp_cloud: label({vpp: true, vpp_kind: 'vpp', vpp_label: 'VPP mode', vpp_programme: 'Prog A',
                     run_status: 2}),
@@ -65,6 +67,7 @@ def _check(out):
     assert out["debug"][0] == "Debug Mode" and "1301 run_status 8" in out["debug"][1]
     assert out["offgrid_over_vpp"][0] == "Off-grid"
     assert out["vpp_local"][0] == "VPP" and "1707 programme id 9" in out["vpp_local"][1]
+    assert out["own_force"][0] == "Force dispatch" and "this bridge" in out["own_force"][1]
     assert out["vpp_cloud"][0] == "VPP mode · Prog A" and "cloud" in out["vpp_cloud"][1]
     assert out["starting"][0] == "Reconnecting" and "all zeros" in out["starting"][1]
     assert out["starting"][2] == "Reconnecting"            # the top-bar chip agrees
@@ -75,7 +78,9 @@ def _check(out):
 def test_static_wiring():
     assert ':title="$store.app.runStatusSource"' in DASH
     assert "SUPPORT SESSION" not in TOPBAR and "DEBUG MODE" in TOPBAR
-    assert ">FORCE<" not in TOPBAR                          # 1707 = 9 is VPP (owner)
+    # 1707 = 9 is VPP (owner); FORCE is only this bridge's own force (#333).
+    assert "g.vpp_kind === 'force' && !g.off_grid" in TOPBAR
+    assert "$store.app.isOwnForce && !$store.app.isOffGrid" in TOPBAR
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")

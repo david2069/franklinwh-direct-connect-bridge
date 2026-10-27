@@ -68,7 +68,9 @@
                     title="Islanded. Whether it was requested could not be read (1723 unavailable)."
                     style="padding:0 6px;font-size:.6rem">OFF-GRID</span>
               <span x-show="g.vpp_kind === 'vpp' && !g.off_grid" class="chip vpp" style="padding:0 6px;font-size:.6rem">VPP</span>
-              <span x-show="g.vpp && g.vpp_kind !== 'vpp' && !g.off_grid" class="chip vpp" style="padding:0 6px;font-size:.6rem">VPP</span>
+              <span x-show="g.vpp_kind === 'force' && !g.off_grid" class="chip vpp" style="padding:0 6px;font-size:.6rem"
+                    title="This bridge is holding a force on this gateway">FORCE</span>
+              <span x-show="g.vpp && !['vpp', 'force'].includes(g.vpp_kind) && !g.off_grid" class="chip vpp" style="padding:0 6px;font-size:.6rem">VPP</span>
 
               <!-- Operating mode + battery direction, per gateway. On a multi-gateway site
                    these differ, and the switcher is where you choose between them — so it
@@ -170,7 +172,12 @@
       <span class="w-1.5 h-1.5 rounded-full bg-current"></span><span>VPP</span>
     </div>
     <div class="chip vpp inline-flex items-center gap-1" :style="{order: $store.app.topbarOrder('status')}"
-         x-show="$store.app.isForced && !$store.app.isVpp && !$store.app.isOffGrid && $store.app.topbarShow('status')" x-cloak
+         x-show="$store.app.isOwnForce && !$store.app.isOffGrid && !$store.app.isDebugMode && $store.app.topbarShow('status')" x-cloak
+         title="FORCE — this bridge is holding a force (Battery force or a schedule)">
+      <span class="w-1.5 h-1.5 rounded-full bg-current"></span><span>FORCE</span>
+    </div>
+    <div class="chip vpp inline-flex items-center gap-1" :style="{order: $store.app.topbarOrder('status')}"
+         x-show="$store.app.isForced && !$store.app.isVpp && !$store.app.isOwnForce && !$store.app.isOffGrid && $store.app.topbarShow('status')" x-cloak
          title="VPP — 1707 programme id 9. The programme name needs the Cloud API.">
       <span class="w-1.5 h-1.5 rounded-full bg-current"></span><span>VPP</span>
     </div>

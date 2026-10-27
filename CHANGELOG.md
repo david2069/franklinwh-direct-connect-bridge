@@ -21,6 +21,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   last chose it in that browser.
 
 ### Fixed
+- **FORCE is back, for this bridge's own forces** (#333). 0.5.17 showed every force as
+  VPP. The top bar, the gateway switcher and Run status now show **FORCE** while this
+  bridge holds a force, and **VPP** when another remote controller has the aGate
+  (programme id 9). A force from another client still shows VPP: the bridge does not
+  read SunSpec Model 704.
+
 - **Dialogs show their results inside, not in a toast behind them** (#293). Errors,
   missing fields and test failures now stay in the dialog until your next action:
   the schedule form and its Test buttons, schedule Import, the grid limits write,

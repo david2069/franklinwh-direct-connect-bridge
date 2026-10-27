@@ -157,7 +157,8 @@ def _roster_entry(gw: GatewayState) -> dict:
                      else rs in (5, 6, 7)),
         "off_grid_signals": power.get("off_grid_signals"),
         "off_grid_kind": power.get("off_grid_kind"),      # 'simulated' | 'outage' | None
-        # Dispatch badge: "vpp" (cloud-confirmed) | "force" (Modbus M704 WSet) | None.
+        # Dispatch badge: "force" (this bridge's own) | "vpp" (cloud-confirmed) |
+        # "remote" (1707 programme id 9, another remote controller) | None (#333).
         "vpp": _dk_kind is not None,
         "vpp_kind": _dk_kind,
         "vpp_programme": _dk_prog,
@@ -179,18 +180,25 @@ def _run_status_desc(rs: int | None) -> str | None:
 
 
 def _dispatch_kind(gw) -> tuple:
-    """Classify the active battery dispatch for the badge: ('vpp', programme) when the CLOUD
-    confirms a VPP (and the read is fresh), ('force', None) when only the Modbus M704 WSet
-    says a force is active, else (None, None). Cloud wins — the local/Modbus APIs cannot tell
-    a genuine VPP from a local force_charge (see FEAT-VPP-CLOUD-RUNSTATUS)."""
+    """Classify the active battery dispatch for the badge (#333): ('force', None) when THIS
+    bridge is holding a force on the gateway; ('vpp', programme) when the CLOUD confirms a
+    VPP (and the read is fresh); ('remote', None) when only 1707 programme id 9 says some
+    remote controller has it (shown as VPP); else (None, None). FORCE is never claimed for
+    another client's WSet — the bridge does not poll SunSpec Model 704."""
     import time as _t
+    from . import battery_control as _bc
     from . import cloud_status as _cs
+    hosts = [getattr(gw, "active_host", None), getattr(gw, "configured_host", None)]
+    if gw is state.default_gateway():            # FWH_MODBUS_HOST overrides the default's host
+        hosts.append(os.environ.get("FWH_MODBUS_HOST"))
+    if _bc.holds_force(*hosts):
+        return "force", None
     cloud_fresh = (getattr(gw, "cloud_vpp", None) is not None
                    and (_t.time() - (getattr(gw, "cloud_ts", 0) or 0)) < _cs.STALE_AFTER_S)
     if cloud_fresh and gw.cloud_vpp:
         return "vpp", getattr(gw, "cloud_programme", None)
     if getattr(gw, "vpp_active", None):
-        return "force", None
+        return "remote", None
     return None, None
 
 
@@ -1360,8 +1368,9 @@ def create_app() -> FastAPI:
     def _apply_vpp(summ: dict, gw: GatewayState) -> dict:
         """Overlay the dispatch state onto a summary's power block. The aGate's 1301 run_status
         never reports a dispatch, so this is the source of truth for the badge: cloud-confirmed
-        VPP ("vpp" + programme + effective_mode label) wins over the Modbus M704 FORCE state
-        ("force"). Off-grid still comes from run_status (correct)."""
+        VPP ("vpp" + programme + effective_mode label) or 1707 = 9 ("remote"), and this
+        bridge's own force ("force") wins over both (#333). Off-grid still comes from
+        run_status (correct)."""
         import time as _t
         from . import cloud_status
         kind, programme = _dispatch_kind(gw)
@@ -1371,7 +1380,7 @@ def create_app() -> FastAPI:
             return summ
         power = dict(summ.get("power") or {})
         power["vpp"] = kind is not None
-        power["vpp_kind"] = kind                          # "vpp" | "force" | None
+        power["vpp_kind"] = kind                # "force" | "vpp" | "remote" | None
         power["vpp_label"] = ("Force dispatch" if kind == "force"
                               else (gw.cloud_mode or "VPP mode") if kind == "vpp" else None)
         power["vpp_programme"] = programme

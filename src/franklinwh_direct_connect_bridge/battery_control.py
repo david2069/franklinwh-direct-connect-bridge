@@ -39,6 +39,14 @@ def current() -> dict:
                 "target_soc": _active.get("target_soc"), "remaining_s": rem}
 
 
+def holds_force(*hosts) -> bool:
+    """True when this bridge is holding a force on one of ``hosts`` (fast; no Modbus).
+    The dashboard shows FORCE only for these; any other remote controller is VPP (#333)."""
+    with _lock:
+        held = _host_part(_active.get("host")) if _active else ""
+    return bool(held) and held in {_host_part(h) for h in hosts if h}
+
+
 def _fire(status: str, detail: str) -> None:
     if _on_event:
         try:

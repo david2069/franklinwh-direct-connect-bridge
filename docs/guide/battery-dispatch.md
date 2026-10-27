@@ -100,20 +100,21 @@ Daily or Weekly, the duration you type **is** the window, and the two agree.
 
 | Where | What you see | Source |
 |---|---|---|
-| Top bar | A **VPP** chip, when the aGate's programme id (1707) is 9. A force from this bridge sets it too, as the FranklinWH app's "VPP Mode" shows. With the Cloud API it also names the programme. | `topbar.html`; `isForced` in `app.js` |
+| Top bar | A **FORCE** chip, while this bridge holds the force (#333). | `topbar.html`; `isOwnForce` in `app.js` |
 | Top bar | A red, pulsing **Release** button, while this bridge holds a force. Hover it to see the command and the seconds left. | `topbar.html`; polled from `GET /api/battery/command` every 15 s |
-| Dashboard | The **Run status** row reads **VPP** (or the cloud's mode and programme), coloured, with a source chip. Hover it to see the source. | `dashboard.html`; `runStatusLabel` in `app.js` |
+| Dashboard | The **Run status** row reads **Force dispatch**, coloured, with a source chip. Hover it to see the source. | `dashboard.html`; `runStatusLabel` in `app.js` |
 | Control → Battery Control | The **Active** row shows the command. | `control.html` |
 | FranklinWH app | "VPP Mode" (the owner's observation above). | — |
 
-The VPP chip and the Release button come from different places, so they do not
-always agree:
+FORCE and VPP are different states (#333):
 
-- The **VPP chip** comes from what the aGate reports on each poll. It shows for any
-  force, whoever started it: this bridge, a Modbus Bridge, a utility VPP programme.
-- The **Release button** shows only while **this bridge** holds a force in its own
-  memory (`battery_control.current()`). A force started by something else shows VPP
-  but no Release button.
+- **FORCE** shows only while **this bridge** holds a force in its own memory
+  (`battery_control.current()`), the same source as the Release button.
+- **VPP** shows when the aGate's programme id (1707) is 9 and this bridge holds no
+  force: some other remote controller has the battery, such as a Modbus Bridge or a
+  utility VPP programme. With the Cloud API the tooltip also names the programme. The
+  bridge does not read SunSpec Model 704, so it cannot tell another client's force from
+  a VPP; both show VPP, with no Release button.
 
 The Control tab's **Active** row is read when the tab loads and after each command. It
 may not change by itself when the watchdog ends a force; reload to be sure. This is read
