@@ -67,7 +67,7 @@ def _check(out):
     assert out["debug"][0] == "Debug Mode" and "1301 run_status 8" in out["debug"][1]
     assert out["offgrid_over_vpp"][0] == "Off-grid"
     assert out["vpp_local"][0] == "VPP" and "1707 programme id 9" in out["vpp_local"][1]
-    assert out["own_force"][0] == "Force dispatch" and "this bridge" in out["own_force"][1]
+    assert out["own_force"][0] == "Force" and "this bridge" in out["own_force"][1]
     assert out["vpp_cloud"][0] == "VPP mode · Prog A" and "cloud" in out["vpp_cloud"][1]
     assert out["starting"][0] == "Reconnecting" and "all zeros" in out["starting"][1]
     assert out["starting"][2] == "Reconnecting"            # the top-bar chip agrees

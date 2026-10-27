@@ -1032,7 +1032,6 @@ document.addEventListener('alpine:init', () => {
             off_grid: okGws.some(g => g.off_grid),
             vpp: anyVpp || anyForce,
             vpp_kind: anyOwn ? 'force' : anyVpp ? 'vpp' : (anyForce ? 'remote' : null),
-            vpp_label: anyOwn ? 'Force dispatch' : null,
           },
           battery: {}, energy_today: {},
           capabilities: (this.summary && this.summary.capabilities) || {},
@@ -1209,7 +1208,8 @@ document.addEventListener('alpine:init', () => {
       if (this.isDebugMode) return ['Debug Mode', 'Debug Mode — 1301 run_status 8'];
       if (this.isOffGrid) return ['Off-grid', 'Off-grid — 1723 offgridState and the main relays'];
       if (this.isOwnForce) {
-        return [this.power.vpp_label || 'Force dispatch',
+        // Short: "Force dispatch" did not fit the row.
+        return ['Force',
                 'FORCE — this bridge is holding a force (Battery force or a schedule)'];
       }
       if (this.isForced) {

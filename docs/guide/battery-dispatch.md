@@ -102,7 +102,7 @@ Daily or Weekly, the duration you type **is** the window, and the two agree.
 |---|---|---|
 | Top bar | A **FORCE** chip, while this bridge holds the force (#333). | `topbar.html`; `isOwnForce` in `app.js` |
 | Top bar | A red, pulsing **Release** button, while this bridge holds a force. Hover it to see the command and the seconds left. | `topbar.html`; polled from `GET /api/battery/command` every 15 s |
-| Dashboard | The **Run status** row reads **Force dispatch**, coloured, with a source chip. Hover it to see the source. | `dashboard.html`; `runStatusLabel` in `app.js` |
+| Dashboard | The **Run status** row reads **Force**, coloured, with a source chip. Hover it to see the source. | `dashboard.html`; `runStatusLabel` in `app.js` |
 | Control → Battery Control | The **Active** row shows the command. | `control.html` |
 | FranklinWH app | "VPP Mode" (the owner's observation above). | — |
 
