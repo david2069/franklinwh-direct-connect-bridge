@@ -67,12 +67,12 @@ def test_roster_entry_surfaces_offgrid_and_vpp():
     assert normal["off_grid"] is False and normal["vpp"] is False
 
 
-def test_dispatch_kind_force_vs_cloud_vpp():
-    """A Modbus force with NO cloud confirmation is 'force' (honest — could be a local
-    force_charge). Only the cloud can promote it to 'vpp'."""
-    # run_status 2 (Discharging), Modbus force active, cloud silent → force.
+def test_dispatch_kind_remote_vs_cloud_vpp():
+    """1707 = 9 with NO cloud confirmation and no force of ours is 'remote' (shown as VPP;
+    FORCE is only this bridge's own force, #333). Only the cloud can promote it to 'vpp'."""
+    # run_status 2 (Discharging), 1707 = 9, cloud silent → remote.
     force = app_module._roster_entry(_fake_gw(2, vpp_active=True))
-    assert force["vpp"] is True and force["vpp_kind"] == "force"
+    assert force["vpp"] is True and force["vpp_kind"] == "remote"
     assert force["run_status_desc"] == "Discharging"        # direction still honest
     # cloud confirms a VPP (fresh) → 'vpp' wins, carries the programme.
     vpp = app_module._roster_entry(_fake_gw(2, vpp_active=True, cloud_vpp=True,
@@ -80,7 +80,7 @@ def test_dispatch_kind_force_vs_cloud_vpp():
     assert vpp["vpp_kind"] == "vpp" and vpp["vpp_programme"] == "Virtual Peakers (Ausgrid)"
     # a STALE cloud VPP (old ts) is ignored → falls back to the live force signal.
     stale = app_module._roster_entry(_fake_gw(2, vpp_active=True, cloud_vpp=True, cloud_ts=1.0))
-    assert stale["vpp_kind"] == "force"
+    assert stale["vpp_kind"] == "remote"
     # no dispatch at all → nothing.
     assert app_module._roster_entry(_fake_gw(2))["vpp_kind"] is None
 
