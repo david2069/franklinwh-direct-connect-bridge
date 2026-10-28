@@ -35,6 +35,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   saved is kept. The unused `release_stale()`, which would have released any force, is gone.
 
 ### Fixed
+- **Battery Control and the top bar's Release act on the gateway on screen** (#349). They
+  used to force and release the default gateway (or `FWH_MODBUS_HOST`), whichever gateway
+  you were viewing, and showed the default's force, ratings and SoC.
+  `/api/battery/command` now takes `?gateway=`. In Site view the widget asks you to
+  choose a gateway, and Release releases each force this bridge holds on its own gateway.
+- **The Modbus client host override and `FWH_MODBUS_HOST` apply only to the default
+  gateway** (#354). They used to redirect every gateway's forces and releases to one
+  host. A force is now recorded under the gateway's own host, so the scheduler's conflict
+  check also sees a force started from Battery Control.
+- **Two forces started at the same moment keep their own SoC limit** (#355). A force on one
+  gateway could pick up another gateway's SoC reader, so its target SoC was checked
+  against the wrong battery.
 - **The default gateway no longer changes when you edit a gateway** (#182, #146). It used
   to be whichever gateway was registered first, so editing, restarting or republishing
   the default quietly made another gateway the default. Unbound schedules, the VPP check

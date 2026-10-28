@@ -9,6 +9,7 @@ library's software ``duration_s`` timer is the only safety on this firmware
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 
@@ -24,8 +25,6 @@ UNIT_ID = 2  # FranklinWH default (per the library)
 _active: dict[str, dict] = {}  # host part -> {command, watts, host, started, duration_s,
                                #   target_soc, key, stop, soc_getter, on_event}
 _lock = threading.Lock()
-_soc_getter = None            # callable() -> current SoC %, injected by the endpoint
-_on_event = None              # callable(status, detail) -> persist to the activity log
 
 
 def _view(rec: dict) -> dict:
@@ -62,8 +61,9 @@ def holds_force(*hosts) -> bool:
     return bool(held & {_host_part(h) for h in hosts if h})
 
 
-def _fire(status: str, detail: str, rec: dict | None = None) -> None:
-    sink = (rec or {}).get("on_event") or _on_event
+def _fire(status: str, detail: str, rec: dict | None = None, sink=None) -> None:
+    """Record a dispatch event with the force's own sink, else the caller's (#355)."""
+    sink = (rec or {}).get("on_event") or sink
     if sink:
         try:
             sink(status, detail)
@@ -145,8 +145,11 @@ def _watch(host: str, key: float, duration_s: int, target_soc: int, watts) -> No
                     return
 
 
-def _arm_watchdog(host: str, command: str, watts, duration_s: int, target_soc: int) -> None:
-    """Hold a force on ``host``: replaces only that aGate's earlier force, if any."""
+def _arm_watchdog(host: str, command: str, watts, duration_s: int, target_soc: int, *,
+                  soc_getter=None, on_event=None) -> None:
+    """Hold a force on ``host``: replaces only that aGate's earlier force, if any. The SoC
+    reader and event sink are this call's own, never shared state, so two gateways'
+    forces armed at the same moment can't swap them (#355)."""
     hp = _host_part(host)
     with _lock:
         key = time.monotonic()
@@ -154,8 +157,8 @@ def _arm_watchdog(host: str, command: str, watts, duration_s: int, target_soc: i
         _active[hp] = {"command": command, "watts": watts, "host": host,
                        "started": time.time(), "duration_s": int(duration_s or 0),
                        "target_soc": int(target_soc or 0), "key": key,
-                       "stop": threading.Event(), "soc_getter": _soc_getter,
-                       "on_event": _on_event}
+                       "stop": threading.Event(), "soc_getter": soc_getter,
+                       "on_event": on_event}
     if old:
         old["stop"].set()             # end that aGate's prior loop; others keep running
     t = threading.Thread(target=_watchdog_loop,
@@ -198,11 +201,6 @@ def reconcile_interrupted(store, host: str, policy: str, *, soc_getter=None,
     Returns a list of {name, action, detail}. Never raises. Only release/resume ever
     command the battery.
     """
-    global _soc_getter, _on_event
-    if soc_getter is not None:
-        _soc_getter = soc_getter
-    if on_event is not None:
-        _on_event = on_event
     policy = (policy or "notify").lower()
     try:
         rows = store.active_dispatches(host=host)
@@ -249,7 +247,8 @@ def reconcile_interrupted(store, host: str, policy: str, *, soc_getter=None,
                 action = "released"
                 detail = f"'{name}' {when}; battery was still forced — RELEASED (policy={policy})."
             elif forced and not ended:
-                _arm_watchdog(host, current(host).get("active") or cmd, watts, remaining, tgt)
+                _arm_watchdog(host, current(host).get("active") or cmd, watts, remaining, tgt,
+                              soc_getter=soc_getter, on_event=on_event)
                 store.record_dispatch(
                     schedule_id=d.get("schedule_id"), name=name, gateway_id=d.get("gateway_id"),
                     host=host, direction=d.get("direction"), watts=watts,
@@ -398,13 +397,45 @@ def host_override() -> dict:
     return {"host": _HOST_OVERRIDE, "port": _PORT_OVERRIDE or None}
 
 
-def effective_target(host: str | None) -> tuple:
-    """The (host, port) actually used for Modbus: the override when set, else the passed
-    gateway host split into (host, port) — so a mock's ``127.0.0.1:<ephemeral>`` is handled
-    and a bare IP keeps the default 502. This is the single source of truth for the target."""
+def _is_default_host(host: str | None) -> bool:
+    """True when ``host`` is the default gateway's, or there is only one gateway."""
+    from . import state
+    gws = state.gateways()
+    default = state.default_gateway()
+    if len(gws) <= 1 or not host or default is None:
+        return True
+    mine = {h for h in (default.active_host, default.configured_host) if h}
+    if host in mine:
+        return True
+    others = {_host_part(h) for g in gws if g is not default
+              for h in (g.active_host, g.configured_host) if h}
+    return _host_part(host) in {_host_part(h) for h in mine} and _host_part(host) not in others
+
+
+def _override_for(host: str | None) -> tuple | None:
+    """The (host, port) to use instead of ``host``: the persisted override, else
+    ``FWH_MODBUS_HOST``. Either applies only to the DEFAULT gateway; every other gateway
+    keeps its own host, so one setting can't send every gateway's force to one aGate (#354)."""
     from .client import _split_hostport
     if _HOST_OVERRIDE:
-        return _HOST_OVERRIDE, (_PORT_OVERRIDE or MODBUS_PORT)
+        target = (_HOST_OVERRIDE, _PORT_OVERRIDE or MODBUS_PORT)
+    else:
+        env = (os.environ.get("FWH_MODBUS_HOST") or "").strip()
+        if not env:
+            return None
+        target = _split_hostport(env, MODBUS_PORT)
+    return target if _is_default_host(host) else None
+
+
+def effective_target(host: str | None) -> tuple:
+    """The (host, port) actually used for Modbus: the override for the default gateway when
+    one is set, else the passed gateway host split into (host, port) — so a mock's
+    ``127.0.0.1:<ephemeral>`` is handled and a bare IP keeps the default 502. This is the
+    single source of truth for the target."""
+    from .client import _split_hostport
+    ov = _override_for(host)
+    if ov:
+        return ov
     h, p = _split_hostport(host or "", MODBUS_PORT)
     return h, p
 
@@ -436,8 +467,8 @@ def is_mock_target(host: str | None) -> bool:
     Matched on the full host and on its host part, because some callers pass the host
     without its port. A host part shared with a real gateway (an emulator on 127.0.0.1)
     is not treated as a mock. An explicit Modbus host override always wins: the user
-    pointed the client somewhere real."""
-    if not host or _HOST_OVERRIDE:
+    pointed the client somewhere real (default gateway only, #354)."""
+    if not host or _override_for(host):
         return False
     try:
         from . import state
@@ -652,11 +683,6 @@ def execute(command: str, *, host: str, power_w: int = 0, power_pct: int = 0,
     ``soc_getter`` for live SoC. ``on_event(status, detail)`` records dispatch
     start/end to the activity log. ``dry_run`` computes without writing.
     """
-    global _soc_getter, _on_event
-    if soc_getter is not None:
-        _soc_getter = soc_getter
-    if on_event is not None:
-        _on_event = on_event
     cmd = (command or "").strip()
     # The UI disables the controls, but the UI is not the gate — the API is. A force
     # first confirms the path is ready. A release skips that check (refusing to STOP a
@@ -695,7 +721,8 @@ def execute(command: str, *, host: str, power_w: int = 0, power_pct: int = 0,
             except Exception as e:                               # noqa: BLE001
                 _clear_active(host)
                 if was not in (None, "Not Active"):
-                    _fire("dispatch-end", "released — manual (Release), not confirmed", held)
+                    _fire("dispatch-end", "released — manual (Release), not confirmed", held,
+                          on_event)
                 return {"ok": True, "confirmed": False, "active": "Not Active",
                         "result": f"release sent; not confirmed (read-back failed: "
                                   f"{type(e).__name__})"}
@@ -707,7 +734,7 @@ def execute(command: str, *, host: str, power_w: int = 0, power_pct: int = 0,
                                   "enabled (WSetEna on)"}
             _clear_active(host)
             if was not in (None, "Not Active"):
-                _fire("dispatch-end", "released — manual (Release)", held)
+                _fire("dispatch-end", "released — manual (Release)", held, on_event)
             return {"ok": True, "confirmed": True, "result": "released",
                     "active": "Not Active"}
 
@@ -741,11 +768,13 @@ def execute(command: str, *, host: str, power_w: int = 0, power_pct: int = 0,
         if okc:
             _record(host, "ready", "force")
         if okc and not dry_run:
-            _arm_watchdog(host, cmd, watts, duration_s, target_soc)
+            _arm_watchdog(host, cmd, watts, duration_s, target_soc,
+                          soc_getter=soc_getter, on_event=on_event)
             _fire("dispatch-start",
                   f"{cmd} — {abs(watts)}W ({'charge' if watts > 0 else 'discharge' if watts < 0 else 'hold'}), "
                   f"power_mode={power_mode}, duration={duration_s or 'none'}s, "
-                  f"target_soc={str(target_soc) + '%' if target_soc else 'off'}")
+                  f"target_soc={str(target_soc) + '%' if target_soc else 'off'}",
+                  sink=on_event)
         active = None if dry_run else (cmd if okc else "Not Active")
         return {"ok": bool(okc), "result": (("[dry-run] " + msg) if dry_run else msg) + clamp_note,
                 "active": active, "watts": watts}

@@ -57,10 +57,8 @@ def test_a_second_gateways_force_keeps_the_first_ones_limits():
 
 
 def test_each_force_keeps_its_own_soc_reader():
-    bc._soc_getter = lambda: 11
-    bc._arm_watchdog("10.0.0.1", "Force Charge", 2000, 0, 90)
-    bc._soc_getter = lambda: 77
-    bc._arm_watchdog("10.0.0.2", "Force Discharge", -1000, 0, 20)
+    bc._arm_watchdog("10.0.0.1", "Force Charge", 2000, 0, 90, soc_getter=lambda: 11)
+    bc._arm_watchdog("10.0.0.2", "Force Discharge", -1000, 0, 20, soc_getter=lambda: 77)
     assert bc._active["10.0.0.1"]["soc_getter"]() == 11
     assert bc._active["10.0.0.2"]["soc_getter"]() == 77
 

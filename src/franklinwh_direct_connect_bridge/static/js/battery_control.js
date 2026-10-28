@@ -36,11 +36,14 @@ function batteryControl() {
       // One fresh availability check when the control is shown. The server rate-limits
       // it; plain polls read a cache and never open the aGate's :502 (#223).
       await this.refresh(true);
+      // The widget acts on the gateway on screen (#349): re-read it when that changes.
+      this.$watch('$store.app.selectedGateway', () => this.refresh(true));
     },
 
     async refresh(check = false) {
       try {
-        const r = await fetch('api/battery/command' + (check ? '?refresh=1' : ''));
+        const r = await fetch('api/battery/command' + (check ? '?refresh=1' : '')
+                              + this.$store.app.gwQuery(check ? '&' : '?'));
         const d = await r.json();
         this.available = !!d.available;
         this.reason = d.reason || '';
@@ -56,7 +59,8 @@ function batteryControl() {
       }
     },
 
-    get canWrite() { return !!this.$store.app.summary.writes_enabled; },
+    // Site view is every gateway: a force needs one, so it is chosen first (#350).
+    get canWrite() { return !!this.$store.app.summary.writes_enabled && !this.$store.app.siteMode; },
 
     // ── Duration as hh:mm:ss (two-way with the raw `duration` seconds) ──
     get durH() { return Math.floor(this.duration / 3600); },
@@ -147,7 +151,7 @@ function batteryControl() {
 
       this.sending = true;
       try {
-        const r = await fetch('api/battery/command', {
+        const r = await fetch('api/battery/command' + this.$store.app.gwQuery('?'), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ slug, value: String(value) }),
         });

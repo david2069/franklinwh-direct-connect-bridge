@@ -461,6 +461,7 @@ document.addEventListener('alpine:init', () => {
     },
     version: '--',
     batteryActive: 'Not Active',   // active WSet force dispatch (topbar Release)
+    batteryHeld: [],               // every force this bridge holds (Site view's Release)
     batteryRemaining: null,
     toasts: [],
     _toastId: 0,
@@ -909,6 +910,7 @@ document.addEventListener('alpine:init', () => {
       this._loadGeneratorInstalled();   // generator presence is per-gateway
       this.loadSiteTz();                  // the site zone is per-gateway too (#144)
       this.loadHistory(this.histRange);   // history is scoped per-gateway (by serial)
+      this.pollBattery();                 // the topbar Release is per-gateway too (#349)
     },
 
     // Query-string fragment that scopes a device call to the SELECTED gateway — only
@@ -946,24 +948,44 @@ document.addEventListener('alpine:init', () => {
      *  so it must not ask for ?refresh=1. */
     async pollBattery() {
       try {
-        const d = await (await fetch('api/battery/command')).json();
-        this.batteryActive = d.active || 'Not Active';
-        this.batteryRemaining = d.remaining_s ?? null;
+        const d = await (await fetch('api/battery/command' + this.gwQuery('?'))).json();
+        this.batteryHeld = d.held || [];
+        // The force on the gateway on screen; in Site view, every force this bridge
+        // holds (#349).
+        if (this.siteMode) {
+          const n = this.batteryHeld.length;
+          this.batteryActive = n ? (n === 1 ? `${this.batteryHeld[0].active} · ${this.batteryHeld[0].label}`
+                                            : `${n} forces`) : 'Not Active';
+          this.batteryRemaining = n === 1 ? (this.batteryHeld[0].remaining_s ?? null) : null;
+        } else {
+          this.batteryActive = d.active || 'Not Active';
+          this.batteryRemaining = d.remaining_s ?? null;
+        }
       } catch (e) { /* leave last value */ }
     },
-    /** Global emergency release of any active force dispatch. */
+    /** Release the force on the gateway on screen; in Site view, every force this bridge
+     *  holds, each on its own gateway (#349). */
     async releaseBattery() {
+      const targets = this.siteMode
+        ? (this.batteryHeld || []).map(h => ({ q: `?gateway=${encodeURIComponent(h.gateway_id)}`, what: `${h.active} on ${h.label}` }))
+        : [{ q: this.gwQuery('?'), what: this.batteryActive }];
+      if (!targets.length) return;
       if (!await this.confirmDialog(
-            `Release the active battery force (${this.batteryActive}) and return to normal operation?`,
+            `Release ${targets.length > 1 ? 'these battery forces' : 'the battery force'} and return to normal operation?\n\n`
+            + targets.map(t => '• ' + t.what).join('\n'),
             { title: 'Release force dispatch', danger: true })) return;
-      try {
-        const r = await fetch('api/battery/command', { method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ slug: 'battery_command', value: 'Release' }) });
-        const d = await r.json();
-        if (r.ok && d.ok) { this.batteryActive = 'Not Active'; this.batteryRemaining = null; this.toast('Battery released', 'success'); }
-        else this.toast('Release failed: ' + (d.result || d.detail || r.status), 'error');
-      } catch (e) { this.toast('Release failed: ' + e.message, 'error'); }
+      const failed = [];
+      for (const t of targets) {
+        try {
+          const r = await fetch('api/battery/command' + t.q, { method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ slug: 'battery_command', value: 'Release' }) });
+          const d = await r.json();
+          if (!(r.ok && d.ok)) failed.push(`${t.what}: ${d.result || d.detail || r.status}`);
+        } catch (e) { failed.push(`${t.what}: ${e.message}`); }
+      }
+      if (failed.length) this.toast('Release failed — ' + failed.join('; '), 'error');
+      else { this.batteryActive = 'Not Active'; this.batteryRemaining = null; this.toast('Battery released', 'success'); }
       this.pollBattery();
     },
 

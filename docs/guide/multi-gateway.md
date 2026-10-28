@@ -164,11 +164,17 @@ graceful shutdown and the start-up reconcile all act on the gateway the force wa
 (#192). **Run now** on a schedule bound to a gateway runs there, whatever the top bar shows
 (#193).
 
+**Battery Control** (Control tab) and the top bar's **Release** act on the gateway shown
+in the top bar (#349); `/api/battery/command` takes `?gateway=` (the default gateway
+when omitted). In **Site view** the widget asks you to choose a gateway, and Release lists
+every force this bridge holds and releases each on its own gateway.
+
+The Modbus client's **host override** (Control → Modbus client) and `FWH_MODBUS_HOST`
+apply only to the **default gateway**. Every other gateway connects to its own IP (#354).
+
 Not yet per gateway (part of the multi-gateway audit, #220):
 
-- The **Battery Control** widget on the Control tab and `/api/battery/command` act on the
-  default gateway's host (or `FWH_MODBUS_HOST`).
-- The VPP monitor reads only `FWH_MODBUS_HOST` or the first gateway.
+- The VPP monitor reads only the default gateway (#357).
 
 If you import a schedule that names a gateway this bridge does not have, validation
 raises a **warning** (not an error) and the rule falls back to the default gateway, so a

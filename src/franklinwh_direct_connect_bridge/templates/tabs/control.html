@@ -12,10 +12,13 @@
 
   <!-- Multi-gateway: controls are scoped to the SELECTED gateway -->
   <p class="text-xs" style="color: var(--text-muted)"
-     x-show="$store.app.gateways.length > 1">
+     x-show="$store.app.gateways.length > 1 && !$store.app.siteMode">
     Controlling
     <span class="font-semibold" style="color: var(--text-primary)"
           x-text="(($store.app.gateways.find(g => g.id === $store.app.selectedGateway) || {}).label) || $store.app.selectedGateway"></span>
+  </p>
+  <p class="text-xs" style="color: var(--text-muted)" x-show="$store.app.siteMode" x-cloak>
+    Site view shows every gateway. Choose a gateway in the top bar to control its battery.
   </p>
 
   <!-- Read-only notice -->
@@ -519,8 +522,9 @@
           </template>
         </div>
         <p class="text-[11px]" style="color:var(--text-faint)">
-          Leave the host blank to auto-derive from the selected gateway (the usual case — the aGate's
-          Modbus is on the same IP). Set it only when Modbus is reachable at a different host/port.
+          Leave the host blank to use each gateway's own IP (the usual case — the aGate's
+          Modbus TCP Server is on the same IP). Set it only when the <strong>default gateway's</strong>
+          Modbus TCP Server is reachable at a different host/port; other gateways always use their own.
         </p>
       </div>
     </div>

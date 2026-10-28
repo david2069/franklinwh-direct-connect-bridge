@@ -188,8 +188,11 @@ def _dispatch_kind(gw) -> tuple:
     import time as _t
     from . import battery_control as _bc
     from . import cloud_status as _cs
+    # Forces are recorded under the gateway's own host; FWH_MODBUS_HOST and the host
+    # override only change where the Modbus client connects (#354). An install with no
+    # gateway host records its force under FWH_MODBUS_HOST, so the default counts that too.
     hosts = [getattr(gw, "active_host", None), getattr(gw, "configured_host", None)]
-    if gw is state.default_gateway():            # FWH_MODBUS_HOST overrides the default's host
+    if gw is state.default_gateway():
         hosts.append(os.environ.get("FWH_MODBUS_HOST"))
     if _bc.holds_force(*hosts):
         return "force", None
@@ -1021,9 +1024,10 @@ def create_app() -> FastAPI:
         def _vpp_loop():
             import time as _t
             from . import vpp_monitor, battery_control
-            _host = lambda: (os.environ.get("FWH_MODBUS_HOST")
-                             or (state.default_gateway().active_host
-                                 if state.default_gateway() else None))
+            # The default gateway's own host; battery_control applies FWH_MODBUS_HOST
+            # or the host override to it (#354).
+            _host = lambda: (state.default_gateway().active_host
+                             if state.default_gateway() else None)
             def _store():
                 try:
                     return db.get_store(get_settings())
@@ -3675,11 +3679,12 @@ def create_app() -> FastAPI:
     # read-only control rather than a button that lies.
     _batt_cmd = {"power_w": 0, "power_pct": 100, "power_mode": "pct",
                  "duration_s": 0, "target_soc": 0, "active": "Not Active", "result": ""}
-    _avail_cache = {"ts": 0.0, "val": None, "host": None}
+    #: Availability per gateway host (#349): host -> {"ts", "val"}.
+    _avail_cache: dict = {}
 
     def _avail_invalidate() -> None:
         """Drop the cached availability: the next GET re-checks once (#223)."""
-        _avail_cache.update({"ts": 0.0, "val": None, "host": None})
+        _avail_cache.clear()
 
     def _bc_is_enabled() -> bool:
         try:
@@ -3688,18 +3693,22 @@ def create_app() -> FastAPI:
         except Exception:  # noqa: BLE001
             return False
 
-    def _modbus_host() -> str | None:
+    def _modbus_host(gateway: str | None = None) -> str | None:
         # The aGate's Modbus interface is on the SAME host as its Direct-Connect
-        # interface — default to the gateway host (port 502 added by battery_control),
-        # overridable with FWH_MODBUS_HOST.
+        # interface: the gateway's host (port 502 added by battery_control). For the
+        # default gateway, battery_control applies FWH_MODBUS_HOST or the host override
+        # (#354), so a force is recorded under the gateway's own host either way.
         try:
-            return os.environ.get("FWH_MODBUS_HOST") or _gw_host(None)
+            host = _gw_host(gateway)
+        except HTTPException:
+            raise
         except Exception:  # noqa: BLE001
-            return os.environ.get("FWH_MODBUS_HOST")
+            host = None
+        # No gateway host at all (an env-only install): FWH_MODBUS_HOST is the target.
+        return host or (None if gateway else os.environ.get("FWH_MODBUS_HOST"))
 
-    def _battery_force_status() -> dict:
+    def _battery_force_status(host: str | None) -> dict:
         from . import battery_control
-        host = _modbus_host()
         if not host:
             return {"available": False, "reason": "no gateway host to reach over Modbus",
                     "state": "not_configured",
@@ -3712,7 +3721,8 @@ def create_app() -> FastAPI:
     _AVAIL_MIN_GAP_S = 30.0
 
     @app.get("/api/battery/command")
-    def api_battery_command_state(refresh: bool = Query(False)):
+    def api_battery_command_state(refresh: bool = Query(False),
+                                  gateway: str | None = Query(None)):
         """The Battery Command state. Polled by every open browser tab, so it must not
         open the Modbus TCP Server (aGate :502) each time (#223): that made this bridge a
         second client every 30 s beside the Modbus Bridge.
@@ -3722,17 +3732,23 @@ def create_app() -> FastAPI:
         (Battery tab opened, or the user's Check), at most once per 30 s. A force
         re-checks capability itself, so a stale "available" cannot dispatch."""
         from . import battery_control
-        host = _modbus_host()
-        cur = battery_control.current(host)      # in-memory, no Modbus — cheap to poll
-        _batt_cmd["active"] = cur.get("active", "Not Active")
+        host = _modbus_host(gateway)
+        cur = battery_control.current(host) if host else {"active": "Not Active"}
         now = time.time()
-        age = now - _avail_cache["ts"]
-        if (_avail_cache["val"] is None or age > _AVAIL_MAX_AGE_S
-                or host != _avail_cache["host"]
+        hit = _avail_cache.get(host) or {"ts": 0.0, "val": None}
+        age = now - hit["ts"]
+        if (hit["val"] is None or age > _AVAIL_MAX_AGE_S
                 or (refresh and age > _AVAIL_MIN_GAP_S)):
-            _avail_cache.update({"ts": now, "val": _battery_force_status(), "host": host})
-        st = _avail_cache["val"] or {}
-        return {**_batt_cmd, "remaining_s": cur.get("remaining_s"),
+            hit = _avail_cache[host] = {"ts": now, "val": _battery_force_status(host)}
+        st = hit["val"] or {}
+        # Every gateway this bridge holds a force on, for the top bar's Release in Site
+        # view (#349). In-memory, no Modbus.
+        held = [{"gateway_id": g.id, "label": g.label, "host": h, **battery_control.current(h)}
+                for h in battery_control.held_hosts()
+                for g in [next((x for x in state.gateways()
+                                if h in (x.active_host, x.configured_host)), None)] if g]
+        return {**_batt_cmd, "active": cur.get("active", "Not Active"),
+                "watts": cur.get("watts"), "remaining_s": cur.get("remaining_s"),
                 "active_target_soc": cur.get("target_soc"),
                 "available": st.get("available", False), "reason": st.get("reason", ""),
                 # Four states, because the remedy differs: not_configured / unreachable /
@@ -3741,10 +3757,11 @@ def create_app() -> FastAPI:
                 "state": st.get("state", "not_configured"), "hint": st.get("hint", ""),
                 "max_charge_w": st.get("max_charge_w", 5000),
                 "max_discharge_w": st.get("max_discharge_w", 5000),
-                "checked_at": _avail_cache["ts"] or None}
+                "checked_at": hit["ts"] or None, "held": held}
 
     @app.post("/api/battery/command")
-    def api_battery_command(req: BatteryCmdReq, dry: bool = Query(False)):
+    def api_battery_command(req: BatteryCmdReq, dry: bool = Query(False),
+                            gateway: str | None = Query(None)):
         """Store a control value, or (on the `battery_command` slug) execute it.
         Executing actually moves the battery, so it is gated on allow_writes AND a
         reachable, configured Modbus path — otherwise it refuses with the reason."""
@@ -3766,14 +3783,15 @@ def create_app() -> FastAPI:
         # Executing a Force/Release command — this MOVES the battery.
         _guard_writes()
         from . import battery_control
-        host = _modbus_host()
+        gw = _gw_or_404(gateway)       # the gateway on screen (#349), else the default
+        host = _modbus_host(gateway)
         if not host:
             return {"ok": False, "result": "no gateway host to reach over Modbus",
                     "active": _batt_cmd["active"]}
         # Optional dry-run (?dry=1) computes the write without touching the battery.
         def _batt_soc():
             try:
-                return (getattr(get_state(), "last_state", {}) or {}).get("soc")
+                return (getattr(gw, "last_state", {}) or {}).get("soc")
             except Exception:  # noqa: BLE001
                 return None
         def _batt_log(status, detail):
@@ -3804,7 +3822,8 @@ def create_app() -> FastAPI:
                           else -abs(mag) if _force_dirn == "discharge" else 0)
                 dur = int(_batt_cmd["duration_s"] or 0)
                 store.record_dispatch(
-                    schedule_id="_widget", name="Battery Control (widget)", gateway_id=None,
+                    schedule_id="_widget", name="Battery Control (widget)",
+                    gateway_id=gw.id or None,
                     host=host, direction=_force_dirn, watts=signed, power_mode=mode,
                     target_soc=int(_batt_cmd["target_soc"] or 0), window_start_ts=time.time(),
                     window_end_ts=(time.time() + dur) if dur else None)
@@ -4668,7 +4687,7 @@ def create_app() -> FastAPI:
             return {"ok": False, "target": None, "reason": "no gateway host to reach over Modbus"}
         st = battery_control.status(base)   # live connect; applies the override via effective_target
         # A deliberate check is the freshest answer there is: show it everywhere (#223).
-        _avail_cache.update({"ts": time.time(), "val": st, "host": base})
+        _avail_cache[base] = {"ts": time.time(), "val": st}
         return {"ok": bool(st.get("available")), "target": target,
                 "reason": st.get("reason") or "",
                 "max_charge_w": st.get("max_charge_w"),
