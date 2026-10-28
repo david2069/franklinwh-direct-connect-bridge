@@ -243,19 +243,6 @@ function settingsTab() {
 
     canWrite() { return !!(this.cfg.control && this.cfg.control.allow_writes); },
 
-    async toggleGateway(gw) {
-      if (!this.canWrite()) { this.gwErr = 'Enable writes (ALLOW_WRITES) to change gateways.'; return; }
-      this.gwBusy = { ...this.gwBusy, [gw.id]: true };
-      try {
-        const r = await fetch('api/gateways/' + encodeURIComponent(gw.id), {
-          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ enabled: !gw.enabled }) });
-        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
-        await this.loadGateways();
-      } catch (e) { this.gwErr = e.message; }
-      finally { this.gwBusy = { ...this.gwBusy, [gw.id]: false }; }
-    },
-
     // ── Discover (scan TCP 9000 + Local-API login) ──
     scanning: false,
     scanCands: null,      // null = not scanned; [] = scanned, none found
@@ -325,13 +312,26 @@ function settingsTab() {
     },
 
     // ── Edit Gateway modal ──
-    gwEdit: { open: false, id: '', label: '', host: '', port: 9000, description: '', publish_ha: true, is_mock: false, mock_units: 1, is_default: false, meter_id: '' },
-    gwTest: null, gwTesting: false,
+    gwEdit: { open: false, id: '', label: '', host: '', port: 9000, description: '', publish_ha: true, is_mock: false, mock_units: 1, is_default: false, enabled: true, was_enabled: true, meter_id: '' },
+    gwTest: null, gwTesting: false, gwNote: '',
     openEditGateway(gw) {
-      this.gwErr = ''; this.gwTest = null;
+      this.gwErr = ''; this.gwNote = ''; this.gwTest = null;
       this.gwEdit = { open: true, id: gw.id, label: gw.label, host: gw.host || '', port: gw.port || 9000,
         description: gw.description || '', publish_ha: !!gw.publish_ha, is_mock: !!gw.is_mock,
-        mock_units: gw.mock_units || 1, is_default: !!gw.is_default, meter_id: gw.meter_id || '' };
+        mock_units: gw.mock_units || 1, is_default: !!gw.is_default, enabled: !!gw.enabled,
+        was_enabled: !!gw.enabled, meter_id: gw.meter_id || '' };
+    },
+    // The default moves only here, never as a side effect of an edit (#182).
+    async makeDefaultGateway() {
+      if (!this.canWrite()) { this.gwErr = 'Enable writes (ALLOW_WRITES) to edit gateways.'; return; }
+      this.gwErr = ''; this.gwNote = '';
+      try {
+        const r = await fetch('api/gateways/' + encodeURIComponent(this.gwEdit.id) + '/default', { method: 'POST' });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+        this.gwEdit.is_default = true;
+        this.gwNote = `"${this.gwEdit.label}" is now the default gateway.`;
+        await this.loadGateways();
+      } catch (e) { this.gwErr = e.message; }
     },
     closeEditGateway() { this.gwEdit.open = false; this.gwTest = null; },
 
@@ -828,13 +828,22 @@ function settingsTab() {
         ? { label: e.label, description: e.description, publish_ha: e.publish_ha,
             mock_units: Math.max(1, Math.min(8, e.mock_units || 1)) }
         : { label: e.label, host: e.host, port: e.port, description: e.description, publish_ha: e.publish_ha };
-      if (e.is_default) body.is_default = true;
+      if (e.enabled !== e.was_enabled) body.enabled = e.enabled;
       if (e.meter_id) body.meter_id = e.meter_id;
+      this.gwErr = ''; this.gwNote = '';
       try {
         const r = await fetch('api/gateways/' + encodeURIComponent(e.id), {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
-        this.gwEdit.open = false; await this.loadGateways();
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.detail || r.statusText);
+        await this.loadGateways();
+        // A disable that released a force says so here, in the dialog (#353).
+        if (d.released) {
+          e.was_enabled = e.enabled;
+          this.gwNote = `Saved. The force this bridge held on "${e.label}" was released: ${d.released}`;
+        } else {
+          this.gwEdit.open = false;
+        }
       } catch (err) { this.gwErr = err.message; }
     },
     async testEditGateway() {

@@ -89,7 +89,7 @@ number of operations on `main` (0.5.2):
 | Group | Prefix | Ops | Use it for |
 |---|---|---|---|
 | Live data | `/api/summary`, `/api/gateways/{id}/summary`, `/api/power`, `/api/battery`, `/api/solar`, `/api/grid`, `/api/live` | — | The current reading. `/api/summary` returns the poller's cached copy, so it costs the aGate nothing. `/api/live` is liveness only, with no device I/O (the add-on watchdog uses it). |
-| Gateways | `/api/gateways` | 8 | List, add, edit, enable and remove gateways, and per-gateway summaries. |
+| Gateways | `/api/gateways` | 9 | List, add, edit, enable and remove gateways, make one the default (`POST /api/gateways/{id}/default`), and per-gateway summaries. Setting `is_default` through add or edit, disabling the default, and removing an enabled gateway each return 409 with the reason. |
 | Schedules | `/api/schedules` | 17 | Create, update, delete, run, stop, pause and resume schedules, plus the timeline, log, runs, presets, import/export, and a condition evaluator. See [the Scheduler use case](scheduler-integration.md). |
 | Battery and control | `/api/battery/command`, `/api/dispatch`, `/api/mode`, `/api/offgrid`, `/api/circuits`, `/api/grid/limits`, `/api/reboot` | — | Writes. See [write safety](#write-safety) below. |
 | Modbus client (this bridge) | `/api/modbus` | 3 | Settings and test for the bridge's optional connection to the Modbus TCP Server (aGate :502). |

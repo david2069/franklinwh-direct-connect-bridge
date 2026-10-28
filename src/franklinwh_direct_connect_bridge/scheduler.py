@@ -2118,12 +2118,12 @@ def holds_dispatch(store, schedule_id: str, host: str | None) -> bool:
 
 
 def _is_default_gateway(store, gateway_id: str) -> bool:
-    """True if this is the gateway an unbound schedule should run on. Uses the
-    first configured gateway as the default when nothing else distinguishes them."""
+    """True if this is the gateway an unbound schedule should run on: the roster's
+    stored default (#182), not whichever gateway was registered first."""
     try:
-        from .state import gateways as _gws
-        gw = _gws()
-        return bool(gw) and gw[0].id == gateway_id
+        from .state import default_gateway as _default
+        gw = _default()
+        return gw is not None and gw.id == gateway_id
     except Exception:                                           # noqa: BLE001
         return True     # single-gateway: always the default
 

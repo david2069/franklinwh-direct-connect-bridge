@@ -61,15 +61,16 @@ def test_api_roster_merge_and_toggle(gw_client):
     # roster shows it (merged shape)
     roster = c.get("/api/gateways").json()
     assert any(g["id"] == gid and "enabled" in g and "model" in g for g in roster)
-    # disable → enabled False, still listed
-    assert c.patch(f"/api/gateways/{gid}", json={"enabled": False}).json()["enabled"] is False
-    assert any(g["id"] == gid and g["enabled"] is False for g in c.get("/api/gateways").json())
     # mock create is accepted (in-process emulator; stubbed in tests)
     mr = c.post("/api/gateways", json={"label": "M", "is_mock": True, "mock_units": 3,
                                        "publish_ha": False})
     assert mr.status_code == 201 and mr.json()["is_mock"] is True
     assert mr.json()["model"] == "aGate (mock)"
-    # delete
+    # Home is the default (first created, #182); move it, then disable → still listed
+    assert c.post(f"/api/gateways/{mr.json()['id']}/default").status_code == 200
+    assert c.patch(f"/api/gateways/{gid}", json={"enabled": False}).json()["enabled"] is False
+    assert any(g["id"] == gid and g["enabled"] is False for g in c.get("/api/gateways").json())
+    # delete (only once disabled, #146)
     assert c.delete(f"/api/gateways/{gid}").status_code == 200
     assert all(g["id"] != gid for g in c.get("/api/gateways").json())
 

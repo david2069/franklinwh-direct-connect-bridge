@@ -67,6 +67,11 @@ def test_gateways_can_be_added_edited_and_removed_with_metrics_off(
     assert gid in ids and len(ids) == 2
 
     assert c.patch(f"/api/gateways/{gid}", json={"label": "Renamed"}).status_code == 200
+    # Mock 1 was created first, so it is the default (#182): make Home the default, then
+    # disable Mock 1 before removing it (#146).
+    home = next(g["id"] for g in c.get("/api/gateways").json() if g["id"] != gid)
+    assert c.post(f"/api/gateways/{home}/default").status_code == 200
+    assert c.patch(f"/api/gateways/{gid}", json={"enabled": False}).status_code == 200
     assert c.delete(f"/api/gateways/{gid}").status_code == 200
     assert gid not in {g["id"] for g in c.get("/api/gateways").json()}
 

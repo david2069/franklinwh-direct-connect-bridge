@@ -425,6 +425,25 @@ class MetricsStore:
             self._conn.commit()
         return self.gateway(gw_id)
 
+    def ensure_one_default(self) -> str | None:
+        """Exactly one default gateway whenever any exist (#182); returns its id.
+
+        Keeps a single flagged, enabled row. Otherwise marks the gateway that boot made
+        the default until now — the first enabled row in roster order (flagged first,
+        then label) — so an update never changes which aGate unscoped calls reach."""
+        rows = self.gateways()
+        if not rows:
+            return None
+        flagged = [r for r in rows if r.get("is_default")]
+        if len(flagged) == 1 and flagged[0].get("enabled"):
+            return flagged[0]["id"]
+        target = next((r for r in rows if r.get("enabled")), flagged[0] if flagged else rows[0])
+        with self._lock:
+            self._conn.execute("UPDATE gateways SET is_default=0")
+            self._conn.execute("UPDATE gateways SET is_default=1 WHERE id=?", (target["id"],))
+            self._conn.commit()
+        return target["id"]
+
     def delete_gateway(self, gw_id: str) -> bool:
         with self._lock:
             cur = self._conn.execute("DELETE FROM gateways WHERE id=?", (gw_id,))

@@ -35,6 +35,20 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   saved is kept. The unused `release_stale()`, which would have released any force, is gone.
 
 ### Fixed
+- **The default gateway no longer changes when you edit a gateway** (#182, #146). It used
+  to be whichever gateway was registered first, so editing, restarting or republishing
+  the default quietly made another gateway the default. Unbound schedules, the VPP check
+  and every call that names no gateway then went to a different aGate. Now one gateway is
+  stored as the default and shown with a badge. **Make default** in a gateway's Edit
+  dialog is the only way to move it. On update, the gateway that was the default at
+  start-up is marked, so nothing changes.
+- **Gateways are enabled, disabled and removed from the Edit dialog** (#146). The Enabled
+  toggle in the table did nothing. The default gateway can't be disabled, and a gateway
+  can be removed only once it is disabled. Each refusal says why in the dialog. The
+  "Please confirm" box now opens above the Edit dialog instead of behind it.
+- **Disabling a gateway releases this bridge's force on it first** (#353). Before, the
+  force kept running with no window end to release it and no target-SoC check. If the
+  release fails, the gateway stays enabled.
 - **A schedule's window end releases only its own force** (#189). It used to send Release
   whether or not it had fired, which also ended a force from another schedule or from
   Battery Control. History now says "no release: this schedule did not hold the force".

@@ -981,6 +981,11 @@ def create_app() -> FastAPI:
             try:
                 store.seed_gateways(env_entries)
                 store.ensure_default_site_meter()   # default Home site + Meter 1; attach gateways
+                flagged = [r["id"] for r in store.gateways() if r.get("is_default")]
+                default_id = store.ensure_one_default()   # exactly one stored default (#182)
+                if default_id and flagged != [default_id]:
+                    log.info("default gateway: marked '%s' (it was the default by roster order)",
+                             default_id)
                 db_rows = store.gateways()
             except Exception:  # noqa: BLE001 — roster must never block startup
                 db_rows = []
@@ -999,6 +1004,7 @@ def create_app() -> FastAPI:
                     state.register_gateway(r["id"], r.get("host", ""), r.get("label"),
                                            port=int(r.get("port") or 9000),
                                            publish_ha=bool(r.get("publish_ha")))
+            state.set_default(next((r["id"] for r in db_rows if r.get("is_default")), None))
         else:
             for host, label in env_entries:
                 state.register_gateway(host, host, label)
@@ -1016,7 +1022,8 @@ def create_app() -> FastAPI:
             import time as _t
             from . import vpp_monitor, battery_control
             _host = lambda: (os.environ.get("FWH_MODBUS_HOST")
-                             or (state.gateways()[0].active_host if state.gateways() else None))
+                             or (state.default_gateway().active_host
+                                 if state.default_gateway() else None))
             def _store():
                 try:
                     return db.get_store(get_settings())
@@ -1147,7 +1154,7 @@ def create_app() -> FastAPI:
                         gws = state.gateways()
                         target = next((g for g in gws
                                        if (g.serial or "").upper() == want), None) \
-                            or (gws[0] if gws else None)
+                            or state.default_gateway()
                         if target is not None:
                             target.cloud_vpp = bool(data["is_vpp"])
                             target.cloud_mode = data.get("effective_mode") or ""
@@ -1746,6 +1753,38 @@ def create_app() -> FastAPI:
                 gws = [fallback]
         return [_roster_entry(gw) for gw in gws]
 
+    def _default_row(st) -> dict | None:
+        return next((r for r in st.gateways() if r.get("is_default")), None)
+
+    def _default_taken(current: dict | None) -> str:
+        name = current["label"] if current else "another gateway"
+        return (f"'{name}' is the default gateway. To change it, use Make default on the "
+                "gateway that should replace it.")
+
+    def _release_gateway_force(st, row: dict) -> str | None:
+        """Before a gateway is disabled, release a force this bridge holds on it (#353):
+        once its poller stops, no tick reaches the window end that would release it.
+        Returns the release result, None when nothing was held. Raises 502 (and the
+        gateway stays enabled) when the release fails."""
+        from . import battery_control as bc
+        gw = state.get_gateway(row["id"])
+        host = (gw.active_host or gw.configured_host) if gw is not None else row.get("host")
+        if not host:
+            return None
+        mine = [d for d in st.active_dispatches()
+                if d.get("gateway_id") == row["id"] or d.get("host") == host]
+        if not mine and not bc.holds_force(host):
+            return None
+        out = bc.execute("Release", host=host)
+        result = out.get("result", "") if isinstance(out, dict) else str(out)
+        if not (isinstance(out, dict) and out.get("ok")):
+            raise HTTPException(502, (f"Could not release the force on '{row['label']}': "
+                                      f"{result}. The gateway was not disabled."))
+        for d in mine:
+            st.end_dispatch(d["id"], status="stopped")
+        log.info("gateway '%s' disabled: force released (%s)", row["label"], result)
+        return result
+
     async def _reconcile_gateway(row: dict) -> None:
         """Bring the live poller + mock emulator in line with a roster row's enabled/
         mock/units state. Tear down first, then (re)start if it should be polling."""
@@ -1783,15 +1822,19 @@ def create_app() -> FastAPI:
         # Mocks are exempt — theirs is assigned when the emulator starts.
         if not req.is_mock and not (req.host or "").strip():
             raise HTTPException(422, "a gateway needs a host (the aGate's IP address)")
+        current = _default_row(st)
+        if req.is_default and current is not None:
+            raise HTTPException(409, _default_taken(current))
         import uuid
         gid = uuid.uuid4().hex[:12]
         seed = mockgw.seed_for(gid, req.mock_seed) if req.is_mock else None
         publish_ha = (not req.is_mock) if req.publish_ha is None else bool(req.publish_ha)
         row = st.create_gateway(
             gw_id=gid, label=req.label, host=("127.0.0.1" if req.is_mock else req.host),
-            port=req.port, is_default=req.is_default, enabled=req.enabled,
+            port=req.port, is_default=(current is None), enabled=(req.enabled or current is None),
             is_mock=req.is_mock, mock_seed=seed, mock_units=req.mock_units,
             publish_ha=publish_ha, description=req.description)
+        state.set_default(st.ensure_one_default())
         await _reconcile_gateway(row)
         return _gw_merged(row)
 
@@ -1801,10 +1844,47 @@ def create_app() -> FastAPI:
         st = _gw_store()
         if st is None:
             raise HTTPException(503, "metrics store is disabled; gateway roster needs it")
-        if st.gateway(gw_id) is None:
+        before = st.gateway(gw_id)
+        if before is None:
             raise HTTPException(404, f"no gateway '{gw_id}'")
-        row = st.update_gateway(gw_id, **req.model_dump(exclude_unset=True))
+        fields = req.model_dump(exclude_unset=True)
+        is_default = bool(before.get("is_default"))
+        if "is_default" in fields and bool(fields["is_default"]) != is_default:
+            raise HTTPException(409, (
+                f"'{before['label']}' is the default gateway. Make another gateway the "
+                "default first." if is_default else _default_taken(_default_row(st))))
+        fields.pop("is_default", None)
+        released = None
+        if fields.get("enabled") is False and before.get("enabled"):
+            if is_default:
+                raise HTTPException(409, (
+                    f"'{before['label']}' is the default gateway and can't be disabled. "
+                    "Make another gateway the default first."))
+            released = _release_gateway_force(st, before)
+        row = st.update_gateway(gw_id, **fields)
         await _reconcile_gateway(row)
+        out = _gw_merged(row)
+        if released is not None:
+            out["released"] = released
+        return out
+
+    @app.post("/api/gateways/{gw_id}/default")
+    async def api_gateway_make_default(gw_id: str):
+        """Make this gateway the default (#182): the one unscoped calls, unbound schedules
+        and Site view's single-gateway reads use. The only way the default moves."""
+        _guard_writes()
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled; gateway roster needs it")
+        row = st.gateway(gw_id)
+        if row is None:
+            raise HTTPException(404, f"no gateway '{gw_id}'")
+        if not row.get("enabled"):
+            raise HTTPException(409, f"'{row['label']}' is disabled. Enable it first.")
+        was = _default_row(st)
+        row = st.update_gateway(gw_id, is_default=True)
+        state.set_default(st.ensure_one_default())
+        log.info("default gateway: '%s' (was '%s')", row["label"], was["label"] if was else "none")
         return _gw_merged(row)
 
     @app.delete("/api/gateways/{gw_id}")
@@ -1813,8 +1893,11 @@ def create_app() -> FastAPI:
         st = _gw_store()
         if st is None:
             raise HTTPException(503, "metrics store is disabled; gateway roster needs it")
-        if st.gateway(gw_id) is None:
+        row = st.gateway(gw_id)
+        if row is None:
             raise HTTPException(404, f"no gateway '{gw_id}'")
+        if row.get("enabled"):
+            raise HTTPException(409, f"'{row['label']}' is enabled. Disable it first, then remove it.")
         await supervisor.stop_poller(gw_id)
         mockgw.stop_mock(gw_id)
         state.unregister_gateway(gw_id)

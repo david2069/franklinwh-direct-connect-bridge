@@ -228,7 +228,7 @@
 
     <!-- Confirm dialog (styled; replaces native confirm) -->
     <div x-show="$store.app.confirmState.open" x-cloak
-         class="fixed inset-0 z-[100] flex items-center justify-center p-4"
+         class="fixed inset-0 z-[125] flex items-center justify-center p-4"
          @keydown.escape.window="$store.app.confirmResolve(false)"
          x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
       <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="$store.app.confirmResolve(false)"></div>

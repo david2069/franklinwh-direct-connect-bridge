@@ -3,8 +3,8 @@
 Each :class:`GatewayState` holds one gateway's *active* aGate host (may change via
 re-discovery), its identity (serial), last-seen firmware (OTA-change detection), and the
 poller-maintained caches the REST layer serves. The registry keeps gateways in insertion
-order; ``get_state()`` returns the **default** (first) gateway so all existing
-single-gateway code paths keep working unchanged.
+order; ``get_state()`` returns the **default** gateway — the one the roster marks as
+default (#182), else the first registered — so all single-gateway code paths keep working.
 """
 
 from __future__ import annotations
@@ -56,6 +56,9 @@ class GatewayState:
 # -- ordered registry (module-level; the app/poller/REST layer share one) --------
 # Python dicts preserve insertion order, so a plain dict is an ordered registry.
 _gateways: dict[str, GatewayState] = {}
+#: The roster's stored default (#182). Insertion order is NOT the default: re-registering a
+#: gateway (any edit, restart or republish) moves it to the end of the dict.
+_default_id: str | None = None
 
 
 def register_gateway(id: str, host: str, label: str | None = None, *,
@@ -86,8 +89,18 @@ def gateways() -> list[GatewayState]:
     return list(_gateways.values())
 
 
+def set_default(id: str | None) -> None:
+    """Record which gateway the roster marks as the default (#182)."""
+    global _default_id
+    _default_id = id or None
+
+
 def default_gateway() -> GatewayState | None:
-    """The first-registered gateway (the single-gateway / primary), or None if empty."""
+    """The roster's default gateway when it is registered, else the first registered one
+    (env-configured and single-gateway setups have no roster flag), or None if empty."""
+    gw = _gateways.get(_default_id) if _default_id else None
+    if gw is not None:
+        return gw
     for gw in _gateways.values():
         return gw
     return None
@@ -133,6 +146,7 @@ def _unconfigured() -> GatewayState:
 
 def reset_gateways() -> None:
     """Test hook — forget all registered gateways."""
-    global _placeholder
+    global _placeholder, _default_id
     _gateways.clear()
     _placeholder = None
+    _default_id = None

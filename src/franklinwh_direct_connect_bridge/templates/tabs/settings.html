@@ -1027,7 +1027,7 @@
                   <span class="font-medium" style="color:var(--text-primary)" x-text="gw.label"></span>
                   <span x-show="gw.is_mock" class="text-[9px] px-1.5 rounded"
                         style="background:rgba(167,139,250,.2);color:#c4b5fd">MOCK</span>
-                  <span x-show="gw.is_default" class="text-[9px]" style="color:var(--text-faint)">default</span>
+                  <span x-show="gw.is_default" class="chip ok" style="font-size:.55rem">default</span>
                 </div>
               </td>
               <td class="px-3 py-2 font-mono text-xs" style="color:var(--text-secondary)"
@@ -1038,14 +1038,9 @@
                   x-text="gw.model || 'aGate'"></td>
               <td class="px-3 py-2 text-xs font-mono hidden md:table-cell" style="color:var(--text-secondary)"
                   x-text="_gwTz[gw.id] || '—'"></td>
-              <td class="px-3 py-2 text-center">
-                <button @click="toggleGateway(gw)" :disabled="gwBusy[gw.id]"
-                        class="relative inline-flex h-5 w-9 items-center rounded-full transition"
-                        :class="gw.enabled ? 'bg-emerald-500' : 'bg-slate-600'" :title="gw.enabled ? 'Disable' : 'Enable'">
-                  <span class="inline-block h-4 w-4 rounded-full bg-white transition"
-                        :class="gw.enabled ? 'translate-x-4' : 'translate-x-0.5'"></span>
-                </button>
-              </td>
+              <td class="px-3 py-2 text-center text-xs"
+                  :style="gw.enabled ? 'color:#6ee7b7' : 'color:var(--text-secondary)'"
+                  x-text="gw.enabled ? 'Enabled' : 'Disabled'"></td>
               <td class="px-3 py-2 text-right text-xs hidden md:table-cell" style="color:var(--text-secondary)"
                   x-text="!gw.enabled ? 'off' : (gw.ok ? 'live' : (gw.cached ? 'stale' : 'cold'))"></td>
               <td class="px-3 py-2 text-right">
@@ -1161,6 +1156,7 @@
       </div>
       <div class="px-5 py-4 space-y-3">
         <div x-show="gwErr" x-cloak class="rounded px-3 py-2 text-xs" style="background:rgba(239,68,68,.1);color:#fca5a5" x-text="gwErr"></div>
+        <div x-show="gwNote" x-cloak class="rounded px-3 py-2 text-xs" style="background:rgba(16,185,129,.1);color:#6ee7b7" x-text="gwNote"></div>
         <div class="grid grid-cols-2 gap-3">
           <label class="text-xs" style="color:var(--text-secondary)">Name
             <input class="form-control form-control-sm block mt-1 w-full" x-model="gwEdit.label"></label>
@@ -1189,7 +1185,13 @@
           <input class="form-control form-control-sm block mt-1 w-full" x-model="gwEdit.description" placeholder="optional"></label>
         <div class="space-y-1.5 text-xs" style="color:var(--text-secondary)">
           <div class="flex items-center justify-between gap-2"><span>Publish to Home Assistant (MQTT)</span><button type="button" @click="gwEdit.publish_ha = !gwEdit.publish_ha" role="switch" :aria-checked="gwEdit.publish_ha" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="gwEdit.publish_ha ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="gwEdit.publish_ha ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
-          <div class="flex items-center justify-between gap-2"><span>Default gateway</span><button type="button" @click="gwEdit.is_default = !gwEdit.is_default" role="switch" :aria-checked="gwEdit.is_default" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="gwEdit.is_default ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="gwEdit.is_default ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
+          <div class="flex items-center justify-between gap-2"><span>Enabled</span><button type="button" @click="gwEdit.enabled = !gwEdit.enabled" :disabled="gwEdit.is_default" role="switch" :aria-checked="gwEdit.enabled" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="[gwEdit.enabled ? 'bg-emerald-500' : 'bg-slate-600', gwEdit.is_default ? 'opacity-50 cursor-not-allowed' : '']"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="gwEdit.enabled ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
+          <p x-show="gwEdit.is_default" class="text-[10px]" style="color:var(--text-faint)">The default gateway can't be disabled. Make another gateway the default first.</p>
+          <div class="flex items-center justify-between gap-2"><span>Default gateway</span>
+            <span x-show="gwEdit.is_default" class="chip ok" style="font-size:.6rem">default</span>
+            <button x-show="!gwEdit.is_default" type="button" class="btn btn-secondary btn-sm"
+                    :disabled="!gwEdit.was_enabled" @click="makeDefaultGateway()">Make default</button></div>
+          <p class="text-[10px]" style="color:var(--text-faint)">The default gateway is the one used by calls that don't name a gateway, by schedules left on <em>Default gateway</em>, and for Site view's single-gateway readings.<span x-show="!gwEdit.is_default && !gwEdit.was_enabled"> Enable this gateway before making it the default.</span></p>
         </div>
         <p x-show="gwEdit.is_mock" class="text-[10px]" style="color:var(--text-faint)">Mock host/port are managed by the in-process emulator. Changing aPowers restarts it. Publishing synthetic energy to HA is discouraged.</p>
         <p class="text-[10px]" style="color:var(--text-faint)">Poll interval &amp; timeout are global (Connection, above) and apply on reconnect.</p>
@@ -1214,7 +1216,11 @@
       <!-- Danger zone -->
       <div class="px-5 py-3 border-t" style="border-color:var(--border)">
         <div class="text-[10px] uppercase tracking-wide mb-2" style="color:#fca5a5">Danger zone</div>
-        <button class="btn btn-sm" style="background:var(--danger);border-color:var(--danger)" @click="removeEditGateway()">Remove Gateway</button>
+        <button class="btn btn-sm" style="background:var(--danger);border-color:var(--danger)"
+                :disabled="gwEdit.was_enabled" :class="gwEdit.was_enabled ? 'opacity-50 cursor-not-allowed' : ''"
+                @click="removeEditGateway()">Remove Gateway</button>
+        <p x-show="gwEdit.was_enabled" class="text-[10px] mt-1" style="color:var(--text-faint)"
+           x-text="gwEdit.is_default ? 'The default gateway can\'t be removed. Make another gateway the default, disable this one, then remove it.' : 'Disable this gateway (Enabled off, then Save) before removing it.'"></p>
       </div>
     </div>
   </div>

@@ -22,15 +22,33 @@ Three ways, and they coexist:
 3. **Settings → Gateways → Scan** — probe a subnet for aGates. The subnet comes from
    `FWH_SUBNET`, or is derived as the host's `/24` when that is blank.
 
-Each gateway can be enabled or disabled, edited, given a description, and removed. All of
-those are writes. As of 0.5.2, `allow_writes` no longer blocks them (see
+Each gateway can be enabled or disabled, edited, given a description, and removed, all
+from its **Edit** dialog. All of those are writes. Two rules protect the default gateway
+(below):
+
+- **The default gateway can't be disabled.** Make another gateway the default first.
+- **A gateway is removed only once it is disabled.** Remove Gateway is greyed out while it
+  is enabled.
+
+**Disabling a gateway releases a force** this bridge holds on it first, because once its
+poller stops nothing else would. The dialog shows the release result. If the release fails,
+the gateway stays enabled and the dialog says why. As of 0.5.2, `allow_writes` no longer blocks them (see
 [Control](control.md#1-allow_writes-no-longer-blocks-writes)).
 
 ### The default gateway
 
 ![The gateway selector in the top bar](../images/multi-gateway/03-default-gateway.png)
 
-**The first-registered gateway is the default.** Every API endpoint takes an optional
+**One gateway is marked as the default**, shown with a **default** badge in Settings →
+Gateways. The first gateway you add becomes the default. The only way to change it is
+**Make default** in another gateway's Edit dialog. Editing, restarting or republishing a
+gateway never moves it. (Before 0.5.18 the default was whichever gateway had been
+registered first, and editing the default gateway quietly made another one the default;
+#182.) On update, the gateway that was the default at start-up is marked, so nothing
+changes.
+
+The default is used by calls that name no gateway, by schedules left on **Default
+gateway**, and by Site view's single-gateway readings. Every API endpoint takes an optional
 `?gateway=<id>`; omit it and you get the default, which is precisely the old
 single-gateway behaviour. Name a gateway that does not exist and you get a **404 before
 any device I/O** — the bridge refuses to quietly act on the default instead of the one
