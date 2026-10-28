@@ -44,9 +44,10 @@
           <button class="btn btn-secondary btn-sm" @click="conPreset('write')">opt:1 write</button>
           <button class="btn btn-secondary btn-sm" @click="conPreset('noopt')" title="Send {} — some commands reject a missing opt with result:1 reason:-1">no opt</button>
         </div>
-        <button class="btn btn-primary btn-sm ml-auto" :disabled="conBusy" @click="conSend()"
+        <button class="btn btn-primary btn-sm ml-auto" :disabled="conBusy || $store.app.siteMode" @click="conSend()"
                 x-text="conBusy ? 'Sending…' : 'Send'"></button>
       </div>
+      <p class="text-xs" style="color:var(--text-muted)" x-show="$store.app.siteMode" x-cloak x-text="$store.app.siteWriteNote"></p>
 
       <template x-if="conInfo">
         <div class="text-xs rounded px-3 py-2" style="background:var(--surface-2);color:var(--text-secondary)">

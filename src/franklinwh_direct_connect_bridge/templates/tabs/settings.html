@@ -271,7 +271,8 @@
         <div class="flex items-center justify-between gap-2"><span style="color:var(--text-secondary)">Non-backup loads panel <span x-show="sysDerived('non_backup_loads')" class="text-[9px] uppercase tracking-wide" style="color:var(--text-faint)">derived</span></span><button type="button" @click="systemSetup.non_backup_loads = !systemSetup.non_backup_loads" role="switch" :aria-checked="systemSetup.non_backup_loads" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="systemSetup.non_backup_loads ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="systemSetup.non_backup_loads ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
     </div>
     <div class="flex justify-end">
-      <button class="btn btn-primary btn-sm" :disabled="!canWrite() || systemSaving" @click="saveSystemSetup()" x-text="systemSaving ? 'Saving…' : 'Save System Setup'"></button>
+      <p class="text-xs" style="color:var(--text-muted)" x-show="$store.app.siteMode" x-cloak x-text="$store.app.siteWriteNote"></p>
+      <button class="btn btn-primary btn-sm" :disabled="!canWrite() || systemSaving || $store.app.siteMode || !systemCurrent" @click="saveSystemSetup()" x-text="systemSaving ? 'Saving…' : 'Save System Setup'"></button>
     </div>
   </div>
 
@@ -1862,8 +1863,9 @@
   <div class="card space-y-3">
     <div class="flex items-center justify-between gap-2">
       <span class="text-xs" style="color:var(--text-faint)">Set from your gateway, or enter manually.</span>
-      <button @click="syncLocation()" class="btn btn-secondary btn-sm">⟳ Sync from gateway</button>
+      <button @click="syncLocation()" class="btn btn-secondary btn-sm" :disabled="$store.app.siteMode">⟳ Sync from gateway</button>
     </div>
+    <p class="text-xs" style="color:var(--text-muted)" x-show="$store.app.siteMode" x-cloak x-text="$store.app.siteWriteNote"></p>
     <p class="text-xs" style="color:var(--text-faint)">
       Powers the Solar Forecast card + weather/solar sensors (Open-Meteo, free). Auto-saves on change.
     </p>

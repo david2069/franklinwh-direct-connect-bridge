@@ -18,11 +18,11 @@
           x-text="(($store.app.gateways.find(g => g.id === $store.app.selectedGateway) || {}).label) || $store.app.selectedGateway"></span>
   </p>
   <p class="text-xs" style="color: var(--text-muted)" x-show="$store.app.siteMode" x-cloak>
-    Site view shows every gateway. Choose a gateway in the top bar to control its battery.
+    Site view shows every gateway. <span x-text="$store.app.siteWriteNote"></span>
   </p>
 
   <!-- Read-only notice -->
-  <div class="card" x-show="!$store.app.summary.writes_enabled"
+  <div class="card" x-show="!$store.app.summary.writes_enabled && !$store.app.siteMode"
        style="border-color: var(--border); background: var(--surface-1)">
     <div class="flex items-center gap-3">
       <svg class="w-5 h-5 flex-shrink-0 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -430,7 +430,7 @@
           <span x-text="$store.app.isOffGrid ? 'Go on-grid (reconnect)' : 'Go off-grid'"></span>
         </button>
       </div>
-      <div class="text-xs text-slate-500" x-show="!$store.app.summary.writes_enabled">
+      <div class="text-xs text-slate-500" x-show="!$store.app.summary.writes_enabled && !$store.app.siteMode">
         Off-grid controls are hidden while writes are disabled.
       </div>
     </div>
@@ -556,7 +556,7 @@
           Reboot
         </button>
       </div>
-      <div class="text-xs text-slate-500" x-show="!$store.app.summary.writes_enabled">
+      <div class="text-xs text-slate-500" x-show="!$store.app.summary.writes_enabled && !$store.app.siteMode">
         Reboot is hidden while writes are disabled.
       </div>
       <div class="text-xs text-slate-500"

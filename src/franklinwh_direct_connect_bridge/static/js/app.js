@@ -37,6 +37,18 @@ function lazyTab(cmp, key, loader) {
 }
 
 /**
+ * Drop what a per-gateway tab shows when the gateway changes (#352), so nothing read
+ * from one gateway can be written to another: its controls go with the data. The tab
+ * reloads at once if it's on screen, else on its next showing (its `!data` check).
+ */
+function clearOnGatewaySwitch(cmp, key, clear) {
+  cmp.$watch('$store.app.selectedGateway', () => {
+    clear();
+    if (cmp.$store.app.activeTab === key && cmp.load) cmp.load();
+  });
+}
+
+/**
  * A fetch failure in words. Browsers throw a bare "Load failed" (Safari) or
  * "Failed to fetch" (Chrome) with no URL, status or cause — which tells the user
  * nothing and tells a bug report less.
@@ -924,6 +936,14 @@ document.addEventListener('alpine:init', () => {
         : '';
     },
     get siteMode() { return this.selectedGateway === '__site__'; },
+    // Site view is every gateway, so a per-gateway write has no target there (#350).
+    siteWriteNote: 'Choose a gateway to change this.',
+    //: gwQuery() for a per-gateway WRITE: refused in Site view rather than sent to the
+    //: default gateway, which is what an unscoped call means to the bridge.
+    writeQuery(sep = '?') {
+      if (this.siteMode) throw new Error(this.siteWriteNote);
+      return this.gwQuery(sep);
+    },
 
     // The selected gateway's serial (metrics are tagged by serial, not id). '' when
     // single-gateway or unknown → no history filter (includes legacy untagged rows).
@@ -1056,6 +1076,9 @@ document.addEventListener('alpine:init', () => {
             vpp_kind: anyOwn ? 'force' : anyVpp ? 'vpp' : (anyForce ? 'remote' : null),
           },
           battery: {}, energy_today: {},
+          // Per-gateway writes are off in Site view (#350): the controls gated on this
+          // show siteWriteNote instead of the read-only text.
+          writes_enabled: false,
           capabilities: (this.summary && this.summary.capabilities) || {},
         };
         this._noteConnOk(this.summary);
@@ -1621,7 +1644,7 @@ document.addEventListener('alpine:init', () => {
       if (!await this.confirmDialog(`Switch operating mode to ${labels[alias] || alias}?`,
                                     { title: 'Switch mode' })) return;
       try {
-        const r = await fetch('api/mode' + this.gwQuery('?'), {
+        const r = await fetch('api/mode' + this.writeQuery('?'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ mode: alias, confirm: true }),  // dialog above IS the confirm
@@ -1655,7 +1678,7 @@ document.addEventListener('alpine:init', () => {
       if (!await this.confirmDialog(warn,
             { title: on ? 'Go off-grid' : 'Reconnect to grid', danger: on })) return;
       try {
-        const r = await fetch('api/offgrid' + this.gwQuery('?'), {
+        const r = await fetch('api/offgrid' + this.writeQuery('?'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ on, soc, confirm: true }),  // dialog above IS the confirm
@@ -1764,7 +1787,7 @@ document.addEventListener('alpine:init', () => {
         { title: 'Reboot gateway', danger: true });
       if (!ok) return;
       try {
-        const r = await fetch('api/reboot' + this.gwQuery('?'), {
+        const r = await fetch('api/reboot' + this.writeQuery('?'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ confirm: true }),
@@ -1801,7 +1824,7 @@ document.addEventListener('alpine:init', () => {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), timeoutMs);
       try {
-        const r = await fetch('api/cloud/reserve' + this.gwQuery('?'), {
+        const r = await fetch('api/cloud/reserve' + this.writeQuery('?'), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ mode, soc: pct }), signal: ctrl.signal,
         });

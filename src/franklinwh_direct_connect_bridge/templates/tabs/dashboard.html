@@ -366,6 +366,7 @@
       <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]"
             style="color:var(--text-faint)" x-text="$store.app.srcTag('list', 1726)"></span>
     </div>
+    <div class="px-5 pt-2" x-show="$store.app.siteMode" x-cloak><p class="text-xs" style="color:var(--text-muted)" x-show="$store.app.siteMode" x-cloak x-text="$store.app.siteWriteNote"></p></div>
     <div class="divide-y divide-white/[0.06]">
       <template x-for="m in $store.app.modes" :key="m.name">
         <div class="flex items-center gap-3 px-5 py-3" :style="m.active ? 'box-shadow:inset 3px 0 0 var(--accent)' : ''">

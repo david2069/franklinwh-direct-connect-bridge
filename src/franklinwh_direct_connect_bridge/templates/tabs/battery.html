@@ -371,6 +371,7 @@
 
       <div class="rounded-lg border p-3 space-y-2" style="border-color:var(--border)">
         <div class="text-xs font-semibold" style="color:var(--text-secondary)">New recording</div>
+        <p class="text-xs" style="color:var(--text-muted)" x-show="$store.app.siteMode" x-cloak x-text="$store.app.siteWriteNote"></p>
         <div class="flex items-center gap-2 text-sm">
           <input type="number" min="1" max="500" class="form-control form-control-sm w-20"
                  x-model.number="recSamples" :disabled="rec.active">
@@ -381,7 +382,7 @@
         </div>
         <div class="flex items-center gap-2">
           <button class="btn btn-primary btn-sm" @click="startRecording()"
-                  x-show="!rec.active">Record</button>
+                  :disabled="$store.app.siteMode" x-show="!rec.active">Record</button>
           <button class="btn btn-secondary btn-sm" @click="stopRecording()"
                   x-show="rec.active">Stop</button>
           <span class="text-xs" style="color:var(--text-secondary)" x-show="rec.active">

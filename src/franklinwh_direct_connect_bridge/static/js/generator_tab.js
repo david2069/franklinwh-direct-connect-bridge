@@ -12,14 +12,17 @@ document.addEventListener('alpine:init', () => {
     init() {
       this.$watch('$store.app.activeTab', (t) => { if (t === 'generator' && !this.data) this.load(); });
       if (this.$store.app.activeTab === 'generator') this.load();
+      clearOnGatewaySwitch(this, 'generator', () => { this.data = this.raw = null; this.closeEdit(); });
     },
 
     async load() {
       this.loading = true; this.error = '';
+      const q = this.$store.app.gwQuery();
       try {
-        const r = await fetch('api/generator' + this.$store.app.gwQuery());
+        const r = await fetch('api/generator' + q);
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
         const d = await r.json();
+        if (q !== this.$store.app.gwQuery()) return;   // a late reply for another gateway
         // No gateway yet (#94): say so, rather than render an empty generator.
         if (d && d.available === false) { this.error = d.reason || 'No gateway yet.'; this.data = null; return; }
         this.data = d;
@@ -65,7 +68,7 @@ document.addEventListener('alpine:init', () => {
       if (this.busy) return;
       this.busy = true; this.editMsg = null;
       try {
-        const r = await fetch(url + this.$store.app.gwQuery(), {
+        const r = await fetch(url + this.$store.app.writeQuery(), {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
@@ -108,6 +111,7 @@ document.addEventListener('alpine:init', () => {
     get canToggleFeature() { return !!this.$store.app.summary.writes_enabled; },
 
     editBlockedReason() {
+      if (this.$store.app.siteMode) return this.$store.app.siteWriteNote;
       if (!this.$store.app.summary.writes_enabled) return 'Writes are disabled (ALLOW_WRITES=true)';
       if (this.data && !this.data.enabled) return 'Generator is not enabled';
       return '';
@@ -135,7 +139,7 @@ document.addEventListener('alpine:init', () => {
       }
       this.busy = true;
       try {
-        const r = await fetch('api/generator/enable' + this.$store.app.gwQuery(), {
+        const r = await fetch('api/generator/enable' + this.$store.app.writeQuery(), {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ enabled: on }),
         });

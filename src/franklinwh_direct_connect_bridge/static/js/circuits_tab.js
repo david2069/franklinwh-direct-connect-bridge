@@ -26,6 +26,9 @@ document.addEventListener('alpine:init', () => {
         if (t !== 'circuits') this.stopAuto();     // don't poll a hidden tab
       });
       if (this.$store.app.activeTab === 'circuits') this.load();
+      clearOnGatewaySwitch(this, 'circuits', () => {
+        this.data = this.meter = this.raw = this.edit = null; this.busy = {};
+      });
     },
 
     setView(v) {
@@ -112,10 +115,12 @@ document.addEventListener('alpine:init', () => {
 
     async load() {
       this.loading = true; this.error = '';
+      const q = this.$store.app.gwQuery();
       try {
-        const r = await fetch('api/circuits' + this.$store.app.gwQuery());
+        const r = await fetch('api/circuits' + q);
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
-        this.data = await r.json();
+        const d = await r.json();
+        if (q === this.$store.app.gwQuery()) this.data = d;   // not a late reply for another gateway
       } catch (e) { this.error = e.message; this.data = null; }
       finally { this.loading = false; }
     },
@@ -124,7 +129,7 @@ document.addEventListener('alpine:init', () => {
       if (this.busy[c.id]) return;
       this.busy = { ...this.busy, [c.id]: true };
       try {
-        const r = await fetch(`api/circuits/${c.id}/power` + this.$store.app.gwQuery(), {
+        const r = await fetch(`api/circuits/${c.id}/power` + this.$store.app.writeQuery(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ on: !c.on }),
@@ -172,7 +177,7 @@ document.addEventListener('alpine:init', () => {
       if (this.saving) return;
       this.saving = true; this.editMsg = null;
       try {
-        const r = await fetch(`api/circuits/${this.edit.id}/schedule` + this.$store.app.gwQuery(), {
+        const r = await fetch(`api/circuits/${this.edit.id}/schedule` + this.$store.app.writeQuery(), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ windows: this.edit.windows }),

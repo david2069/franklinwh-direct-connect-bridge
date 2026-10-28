@@ -36,6 +36,7 @@ function settingsTab() {
     // ── Automation constants (const.* sensors) ──
     constants: {}, constSpec: {}, constModes: [], constSaving: false,
     systemSetup: {}, systemSpec: {}, systemSaving: false,
+    systemFor: null,   // the gwQuery() the System Setup form was read for (#352)
     gwBusy: {},          // id -> true while a toggle/test is in flight
     gwAdd: null,         // add-form object when open, else null
     gwErr: '',
@@ -132,6 +133,17 @@ function settingsTab() {
     },
 
     init() {
+      // System Setup is per gateway (#352): a switch drops the form until it's re-read,
+      // now if Settings is on screen, else when it's next shown.
+      let stale = false;
+      this.$watch('$store.app.selectedGateway', () => {
+        this.systemFor = null;
+        stale = this.$store.app.activeTab !== 'settings';
+        if (!stale) this.loadSystemSetup();
+      });
+      this.$watch('$store.app.activeTab', (tab) => {
+        if (tab === 'settings' && stale) { stale = false; this.loadSystemSetup(); }
+      });
       lazyTab(this, 'settings', async () => {
         await this.reload();
         await this.loadGateways();
@@ -427,17 +439,22 @@ function settingsTab() {
     },
 
     async loadSystemSetup() {
-      try { const d = await (await fetch('api/system-setup' + this.$store.app.gwQuery())).json();
-            this.systemSetup = d.values || {}; this.systemSpec = d.spec || {}; }
+      const q = this.$store.app.gwQuery();
+      try { const d = await (await fetch('api/system-setup' + q)).json();
+            if (q !== this.$store.app.gwQuery()) return;     // a late reply for another gateway
+            this.systemSetup = d.values || {}; this.systemSpec = d.spec || {}; this.systemFor = q; }
       catch { this.systemSetup = {}; }
     },
+    //: The form shows the gateway on screen, so Save can't write one gateway's form to another.
+    get systemCurrent() { return this.systemFor === this.$store.app.gwQuery(); },
     sysDerived(k) { return !!(this.systemSetup._overridden && this.systemSetup._overridden[k] === false && this.systemSpec[k] && this.systemSpec[k].derived); },
     async saveSystemSetup() {
       if (!this.canWrite()) { this.$store.app.toast('Enable writes to save', 'error'); return; }
+      if (!this.systemCurrent) return;
       this.systemSaving = true;
       try {
         const s = this.systemSetup;
-        const r = await fetch('api/system-setup' + this.$store.app.gwQuery(), { method: 'PUT',
+        const r = await fetch('api/system-setup' + this.$store.app.writeQuery(), { method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ solar_type: s.solar_type, solar_kwp: Number(s.solar_kwp) || 0,
             generator_input: !!s.generator_input, grid_forming: !!s.grid_forming,
@@ -1042,7 +1059,7 @@ function settingsTab() {
      *  user can change here now applies on change — no separate Save step. */
     async syncLocation() {
       try {
-        const r = await fetch('api/solar/sync-location' + this.$store.app.gwQuery(), { method: 'POST' });
+        const r = await fetch('api/solar/sync-location' + this.$store.app.writeQuery(), { method: 'POST' });
         const d = await r.json();
         if (r.ok) {
           this.form.pv_latitude = d.latitude; this.form.pv_longitude = d.longitude;

@@ -17,14 +17,17 @@ document.addEventListener('alpine:init', () => {
         if (t !== 'solar') this.stopAuto();
       });
       if (this.$store.app.activeTab === 'solar') this.load();
+      clearOnGatewaySwitch(this, 'solar', () => { this.data = this.raw = null; });
     },
 
     async load() {
       this.loading = true; this.error = '';
+      const q = this.$store.app.gwQuery();
       try {
-        const r = await fetch('api/solar' + this.$store.app.gwQuery());
+        const r = await fetch('api/solar' + q);
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
-        this.data = await r.json();
+        const d = await r.json();
+        if (q === this.$store.app.gwQuery()) this.data = d;
       } catch (e) { this.error = e.message; this.data = null; }
       finally { this.loading = false; }
     },

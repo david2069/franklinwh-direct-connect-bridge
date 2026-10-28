@@ -68,7 +68,7 @@ function energyCostsTab() {
       const m = this.modbusImport;
       m.busy = true; m.msg = null;      // results show inside the dialog (#293)
       try {
-        const r = await (await fetch('api/billing/import-modbus' + this.$store.app.gwQuery('?'), {
+        const r = await (await fetch('api/billing/import-modbus' + this.$store.app.writeQuery('?'), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ source_url: m.url, username: m.user, password: m.pass, dry_run: dry }),
         })).json();
@@ -96,7 +96,7 @@ function energyCostsTab() {
         return;
       this.closing = true;
       try {
-        const r = await (await fetch('api/billing/close' + this.$store.app.gwQuery('?'), { method: 'POST' })).json();
+        const r = await (await fetch('api/billing/close' + this.$store.app.writeQuery('?'), { method: 'POST' })).json();
         if (r.ok && r.closed) { this.$store.app.toast('Current period snapshotted to history', 'success'); await this.load(); }
         else { this.$store.app.toast(r.reason || 'Nothing to close yet', 'info'); }
       } catch (e) { this.$store.app.toast('Close failed: ' + e.message, 'error'); }

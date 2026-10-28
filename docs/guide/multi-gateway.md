@@ -71,6 +71,18 @@ circuits, generator, control, grid, health, network, MQTT. Also per gateway:
   HA devices, as they should be;
 - `POST /api/gateways/{id}/restart` restarts just that gateway's workers.
 
+When you switch gateway, each tab drops what it showed and reads the new gateway, so a
+form or toggle read from one gateway is never saved to another.
+
+**Site view** (*Site · All Gateways* in the selector) shows every gateway together, so it
+has no gateway to change. Controls that write to one gateway (operating mode, reserve,
+grid limits, circuits, generator, the raw console, MQTT Republish/Unpublish, System
+Setup and the rest) are disabled there and say **Choose a gateway to change this**.
+
+The **reserve SoC** is set through the FranklinWH cloud on the serial of the gateway on
+screen. It's refused for a mock gateway, and for a gateway other than the one in the
+cloud settings.
+
 ---
 
 ## Mock gateways

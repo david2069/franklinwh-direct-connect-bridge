@@ -35,6 +35,26 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   saved is kept. The unused `release_stale()`, which would have released any force, is gone.
 
 ### Fixed
+- **Site view no longer writes to the default gateway** (#350). Site view shows every
+  gateway, but some per-gateway controls (the top bar's operating mode, grid limits, the
+  raw console and Terminal, MQTT Republish/Unpublish, battery recording, Energy costs
+  close and import, System Setup save, location sync) sent their write to the default
+  gateway. In Site view every per-gateway control is now disabled and says "Choose a
+  gateway to change this", and the page refuses such a write before sending it. The API is unchanged:
+  a call with no `?gateway=` still means the default gateway.
+
+- **The reserve SoC is written to the gateway on screen** (#351). It used to go to the
+  gateway in the cloud settings, while the audit row named the gateway you were viewing.
+  It now goes to that gateway's serial. It's refused with the reason for a mock gateway,
+  for a gateway whose serial hasn't been read yet, and for a gateway other than the one in
+  the cloud settings. The audit row names the gateway written.
+
+- **Switching gateway reloads Circuits, Generator, Solar, Health, Device and System
+  Setup** (#352). They kept the first gateway's data, so a circuit toggle, generator
+  edit or System Setup save could write one gateway's values to another. They now clear
+  on a switch and reload, their controls come back only with the new gateway's data, and
+  a late reply for the previous gateway is dropped.
+
 - **Battery Control and the top bar's Release act on the gateway on screen** (#349). They
   used to force and release the default gateway (or `FWH_MODBUS_HOST`), whichever gateway
   you were viewing, and showed the default's force, ratings and SoC.

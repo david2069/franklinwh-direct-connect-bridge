@@ -4837,6 +4837,18 @@ def create_app() -> FastAPI:
             },
         }
 
+    def _reserve_target_refusal(gw: GatewayState) -> str | None:
+        """Why the cloud can't take a reserve write for ``gw``, or None (#351)."""
+        if gw.is_mock:
+            return "A mock gateway has no FranklinWH cloud account."
+        if not gw.serial:
+            return "This gateway's serial hasn't been read yet. Try again once it's connected."
+        want = (get_settings().fwh_cloud_gateway or "").upper()
+        if want and want != gw.serial.upper():
+            return ("The cloud credentials are for a different gateway, "
+                    "so the reserve can't be set on this one.")
+        return None
+
     @app.post("/api/cloud/reserve")
     def api_cloud_reserve(req: ReserveReq, gateway: str | None = Query(None)):
         """Set a mode's reserve SoC via the CLOUD provider (HYBRID Phase 3) — the local API
@@ -4851,8 +4863,19 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=422,
                                 detail="provide mode (self/tou/backup) + soc")
         detail = f"mode={mode} soc={soc}% (cloud updateSocV2)"
+        # #351: write to the viewed gateway's own serial, never the configured cloud
+        # gateway on its behalf. The audit row names the gateway actually written.
+        # A missing cloud provider is reported first (503, from set_reserve).
+        gw = _gw_or_404(gateway)
+        gateway = gw.id
+        has_provider = any(c.get("available") for c in
+                           providers.reserve_provider(get_settings()).get("candidates", []))
+        refused = _reserve_target_refusal(gw) if has_provider else None
+        if refused:
+            _audit("set_reserve", gateway=gateway, detail=detail, result=refused, ok=False)
+            raise HTTPException(status_code=409, detail=refused)
         try:
-            out = providers.set_reserve(get_settings(), mode, soc)
+            out = providers.set_reserve(get_settings(), mode, soc, serial=(gw.serial or "").upper() or None)
             _audit("set_reserve", gateway=gateway, detail=detail,
                    result=(out.get("note") if isinstance(out, dict) else None) or "applied via cloud",
                    ok=bool(out.get("ok", True)) if isinstance(out, dict) else True)

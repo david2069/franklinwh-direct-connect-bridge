@@ -136,7 +136,7 @@ function mqttTab() {
 
     async republish() {
       try {
-        const r = await fetch('api/mqtt/republish' + Alpine.store('app').gwQuery('?'),
+        const r = await fetch('api/mqtt/republish' + Alpine.store('app').writeQuery('?'),
                               { method: 'POST' });
         const d = await r.json();
         Alpine.store('app').toast(d.detail, d.ok ? 'info' : 'error');
@@ -158,7 +158,7 @@ function mqttTab() {
             { title: 'Unpublish this gateway?', danger: true })) return;
       try {
         Alpine.store('app').toast('Unpublishing… (waits for the poller to stop)', 'info');
-        const r = await fetch('api/mqtt/unpublish' + Alpine.store('app').gwQuery('?'), { method: 'POST' });
+        const r = await fetch('api/mqtt/unpublish' + Alpine.store('app').writeQuery('?'), { method: 'POST' });
         const d = await r.json();
         Alpine.store('app').toast(d.detail || (d.ok ? 'Unpublished' : 'Unpublish incomplete'),
                                   d.ok ? 'success' : 'error');

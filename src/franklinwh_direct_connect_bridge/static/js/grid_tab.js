@@ -75,7 +75,7 @@ function gridTab() {
     get touchesBooleans() { const p = this._payload(); return ('export_enable' in p) || ('pcs_discharge' in p); },
 
     async _post(body) {
-      const r = await fetch('api/grid/limits' + this.$store.app.gwQuery('?'), {
+      const r = await fetch('api/grid/limits' + this.$store.app.writeQuery('?'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       const out = await r.json();

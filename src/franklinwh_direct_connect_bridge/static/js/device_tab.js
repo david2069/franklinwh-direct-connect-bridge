@@ -105,7 +105,7 @@ function deviceTab() {
       catch (e) { this.conError = `dataArea is not valid JSON: ${e.message}`; return; }
       this.conBusy = true; this.conError = ''; this.conResult = null;
       try {
-        const r = await fetch('api/raw' + this.$store.app.gwQuery(), {
+        const r = await fetch('api/raw' + this.$store.app.writeQuery(), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ cmd: Number(this.conCmd), data, confirm }),
         });
@@ -205,6 +205,10 @@ function deviceTab() {
 
     /** Honour a request from elsewhere in the UI (e.g. Health's firmware card). */
     watchDeviceReadRequest() {
+      // Readings and console replies belong to the gateway they were read from (#352).
+      clearOnGatewaySwitch(this, 'device', () => {
+        this.results = {}; this.sentFrames = {}; this.rawOpen = {}; this.conResult = null;
+      });
       this.$watch('$store.app.deviceReadRequest', (name) => {
         if (!name) return;
         this.select(name);
@@ -240,7 +244,9 @@ function deviceTab() {
       // rather than asking anyone to trust a reconstruction.
       try {
         // Scope the read to the selected gateway (multi-gateway); '' when single-gateway.
-        const r = await fetch('api/cmd/' + name + this.app.gwQuery('?'), { signal: ctrl.signal });
+        const q = this.app.gwQuery('?');
+        const r = await fetch('api/cmd/' + name + q, { signal: ctrl.signal });
+        if (q !== this.app.gwQuery('?')) return;        // a late reply for another gateway
         const sent = r.headers.get('X-FWH-Request');
         if (sent) { try { this.sentFrames[name] = JSON.parse(sent); } catch { /* ignore */ } }
         this.results[name] = r.ok

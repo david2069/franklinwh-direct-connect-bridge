@@ -151,7 +151,7 @@ function batteryControl() {
 
       this.sending = true;
       try {
-        const r = await fetch('api/battery/command' + this.$store.app.gwQuery('?'), {
+        const r = await fetch('api/battery/command' + this.$store.app.writeQuery('?'), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ slug, value: String(value) }),
         });

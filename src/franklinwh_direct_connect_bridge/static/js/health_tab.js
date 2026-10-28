@@ -17,14 +17,17 @@ document.addEventListener('alpine:init', () => {
     init() {
       this.$watch('$store.app.activeTab', (t) => { if (t === 'health' && !this.fw) this.load(); });
       if (this.$store.app.activeTab === 'health') this.load();
+      clearOnGatewaySwitch(this, 'health', () => { this.fw = null; });
     },
 
     async load() {
       this.loading = true; this.error = '';
+      const q = this.$store.app.gwQuery();
       try {
-        const r = await fetch('api/firmware/all' + this.$store.app.gwQuery());
+        const r = await fetch('api/firmware/all' + q);
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
-        this.fw = await r.json();
+        const d = await r.json();
+        if (q === this.$store.app.gwQuery()) this.fw = d;
       } catch (e) { this.error = e.message; }
       finally { this.loading = false; }
     },
