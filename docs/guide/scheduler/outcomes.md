@@ -21,6 +21,29 @@ record and notifications. Also the controls that act outside the schedule: **Run
 **Not in this bridge:** a per-command control log with requester and hardware state
 before and after, and a dispatch-outcomes record (see [below](#the-dispatch-record)).
 
+## Monitor
+
+The **Monitor** card at the top of **History** shows why each schedule is, or is not,
+running. Open it and it adds one line per enabled schedule per gateway after every
+scheduler tick (every 15 s by default). Hover a line to see each condition with its live
+value and result. The bridge keeps the last 500 lines in memory only: they are not saved,
+and a restart empties them. The card asks for new lines every 5 s, only while it is open.
+
+| State | Meaning |
+|---|---|
+| idle | outside its window, or the calendar excludes today |
+| blocked | the entry conditions fail (up to two failing rows with live values), or an exit condition already holds |
+| holding | conditions met; the hold is counting down |
+| ready | conditions met this tick |
+| running | fired this occurrence and the window is still open |
+| skipped | another rule held the target this occurrence; names the winner on the tick it lost |
+| deferred | another dispatch holds the battery (*If busy = defer* or *wait*) |
+| retrying | the action failed; attempts, the last reason and the next try |
+| done | finished this occurrence |
+
+**Pause** stops new lines arriving; **Resume** catches up. **Clear** empties the card
+only, not the bridge. **Copy** copies the lines and their conditions.
+
 ## Activity Log results
 
 The **History** view is this bridge's activity log. It loads the latest 200 rows. Times

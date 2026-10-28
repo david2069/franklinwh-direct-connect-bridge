@@ -200,6 +200,9 @@ Every decision the scheduler makes is written to **History**, newest first: crea
 and filter chips are on [Outcomes and audit](outcomes.md#activity-log-results). Times are in
 the bridge host's zone.
 
+The **Monitor** card above it shows, tick by tick, why each schedule is or is not
+running ([Monitor](outcomes.md#monitor)).
+
 ## Using schedules from Home Assistant (Direct Connect only)
 
 Everything the Scheduler tab does is also a REST call. Home Assistant can make those calls

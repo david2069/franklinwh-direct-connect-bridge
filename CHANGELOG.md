@@ -11,6 +11,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+- **Scheduler Monitor** (#345). A Monitor card at the top of Scheduler → History shows
+  why each schedule is or is not running: idle, blocked (with the failing conditions and
+  their live values), holding, ready, running, skipped, deferred, retrying or done. One
+  line per schedule every tick; hover for each condition. Kept in memory only (the last
+  500 lines). It reads nothing extra from the aGate. Also at
+  `GET /api/scheduler/monitor`.
+
 ### Changed
 - **The schedule form can be made bigger** (#337). **Default**, **Medium** and **Full**
   size it, and its corner drags to any size in between; the browser remembers the size.

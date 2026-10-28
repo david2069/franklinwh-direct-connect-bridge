@@ -263,6 +263,60 @@
 
   <!-- History: activity log -->
   <div x-show="view === 'history'" x-cloak class="space-y-2">
+    <!-- Debug monitor (#345): why each schedule is or is not running, every tick. -->
+    <div class="card">
+      <button type="button" class="w-full flex items-center justify-between gap-2 p-3 text-left"
+              @click="monToggle()" :aria-expanded="mon.open">
+        <span class="text-sm font-semibold" style="color:var(--text-primary)">Monitor</span>
+        <span class="text-xs" style="color:var(--text-secondary)"
+              x-text="mon.open ? 'Hide' : 'Show why each schedule is or is not running'"></span>
+      </button>
+      <div x-show="mon.open" x-cloak class="px-3 pb-3 space-y-2">
+        <p class="text-xs" style="color:var(--text-secondary)"
+           x-text="`One line per enabled schedule every ${mon.tick_s}s. The bridge keeps the last ${mon.max} lines in memory; they are lost when it restarts. Hover a line for its conditions.`"></p>
+        <div class="flex items-center gap-2 flex-wrap">
+          <select class="input text-xs" style="width:auto" x-model="mon.entry" aria-label="Schedule">
+            <option value="">All schedules</option>
+            <template x-for="e in monEntries" :key="e.id">
+              <option :value="e.id" x-text="e.name"></option>
+            </template>
+          </select>
+          <button type="button" class="btn btn-secondary btn-sm" @click="mon.paused = !mon.paused"
+                  x-text="mon.paused ? 'Resume' : 'Pause'"></button>
+          <button type="button" class="btn btn-secondary btn-sm" @click="monClear()"
+                  title="Clears this view only">Clear</button>
+          <button type="button" class="btn btn-secondary btn-sm" @click="monCopy()"
+                  :disabled="!monLines.length">Copy</button>
+          <span class="text-xs" style="color:var(--text-secondary)" x-show="mon.copied" x-text="mon.copied"></span>
+        </div>
+        <div role="alert" class="text-xs" style="color:#f87171" x-show="mon.err" x-text="mon.err"></div>
+        <div class="overflow-auto" style="max-height:40vh">
+          <table class="data-table">
+            <tbody>
+              <template x-for="l in monLines" :key="l.seq">
+                <tr :title="monTrace(l)">
+                  <td class="text-xs font-mono" style="color:var(--text-secondary);white-space:nowrap"
+                      x-text="when(l.ts)"></td>
+                  <td>
+                    <div class="text-sm" style="color:var(--text-primary)">
+                      <span x-text="l.name"></span>
+                      <span x-show="l.target" class="text-xs" style="color:var(--text-secondary)"
+                            x-text="'· ' + gatewayName(l.target)"></span>
+                    </div>
+                    <div class="text-xs font-mono" style="color:var(--text-secondary)" x-text="l.detail"></div>
+                  </td>
+                  <td class="text-right">
+                    <span class="chip" :style="monStateStyle(l.state) + ';font-size:.6rem'" x-text="l.state"></span>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div x-show="!monLines.length" class="p-4 text-center text-sm" style="color:var(--text-secondary)"
+               x-text="mon.paused ? 'Paused.' : 'Waiting for the next scheduler tick…'"></div>
+        </div>
+      </div>
+    </div>
     <template x-if="logEvents">
       <div class="space-y-2">
         <!-- status filter chips -->

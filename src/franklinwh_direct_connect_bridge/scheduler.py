@@ -2199,6 +2199,9 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
     snapshot.update(derived_snapshot(snapshot))   # battery.* derived (needs const.* + ratings.*)
     fired: list[dict] = []
     ready: list[dict] = []
+    # Debug monitor (#345): each enabled schedule's state as this tick decided it.
+    mon: dict[str, tuple[str, str]] = {}
+    seen: list[dict] = []
     for entry in store.schedules():
         # A schedule bound to a gateway fires only on THAT gateway's tick, so a
         # battery action targets the right aGate. An unbound schedule (gateway_id
@@ -2216,6 +2219,8 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
             if not bound and not _is_default_gateway(store, gateway_id):
                 continue
         dkey = f"{gateway_id or ''}:{entry['id']}"
+        if entry.get("enabled"):
+            seen.append(entry)
 
         # The window can close two ways: time (fire_at + duration elapses) OR an
         # optional EXIT condition tree becoming true mid-window ("end early when…").
@@ -2285,6 +2290,8 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
         if ok and tt == "always" and was_inside:
             ok, reason = False, "already active"
         if not ok:
+            mon[entry["id"]] = _monitor_state(entry, reason, snapshot, effective_inside,
+                                              exit_now)
             _dwell_since.pop(dkey, None)     # a failing/idle gate resets the hold
             # Audit WHY it did nothing while its window is open — once per day.
             if reason == "entry conditions not met":
@@ -2306,10 +2313,13 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                     f"conditions met — holding {hold}s before firing",
                     gateway_id=gateway_id or "")
             if (now - started).total_seconds() < hold:
+                left = hold - int((now - started).total_seconds())
+                mon[entry["id"]] = ("holding", f"{left}s left of the {hold}s hold")
                 continue
             _dwell_since.pop(dkey, None)
         # Ready to fire — but hold for priority resolution (a higher-priority entry on
         # the same target may pre-empt this one within this same tick).
+        mon[entry["id"]] = ("ready", "conditions met")
         ready.append(entry)
 
     # ── priority resolution ──────────────────────────────────────────────────
@@ -2353,6 +2363,7 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                               reason=detail)
                 store.log_schedule_event(loser["id"], loser["name"], "deferred", detail,
                                          gateway_id=gateway_id or "")
+                mon[loser["id"]] = ("skipped", detail)
         winners.append(group[0])
     # (2) conflict with an ACTIVE dispatch already held by ANOTHER schedule (a force
     # dispatch from a previous tick still running). Only force actions hold control.
@@ -2370,11 +2381,15 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                 store.log_schedule_event(w["id"], w["name"], "deferred",
                     "deferred — the battery is already under another dispatch (conflict=defer)",
                     gateway_id=gateway_id or "")
+                mon[w["id"]] = ("deferred", "the battery is already under another dispatch "
+                                            "(conflict=defer)")
                 continue
             if pol == "wait":
                 store.log_schedule_event(w["id"], w["name"], "waiting",
                     "waiting — battery busy with another dispatch (conflict=wait); will retry",
                     gateway_id=gateway_id or "")
+                mon[w["id"]] = ("deferred", "waiting — the battery is busy with another "
+                                            "dispatch (conflict=wait)")
                 continue                             # not marked fired -> retries next tick
             # override: fall through and take control
         to_fire.append(w)
@@ -2387,9 +2402,14 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
         occ = _claim_run(entry, store=store, gateway_id=gateway_id, now=now)
         if occ is not None:
             if occ.get("status") in store.OCC_TERMINAL:
+                mon[entry["id"]] = ("done", f"this occurrence is settled ({occ.get('status')})")
                 continue                       # already settled this occurrence
             now_ts = now.timestamp()
             if occ.get("status") == "failed" and not retry_due(occ, now_ts):
+                n = int(occ.get("attempts") or 0)
+                wait = retry_delay_s(n) - (now_ts - float(occ.get("last_attempt_ts") or now_ts))
+                mon[entry["id"]] = ("retrying", f"{n} attempt(s); last: "
+                                    f"{occ.get('reason') or 'failed'}; next try in {wait:.0f}s")
                 continue                       # backing off; the window is still open
             entry["_occ_id"] = occ["id"]
             entry["_occ_attempts"] = int(occ.get("attempts") or 0) + 1
@@ -2405,9 +2425,45 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                     except Exception as e:  # noqa: BLE001
                         log.warning("could not record the prior state for %s: %s",
                                     entry.get("id"), e)
-        fired.append(_fire_entry(entry, settings=settings, client=client, store=store,
-                                 snapshot=snapshot, host=host, gateway_id=gateway_id, now=now))
+        res = _fire_entry(entry, settings=settings, client=client, store=store,
+                          snapshot=snapshot, host=host, gateway_id=gateway_id, now=now)
+        fired.append(res)
+        mon[entry["id"]] = (("running", f"fired: {res.get('result')}") if res.get("ok")
+                            else ("retrying", f"attempt {int(entry.get('_occ_attempts') or 1)}"
+                                              f" failed: {res.get('result')}"))
+    _monitor_observe(seen, mon, snapshot=snapshot, gateway_id=gateway_id, now=now)
     return fired
+
+
+def _monitor_state(entry: dict, reason: str, snapshot: dict, inside: bool,
+                   exit_now: bool) -> tuple[str, str]:
+    """Monitor state for a schedule that did not fire this tick (#345)."""
+    if reason == "entry conditions not met":
+        return "blocked", gate_reason(entry, snapshot)
+    if reason == "exit condition already holds":
+        return "blocked", reason
+    if reason in ("already fired this occurrence", "already active"):
+        if str(entry.get("last_result") or "").startswith("deferred"):
+            return "skipped", "deferred this occurrence: another rule or dispatch held the target"
+        if inside and not exit_now:
+            return "running", ("fired; the exit conditions are not met yet"
+                               if entry.get("exit_conditions") else "fired; the window is open")
+        return "done", "finished this occurrence"
+    return "idle", reason
+
+
+def _monitor_observe(seen: list[dict], mon: dict, *, snapshot: dict,
+                     gateway_id: str | None, now: dt.datetime) -> None:
+    """Write this tick's lines to the debug monitor. Never raises into the tick."""
+    try:
+        from . import sched_monitor
+        ts = now.timestamp()
+        for e in seen:
+            state, detail = mon.get(e["id"], ("idle", ""))
+            sched_monitor.record(gateway_id=gateway_id, entry=e, state=state,
+                                 detail=detail, snapshot=snapshot, now=ts)
+    except Exception as e:  # noqa: BLE001
+        log.debug("scheduler monitor failed: %s", e)
 
 
 #: What each action actually DRIVES. Exclusivity is per RESOURCE, not per gateway —

@@ -3436,6 +3436,18 @@ def create_app() -> FastAPI:
         return {"events": _ha_store().schedule_log(
             limit=limit, schedule_id=schedule_id, status=status, severity=severity)}
 
+    @app.get("/api/scheduler/monitor")
+    def api_scheduler_monitor(entry_id: str | None = Query(None), since: int = Query(0, ge=0)):
+        """Debug monitor (#345): per tick, each enabled schedule's state and why, with
+        its conditions' live values. In memory only; lost on restart, when ``last``
+        drops below the client's ``since``."""
+        from . import sched_monitor
+        want = int(getattr(get_settings(), "scheduler_tick_s", 15) or 15)
+        tick_s = max(scheduler_worker.MIN_TICK_S, min(scheduler_worker.MAX_TICK_S, want))
+        return {"lines": sched_monitor.lines(entry_id=entry_id, since=since),
+                "last": sched_monitor.last_seq(), "max": sched_monitor.MAX_LINES,
+                "tick_s": tick_s}
+
     @app.get("/api/schedules/timeline")
     def api_schedule_timeline(gateway: str | None = Query(None)):
         """Today's timeline: each enabled schedule's planned window, plus the real

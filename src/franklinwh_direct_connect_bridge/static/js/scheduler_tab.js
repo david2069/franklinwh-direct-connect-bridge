@@ -38,9 +38,15 @@ document.addEventListener('alpine:init', () => {
     timeline: null,
     logEvents: null,
     logFilter: '',
+    // Debug monitor (#345): polled only while the card is open on the History view.
+    mon: { open: false, lines: [], since: 0, entry: '', paused: false, copied: '',
+           max: 500, tick_s: 15, err: '' },
+    _monTimer: null,
 
     init() {
       this.$watch('$store.app.activeTab', (t) => { if (t === 'scheduler' && !this.schedules.length) this.load(); });
+      this.$watch('$store.app.activeTab', () => this._monSchedule());
+      this.$watch('view', () => this._monSchedule());
       if (this.$store.app.activeTab === 'scheduler') this.load();
     },
 
@@ -858,6 +864,77 @@ document.addEventListener('alpine:init', () => {
       this.explainLevel = lv;
       try { localStorage.setItem('fwh-explain-level', lv); } catch { /* private mode */ }
     },
+    // ── Debug monitor (#345) ──
+    get monLines() {
+      const l = this.mon.entry ? this.mon.lines.filter(x => x.entry_id === this.mon.entry)
+                               : this.mon.lines;
+      return l.slice().reverse();                      // newest first
+    },
+    get monEntries() {
+      const m = new Map();
+      for (const l of this.mon.lines) m.set(l.entry_id, l.name);
+      return [...m].map(([id, name]) => ({ id, name }));
+    },
+    monToggle() {
+      this.mon.open = !this.mon.open;
+      this._monSchedule();
+    },
+    _monSchedule() {
+      const want = this.mon.open && this.view === 'history'
+                   && this.$store.app.activeTab === 'scheduler';
+      if (want && !this._monTimer) {
+        this.monPoll();
+        this._monTimer = setInterval(() => this.monPoll(), 5000);
+      } else if (!want && this._monTimer) {
+        clearInterval(this._monTimer); this._monTimer = null;
+      }
+    },
+    async monPoll() {
+      if (this.mon.paused) return;
+      try {
+        const r = await fetch(`api/scheduler/monitor?since=${this.mon.since}`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = await r.json();
+        this.mon.max = d.max || 500; this.mon.tick_s = d.tick_s || 15; this.mon.err = '';
+        // The bridge restarted: its counter is behind ours, so start over.
+        if ((d.last ?? 0) < this.mon.since) { this.mon.since = 0; this.mon.lines = []; return this.monPoll(); }
+        const add = d.lines || [];
+        if (add.length) {
+          this.mon.lines = this.mon.lines.concat(add).slice(-this.mon.max);
+          this.mon.since = add[add.length - 1].seq;
+        }
+      } catch (e) {
+        this.mon.err = `Monitor unavailable: ${e.message}`;
+      }
+    },
+    monClear() { this.mon.lines = []; },                // this view only; the ring is untouched
+    monLine(l) {
+      return `${this.when(l.ts)}  ${l.name}${l.target ? ' · ' + this.gatewayName(l.target) : ''}`
+             + `  ${l.state}  ${l.detail}`;
+    },
+    monTrace(l) {
+      return (l.conditions || []).map(c =>
+        `${c.kind}: ${c.sensor} ${c.op} ${c.op === 'between' ? c.value + '..' + c.value2 : c.value}`
+        + ` (live=${c.live_value}) → ${c.result ? 'true' : 'false'}`).join('\n')
+        || 'No conditions.';
+    },
+    async monCopy() {
+      const text = this.monLines.map(l => this.monLine(l) + '\n  '
+                     + this.monTrace(l).replace(/\n/g, '\n  ')).join('\n');
+      const ok = await this.$store.app.copyText(text);
+      this.mon.copied = ok ? 'Copied' : 'Copying is blocked here — select the text and press Ctrl/Cmd+C';
+      setTimeout(() => this.mon.copied = '', ok ? 2000 : 6000);
+    },
+    monStateStyle(st) {
+      return ({ blocked: 'background:#f8717122;color:#f87171',
+                retrying: 'background:#f8717122;color:#f87171',
+                running: 'background:#34d39922;color:#34d399',
+                ready: 'background:#34d39922;color:#34d399',
+                holding: 'background:#fbbf2422;color:#fbbf24',
+                deferred: 'background:#fbbf2422;color:#fbbf24',
+                skipped: 'background:#fbbf2422;color:#fbbf24' })[st] || '';
+    },
+
     /** A history row's gateway, by name (#205). */
     gatewayName(id) { return (this.gateways.find(g => g.id === id) || {}).name || id; },
 
