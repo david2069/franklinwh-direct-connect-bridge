@@ -25,7 +25,7 @@ before and after, and a dispatch-outcomes record (see [below](#the-dispatch-reco
 
 The **Monitor** card at the top of **History** shows why each schedule is, or is not,
 running. Open it and it adds one line per enabled schedule per gateway after every
-scheduler tick (every 15 s by default). Hover a line to see each condition with its live
+scheduler tick (every 15 s by default). Tap or hover a line to see each condition with its live
 value and result. The bridge keeps the last 500 lines in memory only: they are not saved,
 and a restart empties them. The card asks for new lines every 5 s, only while it is open.
 

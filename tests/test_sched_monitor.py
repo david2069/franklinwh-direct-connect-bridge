@@ -135,4 +135,4 @@ def test_ui_card_polls_only_while_open_on_the_history_view():
     assert "this.$store.app.copyText(text)" in js            # http fallback (#327)
     hist = html.index("view === 'history'")
     assert hist < html.index('@click="monToggle()"') < html.index('x-if="logEvents"')
-    assert ':title="monTrace(l)"' in html
+    assert ':title="monTrace(l)"' in html and 'x-text="monTrace(l)"' in html   # hover + tap

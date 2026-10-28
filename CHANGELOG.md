@@ -15,7 +15,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - **Scheduler Monitor** (#345). A Monitor card at the top of Scheduler → History shows
   why each schedule is or is not running: idle, blocked (with the failing conditions and
   their live values), holding, ready, running, skipped, deferred, retrying or done. One
-  line per schedule every tick; hover for each condition. Kept in memory only (the last
+  line per schedule every tick; tap or hover for each condition. Kept in memory only (the last
   500 lines). It reads nothing extra from the aGate. Also at
   `GET /api/scheduler/monitor`.
 
