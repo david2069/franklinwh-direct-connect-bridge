@@ -101,3 +101,10 @@ def test_system_setup_is_reread_on_a_switch_and_save_waits_for_it():
     assert "get systemCurrent() { return this.systemFor === this.$store.app.gwQuery(); }" in src
     save = src[src.index("async saveSystemSetup()"):]
     assert "if (!this.systemCurrent) return;" in save[:save.index("fetch(")]
+
+
+def test_system_setup_watchers_register_once_although_init_runs_twice():
+    # settings.html has x-data="settingsTab()" x-init="init()", so init() runs twice.
+    src = (JS / "settings_tab.js").read_text()
+    assert src.count("if (!this._systemWatched) this.$watch(") == 2
+    assert "this._systemWatched = true;" in src

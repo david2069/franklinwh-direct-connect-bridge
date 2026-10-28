@@ -135,15 +135,17 @@ function settingsTab() {
     init() {
       // System Setup is per gateway (#352): a switch drops the form until it's re-read,
       // now if Settings is on screen, else when it's next shown.
+      // init() runs twice here (Alpine's own call and the template's x-init): watch once.
       let stale = false;
-      this.$watch('$store.app.selectedGateway', () => {
+      if (!this._systemWatched) this.$watch('$store.app.selectedGateway', () => {
         this.systemFor = null;
         stale = this.$store.app.activeTab !== 'settings';
         if (!stale) this.loadSystemSetup();
       });
-      this.$watch('$store.app.activeTab', (tab) => {
+      if (!this._systemWatched) this.$watch('$store.app.activeTab', (tab) => {
         if (tab === 'settings' && stale) { stale = false; this.loadSystemSetup(); }
       });
+      this._systemWatched = true;
       lazyTab(this, 'settings', async () => {
         await this.reload();
         await this.loadGateways();
