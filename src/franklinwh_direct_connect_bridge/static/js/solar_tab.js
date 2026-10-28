@@ -22,12 +22,12 @@ document.addEventListener('alpine:init', () => {
 
     async load() {
       this.loading = true; this.error = '';
-      const q = this.$store.app.gwQuery();
+      const gwq = this.$store.app.gwQuery();
       try {
-        const r = await fetch('api/solar' + q);
+        const r = await fetch('api/solar' + gwq);
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
         const d = await r.json();
-        if (q === this.$store.app.gwQuery()) this.data = d;
+        if (gwq === this.$store.app.gwQuery()) this.data = d;
       } catch (e) { this.error = e.message; this.data = null; }
       finally { this.loading = false; }
     },

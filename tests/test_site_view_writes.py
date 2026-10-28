@@ -90,9 +90,9 @@ def test_a_late_reply_for_the_previous_gateway_is_dropped():
     for f in ["circuits_tab.js", "generator_tab.js", "solar_tab.js", "health_tab.js",
               "settings_tab.js"]:
         src = (JS / f).read_text()
-        assert "const q = this.$store.app.gwQuery();" in src, f
-        assert "q === this.$store.app.gwQuery()" in src or "q !== this.$store.app.gwQuery()" in src, f
-    assert "if (q !== this.app.gwQuery('?')) return;" in (JS / "device_tab.js").read_text()
+        assert "const gwq = this.$store.app.gwQuery();" in src, f
+        assert "gwq === this.$store.app.gwQuery()" in src or "gwq !== this.$store.app.gwQuery()" in src, f
+    assert "if (gwq !== this.app.gwQuery('?')) return;" in (JS / "device_tab.js").read_text()
 
 
 def test_system_setup_is_reread_on_a_switch_and_save_waits_for_it():

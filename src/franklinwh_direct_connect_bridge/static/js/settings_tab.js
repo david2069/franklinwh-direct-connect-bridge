@@ -441,10 +441,10 @@ function settingsTab() {
     },
 
     async loadSystemSetup() {
-      const q = this.$store.app.gwQuery();
-      try { const d = await (await fetch('api/system-setup' + q)).json();
-            if (q !== this.$store.app.gwQuery()) return;     // a late reply for another gateway
-            this.systemSetup = d.values || {}; this.systemSpec = d.spec || {}; this.systemFor = q; }
+      const gwq = this.$store.app.gwQuery();
+      try { const d = await (await fetch('api/system-setup' + gwq)).json();
+            if (gwq !== this.$store.app.gwQuery()) return;     // a late reply for another gateway
+            this.systemSetup = d.values || {}; this.systemSpec = d.spec || {}; this.systemFor = gwq; }
       catch { this.systemSetup = {}; }
     },
     //: The form shows the gateway on screen, so Save can't write one gateway's form to another.

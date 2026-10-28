@@ -17,12 +17,12 @@ document.addEventListener('alpine:init', () => {
 
     async load() {
       this.loading = true; this.error = '';
-      const q = this.$store.app.gwQuery();
+      const gwq = this.$store.app.gwQuery();
       try {
-        const r = await fetch('api/generator' + q);
+        const r = await fetch('api/generator' + gwq);
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
         const d = await r.json();
-        if (q !== this.$store.app.gwQuery()) return;   // a late reply for another gateway
+        if (gwq !== this.$store.app.gwQuery()) return;   // a late reply for another gateway
         // No gateway yet (#94): say so, rather than render an empty generator.
         if (d && d.available === false) { this.error = d.reason || 'No gateway yet.'; this.data = null; return; }
         this.data = d;

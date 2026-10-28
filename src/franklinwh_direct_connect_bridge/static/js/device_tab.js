@@ -244,9 +244,9 @@ function deviceTab() {
       // rather than asking anyone to trust a reconstruction.
       try {
         // Scope the read to the selected gateway (multi-gateway); '' when single-gateway.
-        const q = this.app.gwQuery('?');
-        const r = await fetch('api/cmd/' + name + q, { signal: ctrl.signal });
-        if (q !== this.app.gwQuery('?')) return;        // a late reply for another gateway
+        const gwq = this.app.gwQuery('?');
+        const r = await fetch('api/cmd/' + name + gwq, { signal: ctrl.signal });
+        if (gwq !== this.app.gwQuery('?')) return;        // a late reply for another gateway
         const sent = r.headers.get('X-FWH-Request');
         if (sent) { try { this.sentFrames[name] = JSON.parse(sent); } catch { /* ignore */ } }
         this.results[name] = r.ok
