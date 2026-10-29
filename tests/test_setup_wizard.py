@@ -350,10 +350,10 @@ def test_multiple_mocks_are_numbered():
 
 
 def test_finishing_selects_a_real_gateway():
-    """Site mode has no host, so Battery/Device/Grid error there — never land on it."""
+    """Finishing the wizard shows the first gateway when none is on screen yet."""
     js = _wizard_js()
     assert "_selectFirstGateway" in js
-    assert "selectGateway" in js and "__site__" in js
+    assert "selectGateway" in js
 
 
 def test_timezone_is_asked_before_any_gateway_is_created():

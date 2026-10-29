@@ -55,8 +55,12 @@ registered first, and editing the default gateway quietly made another one the d
 #182.) On update, the gateway that was the default at start-up is marked, so nothing
 changes.
 
+The default is a designation and nothing more (#383). It is always listed first, and the
+page opens with it on screen. Any gateway can be removed; if the default is removed, the
+next gateway becomes the default straight away.
+
 The default is used by calls that name no gateway, by schedules left on **Default
-gateway**, and by Site view's single-gateway readings. Every API endpoint takes an optional
+gateway**. Every API endpoint takes an optional
 `?gateway=<id>`; omit it and you get the default, which is precisely the old
 single-gateway behaviour. Name a gateway that does not exist and you get a **404 before
 any device I/O** — the bridge refuses to quietly act on the default instead of the one
@@ -82,10 +86,12 @@ circuits, generator, control, grid, health, network, MQTT. Also per gateway:
 When you switch gateway, each tab drops what it showed and reads the new gateway, so a
 form or toggle read from one gateway is never saved to another.
 
-**Site view** (*Site · All Gateways* in the selector) shows every gateway together, so it
-has no gateway to change. Controls that write to one gateway (operating mode, reserve,
-grid limits, circuits, generator, the raw console, MQTT Republish/Unpublish, System
-Setup and the rest) are disabled there and say **Choose a gateway to change this**.
+The page always shows and controls **one gateway**, the one named in the top bar.
+**All gateways…** in the gateway selector opens a read-only view of every gateway (#383):
+counts (Registered, Polling active, Unavailable, Stopped), one row per gateway (name and
+serial, model, health, grid, mode or command, SoC, poll status, last poll, and battery,
+grid, solar and load power) and a site total. Click a row to show that gateway. It has no
+controls. (It replaces Site view, *Site · All Gateways*.)
 
 The **reserve SoC** is set through the FranklinWH cloud on the serial of the gateway on
 screen. It's refused for a mock gateway, and for a gateway other than the one in the
@@ -186,8 +192,7 @@ graceful shutdown and the start-up reconcile all act on the gateway the force wa
 
 **Battery Control** (Control tab) and the top bar's **Release** act on the gateway shown
 in the top bar (#349); `/api/battery/command` takes `?gateway=` (the default gateway
-when omitted). In **Site view** the widget asks you to choose a gateway, and Release lists
-every force this bridge holds and releases each on its own gateway.
+when omitted).
 
 The Modbus client's **host override** (Control → Modbus client) and `FWH_MODBUS_HOST`
 apply only to the **default gateway**. Every other gateway connects to its own IP (#354).

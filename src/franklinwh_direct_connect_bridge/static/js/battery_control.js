@@ -60,7 +60,7 @@ function batteryControl() {
     },
 
     // Site view is every gateway: a force needs one, so it is chosen first (#350).
-    get canWrite() { return !!this.$store.app.summary.writes_enabled && !this.$store.app.siteMode; },
+    get canWrite() { return !!this.$store.app.summary.writes_enabled; },
 
     // ── Duration as hh:mm:ss (two-way with the raw `duration` seconds) ──
     get durH() { return Math.floor(this.duration / 3600); },
@@ -151,7 +151,7 @@ function batteryControl() {
 
       this.sending = true;
       try {
-        const r = await fetch('api/battery/command' + this.$store.app.writeQuery('?'), {
+        const r = await fetch('api/battery/command' + this.$store.app.gwQuery('?'), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ slug, value: String(value) }),
         });

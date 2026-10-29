@@ -38,15 +38,13 @@
            style="background:var(--surface-1);border-color:var(--border)">
         <div class="px-3 py-2 text-[10px] uppercase tracking-wide border-b"
              style="color:var(--text-secondary);border-color:var(--border)">Gateway</div>
-        <button class="w-full text-left px-3 py-2.5 flex items-center justify-between gap-2 hover:bg-white/[0.05] transition-colors border-b"
-                style="border-color:var(--border)"
-                @click="$store.app.gwMenuOpen = false; $store.app.selectGateway('__site__')">
-          <span class="text-sm flex items-center gap-1.5" :style="$store.app.siteMode ? 'color:#34d399' : 'color:var(--text-primary)'">
-            <svg class="w-3.5 h-3.5 opacity-80" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>
-            Site (All Gateways)
-          </span>
-          <svg x-show="$store.app.siteMode" class="w-4 h-4 shrink-0" style="color:#34d399"
-               fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+        <!-- Every gateway at a glance, read-only (#383). Not a selection: the page always
+             shows and controls one gateway, and a row in the modal makes it the one. -->
+        <button class="w-full text-left px-3 py-2.5 flex items-center gap-1.5 hover:bg-white/[0.05] transition-colors border-b text-sm"
+                style="border-color:var(--border);color:var(--text-primary)"
+                @click="$store.app.gwMenuOpen = false; $store.app.openAllGateways()">
+          <svg class="w-3.5 h-3.5 opacity-80" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>
+          All gateways…
         </button>
         <template x-for="g in $store.app.gateways" :key="g.id">
           <button class="w-full text-left px-3 py-2.5 flex items-center justify-between gap-2 hover:bg-white/[0.05] transition-colors"
@@ -136,18 +134,15 @@
         <template x-for="m in $store.app.modeChoices" :key="m.alias">
           <button class="w-full text-left px-3 py-2.5 flex items-center justify-between gap-2
                          hover:bg-white/[0.05] transition-colors"
-                  :disabled="m.active || $store.app.siteMode"
-                  :class="$store.app.siteMode && 'opacity-60 cursor-not-allowed'"
-                  @click="$store.app.modeMenuOpen = false; if (!m.active && !$store.app.siteMode) $store.app.setMode(m.alias)">
+                  :disabled="m.active"
+                  @click="$store.app.modeMenuOpen = false; if (!m.active) $store.app.setMode(m.alias)">
             <span class="text-sm" :style="m.active ? 'color:#34d399' : 'color:var(--text-primary)'"
                   x-text="m.label"></span>
             <span x-show="m.active" class="text-[10px]" style="color:#34d399">active</span>
           </button>
         </template>
         <div class="px-3 py-1.5 text-[10px] border-t" style="color:var(--text-faint);border-color:var(--border)"
-             x-show="!$store.app.summary.writes_enabled && !$store.app.siteMode">Read-only — enable writes to switch.</div>
-        <div class="px-3 py-1.5 text-[10px] border-t" style="color:var(--text-faint);border-color:var(--border)"
-             x-show="$store.app.siteMode" x-text="$store.app.siteWriteNote"></div>
+             x-show="!$store.app.summary.writes_enabled">Read-only — enable writes to switch.</div>
       </div>
     </div>
 

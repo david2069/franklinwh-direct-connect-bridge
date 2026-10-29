@@ -456,7 +456,7 @@ function settingsTab() {
       this.systemSaving = true;
       try {
         const s = this.systemSetup;
-        const r = await fetch('api/system-setup' + this.$store.app.writeQuery(), { method: 'PUT',
+        const r = await fetch('api/system-setup' + this.$store.app.gwQuery(), { method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ solar_type: s.solar_type, solar_kwp: Number(s.solar_kwp) || 0,
             generator_input: !!s.generator_input, grid_forming: !!s.grid_forming,
@@ -1061,7 +1061,7 @@ function settingsTab() {
      *  user can change here now applies on change — no separate Save step. */
     async syncLocation() {
       try {
-        const r = await fetch('api/solar/sync-location' + this.$store.app.writeQuery(), { method: 'POST' });
+        const r = await fetch('api/solar/sync-location' + this.$store.app.gwQuery(), { method: 'POST' });
         const d = await r.json();
         if (r.ok) {
           this.form.pv_latitude = d.latitude; this.form.pv_longitude = d.longitude;

@@ -63,10 +63,9 @@ NOT_DEVICE_BOUND = {
 
 #: A call may scope itself inline (``gwQuery(...)``) or via a local built from it —
 #: mqtt_tab.js does ``const gwq = ...gwQuery('?')`` then appends ``gwq``. Both are
-#: correct; only an UNSCOPED call is a bug. ``writeQuery(`` is gwQuery() for a write,
-#: refused in Site view (#350). Any name here must be proven to come
+#: correct; only an UNSCOPED call is a bug. Any name here must be proven to come
 #: from gwQuery() by :func:`test_scoping_locals_really_derive_from_gwquery`.
-SCOPE_TOKENS = ("gwQuery(", "writeQuery(", "gwq")
+SCOPE_TOKENS = ("gwQuery(", "gwq")
 
 _FETCH = re.compile(r"fetch\(\s*([`'\"])(api/[^`'\"$]*)")
 

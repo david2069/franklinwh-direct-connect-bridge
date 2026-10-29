@@ -93,8 +93,8 @@ schedules bound to that gateway. <!-- @b TGT-11 ;; src: scheduler.py:2088-2089 ;
   bridge). <!-- @b TGT-18 ;; src: scheduler_worker.py:107-116, scheduler.py:1967-1969 ;; tested: tests/test_scheduler_worker.py::test_mock_gateways_skip_the_modbus_read ;; write: no ;; b: A mock gateway's tick passes an empty Modbus host, so no 702 ratings read ;; test: — -->
   Whether a force to a mock reaches anything depends on the mock's address answering SunSpec
   (**unverified**).
-- **Test** under a condition block evaluates against the gateway selected in the top bar (or
-  the default gateway in site view or with one gateway). **⋮ → Test against live** on a card
+- **Test** under a condition block evaluates against the gateway selected in the top bar (with
+  one gateway, that gateway). **⋮ → Test against live** on a card
   always uses the default gateway's values, whatever gateway the schedule is bound to
   (see [Conditions → Test Verification](conditions.md#test-verification)). <!-- @b TGT-19 ;; src: static/js/scheduler_tab.js:606-613, static/js/scheduler_tab.js:921-931, app.py:3360-3369, app.py:3397-3402 ;; untested ;; write: no ;; b: Editor Test uses the top-bar gateway; Test against live reads get_state(), the default gateway ;; test: unit (API): /test on a schedule bound to gw2 uses gw2's state (fails today) -->
 - **Import** points an entry whose gateway does not exist here at **Default gateway**, warns

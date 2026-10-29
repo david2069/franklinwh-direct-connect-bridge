@@ -76,9 +76,8 @@
       <div class="card">
         <div class="flex items-center justify-between gap-2">
           <div class="card-label" style="margin-bottom:0">Grid import &amp; export <span class="text-[10px] normal-case" style="color:var(--text-faint)">power-plane limits · 1701</span></div>
-          <button class="btn btn-secondary btn-sm" @click="openModal()" :disabled="$store.app.siteMode">Set limits…</button>
+          <button class="btn btn-secondary btn-sm" @click="openModal()">Set limits…</button>
         </div>
-        <p class="text-xs" style="color:var(--text-muted)" x-show="$store.app.siteMode" x-cloak x-text="$store.app.siteWriteNote"></p>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-1">
           <div class="rounded border p-3" style="border-color:var(--border)">
             <div class="flex items-center gap-2">

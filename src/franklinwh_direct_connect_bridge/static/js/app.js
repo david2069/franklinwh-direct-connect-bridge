@@ -868,15 +868,11 @@ document.addEventListener('alpine:init', () => {
         const list = await r.json();
         const hadNone = !this.gateways.length;
         this.gateways = Array.isArray(list) ? list : [];
-        // '__site__' (the aggregate) is a valid selection alongside the real gateway ids.
-        const ids = this.gateways.map(g => g.id).concat(this.gateways.length > 1 ? ['__site__'] : []);
-        // Restore the last-picked gateway across reloads; else the first.
+        // The page opens on the default gateway, which the roster always lists first
+        // (#383); a gateway that is gone hands over to it too.
+        const ids = this.gateways.map(g => g.id);
         const prev = this.selectedGateway;
-        let next = prev;
-        if (!prev || !ids.includes(prev)) {
-          const saved = localStorage.getItem('fwh-gateway');
-          next = ids.includes(saved) ? saved : (this.gateways.length ? this.gateways[0].id : '');
-        }
+        const next = (prev && ids.includes(prev)) ? prev : (ids[0] || '');
         this.selectedGateway = next;
         // Selecting a gateway is not just setting a variable — it has to REFETCH. This
         // assignment used to be the whole of it, so when the first gateway appeared (a
@@ -915,9 +911,45 @@ document.addEventListener('alpine:init', () => {
         this.generatorEnabled = !!(r && r.enabled);
       } catch (e) { this.generatorEnabled = false; }
     },
+    async openAllGateways() {
+      this.allGw.open = true;
+      await this._loadAllGateways();
+      clearInterval(this._allGwTimer);
+      this._allGwTimer = setInterval(() => {
+        if (!this.allGw.open) { clearInterval(this._allGwTimer); return; }
+        if (!this._hidden) this._loadAllGateways();
+      }, 10000);
+    },
+    closeAllGateways() { this.allGw.open = false; clearInterval(this._allGwTimer); },
+    async _loadAllGateways() {
+      try {
+        const [g, s] = await Promise.all([fetch('api/gateways'), fetch('api/site/status')]);
+        if (!g.ok || !s.ok) throw new Error(`HTTP ${g.ok ? s.status : g.status}`);
+        this.allGw.rows = await g.json();
+        this.allGw.totals = await s.json();
+        this.allGw.error = '';
+      } catch (e) {
+        this.allGw.error = 'Could not load the gateways: ' + e.message;   // shown in the modal
+      }
+    },
+    // Average SoC over the gateways with a reading, for the site row.
+    get allGwSoc() {
+      const v = (this.allGw.rows || []).filter(r => r.poll_status === 'ok' && typeof r.soc === 'number').map(r => r.soc);
+      return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null;
+    },
+    allGwCount(status) { return (this.allGw.rows || []).filter(r => r.poll_status === status).length; },
+    pickFromAll(row) {
+      if (!row.enabled) return;            // a disabled gateway is not registered: nothing to show
+      this.closeAllGateways();
+      if (row.id !== this.selectedGateway) this.selectGateway(row.id);
+    },
+    agoText(ts) {
+      if (!ts) return '—';
+      const s = Math.max(0, Math.round(Date.now() / 1000 - ts));
+      return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`;
+    },
     selectGateway(id) {
       this.selectedGateway = id;
-      try { localStorage.setItem('fwh-gateway', id); } catch { /* private mode */ }
       this.poll();
       this._loadGeneratorInstalled();   // generator presence is per-gateway
       this.loadSiteTz();                  // the site zone is per-gateway too (#144)
@@ -930,19 +962,9 @@ document.addEventListener('alpine:init', () => {
     // so no ?gateway is sent and behaviour is identical to today. ``sep`` is '?' when it
     // starts the query string, '&' when appended after an existing param.
     gwQuery(sep = '?') {
-      // Site-aggregate mode is not a single gateway — don't scope per-gateway calls to it.
-      return (this.gateways.length > 1 && this.selectedGateway && this.selectedGateway !== '__site__')
+      return (this.gateways.length > 1 && this.selectedGateway)
         ? `${sep}gateway=${encodeURIComponent(this.selectedGateway)}`
         : '';
-    },
-    get siteMode() { return this.selectedGateway === '__site__'; },
-    // Site view is every gateway, so a per-gateway write has no target there (#350).
-    siteWriteNote: 'Choose a gateway to change this.',
-    //: gwQuery() for a per-gateway WRITE: refused in Site view rather than sent to the
-    //: default gateway, which is what an unscoped call means to the bridge.
-    writeQuery(sep = '?') {
-      if (this.siteMode) throw new Error(this.siteWriteNote);
-      return this.gwQuery(sep);
     },
 
     // The selected gateway's serial (metrics are tagged by serial, not id). '' when
@@ -970,25 +992,13 @@ document.addEventListener('alpine:init', () => {
       try {
         const d = await (await fetch('api/battery/command' + this.gwQuery('?'))).json();
         this.batteryHeld = d.held || [];
-        // The force on the gateway on screen; in Site view, every force this bridge
-        // holds (#349).
-        if (this.siteMode) {
-          const n = this.batteryHeld.length;
-          this.batteryActive = n ? (n === 1 ? `${this.batteryHeld[0].active} · ${this.batteryHeld[0].label}`
-                                            : `${n} forces`) : 'Not Active';
-          this.batteryRemaining = n === 1 ? (this.batteryHeld[0].remaining_s ?? null) : null;
-        } else {
-          this.batteryActive = d.active || 'Not Active';
-          this.batteryRemaining = d.remaining_s ?? null;
-        }
+        this.batteryActive = d.active || 'Not Active';   // the gateway on screen
+        this.batteryRemaining = d.remaining_s ?? null;
       } catch (e) { /* leave last value */ }
     },
-    /** Release the force on the gateway on screen; in Site view, every force this bridge
-     *  holds, each on its own gateway (#349). */
+    /** Release the force on the gateway on screen. */
     async releaseBattery() {
-      const targets = this.siteMode
-        ? (this.batteryHeld || []).map(h => ({ q: `?gateway=${encodeURIComponent(h.gateway_id)}`, what: `${h.active} on ${h.label}` }))
-        : [{ q: this.gwQuery('?'), what: this.batteryActive }];
+      const targets = [{ q: this.gwQuery('?'), what: this.batteryActive }];
       if (!targets.length) return;
       if (!await this.confirmDialog(
             `Release ${targets.length > 1 ? 'these battery forces' : 'the battery force'} and return to normal operation?\n\n`
@@ -1029,7 +1039,6 @@ document.addEventListener('alpine:init', () => {
 
     async poll() {
       try {
-        if (this.siteMode) { await this._pollSite(); return; }
         // Multi-gateway: fetch the selected gateway's summary. Single-gateway keeps the
         // exact existing /api/summary path (unchanged behaviour).
         const url = (this.gateways.length > 1 && this.selectedGateway)
@@ -1048,42 +1057,6 @@ document.addEventListener('alpine:init', () => {
       } catch (e) {
         // Keep the last known summary on error — don't blank the UI — but do say so.
         console.warn('[Bridge] poll failed:', e.message);
-        this._noteConnFail(e);
-      }
-    },
-
-    //: Site-aggregate summary — sums power across all OK gateways (/api/site/status) and
-    //  averages SoC, mapped into the same summary/power shape the shell reads. Per-unit
-    //  cards (battery modules, energy today) are left empty since they don't aggregate.
-    async _pollSite() {
-      try {
-        const r = await fetch('api/site/status');
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const d = await r.json();
-        const okGws = (d.gateways || []).filter(g => g.ok);
-        const socs = okGws.map(g => g.soc).filter(v => typeof v === 'number');
-        const avgSoc = socs.length ? Math.round(socs.reduce((a, b) => a + b, 0) / socs.length) : null;
-        // Same priority as one gateway (#333): our own force, then cloud VPP, then 1707 = 9.
-        const anyOwn = okGws.some(g => g.vpp_kind === 'force');
-        const anyVpp = okGws.some(g => g.vpp_kind === 'vpp');
-        const anyForce = okGws.some(g => g.vpp);
-        this.summary = {
-          ok: (d.ok_count || 0) > 0, site: true, count: d.count, ok_count: d.ok_count,
-          power: {
-            ...(d.totals || {}), soc: avgSoc, mode: 'Site',
-            off_grid: okGws.some(g => g.off_grid),
-            vpp: anyVpp || anyForce,
-            vpp_kind: anyOwn ? 'force' : anyVpp ? 'vpp' : (anyForce ? 'remote' : null),
-          },
-          battery: {}, energy_today: {},
-          // Per-gateway writes are off in Site view (#350): the controls gated on this
-          // show siteWriteNote instead of the read-only text.
-          writes_enabled: false,
-          capabilities: (this.summary && this.summary.capabilities) || {},
-        };
-        this._noteConnOk(this.summary);
-      } catch (e) {
-        console.warn('[Bridge] site poll failed:', e.message);
         this._noteConnFail(e);
       }
     },
@@ -1607,6 +1580,9 @@ document.addEventListener('alpine:init', () => {
     // ── Control writes ─────────────────────────────────────
     modeMenuOpen: false,
     gwMenuOpen: false,  // styled gateway selector dropdown
+    // All gateways (#383): read-only, every gateway at once. Opened from the gateway
+    // picker; a row makes that gateway the one on screen. No controls.
+    allGw: { open: false, rows: [], totals: null, error: '' },
     // Short mode tag for the gateway switcher. The three modes are the only ones the
     // hardware has; anything else (a site-specific TOU tariff name, an unknown string) is
     // shown as-is, truncated, rather than being forced into one of the three.
@@ -1629,7 +1605,7 @@ document.addEventListener('alpine:init', () => {
       return '';
     },
 
-    get selectedGatewayLabel() { if (this.siteMode) return 'Site · All Gateways'; const g = (this.gateways || []).find(x => x.id === this.selectedGateway); return g ? (g.label || g.host) : 'Gateway'; },
+    get selectedGatewayLabel() { const g = (this.gateways || []).find(x => x.id === this.selectedGateway); return g ? (g.label || g.host) : 'Gateway'; },
     get modeChoices() {
       const active = this.activeMode;
       return [
@@ -1644,7 +1620,7 @@ document.addEventListener('alpine:init', () => {
       if (!await this.confirmDialog(`Switch operating mode to ${labels[alias] || alias}?`,
                                     { title: 'Switch mode' })) return;
       try {
-        const r = await fetch('api/mode' + this.writeQuery('?'), {
+        const r = await fetch('api/mode' + this.gwQuery('?'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ mode: alias, confirm: true }),  // dialog above IS the confirm
@@ -1678,7 +1654,7 @@ document.addEventListener('alpine:init', () => {
       if (!await this.confirmDialog(warn,
             { title: on ? 'Go off-grid' : 'Reconnect to grid', danger: on })) return;
       try {
-        const r = await fetch('api/offgrid' + this.writeQuery('?'), {
+        const r = await fetch('api/offgrid' + this.gwQuery('?'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ on, soc, confirm: true }),  // dialog above IS the confirm
@@ -1787,7 +1763,7 @@ document.addEventListener('alpine:init', () => {
         { title: 'Reboot gateway', danger: true });
       if (!ok) return;
       try {
-        const r = await fetch('api/reboot' + this.writeQuery('?'), {
+        const r = await fetch('api/reboot' + this.gwQuery('?'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ confirm: true }),
@@ -1824,7 +1800,7 @@ document.addEventListener('alpine:init', () => {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), timeoutMs);
       try {
-        const r = await fetch('api/cloud/reserve' + this.writeQuery('?'), {
+        const r = await fetch('api/cloud/reserve' + this.gwQuery('?'), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ mode, soc: pct }), signal: ctrl.signal,
         });

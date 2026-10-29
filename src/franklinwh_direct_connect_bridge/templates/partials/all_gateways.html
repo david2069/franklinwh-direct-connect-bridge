@@ -1,0 +1,113 @@
+<!-- All gateways (#383): every gateway at a glance, read-only, laid out like FWHAI's
+     Gateways tab. It replaces the old "Site (All Gateways)" picker view: the page always
+     shows and controls ONE gateway, and clicking a row here makes it that gateway. -->
+<div x-show="$store.app.allGw.open" x-cloak
+     class="fixed inset-0 z-[115] flex items-center justify-center p-4"
+     @keydown.escape.window="$store.app.closeAllGateways()"
+     x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
+  <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="$store.app.closeAllGateways()"></div>
+  <div class="relative w-full max-w-6xl max-h-[90vh] flex flex-col rounded-xl border shadow-2xl"
+       style="background:var(--surface-0, #0f172a);border-color:var(--border)">
+    <div class="px-5 py-4 border-b flex items-center gap-2" style="border-color:var(--border)">
+      <div class="text-sm font-semibold" style="color:var(--text-primary)">All gateways</div>
+      <span class="text-xs" style="color:var(--text-muted)">Read-only. Click a gateway to show it.</span>
+      <button class="ml-auto btn btn-secondary btn-sm" @click="$store.app.closeAllGateways()">Close</button>
+    </div>
+    <div class="px-5 py-4 overflow-auto">
+      <p class="text-xs mb-3" style="color:#f87171" x-show="$store.app.allGw.error" x-text="$store.app.allGw.error"></p>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <div class="card p-3 flex flex-col">
+          <span class="text-[10px] font-bold uppercase tracking-wider" style="color:var(--text-muted)">Registered</span>
+          <span class="text-2xl font-extrabold" style="color:var(--text-primary)" x-text="$store.app.allGw.rows.length"></span>
+        </div>
+        <div class="card p-3 flex flex-col">
+          <span class="text-[10px] font-bold uppercase tracking-wider" style="color:#34d399">Polling active</span>
+          <span class="text-2xl font-extrabold" style="color:#34d399" x-text="$store.app.allGwCount('ok')"></span>
+        </div>
+        <div class="card p-3 flex flex-col">
+          <span class="text-[10px] font-bold uppercase tracking-wider" style="color:#f87171">Unavailable</span>
+          <span class="text-2xl font-extrabold" style="color:#f87171" x-text="$store.app.allGwCount('unavailable')"></span>
+        </div>
+        <div class="card p-3 flex flex-col">
+          <span class="text-[10px] font-bold uppercase tracking-wider" style="color:#fbbf24">Stopped</span>
+          <span class="text-2xl font-extrabold" style="color:#fbbf24" x-text="$store.app.allGwCount('stopped')"></span>
+        </div>
+      </div>
+      <div class="overflow-x-auto rounded-lg border" style="border-color:var(--border)">
+        <table class="w-full text-xs">
+          <thead style="color:var(--text-muted)">
+            <tr class="text-left uppercase text-[10px]">
+              <th class="px-3 py-2">Name</th>
+              <th class="px-3 py-2">Model</th>
+              <th class="px-3 py-2">Health</th>
+              <th class="px-3 py-2">Grid</th>
+              <th class="px-3 py-2">Mode / command</th>
+              <th class="px-3 py-2 text-right">SoC</th>
+              <th class="px-3 py-2">Poll</th>
+              <th class="px-3 py-2">Last poll</th>
+              <th class="px-3 py-2 text-right">Battery</th>
+              <th class="px-3 py-2 text-right">Grid</th>
+              <th class="px-3 py-2 text-right">Solar</th>
+              <th class="px-3 py-2 text-right">Load</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="r in $store.app.allGw.rows" :key="r.id">
+              <tr class="border-t" style="border-color:var(--border)"
+                  :class="r.enabled ? 'cursor-pointer hover:bg-white/[0.04]' : 'opacity-60'"
+                  :title="r.enabled ? 'Show this gateway' : 'Disabled'"
+                  @click="$store.app.pickFromAll(r)">
+                <td class="px-3 py-2">
+                  <div class="font-semibold flex items-center gap-1.5" style="color:var(--text-primary)">
+                    <span x-text="r.label"></span>
+                    <span x-show="r.is_default" class="chip ok" style="font-size:.55rem">default</span>
+                    <span x-show="r.id === $store.app.selectedGateway" class="chip muted" style="font-size:.55rem">on screen</span>
+                  </div>
+                  <div class="font-mono text-[10px]" style="color:var(--text-muted)" x-text="r.serial || '—'"></div>
+                </td>
+                <td class="px-3 py-2" style="color:var(--text-secondary)" x-text="r.model || 'aGate'"></td>
+                <td class="px-3 py-2">
+                  <span class="chip" :class="r.identity_error ? 'error' : (r.poll_status === 'ok' ? 'ok' : 'muted')"
+                        x-text="r.identity_error ? 'Stopped' : (!r.enabled ? 'Disabled' : (r.poll_status === 'ok' ? (r.stale ? 'Stale' : 'Normal') : 'No reading'))"></span>
+                  <div x-show="r.identity_error" class="text-[10px] mt-1 max-w-[16rem]" style="color:#f87171" x-text="r.identity_error"></div>
+                </td>
+                <td class="px-3 py-2" style="color:var(--text-secondary)"
+                    x-text="r.poll_status !== 'ok' ? '—' : (r.off_grid ? ('Off-grid' + (r.off_grid_kind ? ' · ' + r.off_grid_kind : '')) : 'On grid')"></td>
+                <td class="px-3 py-2" style="color:var(--text-secondary)">
+                  <span x-text="r.mode || '—'"></span>
+                  <span x-show="r.vpp_kind === 'force'" class="chip warn" style="font-size:.55rem">FORCE</span>
+                  <span x-show="r.vpp_kind === 'vpp'" class="chip vpp" style="font-size:.55rem">VPP</span>
+                  <span x-show="r.vpp_kind === 'remote'" class="chip muted" style="font-size:.55rem">REMOTE</span>
+                </td>
+                <td class="px-3 py-2 text-right" style="color:var(--text-primary)" x-text="r.soc != null ? r.soc + '%' : '—'"></td>
+                <td class="px-3 py-2" style="color:var(--text-secondary)" x-text="r.poll_status"></td>
+                <td class="px-3 py-2" style="color:var(--text-secondary)" x-text="$store.app.agoText(r.last_poll_ts)"></td>
+                <td class="px-3 py-2 text-right font-mono" x-text="$store.app.fmtPower((r.power || {}).battery_w)"></td>
+                <td class="px-3 py-2 text-right font-mono" x-text="$store.app.fmtPower((r.power || {}).grid_w)"></td>
+                <td class="px-3 py-2 text-right font-mono" x-text="$store.app.fmtPower((r.power || {}).solar_w)"></td>
+                <td class="px-3 py-2 text-right font-mono" x-text="$store.app.fmtPower((r.power || {}).load_w)"></td>
+              </tr>
+            </template>
+            <tr x-show="!$store.app.allGw.rows.length">
+              <td colspan="12" class="px-3 py-4 text-center" style="color:var(--text-muted)">No gateways configured.</td>
+            </tr>
+            <!-- Site total: the flows summed over the gateways with a reading -->
+            <tr class="border-t font-semibold" style="border-color:var(--border);color:var(--text-primary)"
+                x-show="$store.app.allGw.rows.length > 1">
+              <td class="px-3 py-2" colspan="5">
+                Site total <span class="font-normal text-[10px]" style="color:var(--text-muted)"
+                  x-text="'(' + (($store.app.allGw.totals || {}).ok_count || 0) + ' with a reading)'"></span>
+              </td>
+              <td class="px-3 py-2 text-right" x-text="$store.app.allGwSoc != null ? $store.app.allGwSoc + '% avg' : '—'"></td>
+              <td class="px-3 py-2" colspan="2"></td>
+              <td class="px-3 py-2 text-right font-mono" x-text="$store.app.fmtPower((($store.app.allGw.totals || {}).totals || {}).battery_w)"></td>
+              <td class="px-3 py-2 text-right font-mono" x-text="$store.app.fmtPower((($store.app.allGw.totals || {}).totals || {}).grid_w)"></td>
+              <td class="px-3 py-2 text-right font-mono" x-text="$store.app.fmtPower((($store.app.allGw.totals || {}).totals || {}).solar_w)"></td>
+              <td class="px-3 py-2 text-right font-mono" x-text="$store.app.fmtPower((($store.app.allGw.totals || {}).totals || {}).load_w)"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>

@@ -20,6 +20,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   `GET /api/scheduler/monitor`.
 
 ### Changed
+- **"Site (All Gateways)" is replaced by a read-only All gateways view** (#383). The page
+  always shows and controls one gateway. **All gateways…** in the gateway selector opens
+  every gateway at a glance, laid out like FWHAI's Gateways tab: counts (Registered,
+  Polling active, Unavailable, Stopped), one row per gateway with its health, grid, mode,
+  SoC, poll status, last poll and power flows, and a site total. Clicking a row shows that
+  gateway; there are no controls. The page now opens on the default gateway, which is
+  always listed first; it no longer reopens the gateway picked last time. Removing the
+  default gateway makes the next one the default straight away, not at the next start.
 - **The schedule form can be made bigger** (#337). **Default**, **Medium** and **Full**
   size it, and its corner drags to any size in between; the browser remembers the size.
   A notification's message is now a box that grows as you type and can hold several
@@ -58,7 +66,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   close and import, System Setup save, location sync) sent their write to the default
   gateway. In Site view every per-gateway control is now disabled and says "Choose a
   gateway to change this", and the page refuses such a write before sending it. The API is unchanged:
-  a call with no `?gateway=` still means the default gateway.
+  a call with no `?gateway=` still means the default gateway. (Site view itself is now
+  replaced by the read-only All gateways view: #383.)
 
 - **The reserve SoC is written to the gateway on screen** (#351). It used to go to the
   gateway in the cloud settings, while the audit row named the gateway you were viewing.

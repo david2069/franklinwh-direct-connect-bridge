@@ -5,14 +5,13 @@
     <div>
       <h1 class="text-xl font-semibold" style="color:var(--text-primary)">Energy Costs <a :href="$store.app.guideUrl('energy-and-costs/#energy-costs')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></h1>
       <p class="text-sm text-slate-500">Live period-to-date billing + closed-period history.</p>
-      <p class="text-xs" style="color:var(--text-muted)" x-show="$store.app.siteMode" x-cloak x-text="$store.app.siteWriteNote"></p>
     </div>
     <div class="flex items-center gap-2">
-      <button class="btn btn-secondary btn-sm" x-show="ov && ov.configured" @click="closePeriod()" :disabled="closing || $store.app.siteMode"
+      <button class="btn btn-secondary btn-sm" x-show="ov && ov.configured" @click="closePeriod()" :disabled="closing"
               title="Snapshot the current period into history now; it finalises automatically at rollover">
         <span x-text="closing ? '…' : 'Close period now'"></span>
       </button>
-      <button class="btn btn-secondary btn-sm" @click="openModbusImport()" :disabled="$store.app.siteMode">Import from Modbus</button>
+      <button class="btn btn-secondary btn-sm" @click="openModbusImport()">Import from Modbus</button>
       <button class="btn btn-secondary btn-sm" @click="exportCsv()" :disabled="!history.length">Export history CSV</button>
       <button class="btn btn-secondary btn-sm" @click="load()" :disabled="loading">
         <span x-text="loading ? '…' : 'Refresh'"></span>

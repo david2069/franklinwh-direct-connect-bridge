@@ -166,6 +166,9 @@ def _roster_entry(gw: GatewayState) -> dict:
         "mqtt_connected": gw.mqtt_connected,
         "cached": bool(gw.last_summary),
         "updated": ok and not bool(summ.get("stale")),
+        # For the All gateways view (#383): the flows and when the poller last had a reading.
+        "power": {k: power.get(k) for k in ("battery_w", "grid_w", "solar_w", "load_w")},
+        "last_poll_ts": gw.state_ts or None,
     }
 
 
@@ -1744,6 +1747,11 @@ def create_app() -> FastAPI:
             "model": "aGate (mock)" if row.get("is_mock") else (base.get("model_detail") or "aGate"),
             "running": supervisor.is_running(row["id"]),
         })
+        # One poll status the All gateways view counts by (#383): stopped = disabled, no
+        # poller, or stopped for its identity (#381); ok = polling with a reading.
+        base["poll_status"] = ("stopped" if (not base["enabled"] or not base["running"]
+                                             or base.get("identity_error"))
+                               else "ok" if base.get("ok") else "unavailable")
         return base
 
     @app.get("/api/gateways")
@@ -1918,6 +1926,10 @@ def create_app() -> FastAPI:
         state.unregister_gateway(gw_id)
         st.delete_gateway(gw_id)
         alerts.forget_gateway(db.get_store(get_settings()), gw_id)
+        # Deleting the default hands the designation to the next gateway now, not at the
+        # next start (#383).
+        if row.get("is_default"):
+            state.set_default(st.ensure_one_default())
         return {"ok": True, "id": gw_id}
 
     # ── sites + meters (Phase 1: multi-site / multi-meter roster) ─────────────
@@ -2367,7 +2379,7 @@ def create_app() -> FastAPI:
         """Whole-site aggregation across every registered gateway, from their poller
         caches (no device I/O). Never 500s — cold caches contribute zeros / ok:false.
         ``totals`` sums the power fields over the OK gateways only."""
-        gws = state.gateways() or [get_state()]
+        gws = state.gateways()      # none registered ⇒ an empty site, never the default (#383)
         keys = ("grid_w", "solar_w", "battery_w", "load_w", "generator_w")
         totals = {k: 0 for k in keys}
         ok_count = 0

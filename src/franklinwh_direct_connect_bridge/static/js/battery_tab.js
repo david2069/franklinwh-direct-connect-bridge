@@ -644,7 +644,7 @@ function batteryTab() {
 
     async startRecording() {
       try {
-        const r = await fetch('api/battery/record' + this.$store.app.writeQuery(), {
+        const r = await fetch('api/battery/record' + this.$store.app.gwQuery(), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ samples: this.recSamples,
                                  interval_s: this.recIntervalS, id: this.unitId }),

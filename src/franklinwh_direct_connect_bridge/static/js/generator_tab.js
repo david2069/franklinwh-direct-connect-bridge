@@ -68,7 +68,7 @@ document.addEventListener('alpine:init', () => {
       if (this.busy) return;
       this.busy = true; this.editMsg = null;
       try {
-        const r = await fetch(url + this.$store.app.writeQuery(), {
+        const r = await fetch(url + this.$store.app.gwQuery(), {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
@@ -111,7 +111,6 @@ document.addEventListener('alpine:init', () => {
     get canToggleFeature() { return !!this.$store.app.summary.writes_enabled; },
 
     editBlockedReason() {
-      if (this.$store.app.siteMode) return this.$store.app.siteWriteNote;
       if (!this.$store.app.summary.writes_enabled) return 'Writes are disabled (ALLOW_WRITES=true)';
       if (this.data && !this.data.enabled) return 'Generator is not enabled';
       return '';
@@ -139,7 +138,7 @@ document.addEventListener('alpine:init', () => {
       }
       this.busy = true;
       try {
-        const r = await fetch('api/generator/enable' + this.$store.app.writeQuery(), {
+        const r = await fetch('api/generator/enable' + this.$store.app.gwQuery(), {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ enabled: on }),
         });

@@ -279,7 +279,7 @@ function terminalConsole() {
     async _send(cmd, data, confirm, token) {
       this.busy = true;
       try {
-        const r = await fetch('api/raw' + this.$store.app.writeQuery(), {
+        const r = await fetch('api/raw' + this.$store.app.gwQuery(), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ cmd, data, confirm }),
         });
@@ -305,7 +305,7 @@ function terminalConsole() {
     // Low-level single read used by convenience verbs; returns the response object or null.
     async _raw(cmd, data) {
       try {
-        const r = await fetch('api/raw' + this.$store.app.writeQuery(), {
+        const r = await fetch('api/raw' + this.$store.app.gwQuery(), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ cmd, data, confirm: false }),
         });

@@ -105,7 +105,7 @@ function deviceTab() {
       catch (e) { this.conError = `dataArea is not valid JSON: ${e.message}`; return; }
       this.conBusy = true; this.conError = ''; this.conResult = null;
       try {
-        const r = await fetch('api/raw' + this.$store.app.writeQuery(), {
+        const r = await fetch('api/raw' + this.$store.app.gwQuery(), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ cmd: Number(this.conCmd), data, confirm }),
         });

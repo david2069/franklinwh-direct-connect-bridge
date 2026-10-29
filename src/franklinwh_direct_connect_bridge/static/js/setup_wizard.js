@@ -394,8 +394,8 @@ window.setupWizard = function setupWizard() {
       try {
         if (typeof a.loadGateways === 'function') await a.loadGateways();
         const gws = a.gateways || [];
-        const first = gws.find(g => g && g.id && g.id !== '__site__');
-        if (first && (!a.selectedGateway || a.selectedGateway === '__site__')) {
+        const first = gws.find(g => g && g.id);
+        if (first && !a.selectedGateway) {
           a.selectGateway(first.id);
         }
       } catch (e) { /* a missed selection is cosmetic; never fail the finish */ }

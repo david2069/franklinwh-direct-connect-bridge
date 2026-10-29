@@ -32,11 +32,10 @@
         </svg>
         Scan conflicts
       </button>
-      <button @click="republish()" class="btn btn-primary btn-sm" :disabled="$store.app.siteMode">Republish</button> <a :href="$store.app.guideUrl('home-assistant/#republish-and-unpublish')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a>
-      <button @click="unpublish()" class="btn btn-secondary btn-sm" :disabled="$store.app.siteMode"
+      <button @click="republish()" class="btn btn-primary btn-sm">Republish</button> <a :href="$store.app.guideUrl('home-assistant/#republish-and-unpublish')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a>
+      <button @click="unpublish()" class="btn btn-secondary btn-sm"
               style="color: var(--danger); border-color: var(--border)">Unpublish</button>
     </div>
-    <p class="text-xs" style="color:var(--text-muted)" x-show="$store.app.siteMode" x-cloak x-text="$store.app.siteWriteNote"></p>
   </div>
 
   <!-- Broker discovery result -->

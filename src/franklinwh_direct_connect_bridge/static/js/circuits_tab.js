@@ -129,7 +129,7 @@ document.addEventListener('alpine:init', () => {
       if (this.busy[c.id]) return;
       this.busy = { ...this.busy, [c.id]: true };
       try {
-        const r = await fetch(`api/circuits/${c.id}/power` + this.$store.app.writeQuery(), {
+        const r = await fetch(`api/circuits/${c.id}/power` + this.$store.app.gwQuery(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ on: !c.on }),
@@ -177,7 +177,7 @@ document.addEventListener('alpine:init', () => {
       if (this.saving) return;
       this.saving = true; this.editMsg = null;
       try {
-        const r = await fetch(`api/circuits/${this.edit.id}/schedule` + this.$store.app.writeQuery(), {
+        const r = await fetch(`api/circuits/${this.edit.id}/schedule` + this.$store.app.gwQuery(), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ windows: this.edit.windows }),
