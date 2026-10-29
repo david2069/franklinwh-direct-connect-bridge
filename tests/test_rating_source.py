@@ -22,8 +22,10 @@ def store(tmp_path):
 # -- the model mapping -------------------------------------------------------------------
 def test_the_datasheet_mapping_scales_with_the_unit_count():
     assert devicedb.apower_power_w("aPower X", 1) == (5000, 5000)
-    assert devicedb.apower_power_w("aPower 2", 1) == (10000, 10000)
-    assert devicedb.apower_power_w("aPower 2", 3) == (30000, 30000)
+    # Datasheet: charge 8 kW, discharge 10 kW. The 10 in the SKU (APR-10K…) is the
+    # DISCHARGE rating — reading it as both directions overstated charging by 25%.
+    assert devicedb.apower_power_w("aPower 2", 1) == (8000, 10000)
+    assert devicedb.apower_power_w("aPower 2", 3) == (24000, 30000)
     # Asymmetric by datasheet — charging and discharging are not the same number.
     assert devicedb.apower_power_w("aPower S", 1) == (8000, 10000)
 
@@ -48,7 +50,7 @@ def test_the_recorded_apower_model_is_used_when_modbus_cannot_be_read(store, mon
     monkeypatch.setattr(bc, "cached_ratings", lambda host: (None, None))
     system_setup.update(store, "g1", {"apower_model": "aPower 2"})
     r = bc.ratings_with_source("192.0.2.110", store=store, gateway_id="g1", apower_count=2)
-    assert (r["charge_w"], r["discharge_w"]) == (20000, 20000)   # 2 × 10 kW
+    assert (r["charge_w"], r["discharge_w"]) == (16000, 20000)   # 2 × (8 kW / 10 kW)
     assert r["source"] == "apower_model" and r["assumed"] is False
     assert "aPower 2" in r["detail"]
 
@@ -117,6 +119,25 @@ def test_watts_still_work_without_a_rating(monkeypatch):
     bc._clear_active()
 
 
+def test_the_apower_2_capacity_and_charge_rate_are_cited():
+    """This table said 16 kWh and 10 kW charge; the datasheet says 15 kWh and 8 kW. The
+    capacity error flowed into the derived battery-capacity constant (usable × count)."""
+    spec = devicedb.APOWER_SPECS["aPower 2"]
+    assert spec["usable_kwh"] == 15.0 and spec["rated_kwh"] == 15.0
+    assert spec["charge_kw"] == 8.0 and spec["discharge_kw"] == 10.0
+    import pathlib
+    head = pathlib.Path(devicedb.__file__).read_text().split("APOWER_SPECS")[0]
+    assert "apower-2-datasheet" in head and "aPower X-20" in head
+
+
+def test_both_confirmed_models_charge_slower_than_they_discharge():
+    """The trap this table fell into twice: the SKU names the DISCHARGE rating, so
+    APR-10K… is a 10 kW discharge / 8 kW charge unit, not 10/10."""
+    for model in ("aPower 2", "aPower S"):
+        chg, dis = devicedb.apower_power_w(model, 1)
+        assert chg == 8000 and dis == 10000, model
+
+
 def test_the_apower_s_asymmetry_is_cited_to_the_datasheet():
     """It was flagged as uncited; the owner supplied the datasheet and it turned out to be
     right. The citation has to live in the file, because another project is copying this
@@ -136,3 +157,53 @@ def test_the_with_pv_discharge_figure_is_kept_but_not_used_for_dispatch():
     assert spec["discharge_kw"] == 10.0              # battery only
     assert spec["discharge_with_pv_kw"] == 11.5      # recorded, not used
     assert devicedb.apower_power_w("aPower S", 1) == (8000, 10000)
+
+
+def test_the_au_apower_is_a_distinct_model_not_a_relabel():
+    """System datasheet V1.7: aPower X-02-AU is 15 kWh usable / 16 kWh rated at 5 kW,
+    where the US aPower X is 13.6 / 15. Treating them as one understates an AU site by
+    1.4 kWh per unit — and capacity here is usable_kwh × count."""
+    us = devicedb.APOWER_SPECS["aPower X"]
+    au = devicedb.APOWER_SPECS["aPower X-02-AU"]
+    assert (us["usable_kwh"], us["rated_kwh"]) == (13.6, 15.0)
+    assert (au["usable_kwh"], au["rated_kwh"]) == (15.0, 16.0)
+    assert us["charge_kw"] == au["charge_kw"] == 5.0          # same rate, different energy
+    assert devicedb.apower_power_w("aPower X-02-AU", 4) == (20000, 20000)   # system max 20 kW
+
+
+def test_the_au_datasheet_is_cited():
+    import pathlib
+    head = pathlib.Path(devicedb.__file__).read_text().split("APOWER_SPECS")[0]
+    assert "system-datasheet" in head and "V1.7" in head
+    assert "aPower X-02-AU" in head and "aGate X-01-AU" in head
+
+
+def test_the_model_picker_offers_the_au_variant():
+    from franklinwh_direct_connect_bridge import system_setup
+    opts = system_setup.spec()["apower_model"]["options"]
+    assert "aPower X-02-AU" in opts and "aPower X" in opts
+
+
+# -- SKU and country, so the three projects' tables line up --------------------------------
+# Owner, 2026-10-16: FWHAI's config model DB table "has SKU and country codes" and needs
+# updating with these datasheet figures. Ours now carries both, so the tables can be
+# cross-referenced by key rather than by display name.
+
+def test_every_model_carries_its_skus_and_country():
+    for model, spec in devicedb.APOWER_SPECS.items():
+        assert spec.get("country") in ("US", "AU"), model
+        assert spec.get("skus"), model
+
+
+def test_a_sku_resolves_to_the_right_model():
+    assert devicedb.apower_by_sku("APR-10K15V2-US")[0] == "aPower 2"
+    assert devicedb.apower_by_sku("APRS-10K15V1-US")[0] == "aPower S"
+    # The owner's own hardware, from the AU system datasheet.
+    assert devicedb.apower_by_sku("APR-05K15V1-AU")[0] == "aPower X-02-AU"
+    # US and AU 5 kW units are different models despite the same rate.
+    assert devicedb.apower_by_sku("APR-05K1V1-US")[0] == "aPower X"
+
+
+def test_an_unknown_sku_is_not_guessed():
+    assert devicedb.apower_by_sku("APR-99K99V9-XX") is None
+    assert devicedb.apower_by_sku("") is None

@@ -168,13 +168,79 @@ def describe(manifest: dict | None) -> dict[str, Any]:
 #:   number for sizing a battery dispatch: the 11.5 kW figure includes PV flowing through
 #:   the hybrid inverter, which is not what a force command controls. The extra headroom is
 #:   recorded as ``discharge_with_pv_kw`` rather than being dropped.
+#: * **aPower 2: CONFIRMED by the vendor datasheet**, and this table had been WRONG on
+#:   three counts. *"aPower V2.0 Datasheet-EN"* (PDF title; created 2026-10-09; SKUs
+#:   APR-10K15V2-US, APR-10K15V2U-US, APR-10K15V2DCP-US; nameplate "aPower X-20"),
+#:   retrieved 2026-10-16 from https://www.franklinwh.com/document/apower-2-datasheet —
+#:   owner-supplied link. Verbatim: "Usable System Energy 15 kWh AC per unit, up to 15
+#:   units per aGate"; "Max Real Power (charge) 8 kW continuous"; "Max Real Power
+#:   (Discharge) 10 kW / 11.5 kVA continuous".
+#:
+#:   Corrected here: charge 10 → **8 kW**, usable 16 → **15 kWh**, rated 16 → **15 kWh**.
+#:   The 10 kW in the SKU (``APR-10K…``) is the DISCHARGE rating; reading it as both
+#:   directions overstated charging by 25%, and the 16 kWh had no source at all.
+#:   So BOTH confirmed models charge at 8 kW and discharge at 10 kW — the SKU names the
+#:   discharge figure, which is the trap this table fell into twice.
+#: * **AU hardware: a different unit, not a relabel.** *FranklinWH System datasheet,
+#:   document version V1.7, dated 2026-09-10* (retrieved 2026-10-16 from
+#:   https://www.franklinwh.com/document/system-datasheet — owner-supplied link), which
+#:   covers **aPower X-02-AU** (SKU APR-05K15V1-AU) and **aGate X-01-AU** (SKU AGT-R1V1-AU)
+#:   and states it is the Australia/New Zealand product.
+#:
+#:   Verbatim for aPower X-02-AU: "Usable Energy 15 kWh"; "Rated Battery Capacity 16 kWh";
+#:   "Rated Input / Output Power 5 kW (per aPower with a system maximum of 20kW)"; "Peak
+#:   Power 10 kW for 10 sec (per aPower with a system maximum of 40kW)"; 230/240 VAC,
+#:   50 Hz; "Round Trip Efficiency 89%"; "Warranty 12 years".
+#:
+#:   The US "aPower X" row is 13.6 kWh usable / 15 kWh rated with a 15-year warranty —
+#:   so the AU unit holds MORE usable energy at the same 5 kW rate. Treating them as one
+#:   model would understate an AU site's capacity by 1.4 kWh per aPower, which matters
+#:   because battery capacity here is usable_kwh × count.
 APOWER_SPECS: dict[str, dict[str, Any]] = {
-    "aPower X":  {"usable_kwh": 13.6, "rated_kwh": 15.0, "charge_kw": 5.0,  "discharge_kw": 5.0,  "has_mppt": False},
-    "aPower 2":  {"usable_kwh": 16.0, "rated_kwh": 16.0, "charge_kw": 10.0, "discharge_kw": 10.0, "has_mppt": False},
+    "aPower X":  {"usable_kwh": 13.6, "rated_kwh": 15.0, "charge_kw": 5.0,  "discharge_kw": 5.0,
+                  "country": "US", "skus": ["APR-05K1V1-US", "APR-05K11V1-US",
+                                            "APR-05K15V1-US"],
+                  "has_mppt": False},
+    # The AU variant is a DIFFERENT unit, not a relabel: 15 kWh usable (16 kWh rated),
+    # 230/240 V 50 Hz, 12-year warranty. Same 5 kW rate. Datasheet V1.7 — see above.
+    # The AU SKUs carry a -AU suffix and a different middle group (05K13 / 05K15).
+    "aPower X-02-AU": {"usable_kwh": 15.0, "rated_kwh": 16.0, "charge_kw": 5.0, "discharge_kw": 5.0,
+                       "country": "AU", "peak_kw": 10.0,
+                       "skus": ["APR-05K15V1-AU", "APR-05K13V1-AU", "APR-05K13V2-AU"],
+                       "has_mppt": False},
+    # Datasheet "aPower V2.0" (nameplate aPower X-20): 15 kWh AC, charge 8 kW,
+    # discharge 10 kW / 11.5 kVA. Our table previously said 16 kWh and 10 kW charge —
+    # both wrong, see the provenance note above.
+    "aPower 2":  {"usable_kwh": 15.0, "rated_kwh": 15.0, "charge_kw": 8.0, "discharge_kw": 10.0,
+                  "apparent_kva": 11.5, "country": "US",
+                  "skus": ["APR-10K15V2-US", "APR-10K15V2U-US", "APR-10K15V2DCP-US"],
+                  "has_mppt": False},
     # Datasheet V1.9: charge 8 kW, discharge 10 kW battery-only / 11.5 kW with PV input.
     "aPower S":  {"usable_kwh": 15.0, "rated_kwh": 15.0, "charge_kw": 8.0,  "discharge_kw": 10.0,
-                  "discharge_with_pv_kw": 11.5, "has_mppt": True},
+                  "discharge_with_pv_kw": 11.5, "country": "US",
+                  "skus": ["APRS-10K15V1-US", "APRS-10K15V1.1-US", "APRS-10K15V1.1DCP-US",
+                           "APRS-11K15V2-US"],
+                  "has_mppt": True},
 }
+
+
+def apower_by_sku(sku: str | None) -> tuple[str, dict[str, Any]] | None:
+    """``(model, spec)`` for a full or partial aPower SKU, or None.
+
+    Matching on the SKU is what lets this table line up with FWHAI's device DB and the
+    cloud catalog, both of which are keyed on SKU and country rather than on a display
+    name. Matching is case-insensitive and accepts a prefix, because the suffix carries
+    the transmitter/DCP variant and not the electrical rating.
+    """
+    s = (sku or "").strip().upper()
+    if not s:
+        return None
+    for model, spec in APOWER_SPECS.items():
+        for known in spec.get("skus", []):
+            k = known.upper()
+            if s == k or s.startswith(k) or k.startswith(s):
+                return (model, spec)
+    return None
 
 
 def apower_power_w(model: str | None, count: int = 1) -> tuple[int, int] | None:

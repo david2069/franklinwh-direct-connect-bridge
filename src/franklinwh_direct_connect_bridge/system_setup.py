@@ -37,7 +37,8 @@ _FIELDS: dict[str, dict] = {
     # from the datasheet instead of assuming 5 kW. "" = not told, which stays distinct
     # from any particular model.
     "apower_model":      {"default": "",             "derived": False, "kind": "enum",
-                          "options": ["", "aPower X", "aPower 2", "aPower S"]},
+                          "options": ["", "aPower X", "aPower X-02-AU", "aPower 2",
+                                      "aPower S"]},
 }
 
 
