@@ -41,6 +41,7 @@ function batteryControl() {
     },
 
     async refresh(check = false) {
+      if (!this.$store.app.selectedGateway) return;   // no gateway yet: nothing to ask (#379)
       try {
         const r = await fetch('api/battery/command' + (check ? '?refresh=1' : '')
                               + this.$store.app.gwQuery(check ? '&' : '?'));

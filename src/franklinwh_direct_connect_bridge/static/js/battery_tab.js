@@ -120,6 +120,7 @@ function batteryTab() {
       // they queue on the device, one hangs, and `loading` sticks true forever (the
       // "samples stop increasing" bug). A tick that arrives mid-read is simply skipped.
       if (this.loading) return;
+      if (!this.$store.app.selectedGateway) return;   // no gateway yet: nothing to ask (#379)
       this.loading = true;
       this.error = '';
       const _ctrl = new AbortController();
@@ -179,6 +180,7 @@ function batteryTab() {
     },
 
     async _fetchUnit(id) {
+      if (!this.$store.app.selectedGateway) throw new Error('no gateway yet');
       const q = new URLSearchParams({ id: String(id) });
       const r = await fetch('api/battery?' + q.toString() + this.$store.app.gwQuery('&'));
       if (!r.ok) throw new Error(`HTTP ${r.status}`);

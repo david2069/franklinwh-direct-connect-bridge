@@ -54,6 +54,7 @@ function settingsTab() {
 
     // ── Support info bundle (redacted; for GitHub issues) ────────────────────
     async loadApowerSpecs() {
+      if (!this.$store.app.selectedGateway) return;   // no gateway yet: nothing to ask (#379)
       try {
         const d = await (await fetch('api/apower-specs' + this.$store.app.gwQuery())).json();
         this.apowerSpecs = d.models || [];

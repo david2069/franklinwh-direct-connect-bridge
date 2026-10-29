@@ -18,6 +18,7 @@ function solarForecastCard() {
     },
     // Where today's actual solar went (solar->home/battery/grid), from the flow reconstruction.
     async _loadSolarSplit() {
+      if (!this.$store.app.selectedGateway) return;   // no gateway yet: nothing to ask (#379)
       try {
         const now = Math.floor(Date.now() / 1000);
         const off = (this.data && this.data.utc_offset_seconds) || 0;   // PV-location local
@@ -31,6 +32,7 @@ function solarForecastCard() {
     // What the battery did today, per hour (battery_w = p_fhp: <0 charging, >0 discharging),
     // aligned to the forecast bars (today bars coloured; tomorrow bars null).
     async _loadChargeBand() {
+      if (!this.$store.app.selectedGateway) return;   // no gateway yet: nothing to ask (#379)
       try {
         const now = Math.floor(Date.now() / 1000);
         const off = (this.data && this.data.utc_offset_seconds) || 0;
