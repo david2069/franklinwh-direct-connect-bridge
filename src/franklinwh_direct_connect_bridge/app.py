@@ -4668,13 +4668,13 @@ def create_app() -> FastAPI:
         return {"events": rows}
 
     @app.get("/api/modbus")
-    def api_modbus_get():
+    def api_modbus_get(gateway: str = Depends(_gateway_q)):
         """Modbus (SunSpec 502) master switch + why it is / isn't usable. Live port-502
         reachability is already in the dashboard summary (``modbus_502``), so the UI reads
         that; this endpoint owns the enable flag."""
         from . import battery_control
         ok, why = battery_control.available()
-        base = _modbus_host()
+        base = _modbus_host(gateway)
         eff_host, eff_port = battery_control.effective_target(base)
         ov = battery_control.host_override()
         return {"enabled": battery_control.is_enabled(), "available": ok, "reason": why,
@@ -4684,7 +4684,7 @@ def create_app() -> FastAPI:
                 "auto": not ov["host"]}
 
     @app.put("/api/modbus")
-    def api_modbus_put(req: ModbusToggleReq):
+    def api_modbus_put(req: ModbusToggleReq, gateway: str = Depends(_gateway_q)):
         """Enable/disable the direct-Modbus path (ratings + force dispatch). Persisted."""
         from . import battery_control
         store = None
@@ -4711,7 +4711,7 @@ def create_app() -> FastAPI:
                 or req.port_override is not None:
             _avail_invalidate()
         ov = battery_control.host_override()
-        base = _modbus_host()
+        base = _modbus_host(gateway)
         eff_host, eff_port = battery_control.effective_target(base)
         return {"enabled": battery_control.is_enabled(),
                 "resolved_host": eff_host or None, "resolved_port": eff_port,
@@ -4719,10 +4719,10 @@ def create_app() -> FastAPI:
                 "auto": not ov["host"]}
 
     @app.post("/api/modbus/test")
-    def api_modbus_test():
+    def api_modbus_test(gateway: str = Depends(_gateway_q)):
         """Live connect to the resolved Modbus target and report reachability + ratings."""
         from . import battery_control
-        base = _modbus_host()
+        base = _modbus_host(gateway)
         eff_host, eff_port = battery_control.effective_target(base)
         target = f"{eff_host}:{eff_port}" if eff_host else None
         if not eff_host:
@@ -5906,14 +5906,15 @@ def create_app() -> FastAPI:
             row["cloud_programme"] = bool(g.cloud_programme)   # bool only (name may identify)
             gateways.append(row)
 
-        # System setup flags (non-PII hardware/config)
+        # System setup flags (non-PII hardware/config), per gateway: there is no default
+        # gateway to stand for the site (#379).
         system = {}
-        try:
-            host0 = _gw_host(None)
-            ss = system_setup.snapshot(store, settings, None, host0) if store else {}
-            system = {k.replace("system.", ""): v for k, v in ss.items()}
-        except Exception:  # noqa: BLE001
-            system = {}
+        for g in state.gateways():
+            try:
+                ss = system_setup.snapshot(store, settings, g.id, _gw_host(g.id)) if store else {}
+                system[g.id] = {k.replace("system.", ""): v for k, v in ss.items()}
+            except Exception:  # noqa: BLE001
+                system[g.id] = {}
 
         # Integration setup (counts + booleans; never ids/creds)
         integration = {
@@ -6359,6 +6360,9 @@ def create_app() -> FastAPI:
             {"version": __version__, "base_path": _base_path(request),
              "cache_bust": _asset_version(),
              "host": get_settings().fwh_host,
+             # The page opens on the default gateway (#383), and names it from its first
+             # request: no call goes out before the gateway list has loaded (#379).
+             "boot_gateway": (state.default_gateway().id if state.default_gateway() else ""),
              "docs_url": BRIDGE_DOCS_URL, "guide_url": BRIDGE_GUIDE_URL})
         # The HTML must never be cached: it carries the hashed asset URLs, so a stale
         # page pins the browser to stale JS no matter how good the asset hashing is.

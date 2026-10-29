@@ -11,6 +11,7 @@
 
   <!-- Tailwind 3.4.1 — local, no CDN -->
   <script src="static/js/tailwind-3.4.1.min.js"></script>
+  <script>window.FWH_BOOT = { gateway: {{ boot_gateway | tojson }} };</script>
   <script>
     tailwind.config = {
       darkMode: 'class',

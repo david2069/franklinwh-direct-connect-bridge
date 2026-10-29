@@ -128,10 +128,14 @@ def test_query_string_calls_use_the_ampersand_separator():
                 )
 
 
-def test_helper_is_a_noop_on_single_gateway():
-    """The reason the bug was invisible: '' unless there are 2+ gateways."""
+def test_helper_names_the_gateway_even_when_there_is_only_one():
+    """It used to be '' unless there were 2+ gateways, which hid the bug above and leaned
+    on the bridge's default gateway. There is no default any more (#379)."""
     app_js = (JS_DIR / "app.js").read_text()
-    assert "gateways.length > 1 && this.selectedGateway" in app_js
+    body = app_js[app_js.index("    gwQuery(sep = '?') {"):]
+    body = body[:body.index("\n    },")]
+    assert "gateways.length" not in body and "this.selectedGateway ?" in body
+    assert "selectedGateway: (window.FWH_BOOT && window.FWH_BOOT.gateway)" in app_js
 
 
 def test_console_prefills_from_the_selected_command():

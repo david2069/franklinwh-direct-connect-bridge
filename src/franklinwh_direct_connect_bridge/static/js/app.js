@@ -130,7 +130,7 @@ document.addEventListener('alpine:init', () => {
     // Multi-gateway = single view at a time. ALWAYS defaults to the first defined
     // gateway on load (not a persisted selection); the topbar/in-card switcher changes
     // it for the session.
-    selectedGateway: '',
+    selectedGateway: (window.FWH_BOOT && window.FWH_BOOT.gateway) || '',   // the default (#383)
     activeTab: localStorage.getItem('fwh-tab') || 'dashboard',
 
     // The guide page for the tab on screen, so Guide opens what the user is looking at
@@ -1675,7 +1675,8 @@ document.addEventListener('alpine:init', () => {
     modbusTest: null, modbusTesting: false,
     async loadModbus() {
       try {
-        const d = await (await fetch('api/modbus')).json();
+        if (!this.selectedGateway) return;
+        const d = await (await fetch('api/modbus' + this.gwQuery())).json();
         this.modbus = { enabled: !!d.enabled, available: !!d.available, reason: d.reason || '',
                         resolved_host: d.resolved_host || null, resolved_port: d.resolved_port || 502,
                         unit_id: d.unit_id, host_override: d.host_override || '',
@@ -1685,7 +1686,7 @@ document.addEventListener('alpine:init', () => {
     async toggleModbus() {
       const next = !this.modbus.enabled;
       try {
-        const r = await fetch('api/modbus', {
+        const r = await fetch('api/modbus' + this.gwQuery(), {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ enabled: next }),
         });
@@ -1699,7 +1700,7 @@ document.addEventListener('alpine:init', () => {
 
     async saveModbusOverride() {
       try {
-        const r = await fetch('api/modbus', {
+        const r = await fetch('api/modbus' + this.gwQuery(), {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ host_override: this.modbus.host_override || '',
                                  port_override: Number(this.modbus.port_override) || 0 }),
@@ -1717,7 +1718,7 @@ document.addEventListener('alpine:init', () => {
     async testModbus() {
       this.modbusTesting = true; this.modbusTest = null;
       try {
-        this.modbusTest = await (await fetch('api/modbus/test', { method: 'POST' })).json();
+        this.modbusTest = await (await fetch('api/modbus/test' + this.gwQuery(), { method: 'POST' })).json();
       } catch (e) { this.modbusTest = { ok: false, reason: 'request failed' }; }
       finally { this.modbusTesting = false; }
     },
