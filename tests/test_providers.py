@@ -196,7 +196,7 @@ def test_set_reserve_uses_cloud_lib(monkeypatch):
                         lambda email, pw, gw, wm, soc: calls.update(
                             email=email, gw=gw, wm=wm, soc=soc) or {"cloud": {"result": 0}, "prior": {"soc": 8}})
     out = providers.set_reserve(_s(fwh_cloud_email="a@b.c", fwh_cloud_password="x",
-                                   fwh_cloud_gateway="GW1"), "self", 12)
+                                   fwh_cloud_gateway="GW1"), "self", 12, serial="GW1")
     assert out["ok"] and out["mode"] == "self" and out["workMode"] == 2 and out["requested_soc"] == 12
     assert calls == {"email": "a@b.c", "gw": "GW1", "wm": 2, "soc": 12}  # Self → workMode 2
 
@@ -208,7 +208,7 @@ def test_set_reserve_maps_modes_by_name(monkeypatch):
         seen["wm"] = wm
         return {"cloud": {}, "prior": None}
     monkeypatch.setattr(providers, "_cloud_set_reserve", _fake)
-    providers.set_reserve(_s(fwh_cloud_email="a@b.c", fwh_cloud_password="x"), "tou", 20)
+    providers.set_reserve(_s(fwh_cloud_email="a@b.c", fwh_cloud_password="x"), "tou", 20, serial="SN1")
     assert seen["wm"] == 1  # TOU → workMode 1 (resolve by NAME, not index)
 
 
@@ -217,12 +217,12 @@ def test_set_reserve_bad_mode_and_soc(monkeypatch):
     s = _s(fwh_cloud_email="a@b.c", fwh_cloud_password="x")
     for bad in ("explode", ""):
         try:
-            providers.set_reserve(s, bad, 10); assert False
+            providers.set_reserve(s, bad, 10, serial="SN1"); assert False
         except ValueError:
             pass
     for soc in (-1, 101):
         try:
-            providers.set_reserve(s, "self", soc); assert False
+            providers.set_reserve(s, "self", soc, serial="SN1"); assert False
         except ValueError:
             pass
 
@@ -233,7 +233,7 @@ def test_set_reserve_unavailable(monkeypatch):
                                          "reason": "sibling down", "capabilities": []})
     monkeypatch.setattr(providers, "_lib_available", lambda m: False)
     try:
-        providers.set_reserve(_s(), "self", 10); assert False
+        providers.set_reserve(_s(), "self", 10, serial="SN1"); assert False
     except providers.ReserveUnavailable:
         pass
 
@@ -243,7 +243,7 @@ def test_set_reserve_fwhai_only_not_wired(monkeypatch):
     monkeypatch.setattr(providers, "_probe_url", lambda base, *a, **k: True)
     monkeypatch.setattr(providers, "_lib_available", lambda m: False)
     try:
-        providers.set_reserve(_s(fwhai_url="http://fwhai:8099"), "self", 10); assert False
+        providers.set_reserve(_s(fwhai_url="http://fwhai:8099"), "self", 10, serial="SN1"); assert False
     except NotImplementedError:
         pass
 
@@ -253,7 +253,24 @@ def test_reserve_endpoint_gated_and_no_provider(writes_on, monkeypatch, gw):
                         lambda *a, **k: {"state": "unreachable",
                                          "reason": "sibling down", "capabilities": []})
     monkeypatch.setattr(providers, "_lib_available", lambda m: False)
+    # Cloud sign-in checked and good, so the answer is about the provider, not the sign-in
+    # (it used to depend on an earlier test leaving that state behind).
+    real = providers.cloud_auth_status
+    monkeypatch.setattr(providers, "cloud_auth_status", lambda: {**real(), "state": "valid"})
     c = TestClient(app_module.create_app())
     assert c.post(f"/api/cloud/reserve?gateway={gw}", json={"mode": "self", "soc": 10}).status_code == 503
     assert c.post(f"/api/cloud/reserve?gateway={gw}", json={"soc": 10}).status_code == 422  # missing mode
 
+
+
+def test_set_reserve_needs_the_gateways_serial(monkeypatch):
+    """There is no configured-gateway fallback any more (#379), and no sign-in without one."""
+    monkeypatch.setattr(providers, "_lib_available", lambda m: True)
+    monkeypatch.setattr(providers, "_cloud_set_reserve",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("signed in")))
+    s = _s(fwh_cloud_email="a@b.c", fwh_cloud_password="x", fwh_cloud_gateway="SNCFG")
+    for blank in ("", "  "):
+        try:
+            providers.set_reserve(s, "self", 10, serial=blank); assert False
+        except ValueError as e:
+            assert "serial" in str(e)

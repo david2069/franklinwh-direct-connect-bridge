@@ -19,6 +19,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   gateway stopped for its identity 409. This applies to single-gateway installs too.
   `/api/dispatch` needs `gateway_id`. Scripts, dashboards and other bridges that call this
   API must add the gateway. The web UI always does.
+- **A cloud aGate serial must be one of this bridge's gateways** (#379). The serial in the
+  cloud settings, and the one typed when signing in, must be locked to one of this
+  bridge's gateways. An unknown serial gets 404 and a malformed one 422, before any
+  sign-in. The grid-limit cloud check reads the gateway's own serial, or nothing. It used
+  to read the configured serial, whichever gateway was being written. The cloud's VPP
+  status is stored only on the gateway with that serial, never on the default.
 
 ### Added
 - **Scheduler Monitor** (#345). A Monitor card at the top of Scheduler → History shows

@@ -1162,11 +1162,9 @@ def create_app() -> FastAPI:
                     data = cloud_status.poll(get_settings())
                     if data is not None:
                         ok = True
-                        # Store on the gateway matching the cloud serial, else the primary.
-                        gws = state.gateways()
-                        target = next((g for g in gws
-                                       if (g.serial or "").upper() == want), None) \
-                            or state.default_gateway()
+                        # Store on the gateway whose locked serial is the cloud's, and
+                        # on no other: never the default gateway (#379).
+                        target = state.gateway_by_serial(want)
                         if target is not None:
                             target.cloud_vpp = bool(data["is_vpp"])
                             target.cloud_mode = data.get("effective_mode") or ""
@@ -1337,14 +1335,25 @@ def create_app() -> FastAPI:
                                 detail=f"not a gateway id or aGate serial: {gateway!r}")
         gw = state.get_gateway(gateway)
         if gw is None:              # by serial: only a LOCKED one, which is unique (#381)
-            ref = gateway.upper()
-            gw = next((g for g in state.gateways() if getattr(g, "serial_locked", False)
-                       and (g.serial or "").upper() == ref), None)
+            gw = state.gateway_by_serial(gateway)
         if gw is None:
             raise HTTPException(status_code=404, detail=f"unknown gateway {gateway!r}")
         if getattr(gw, "identity_error", None):   # stopped: not its locked aGate (#381)
             raise HTTPException(status_code=409, detail=gw.identity_error)
         return gw
+
+    def _known_serial(serial: str | None) -> str:
+        """``serial``, upper-cased, when it is locked to one of this bridge's gateways (#381).
+        A serial given to a cloud setting or call is validated the same way as ``?gateway=``:
+        malformed ⇒ 422, not one of ours ⇒ 404 (#379)."""
+        ref = (serial or "").strip().upper()
+        if not _GW_REF.fullmatch(ref):
+            raise HTTPException(status_code=422, detail=f"not an aGate serial: {serial!r}")
+        if state.gateway_by_serial(ref) is None:
+            raise HTTPException(status_code=404, detail=(
+                f"aGate {ref} is not one of this bridge's gateways. Add the gateway first, "
+                "and let it connect once."))
+        return ref
 
     def _gateway_q(gateway: str | None = Query(
             None, description="Gateway id or aGate serial (required)")) -> str:
@@ -3022,7 +3031,14 @@ def create_app() -> FastAPI:
         """
         _guard_writes()
         from . import cloud_status
-        res = cloud_status.verify_credentials(req.email, req.password, req.gateway)
+        typed = _known_serial(req.gateway) if (req.gateway or "").strip() else None   # before any sign-in
+        res = cloud_status.verify_credentials(req.email, req.password, typed)
+        if res.get("ok") and res.get("gateway") and not typed:
+            # The account's only aGate: it must still be one of ours, never just accepted (#379).
+            try:
+                _known_serial(res["gateway"])
+            except HTTPException as e:
+                res = {**res, "ok": False, "detail": e.detail}
         if res.get("ok") and req.save:
             save_override("fwh_cloud_email", req.email)
             save_override("fwh_cloud_password", req.password)
@@ -4388,10 +4404,13 @@ def create_app() -> FastAPI:
         s = get_settings()
         if not (s.fwh_cloud_email and s.fwh_cloud_password):
             return {"available": False, "reason": "no cloud credentials"}
+        refused = _cloud_target_refusal(_gw_or_404(gateway))
+        if refused:                     # the witness is for THIS gateway or not at all (#379)
+            return {"available": False, "reason": refused}
         try:
             from . import cloud_status
             pcs = cloud_status.read_power_control(
-                s.fwh_cloud_email, s.fwh_cloud_password, s.fwh_cloud_gateway or None)
+                s.fwh_cloud_email, s.fwh_cloud_password, _gw_or_404(gateway).serial)
             log.debug("cloud call ok: get_power_control_settings")
             return {"available": True, "settings": pcs,
                     "note": "cloud GLOBAL caps — a separate plane; need not reflect a local 1701 write"}
@@ -4879,16 +4898,16 @@ def create_app() -> FastAPI:
             },
         }
 
-    def _reserve_target_refusal(gw: GatewayState) -> str | None:
-        """Why the cloud can't take a reserve write for ``gw``, or None (#351)."""
+    def _cloud_target_refusal(gw: GatewayState) -> str | None:
+        """Why the cloud can't act for ``gw``, or None (#351, #379): the call goes to this
+        gateway's own locked serial, and only when the cloud account is for that aGate."""
         if gw.is_mock:
             return "A mock gateway has no FranklinWH cloud account."
-        if not gw.serial:
+        if not (gw.serial and getattr(gw, "serial_locked", False)):
             return "This gateway's serial hasn't been read yet. Try again once it's connected."
         want = (get_settings().fwh_cloud_gateway or "").upper()
         if want and want != gw.serial.upper():
-            return ("The cloud credentials are for a different gateway, "
-                    "so the reserve can't be set on this one.")
+            return "The cloud credentials are for a different gateway."
         return None
 
     @app.post("/api/cloud/reserve")
@@ -4912,12 +4931,12 @@ def create_app() -> FastAPI:
         gateway = gw.id
         has_provider = any(c.get("available") for c in
                            providers.reserve_provider(get_settings()).get("candidates", []))
-        refused = _reserve_target_refusal(gw) if has_provider else None
+        refused = _cloud_target_refusal(gw) if has_provider else None
         if refused:
             _audit("set_reserve", gateway=gateway, detail=detail, result=refused, ok=False)
             raise HTTPException(status_code=409, detail=refused)
         try:
-            out = providers.set_reserve(get_settings(), mode, soc, serial=(gw.serial or "").upper() or None)
+            out = providers.set_reserve(get_settings(), mode, soc, serial=(gw.serial or "").upper())
             _audit("set_reserve", gateway=gateway, detail=detail,
                    result=(out.get("note") if isinstance(out, dict) else None) or "applied via cloud",
                    ok=bool(out.get("ok", True)) if isinstance(out, dict) else True)
@@ -5746,7 +5765,8 @@ def create_app() -> FastAPI:
                 # Strings, not booleans — the generic branch below would coerce them.
                 val = str(value or "").strip()
                 if key == "fwh_cloud_gateway":
-                    val = val.upper()          # the cloud is case-sensitive on serials
+                    # One of this bridge's gateways, or cleared; never an unknown serial (#379).
+                    val = _known_serial(val) if val else ""
                 changed = getattr(s, key, "") != val
                 setattr(s, key, val)
                 save_override(key, val)

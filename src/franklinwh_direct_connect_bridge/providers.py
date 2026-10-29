@@ -579,12 +579,12 @@ def _cloud_set_reserve(email: str, password: str, gateway: str | None,
     return asyncio.run(_run())
 
 
-def set_reserve(s: Settings, mode: str, soc, serial: str | None = None) -> dict:
+def set_reserve(s: Settings, mode: str, soc, *, serial: str) -> dict:
     """Set a mode's reserve SoC via the CLOUD provider — the local API silently discards this
     write (it's cloud-owned; see the reserve memory), so this is the only path that sticks.
-    ``serial`` is the gateway written (#351); without it, the configured cloud gateway.
+    ``serial`` is the gateway written (#351), and is required: there is no default (#379).
     Gated upstream by allow_writes. Raises ``ReserveUnavailable`` (no provider), ``ValueError``
-    (bad mode/soc), ``NotImplementedError`` (FWHAI path not wired), or a transport error."""
+    (bad mode/soc/serial), ``NotImplementedError`` (FWHAI path not wired), or a transport error."""
     act = (mode or "").strip().lower()
     wm = _RESERVE_WORKMODE.get(act)
     if wm is None:
@@ -608,10 +608,12 @@ def set_reserve(s: Settings, mode: str, soc, serial: str | None = None) -> dict:
     # the display preference that puts FWHAI-REST first.
     cloud = next((c for c in cands if c["kind"] == "cloud-lib" and c.get("available")), None)
     if cloud:
+        if not (serial or "").strip():           # checked before any sign-in
+            raise ValueError("no aGate serial: the reserve is set on one named gateway")
         guard_login(s.fwh_cloud_email, "reserve write")    # raises while the hold is on
         try:
             out = _cloud_set_reserve(s.fwh_cloud_email, s.fwh_cloud_password,
-                                     serial or s.fwh_cloud_gateway or None, wm, soc_i)
+                                     serial, wm, soc_i)
         except Exception as e:  # noqa: BLE001 — feed the breaker so bad creds don't hammer cloud
             note_login_result(s.fwh_cloud_email, "reserve write", e)
             _note_auth_failure(str(e) or type(e).__name__)

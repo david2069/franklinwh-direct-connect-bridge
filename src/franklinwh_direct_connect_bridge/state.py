@@ -89,6 +89,16 @@ def get_gateway(id: str) -> GatewayState | None:
     return _gateways.get(id)
 
 
+def gateway_by_serial(serial: str | None) -> GatewayState | None:
+    """The gateway whose LOCKED serial is ``serial`` (case-insensitive), or None. Only a
+    locked serial counts: it is unique (#381), so it can only ever name one gateway."""
+    ref = (serial or "").strip().upper()
+    if not ref:
+        return None
+    return next((g for g in _gateways.values()
+                 if g.serial_locked and (g.serial or "").upper() == ref), None)
+
+
 def gateways() -> list[GatewayState]:
     """All registered gateways, in insertion order."""
     return list(_gateways.values())

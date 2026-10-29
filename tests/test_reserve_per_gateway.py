@@ -40,6 +40,7 @@ def env(monkeypatch):
     a = state.register_gateway("gw-a", "10.0.0.1", "A")
     b = state.register_gateway("gw-b", "10.0.0.2", "B")
     a.serial, b.serial = "SERIALA", "serialb"
+    a.serial_locked = b.serial_locked = True          # read and locked (#381)
     state.set_default("gw-a")
     yield {"written": written, "store": store, "a": a, "b": b, "mp": monkeypatch}
     monkeypatch.setattr(config, "_settings", None)

@@ -167,6 +167,9 @@ def _api(monkeypatch, tmp_path):
 
 def test_settings_exposes_cloud_block_without_the_password(monkeypatch, tmp_path):
     """The password must never come back out — only whether one is set."""
+    from franklinwh_direct_connect_bridge import state
+    gw = state.GatewayState(id="gw-c", label="Home", serial="ABC123", serial_locked=True)
+    monkeypatch.setitem(state._gateways, "gw-c", gw)      # the serial is one of ours (#379)
     c = _api(monkeypatch, tmp_path)
     r = c.put("/api/settings", json={"fwh_cloud_email": "a@b.c",
                                      "fwh_cloud_password": "s3cret",

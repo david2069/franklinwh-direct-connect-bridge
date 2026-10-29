@@ -105,7 +105,13 @@ controls. (It replaces Site view, *Site · All Gateways*.)
 
 The **reserve SoC** is set through the FranklinWH cloud on the serial of the gateway on
 screen. It's refused for a mock gateway, and for a gateway other than the one in the
-cloud settings.
+cloud settings. The grid-limit cloud check reads the same way: that gateway's own serial,
+or nothing.
+
+The **aGate serial in the cloud settings** must be one of this bridge's gateways, locked
+when it first connected (#381). An unknown serial is refused with 404 and a malformed one
+with 422, before any sign-in. If the account has one aGate and no serial is typed, that
+aGate must also be one of this bridge's gateways, or nothing is saved (#379).
 
 ---
 
