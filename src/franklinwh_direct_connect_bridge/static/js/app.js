@@ -868,11 +868,14 @@ document.addEventListener('alpine:init', () => {
         const list = await r.json();
         const hadNone = !this.gateways.length;
         this.gateways = Array.isArray(list) ? list : [];
-        // The page opens on the default gateway, which the roster always lists first
-        // (#383); a gateway that is gone hands over to it too.
-        const ids = this.gateways.map(g => g.id);
+        // The active gateway: the default (listed first) when the page opens (#383), and
+        // again whenever the active one is removed, disabled, offline or stopped for its
+        // identity (#381). Owner rule, 2026-10-29.
+        const usable = g => g && g.enabled !== false && g.link_state !== 'down' && !g.identity_error;
+        const pick = this.gateways.find(g => g.is_default && g.enabled !== false)
+                  || this.gateways.find(g => g.enabled !== false) || this.gateways[0];
         const prev = this.selectedGateway;
-        const next = (prev && ids.includes(prev)) ? prev : (ids[0] || '');
+        const next = usable(this.gateways.find(g => g.id === prev)) ? prev : ((pick && pick.id) || '');
         this.selectedGateway = next;
         // Selecting a gateway is not just setting a variable — it has to REFETCH. This
         // assignment used to be the whole of it, so when the first gateway appeared (a

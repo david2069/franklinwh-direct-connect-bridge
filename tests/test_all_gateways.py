@@ -61,8 +61,33 @@ def test_the_page_opens_on_the_default_gateway_not_a_remembered_one():
     app = (JS / "app.js").read_text()
     body = app[app.index("    async loadGateways() {"):]
     body = body[:body.index("    _tuneGatewayPoll() {")]
-    assert "localStorage" not in body and "ids[0]" in body
+    assert "localStorage" not in body and "g.is_default && g.enabled !== false" in body
     assert "fwh-gateway" not in app
+
+
+def test_the_default_becomes_active_when_the_active_one_is_disabled_offline_or_stopped():
+    """Owner rule, 2026-10-29: at start-up, and whenever the active gateway is disabled or
+    offline, the default gateway becomes the active one."""
+    app = (JS / "app.js").read_text()
+    body = app[app.index("    async loadGateways() {"):]
+    body = body[:body.index("    _tuneGatewayPoll() {")]
+    assert ("const usable = g => g && g.enabled !== false && g.link_state !== 'down' "
+            "&& !g.identity_error;") in body
+    assert "usable(this.gateways.find(g => g.id === prev)) ? prev : ((pick && pick.id) || '')" in body
+
+
+def test_the_active_gateway_shows_even_when_it_is_the_only_one_and_disabled_ones_are_not_offered():
+    top = (TPL / "partials/topbar.html").read_text()
+    assert 'x-show="$store.app.gateways.length"' in top
+    assert 'x-for="g in $store.app.gateways.filter(x => x.enabled !== false)"' in top
+
+
+def test_roster_rows_say_whether_the_link_is_down(roster):
+    c, store = roster
+    store.create_gateway(gw_id="a1", label="Alpha", host="192.0.2.10")
+    gw = state.register_gateway("a1", "192.0.2.10", "Alpha")
+    gw.link_state = "down"
+    assert {g["id"]: g for g in c.get("/api/gateways").json()}["a1"]["link_state"] == "down"
 
 
 def test_the_default_is_listed_first(roster):

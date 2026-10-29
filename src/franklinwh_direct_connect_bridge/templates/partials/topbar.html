@@ -23,8 +23,8 @@
   <!-- Right: customisable status chips + buttons (CSS order from Topbar Preferences) -->
   <div class="flex flex-wrap items-center justify-end gap-2 sm:gap-3 min-w-0 w-full sm:w-auto">
 
-    <!-- Gateway selector (LOCKED, multi-gateway only) -->
-    <div class="relative" style="order:-3" x-show="$store.app.gateways.length > 1"
+    <!-- Gateway selector: the active gateway, shown even when it is the only one -->
+    <div class="relative" style="order:-3" x-show="$store.app.gateways.length"
          @click.outside="$store.app.gwMenuOpen = false">
       <button class="chip muted inline-flex items-center gap-1" @click="$store.app.gwMenuOpen = !$store.app.gwMenuOpen"
               title="Select gateway">
@@ -46,7 +46,7 @@
           <svg class="w-3.5 h-3.5 opacity-80" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>
           All gateways…
         </button>
-        <template x-for="g in $store.app.gateways" :key="g.id">
+        <template x-for="g in $store.app.gateways.filter(x => x.enabled !== false)" :key="g.id">
           <button class="w-full text-left px-3 py-2.5 flex items-center justify-between gap-2 hover:bg-white/[0.05] transition-colors"
                   @click="$store.app.gwMenuOpen = false; $store.app.selectGateway(g.id)">
             <span class="flex items-center gap-1.5 min-w-0">

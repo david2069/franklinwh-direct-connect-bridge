@@ -35,6 +35,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   `GET /api/scheduler/monitor`.
 
 ### Changed
+- **The default gateway takes over when the active one can't be shown** (#383). If the
+  gateway on screen is disabled, removed, offline or stopped for its identity, the page
+  switches to the default gateway. The top bar now names the active gateway even when
+  it's the only one, and disabled gateways aren't offered in the selector.
 - **"Site (All Gateways)" is replaced by a read-only All gateways view** (#383). The page
   always shows and controls one gateway. **All gateways…** in the gateway selector opens
   every gateway at a glance, laid out like FWHAI's Gateways tab: counts (Registered,

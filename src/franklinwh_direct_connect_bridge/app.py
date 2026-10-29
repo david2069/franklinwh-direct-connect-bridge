@@ -164,6 +164,7 @@ def _roster_entry(gw: GatewayState) -> dict:
         "vpp_kind": _dk_kind,
         "vpp_programme": _dk_prog,
         "mqtt_connected": gw.mqtt_connected,
+        "link_state": getattr(gw, "link_state", "unknown"),   # debounced: up / down / unknown
         "cached": bool(gw.last_summary),
         "updated": ok and not bool(summ.get("stale")),
         # For the All gateways view (#383): the flows and when the poller last had a reading.

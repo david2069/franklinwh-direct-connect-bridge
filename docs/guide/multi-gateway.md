@@ -59,6 +59,12 @@ The default is a designation and nothing more (#383). It is always listed first,
 page opens with it on screen. Any gateway can be removed; if the default is removed, the
 next gateway becomes the default straight away.
 
+The gateway on screen is the **active gateway**: everything the page shows and controls is
+for it. The top bar always names it, even when it's the only one. The default becomes the
+active gateway when the page opens, and again whenever the active one is disabled, removed,
+offline (its link is down) or stopped for its identity. Disabled gateways aren't offered in
+the selector.
+
 Schedules left on **Default gateway** still run on the default.
 
 **Every API call that acts on an aGate must name it** (#379): `?gateway=<id>` (or
