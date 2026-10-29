@@ -501,6 +501,7 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                 # its own worker (scheduler_worker.py) reading the snapshot stamped above.
 
                 if summ.get("ok"):
+                    fwb2 = summ.get("firmware") or {}
                     # Record a history sample tagged with this gateway. A DB error must not
                     # kill the loop — log and continue.
                     if store is not None and not starting:

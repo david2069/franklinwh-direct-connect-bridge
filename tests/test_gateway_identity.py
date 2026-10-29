@@ -105,7 +105,7 @@ def test_a_serial_another_gateway_owns_is_refused(monkeypatch):
     assert st.gateway("b2")["serial"] == ""
 
 
-def test_first_report_locks_and_polling_goes_on(monkeypatch):
+def test_first_report_locks_and_polling_goes_on(monkeypatch, caplog):
     st = _store()
     st.create_gateway(gw_id="a1", label="House", host="192.0.2.10")
     gw = GatewayState(id="a1", label="House", configured_host="192.0.2.10",
@@ -113,6 +113,7 @@ def test_first_report_locks_and_polling_goes_on(monkeypatch):
     inserts, notes = _poll(monkeypatch, gw, "SN-A")
     assert st.gateway("a1")["serial"] == "SN-A" and gw.serial_locked
     assert gw.identity_error is None and inserts and notes == []
+    assert "poll failed" not in caplog.text            # the whole cycle ran, not just the insert
 
 
 def test_a_stopped_gateway_is_refused_by_the_api():
