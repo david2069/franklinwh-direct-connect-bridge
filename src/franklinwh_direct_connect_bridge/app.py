@@ -141,7 +141,7 @@ def _roster_entry(gw: GatewayState) -> dict:
         "host": gw.active_host or gw.configured_host,
         "configured_host": gw.configured_host,
         "serial": gw.serial,
-        "identity_error": gw.identity_error,
+        "identity_error": getattr(gw, "identity_error", None),
         "firmware": fwb.get("IBG_VER") or gw.firmware,
         "ok": ok,
         "stale": bool(summ.get("stale")),
@@ -1330,7 +1330,7 @@ def create_app() -> FastAPI:
                                     detail=f"unknown gateway {gateway!r}")
         else:
             gw = get_state()   # default (lazily-created) gateway — single-gateway back-compat
-        if gw.identity_error:          # stopped: not the aGate it is locked to (#381)
+        if getattr(gw, "identity_error", None):   # stopped: not its locked aGate (#381)
             raise HTTPException(status_code=409, detail=gw.identity_error)
         return gw
 
