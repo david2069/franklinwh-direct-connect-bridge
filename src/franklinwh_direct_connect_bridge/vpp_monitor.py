@@ -20,14 +20,14 @@ import time
 
 log = logging.getLogger(__name__)
 
-# Last observed VPP state, so we only fire on transitions (None = not yet observed), and
-# when the current dispatch was first seen, for its duration.
-_last: dict = {"vpp": None, "since": None}
+# Last observed VPP state PER aGate host, so we only fire on transitions (None = not yet
+# observed), and when its current dispatch was first seen, for its duration. One shared
+# state would report one gateway's change against another's (#379).
+_last: dict[str, dict] = {}
 
 
 def reset() -> None:
-    _last["vpp"] = None
-    _last["since"] = None
+    _last.clear()
 
 
 def _metrics(snap: dict) -> str:
@@ -70,7 +70,7 @@ def _log_event(store, status: str, detail: str) -> None:
 
 
 def check(host: str, store, *, boot: bool = False, notify: bool = True,
-          snapshot: dict | None = None) -> dict:
+          snapshot: dict | None = None, label: str | None = None) -> dict:
     """One monitor pass. Returns {vpp, changed, event}. Never raises.
 
     Reads VPP from the LOCAL channel, not Modbus. `snapshot` is the poller's cached
@@ -94,20 +94,22 @@ def check(host: str, store, *, boot: bool = False, notify: bool = True,
 
     vpp = bool(snap.get("vpp"))
     ours = battery_control.current(host).get("active") not in (None, "Not Active")
+    last = _last.setdefault(host, {"vpp": None, "since": None})
+    who = f"{label}: " if label else ""     # which gateway, in every message
     # Actual battery power, which is what is HAPPENING — better than the commanded
     # WSet percentage this used to report, which was only what was asked for.
-    prev = _last["vpp"]
-    _last["vpp"] = vpp
+    prev = last["vpp"]
+    last["vpp"] = vpp
     now = time.time()
     if vpp and prev is False:          # a start we saw; one already running has no known start
-        _last["since"] = now
+        last["since"] = now
 
     # VPP active at startup, not started by us. This is NORMAL when enrolled in a VPP
     # (the utility programme, the app, or the Modbus bridge dispatches on its own); it is
     # only an "orphan" if a prior run of THIS bridge left it — which we cannot distinguish
     # here (our in-memory 'current' is cleared on restart). So: WARNING, not CRITICAL.
     if boot and vpp and not ours:
-        msg = (f"VPP (force) dispatch active at startup ({_metrics(snap)}) — started externally "
+        msg = (f"{who}VPP (force) dispatch active at startup ({_metrics(snap)}) — started externally "
                f"(a utility VPP programme, the app, the Modbus bridge, or a prior run), not by "
                f"this bridge. This bridge will not auto-release it; use the Release button to "
                f"override if you want to clear it.")
@@ -122,7 +124,7 @@ def check(host: str, store, *, boot: bool = False, notify: bool = True,
 
     if vpp and not prev:
         src = "this bridge" if ours else "an external controller (Modbus bridge / app / cloud VPP)"
-        msg = f"Battery dispatch STARTED — VPP mode active (source: {src}; {_metrics(snap)})."
+        msg = f"{who}Battery dispatch STARTED — VPP mode active (source: {src}; {_metrics(snap)})."
         log.warning(msg)
         _log_event(store, "vpp-start", msg)
         # Only alert for dispatches WE did not start (ours already show in the widget/log).
@@ -131,9 +133,9 @@ def check(host: str, store, *, boot: bool = False, notify: bool = True,
         return {"vpp": vpp, "changed": True, "event": "start"}
 
     if prev and not vpp:
-        since, _last["since"] = _last["since"], None
+        since, last["since"] = last["since"], None
         took = f" after {now - since:.0f} s" if since else ""
-        msg = (f"Battery dispatch ENDED{took} — VPP mode cleared, battery back to normal "
+        msg = (f"{who}Battery dispatch ENDED{took} — VPP mode cleared, battery back to normal "
                f"({_metrics(snap)}).")
         log.info(msg)
         _log_event(store, "vpp-stop", msg)

@@ -58,6 +58,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   saved is kept. The unused `release_stale()`, which would have released any force, is gone.
 
 ### Fixed
+- **The VPP monitor watches every gateway** (#379). It only checked the default gateway,
+  so another gateway's remote VPP dispatch (1707 programme 9) never showed on its row in
+  the All gateways view, and its start and end were never logged or notified. Each gateway
+  is now checked from its own cached reading, with no extra device reads. Its state is kept
+  apart from the others, and every message names the gateway.
 - **Each gateway is locked to one aGate serial** (#381). The bridge used to take whatever
   serial a gateway's aGate reported on every read, so a gateway pointed at another aGate
   carried on as if nothing had changed, and two gateways could share one aGate. Now the

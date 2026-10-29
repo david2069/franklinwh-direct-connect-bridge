@@ -1032,10 +1032,6 @@ def create_app() -> FastAPI:
         def _vpp_loop():
             import time as _t
             from . import vpp_monitor, battery_control
-            # The default gateway's own host; battery_control applies FWH_MODBUS_HOST
-            # or the host override to it (#354).
-            _host = lambda: (state.default_gateway().active_host
-                             if state.default_gateway() else None)
             def _store():
                 try:
                     return db.get_store(get_settings())
@@ -1053,12 +1049,15 @@ def create_app() -> FastAPI:
             while True:
                 _workers.registry.beat("vpp-monitor", state=_workers.WorkerState.RUNNING)
                 try:
-                    h, st = _host(), _store()
+                    st = _store()
+                    # Every gateway, not only the default: each one's VPP state is its
+                    # own, and the All gateways view shows it per gateway (#379, #383).
+                    gws = [g for g in state.gateways() if g.active_host or g.configured_host]
                     # VPP detection is LOCAL now (cmdType 1707 programme id), so this
                     # loop no longer requires Modbus to run. Modbus is still needed to
                     # RECONCILE an interrupted dispatch, because that releases — a
                     # write — so that step stays gated on availability.
-                    if h and st:
+                    if gws and st:
                         reconciled = []
                         if boot and battery_control.available()[0]:
                             # Reconcile scheduled dispatches a restart left in-flight,
@@ -1080,27 +1079,20 @@ def create_app() -> FastAPI:
                                 log.error("dispatch reconcile failed: %s", e)
                         # Skip the generic boot-orphan alert if we already handled a
                         # scheduled dispatch this boot (avoids double-notifying).
-                        # Feed the poller's cached power block: it already carries
-                        # `vpp` and `programme_id` from 1707, so no device call here.
-                        _snap = {}
-                        try:
-                            for _g in state.gateways():
-                                if _g.active_host == h:
-                                    _snap = (_g.last_summary or {}).get("power", {}) or {}
-                                    break
-                        except Exception:  # noqa: BLE001
-                            pass
-                        _res = vpp_monitor.check(h, st, boot=(boot and not reconciled),
-                                                 snapshot=_snap)
-                        # Record the VPP truth (local 1707 programme id == 9) on the
-                        # matching gateway, for the top-nav + dashboard badge.
-                        try:
-                            for _gw in state.gateways():
-                                if _gw.active_host == h:
-                                    _gw.vpp_active = _res.get("vpp")
-                                    break
-                        except Exception:  # noqa: BLE001
-                            pass
+                        for _gw in gws:
+                            # Feed the poller's cached power block: it already carries
+                            # `vpp` and `programme_id` from 1707, so no device call here.
+                            try:
+                                _snap = (_gw.last_summary or {}).get("power", {}) or {}
+                                _res = vpp_monitor.check(
+                                    _gw.active_host or _gw.configured_host, st,
+                                    boot=(boot and not reconciled), snapshot=_snap,
+                                    label=_gw.label or _gw.id)
+                                # The VPP truth (local 1707 programme id == 9), on this
+                                # gateway, for its badges.
+                                _gw.vpp_active = _res.get("vpp")
+                            except Exception as e:  # noqa: BLE001 — one gateway never stops the rest
+                                log.debug("VPP monitor pass failed for %s: %s", _gw.id, e)
                 except Exception as e:  # noqa: BLE001
                     log.debug("VPP monitor pass failed: %s", e)
                 boot = False
