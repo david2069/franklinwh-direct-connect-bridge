@@ -43,7 +43,7 @@ def test_direction_comes_from_the_run_status_enum():
 
 def test_switcher_rows_render_mode_and_direction():
     html = _topbar()
-    rows = html[html.index('x-for="g in $store.app.gateways"'):]
+    rows = html[html.index('x-for="g in $store.app.gateways.filter(x => x.enabled !== false)"'):]
     assert "$store.app.modeTag(g.mode)" in rows
     assert "$store.app.flowDir(g) === 'charge'" in rows
     assert "$store.app.flowDir(g) === 'discharge'" in rows
@@ -54,7 +54,7 @@ def test_switcher_rows_render_mode_and_direction():
 def test_direction_icons_are_svg_not_emoji():
     """UI policy: inline SVG icons only."""
     html = _topbar()
-    rows = html[html.index('x-for="g in $store.app.gateways"'):]
+    rows = html[html.index('x-for="g in $store.app.gateways.filter(x => x.enabled !== false)"'):]
     assert "<title>Charging</title>" in rows and "<title>Discharging</title>" in rows
     for glyph in ("⬆", "⬇", "🔋", "⚡"):
         assert glyph not in rows
