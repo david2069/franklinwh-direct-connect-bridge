@@ -11,6 +11,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Breaking
+- **Every API call that acts on an aGate must name its gateway** (#379). `?gateway=`
+  takes the gateway's ID or its locked aGate serial. Leaving it out used to mean the default
+  gateway, and the metrics routes then mixed every gateway's rows. Now it is refused with
+  400, before any device I/O. A malformed value gets 422, an unknown one 404 and a
+  gateway stopped for its identity 409. This applies to single-gateway installs too.
+  `/api/dispatch` needs `gateway_id`. Scripts, dashboards and other bridges that call this
+  API must add the gateway. The web UI always does.
+
 ### Added
 - **Scheduler Monitor** (#345). A Monitor card at the top of Scheduler → History shows
   why each schedule is or is not running: idle, blocked (with the failing conditions and

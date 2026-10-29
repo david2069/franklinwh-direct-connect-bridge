@@ -128,8 +128,8 @@ function energyFlowCard() {
       const [s0, e0] = this._span();
       this.spanLabel = this._describeSpan(s0, e0);
       let url = `api/energy/flow?start=${s0}&end=${e0}`;
-      const gw = this.$store.app.selectedGateway;
-      if (gw && this.$store.app.gateways.length > 1) url += `&gateway=${encodeURIComponent(gw)}`;
+      if (!this.$store.app.selectedGateway) return;          // no gateway yet
+      url += this.$store.app.gwQuery('&');
       try {
         const r = await fetch(url, { headers: { Accept: 'application/json' } });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);

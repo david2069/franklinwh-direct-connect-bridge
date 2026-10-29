@@ -749,8 +749,8 @@ document.addEventListener('alpine:init', () => {
       this.histCustomOpen = false;
       this.histLoading = true;
       try {
-        const serial = this.gwSerial();
-        const gwq = serial ? '&gateway=' + encodeURIComponent(serial) : '';
+        if (!this.selectedGateway) return;
+        const gwq = this.gwQuery('&');
         // Explicit bucket if chosen; else ~300 points across the custom window.
         const bq = this.histBucket === 'auto' ? '&points=300' : this._bucketQuery();
         const r = await fetch(`api/metrics?start=${start}&end=${end}${bq}${gwq}`);
@@ -906,6 +906,7 @@ document.addEventListener('alpine:init', () => {
 
     //: Whether the selected gateway's generator feature is on (per-gateway). Cheap 1901 read.
     async _loadGeneratorInstalled() {
+      if (!this.selectedGateway) { this.generatorEnabled = false; return; }
       try {
         const r = await (await fetch('api/generator' + this.gwQuery())).json();
         this.generatorEnabled = !!(r && r.enabled);
@@ -961,19 +962,12 @@ document.addEventListener('alpine:init', () => {
     // when there's more than one gateway and one is selected. Single-gateway returns ''
     // so no ?gateway is sent and behaviour is identical to today. ``sep`` is '?' when it
     // starts the query string, '&' when appended after an existing param.
+    // Every call that acts on an aGate names it: the bridge has no default gateway (#379).
+    // '' only before any gateway exists, and nothing per-gateway is fetched then.
     gwQuery(sep = '?') {
-      return (this.gateways.length > 1 && this.selectedGateway)
-        ? `${sep}gateway=${encodeURIComponent(this.selectedGateway)}`
-        : '';
+      return this.selectedGateway ? `${sep}gateway=${encodeURIComponent(this.selectedGateway)}` : '';
     },
 
-    // The selected gateway's serial (metrics are tagged by serial, not id). '' when
-    // single-gateway or unknown → no history filter (includes legacy untagged rows).
-    gwSerial() {
-      if (this.gateways.length <= 1) return '';
-      const g = this.gateways.find(x => x.id === this.selectedGateway);
-      return (g && g.serial) || '';
-    },
     // Selected gateway's model (e.g. "aGate X-01-AU" from devicedb / SyHdVersion) + country.
     get gwModel() {
       const g = this.gateways.find(x => x.id === this.selectedGateway) || this.gateways[0];
@@ -989,6 +983,7 @@ document.addEventListener('alpine:init', () => {
      *  (in-memory active + cached availability): it never opens the aGate's :502 (#223),
      *  so it must not ask for ?refresh=1. */
     async pollBattery() {
+      if (!this.selectedGateway) return;
       try {
         const d = await (await fetch('api/battery/command' + this.gwQuery('?'))).json();
         this.batteryHeld = d.held || [];
@@ -1039,12 +1034,13 @@ document.addEventListener('alpine:init', () => {
 
     async poll() {
       try {
-        // Multi-gateway: fetch the selected gateway's summary. Single-gateway keeps the
-        // exact existing /api/summary path (unchanged behaviour).
-        const url = (this.gateways.length > 1 && this.selectedGateway)
-          ? `api/gateways/${encodeURIComponent(this.selectedGateway)}/summary`
-          : 'api/summary';
-        const r = await this.fetchTimeout(url);
+        // No gateway yet (a fresh install): nothing to read, and nothing is asked (#265).
+        if (!this.selectedGateway) {
+          this.summary = { ...(this.summary || {}), ok: false, error: 'no gateway configured' };
+          this._noteConnOk(this.summary);
+          return;
+        }
+        const r = await this.fetchTimeout(`api/gateways/${encodeURIComponent(this.selectedGateway)}/summary`);
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const d = await r.json();
         // Keep last-good mode/power if a (transient) response lacks them, so the
@@ -1833,11 +1829,9 @@ document.addEventListener('alpine:init', () => {
       this.histRange = range;
       this.histLoading = true;               // show the "Loading…" pill until the chart repaints
       try {
-        // Metrics rows are tagged by SERIAL — scope to the selected gateway's serial when
-        // multi-gateway; single-gateway sends no filter (includes legacy untagged rows).
-        const serial = this.gwSerial();
-        const gwq = serial ? '&gateway=' + encodeURIComponent(serial) : '';
-        const r = await fetch('api/metrics?range=' + range + gwq + this._bucketQuery());
+        // The gateway on screen; the bridge maps its id to the serial its rows carry.
+        if (!this.selectedGateway) return;
+        const r = await fetch('api/metrics?range=' + range + this.gwQuery('&') + this._bucketQuery());
         const d = await r.json();
         this.renderChart(d.series || []);
       } catch (e) {
@@ -1853,6 +1847,7 @@ document.addEventListener('alpine:init', () => {
     async loadSiteTz() {
       const key = this._siteTzKey();
       this._siteTzFor = key;
+      if (!this.selectedGateway) { this.siteTzOffsetMin = null; this.siteTzLabel = ''; return; }
       try {
         const r = await (await fetch('api/site/timezone' + this.gwQuery('?'))).json();
         if (this._siteTzFor !== key) return;        // a newer selection's answer wins

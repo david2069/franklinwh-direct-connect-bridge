@@ -82,7 +82,7 @@ document.addEventListener('alpine:init', () => {
 
     async setView(v) {
       this.view = v;
-      if (v === 'timeline') this.timeline = await (await fetch('api/schedules/timeline')).json();
+      if (v === 'timeline') this.timeline = await (await fetch('api/schedules/timeline' + this.$store.app.gwQuery())).json();
       if (v === 'history') this.logEvents = (await (await fetch('api/schedules/log?limit=200')).json()).events;
     },
 
@@ -622,7 +622,8 @@ document.addEventListener('alpine:init', () => {
     async verify(s) {
       this.busy = true;
       try {
-        const r = await fetch(`api/schedules/${s.id}/test`, { method: 'POST' });
+        // The schedule's own gateway, else the one on screen (#379).
+        const r = await fetch(`api/schedules/${s.id}/test` + this.$store.app.gwQuery(), { method: 'POST' });
         this.testResult = { id: s.id, ...(await r.json()) };
       } catch (e) { this.$store.app.toast(`Test failed: ${e.message}`, 'error'); }
       finally { this.busy = false; }

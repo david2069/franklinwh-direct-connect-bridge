@@ -6287,7 +6287,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/admin/metrics/export")
     def api_admin_metrics_export(fmt: str = Query("csv"), hours: int = Query(24),
-                                 gateway: str = Depends(_gateway_q),
+                                 gateway: str | None = Depends(_gateway_opt),
                                  start: int | None = Query(None),
                                  end: int | None = Query(None)):
         """Export power samples as CSV or JSON: between ``start`` and ``end`` (epoch
@@ -6303,7 +6303,8 @@ def create_app() -> FastAPI:
             start = max(start, end - 24 * 90 * 3600)        # same 90-day cap as hours
         else:
             start, end = now - max(1, min(hours, 24 * 90)) * 3600, now
-        gw = _metrics_gw_key(gateway)
+        # A database export: no gateway means every gateway's rows, never the default's.
+        gw = _metrics_gw_key(gateway) if gateway else None
         rows = store.query(start, end, None, gateway=gw)
         cols = ["ts", "soc", "grid_w", "solar_w", "battery_w", "load_w", "generator_w", "mode"]
         stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")

@@ -26,7 +26,7 @@ document.addEventListener('alpine:init', () => {
       try {
         const q = new URLSearchParams({ layout: this.dashLayout,
                                         diagnostics: this.dashDiagnostics });
-        const r = await fetch('api/ha/dashboard-yaml?' + q.toString());
+        const r = await fetch('api/ha/dashboard-yaml?' + q.toString() + this.$store.app.gwQuery('&'));
         const d = await r.json().catch(() => ({}));
         if (!r.ok) {
           this.dashYaml = ''; this.dashMissing = [];

@@ -59,14 +59,24 @@ The default is a designation and nothing more (#383). It is always listed first,
 page opens with it on screen. Any gateway can be removed; if the default is removed, the
 next gateway becomes the default straight away.
 
-The default is used by calls that name no gateway, by schedules left on **Default
-gateway**. Every API endpoint takes an optional
-`?gateway=<id>`; omit it and you get the default, which is precisely the old
-single-gateway behaviour. Name a gateway that does not exist and you get a **404 before
-any device I/O** — the bridge refuses to quietly act on the default instead of the one
-you asked for. The dispatch endpoint is explicit about why: a force-charge aimed at one
-aGate must not land on another, and the response echoes the gateway it targeted so the
-caller can check rather than assume.
+Schedules left on **Default gateway** still run on the default.
+
+**Every API call that acts on an aGate must name it** (#379): `?gateway=<id>` (or
+`gateway` in the request body, `gateway_id` for `/api/dispatch`), where the value is the
+gateway's ID or its locked aGate serial (#381). Nothing falls back to the default gateway,
+even with only one gateway. Each refusal comes before any device I/O:
+
+| Request | Answer |
+|---|---|
+| No gateway | **400** "gateway is required" |
+| Not a valid ID or serial | **422** |
+| No gateway with that ID or locked serial | **404** |
+| The gateway is stopped for its identity (#381) | **409**, with the reason |
+
+A few routes treat "no gateway" as *every* gateway rather than an error: the setup
+status and Home Assistant checks, link diagnostics, the control log and the metrics
+export. A schedule's **Run now** and **Test** use the schedule's own gateway when you
+name none.
 
 ### What is scoped per gateway
 
