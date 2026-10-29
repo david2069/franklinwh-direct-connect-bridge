@@ -37,16 +37,20 @@ def test_integrate_kwh_and_quality():
 
 
 def test_energy_flow_endpoint_shape(monkeypatch):
+    from franklinwh_direct_connect_bridge import state
     # No metrics store in the test env → endpoint takes its empty-data path.
     monkeypatch.setattr(db, "get_store", lambda *a, **k: None)
+    # the route names it (#379); monkeypatch drops it again even if an assert fails
+    monkeypatch.setitem(state._gateways, "gw-ef", state.GatewayState(
+        id="gw-ef", label="Home", configured_host="10.0.0.3", active_host="10.0.0.3"))
     c = TestClient(app_module.create_app())
-    r = c.get("/api/energy/flow")
+    r = c.get("/api/energy/flow?gateway=gw-ef")
     assert r.status_code == 200
     d = r.json()
     assert set(d["flows"]) == set(ef.FLOWS)
     assert "nodes" in d and "quality" in d and "coverage" in d["quality"]
     # bad date is a 400, not a 500
-    assert c.get("/api/energy/flow?day=nonsense").status_code == 400
+    assert c.get("/api/energy/flow?day=nonsense&gateway=gw-ef").status_code == 400
 
 
 def test_energy_flow_ui_wired():

@@ -9,7 +9,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from franklinwh_direct_connect_bridge import circuits
+from franklinwh_direct_connect_bridge import circuits, state
 from franklinwh_direct_connect_bridge.app import create_app
 
 # Real capture: Sw1 named+scheduled, Sw2 renamed+scheduled, Sw3 factory defaults.
@@ -113,8 +113,16 @@ def test_energy_is_labelled_lifetime_not_today():
 
 
 # ── endpoints ────────────────────────────────────────────────────────────────
+@pytest.fixture
+def gw():
+    """The gateway a device route names (#379)."""
+    state.register_gateway("gw-sc", "10.0.0.6", "Home")
+    yield "gw-sc"
+    state.unregister_gateway("gw-sc")
+
+
 @pytest.fixture()
-def client(monkeypatch):
+def client(monkeypatch, gw):
     from franklinwh_direct_connect_bridge import client as c
     monkeypatch.setattr(c, "circuits",
                         lambda s, host=None, override="auto":
@@ -123,17 +131,17 @@ def client(monkeypatch):
 
 
 def test_api_circuits(client):
-    r = client.get("/api/circuits")
+    r = client.get("/api/circuits?gateway=gw-sc")
     assert r.status_code == 200
     body = r.json()
     assert body["count"] == 2 and len(body["circuits"]) == 3
 
 
-def test_cloud_parity_endpoint_still_emits_three(monkeypatch):
+def test_cloud_parity_endpoint_still_emits_three(monkeypatch, gw):
     """/api/cloud/* mirrors the cloud shape exactly — detection must not leak in."""
     from franklinwh_direct_connect_bridge import client as c
     monkeypatch.setattr(c, "read", lambda s, name, host=None: AU_CFG)
-    r = TestClient(create_app()).get("/api/cloud/smart-circuits")
+    r = TestClient(create_app()).get(f"/api/cloud/smart-circuits?gateway={gw}")
     assert sorted(r.json().keys()) == ["1", "2", "3"]
 
 
@@ -206,7 +214,7 @@ def test_schedule_write_does_not_touch_other_circuits(client):
     assert all(k.startswith("Sw1") for k in patch)
 
 
-def test_schedule_endpoint_422_on_bad_window(monkeypatch):
+def test_schedule_endpoint_422_on_bad_window(monkeypatch, gw):
     from franklinwh_direct_connect_bridge import client as c
     monkeypatch.setattr(c, "writes_enabled", lambda s: True)
 
@@ -214,7 +222,7 @@ def test_schedule_endpoint_422_on_bad_window(monkeypatch):
         raise circuits.ScheduleError("end is not after start")
     monkeypatch.setattr(c, "set_circuit_schedule", boom)
     r = TestClient(create_app()).put(
-        "/api/circuits/1/schedule",
+        f"/api/circuits/1/schedule?gateway={gw}",
         json={"windows": [{"enabled": True, "start": "09:00", "end": "06:00"}]})
     assert r.status_code == 422
 

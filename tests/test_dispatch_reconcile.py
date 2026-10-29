@@ -104,7 +104,7 @@ def test_release_does_not_reforce_when_battery_dropped(modbus):
 # ── widget-initiated dispatches are persisted too (covered by the reconcile) ──
 def test_widget_force_is_persisted_and_release_closes_it(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
-    from franklinwh_direct_connect_bridge import app as app_module, config, environment, db
+    from franklinwh_direct_connect_bridge import app as app_module, config, environment, db, state
     from franklinwh_direct_connect_bridge.db import MetricsStore
     store = MetricsStore(str(tmp_path / "m.db"))
     monkeypatch.setattr(environment, "DATA_DIR", str(tmp_path))
@@ -119,11 +119,15 @@ def test_widget_force_is_persisted_and_release_closes_it(tmp_path, monkeypatch):
     monkeypatch.setattr(bc, "current", lambda host=None: {"active": "Not Active"})
 
     client = TestClient(app_module.create_app())
+    # the route names it (#379); monkeypatch drops it again even if an assert fails
+    monkeypatch.setitem(state._gateways, "gw-w", state.GatewayState(
+        id="gw-w", label="Home", configured_host="testhost", active_host="testhost"))
+    G = "?gateway=gw-w"
 
-    client.post("/api/battery/command", json={"slug": "battery_command_power", "value": "2500"})
-    client.post("/api/battery/command", json={"slug": "battery_command_duration", "value": "600"})
-    client.post("/api/battery/command", json={"slug": "battery_command_target_soc", "value": "30"})
-    r = client.post("/api/battery/command", json={"slug": "battery_command", "value": "Force Discharge"})
+    client.post("/api/battery/command" + G, json={"slug": "battery_command_power", "value": "2500"})
+    client.post("/api/battery/command" + G, json={"slug": "battery_command_duration", "value": "600"})
+    client.post("/api/battery/command" + G, json={"slug": "battery_command_target_soc", "value": "30"})
+    r = client.post("/api/battery/command" + G, json={"slug": "battery_command", "value": "Force Discharge"})
     assert r.status_code == 200 and r.json().get("ok")
 
     rows = store.active_dispatches(host="testhost")
@@ -133,6 +137,6 @@ def test_widget_force_is_persisted_and_release_closes_it(tmp_path, monkeypatch):
     assert d["watts"] == -2500 and d["power_mode"] == "w" and d["target_soc"] == 30
     assert d["window_end_ts"] and d["window_end_ts"] > d["window_start_ts"]
 
-    client.post("/api/battery/command", json={"slug": "battery_command", "value": "Release"})
+    client.post("/api/battery/command" + G, json={"slug": "battery_command", "value": "Release"})
     assert store.active_dispatches(host="testhost") == []
     config._settings = None

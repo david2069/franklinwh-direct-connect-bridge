@@ -1,8 +1,17 @@
 """Cloud features exist only while the cloud is connected."""
+import pytest
 from fastapi.testclient import TestClient
 
-from franklinwh_direct_connect_bridge import providers
+from franklinwh_direct_connect_bridge import providers, state
 from franklinwh_direct_connect_bridge.app import create_app
+
+
+@pytest.fixture
+def gw():
+    """The gateway a device route names (#379)."""
+    state.register_gateway("gw-cap", "10.0.0.8", "Home")
+    yield "gw-cap"
+    state.unregister_gateway("gw-cap")
 
 
 def test_local_features_are_always_available():
@@ -33,21 +42,21 @@ def test_what_is_impossible_locally_is_stated_with_the_evidence():
     assert "no dispatchId" in u["force_charge_discharge"]
 
 
-def test_cloud_write_refused_with_a_clear_reason_when_not_connected(monkeypatch):
+def test_cloud_write_refused_with_a_clear_reason_when_not_connected(monkeypatch, gw):
     """A missing credential must read as 'not connected', not a transport error."""
     from franklinwh_direct_connect_bridge import client as c
     monkeypatch.setattr(c, "writes_enabled", lambda s: True)
     monkeypatch.setattr(providers, "cloud_auth_status", lambda: {"state": "unconfigured"})
-    r = TestClient(create_app()).post("/api/cloud/reserve", json={"mode": "self", "soc": 20})
+    r = TestClient(create_app()).post(f"/api/cloud/reserve?gateway={gw}", json={"mode": "self", "soc": 20})
     assert r.status_code == 503
     assert "Cloud not connected" in r.json()["detail"]
 
 
-def test_locked_state_explains_how_to_clear_it(monkeypatch):
+def test_locked_state_explains_how_to_clear_it(monkeypatch, gw):
     from franklinwh_direct_connect_bridge import client as c
     monkeypatch.setattr(c, "writes_enabled", lambda s: True)
     monkeypatch.setattr(providers, "cloud_auth_status", lambda: {"state": "locked"})
-    r = TestClient(create_app()).post("/api/cloud/reserve", json={"mode": "self", "soc": 20})
+    r = TestClient(create_app()).post(f"/api/cloud/reserve?gateway={gw}", json={"mode": "self", "soc": 20})
     assert "re-enter the credentials" in r.json()["detail"]
 
 

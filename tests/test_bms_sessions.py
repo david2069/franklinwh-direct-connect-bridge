@@ -192,11 +192,17 @@ def test_sessions_endpoint_lists_and_deletes(api):
     assert api.get("/api/battery/sessions").json()["sessions"] == []
 
 
-def test_record_rejects_bad_parameters(api):
-    assert api.post("/api/battery/record",
-                    json={"samples": 20, "interval_s": 1}).status_code == 422
-    assert api.post("/api/battery/record",
-                    json={"samples": 9999, "interval_s": 15}).status_code == 422
+def test_record_rejects_bad_parameters(api, monkeypatch):
+    from franklinwh_direct_connect_bridge import client, state
+    state.register_gateway("gw-bms", "10.0.0.7", "Home")   # the route names it (#379)
+    monkeypatch.setattr(client, "battery", lambda *a, **k: (_ for _ in ()).throw(OSError("no aGate")))
+    try:
+        assert api.post("/api/battery/record?gateway=gw-bms",
+                        json={"samples": 20, "interval_s": 1}).status_code == 422
+        assert api.post("/api/battery/record?gateway=gw-bms",
+                        json={"samples": 9999, "interval_s": 15}).status_code == 422
+    finally:
+        state.unregister_gateway("gw-bms")
 
 
 def test_missing_session_is_404(api):

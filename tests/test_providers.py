@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from franklinwh_direct_connect_bridge import app as app_module
-from franklinwh_direct_connect_bridge import config, environment, providers
+from franklinwh_direct_connect_bridge import config, environment, providers, state
 from franklinwh_direct_connect_bridge.config import Settings
 
 
@@ -21,6 +21,14 @@ def writes_on(tmp_path, monkeypatch):
     config.save_override("allow_writes", True)
     yield tmp_path
     config._settings = None
+
+
+@pytest.fixture
+def gw():
+    """The gateway a device route names (#379)."""
+    state.register_gateway("gw-prov", "10.0.0.1", "Home")
+    yield "gw-prov"
+    state.unregister_gateway("gw-prov")
 
 
 def test_dispatch_prefers_reachable_modbus_bridge(monkeypatch):
@@ -159,24 +167,24 @@ def test_dispatch_library_path_not_wired(monkeypatch):
         pass
 
 
-def test_dispatch_endpoint_503_no_provider(writes_on, monkeypatch):
+def test_dispatch_endpoint_503_no_provider(writes_on, monkeypatch, gw):
     monkeypatch.setattr(providers.modbus_bridge, "status",
                         lambda *a, **k: {"state": "unreachable",
                                          "reason": "sibling down", "capabilities": []})
     monkeypatch.setattr(providers, "_lib_available", lambda m: False)
     c = TestClient(app_module.create_app())
-    r = c.post("/api/dispatch", json={"action": "release"})
+    r = c.post("/api/dispatch", json={"action": "release", "gateway_id": gw})
     assert r.status_code == 503
 
 
-def test_dispatch_endpoint_422_bad_action(writes_on, monkeypatch):
+def test_dispatch_endpoint_422_bad_action(writes_on, monkeypatch, gw):
     monkeypatch.setenv("MODBUS_BRIDGE_URL", "http://mb:8101")
     monkeypatch.setattr(providers.modbus_bridge, "status",
                         lambda *a, **k: {"state": "ready", "reason": None,
                                          "capabilities": ["control"]})
     config._settings = None  # re-read env with the sibling URL now set
     c = TestClient(app_module.create_app())
-    r = c.post("/api/dispatch", json={"action": "explode"})
+    r = c.post("/api/dispatch", json={"action": "explode", "gateway_id": gw})
     assert r.status_code == 422
 
 
@@ -240,12 +248,12 @@ def test_set_reserve_fwhai_only_not_wired(monkeypatch):
         pass
 
 
-def test_reserve_endpoint_gated_and_no_provider(writes_on, monkeypatch):
+def test_reserve_endpoint_gated_and_no_provider(writes_on, monkeypatch, gw):
     monkeypatch.setattr(providers.modbus_bridge, "status",
                         lambda *a, **k: {"state": "unreachable",
                                          "reason": "sibling down", "capabilities": []})
     monkeypatch.setattr(providers, "_lib_available", lambda m: False)
     c = TestClient(app_module.create_app())
-    assert c.post("/api/cloud/reserve", json={"mode": "self", "soc": 10}).status_code == 503
-    assert c.post("/api/cloud/reserve", json={"soc": 10}).status_code == 422  # missing mode
+    assert c.post(f"/api/cloud/reserve?gateway={gw}", json={"mode": "self", "soc": 10}).status_code == 503
+    assert c.post(f"/api/cloud/reserve?gateway={gw}", json={"soc": 10}).status_code == 422  # missing mode
 

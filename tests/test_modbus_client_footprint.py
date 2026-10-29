@@ -116,42 +116,44 @@ def api(monkeypatch):
                          "max_charge_w": 5000, "max_discharge_w": 5000})
     now = [1_000_000.0]
     monkeypatch.setattr(app_module.time, "time", lambda: now[0])
-    return TestClient(app_module.create_app()), calls, now
+    state.register_gateway("gw-fp", "192.0.2.10", "Home")   # the routes name it (#379)
+    yield TestClient(app_module.create_app()), calls, now
+    state.unregister_gateway("gw-fp")
 
 
 def test_battery_poll_connects_once_not_every_30s(api):
     c, calls, now = api
     for _ in range(40):                               # 40 polls 15 s apart = 10 minutes
-        assert c.get("/api/battery/command").status_code == 200
+        assert c.get("/api/battery/command?gateway=gw-fp").status_code == 200
         now[0] += 15
     assert len(calls) == 1, calls
 
 
 def test_battery_poll_refreshes_after_an_hour(api):
     c, calls, now = api
-    c.get("/api/battery/command")
+    c.get("/api/battery/command?gateway=gw-fp")
     now[0] += 3601
-    c.get("/api/battery/command")
+    c.get("/api/battery/command?gateway=gw-fp")
     assert len(calls) == 2
 
 
 def test_refresh_is_rate_limited(api):
     c, calls, now = api
-    c.get("/api/battery/command")
-    c.get("/api/battery/command?refresh=1")           # within 30 s: cached
+    c.get("/api/battery/command?gateway=gw-fp")
+    c.get("/api/battery/command?refresh=1&gateway=gw-fp")           # within 30 s: cached
     assert len(calls) == 1
     now[0] += 31
-    d = c.get("/api/battery/command?refresh=1").json()
+    d = c.get("/api/battery/command?refresh=1&gateway=gw-fp").json()
     assert len(calls) == 2 and d["checked_at"] == now[0]
 
 
 def test_changing_the_modbus_setting_rechecks_once(api, monkeypatch):
     c, calls, now = api
-    c.get("/api/battery/command")
+    c.get("/api/battery/command?gateway=gw-fp")
     monkeypatch.setattr(app_module.db, "get_store", lambda s: None)
-    c.put("/api/modbus", json={"enabled": True})
-    c.get("/api/battery/command")
-    c.get("/api/battery/command")
+    c.put("/api/modbus?gateway=gw-fp", json={"enabled": True})
+    c.get("/api/battery/command?gateway=gw-fp")
+    c.get("/api/battery/command?gateway=gw-fp")
     assert len(calls) == 2
 
 

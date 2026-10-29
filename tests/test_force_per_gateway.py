@@ -126,10 +126,11 @@ def test_battery_control_forces_the_gateway_on_screen(api):
     assert [d["gateway_id"] for d in st.active_dispatches()] == ["gw-b"]
 
 
-def test_battery_control_without_a_gateway_uses_the_default(api):
+def test_battery_control_without_a_gateway_is_refused(api):
+    """No default-gateway fallback any more (#379): an unnamed force is a 400, nothing sent."""
     c, st, sent = api
-    _force(c)
-    assert sent == [("Force Discharge", "10.0.0.1", 40)]
+    assert _force(c).status_code == 400
+    assert sent == []
 
 
 def test_each_gateway_shows_its_own_force_and_the_site_lists_them(api):

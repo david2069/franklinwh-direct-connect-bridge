@@ -3,10 +3,11 @@
 Mocks the aGate read (install_profile / 1701) + the Modbus-702 inverter ratings: the endpoint's
 job is to structure them and apply the -1=unlimited convention + the 702-not-1701 kW source.
 """
+import pytest
 from fastapi.testclient import TestClient
 
 from franklinwh_direct_connect_bridge import (app as app_module, client as client_mod, config,
-                                     environment, db, battery_control)
+                                     environment, db, battery_control, state)
 from franklinwh_direct_connect_bridge.db import MetricsStore
 
 PROFILE = {
@@ -15,6 +16,16 @@ PROFILE = {
     "gridExportEnable": 1, "isPcsDischgEn": 1, "kwRatePower": -1, "gridSoftLimit": -1,
     "gridHardLimit": -1, "fhpRatePower": 0, "electricSupply": 63,
 }
+
+GW = "gw-grid"
+G = f"?gateway={GW}"     # every device route names its gateway (#379)
+
+
+@pytest.fixture(autouse=True)
+def _gateway():
+    state.register_gateway(GW, "10.0.0.1", "Home")
+    yield
+    state.unregister_gateway(GW)
 
 
 def _client(tmp_path, monkeypatch, ratings=(5000, 5000), profile=PROFILE):
@@ -28,7 +39,7 @@ def _client(tmp_path, monkeypatch, ratings=(5000, 5000), profile=PROFILE):
 
 
 def test_grid_endpoint_structures_and_converts(tmp_path, monkeypatch):
-    out = _client(tmp_path, monkeypatch).get("/api/grid").json()
+    out = _client(tmp_path, monkeypatch).get("/api/grid" + G).json()
     gc, gl, inv = out["grid_connection"], out["grid_limits"], out["inverter"]
     assert gc["three_phase"] is False and gc["service_amps"] == 100
     assert gc["electric_supply_raw"] == 63                    # kept raw, flagged in the UI
@@ -40,7 +51,7 @@ def test_grid_endpoint_structures_and_converts(tmp_path, monkeypatch):
 
 
 def test_grid_endpoint_no_modbus(tmp_path, monkeypatch):
-    out = _client(tmp_path, monkeypatch, ratings=(None, None)).get("/api/grid").json()
+    out = _client(tmp_path, monkeypatch, ratings=(None, None)).get("/api/grid" + G).json()
     assert out["inverter"]["max_charge_kw"] is None and out["inverter"]["source"] is None
 
 
@@ -64,7 +75,7 @@ def _writeclient(tmp_path, monkeypatch, captured, result=None):
 def test_grid_limits_dry_run_needs_no_confirm(tmp_path, monkeypatch):
     cap = {}
     c = _writeclient(tmp_path, monkeypatch, cap)
-    out = c.post("/api/grid/limits", json={"grid_soft_limit": -1, "dry_run": True}).json()
+    out = c.post("/api/grid/limits" + G, json={"grid_soft_limit": -1, "dry_run": True}).json()
     assert cap["dry_run"] is True and cap["changes"] == {"gridSoftLimit": -1}
     assert out["frame"]["dataArea"]["opt"] == 1
 
@@ -72,7 +83,7 @@ def test_grid_limits_dry_run_needs_no_confirm(tmp_path, monkeypatch):
 def test_grid_limits_write_requires_confirm(tmp_path, monkeypatch):
     cap = {}
     c = _writeclient(tmp_path, monkeypatch, cap)
-    r = c.post("/api/grid/limits", json={"export_enable": False})
+    r = c.post("/api/grid/limits" + G, json={"export_enable": False})
     assert r.status_code == 428 and not cap          # nothing was sent
     assert "UNVERIFIED" in r.json()["detail"]
 
@@ -80,7 +91,7 @@ def test_grid_limits_write_requires_confirm(tmp_path, monkeypatch):
 def test_grid_limits_maps_fields_and_audits(tmp_path, monkeypatch):
     cap = {}
     c = _writeclient(tmp_path, monkeypatch, cap)
-    out = c.post("/api/grid/limits",
+    out = c.post("/api/grid/limits" + G,
                  json={"export_enable": False, "pcs_discharge": True,
                        "grid_hard_limit": 3.0, "confirm": True}).json()
     # booleans → 0/1, kW passthrough
@@ -92,7 +103,7 @@ def test_grid_limits_maps_fields_and_audits(tmp_path, monkeypatch):
 
 def test_grid_limits_no_fields_400(tmp_path, monkeypatch):
     c = _writeclient(tmp_path, monkeypatch, {})
-    assert c.post("/api/grid/limits", json={"confirm": True}).status_code == 400
+    assert c.post("/api/grid/limits" + G, json={"confirm": True}).status_code == 400
 
 
 class _FakeLibClient:

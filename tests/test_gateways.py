@@ -143,8 +143,8 @@ def test_api_gateway_summary_falls_back_to_device_when_cold(monkeypatch):
 # -- single-gateway parity: /api/summary unchanged -----------------------------
 
 def test_single_gateway_summary_unchanged(monkeypatch):
-    """With only the default gateway and a warm cache, /api/summary serves the default
-    gateway's cache exactly as before (cached:True).
+    """With only the default gateway and a warm cache, /api/summary?gateway=<it> serves
+    that gateway's cache exactly as before (cached:True). It must be named (#379).
 
     A host must be configured for there to BE a default: with nothing configured the
     placeholder is deliberately not registered and the roster is empty, because a blank
@@ -160,7 +160,7 @@ def test_single_gateway_summary_unchanged(monkeypatch):
 
     monkeypatch.setattr(client_module, "summary", boom)
     c = TestClient(app_module.create_app())
-    body = c.get("/api/summary").json()
+    body = c.get(f"/api/summary?gateway={gw.id}").json()
     assert body["cached"] is True and body["power"]["soc"] == 55
     # single-gateway roster is exactly one entry
     assert len(c.get("/api/gateways").json()) == 1
@@ -168,9 +168,9 @@ def test_single_gateway_summary_unchanged(monkeypatch):
 
 # -- Phase 2: gateway-scoped reads / writes route to the right host -------------
 
-def test_read_routes_to_selected_and_default_host(monkeypatch):
-    """A read with ?gateway=<id> must hit THAT gateway's active_host; no param hits the
-    default's active_host (single-gateway back-compat)."""
+def test_read_routes_to_selected_host_and_refuses_no_gateway(monkeypatch):
+    """A read with ?gateway=<id> must hit THAT gateway's active_host; no param is a 400
+    with no device I/O — there is no default-gateway fallback (#379)."""
     a, b = _seed_two_gateways()   # a active_host=10.0.0.55 (default), b active_host=10.0.0.6
     seen = {}
 
@@ -183,8 +183,9 @@ def test_read_routes_to_selected_and_default_host(monkeypatch):
 
     assert c.get("/api/power?gateway=10.0.0.6").status_code == 200
     assert seen["host"] == "10.0.0.6"                 # selected gateway's host
-    assert c.get("/api/power").status_code == 200
-    assert seen["host"] == "10.0.0.55"               # default gateway's active_host
+    seen.clear()
+    assert c.get("/api/power").status_code == 400
+    assert seen == {}                                 # never reached a host
 
 
 def test_cmd_read_routes_via_read_host(monkeypatch):

@@ -47,15 +47,19 @@ def test_snapshot_keys(tmp_path):
 
 def test_api_get_put_and_sensor_group(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
-    from franklinwh_direct_connect_bridge import app as app_module, config, environment, db
+    from franklinwh_direct_connect_bridge import app as app_module, config, environment, db, state
     st = MetricsStore(str(tmp_path / "m.db"))
     monkeypatch.setattr(environment, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(config, "_settings", None)
     monkeypatch.setattr(db, "get_store", lambda s: st)
     monkeypatch.setattr(ss, "_derive", lambda settings, host: {})   # no device
     c = TestClient(app_module.create_app())
-    assert c.get("/api/system-setup").json()["values"]["solar_type"] == "none"
-    c.put("/api/system-setup", json={"solar_type": "ac", "solar_kwp": 6.6})
-    assert c.get("/api/system-setup").json()["values"]["solar_kwp"] == 6.6
+    state.register_gateway("gw-ss", "10.0.0.1", "Home")             # the routes name it (#379)
+    try:
+        assert c.get("/api/system-setup?gateway=gw-ss").json()["values"]["solar_type"] == "none"
+        c.put("/api/system-setup?gateway=gw-ss", json={"solar_type": "ac", "solar_kwp": 6.6})
+        assert c.get("/api/system-setup?gateway=gw-ss").json()["values"]["solar_kwp"] == 6.6
+    finally:
+        state.unregister_gateway("gw-ss")
     ids = {s["id"]: s["group"] for s in c.get("/api/schedules").json()["sensors"]}
     assert ids.get("system.solar_type") == "System Setup"

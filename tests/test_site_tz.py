@@ -1,9 +1,18 @@
 """/api/site/timezone — the aGate's site timezone, so charts read in aGate-local time."""
 import datetime as dt
+
+import pytest
 from fastapi.testclient import TestClient
 from franklinwh_direct_connect_bridge import (app as app_module, client as client_mod, config,
-                                     environment, db)
+                                     environment, db, state)
 from franklinwh_direct_connect_bridge.db import MetricsStore
+
+
+@pytest.fixture(autouse=True)
+def _gateway():
+    state.register_gateway("gw-tz", "10.0.0.1", "Home")     # the route names it (#379)
+    yield
+    state.unregister_gateway("gw-tz")
 
 
 def _client(tmp_path, monkeypatch, time_location):
@@ -19,7 +28,7 @@ def test_site_tz_offset_from_agate_clock(tmp_path, monkeypatch):
     # aGate reports local time 10h ahead of UTC (Sydney AEST) → offset +600 min.
     local = (dt.datetime.utcnow() + dt.timedelta(hours=10)).strftime("%Y-%m-%d %H:%M:%S")
     tl = {"time": local, "timezone": 10, "timezoneStr": "", "DST": 1}
-    out = _client(tmp_path, monkeypatch, tl).get("/api/site/timezone").json()
+    out = _client(tmp_path, monkeypatch, tl).get("/api/site/timezone?gateway=gw-tz").json()
     assert out["available"] is True
     assert out["offset_minutes"] == 600 and out["label"] == "UTC+10"
 
@@ -27,5 +36,5 @@ def test_site_tz_offset_from_agate_clock(tmp_path, monkeypatch):
 def test_site_tz_falls_back_to_base_offset(tmp_path, monkeypatch):
     # Unparseable time → fall back to the timezone base-offset hours.
     tl = {"time": "garbage", "timezone": 10, "timezoneStr": "", "DST": 0}
-    out = _client(tmp_path, monkeypatch, tl).get("/api/site/timezone").json()
+    out = _client(tmp_path, monkeypatch, tl).get("/api/site/timezone?gateway=gw-tz").json()
     assert out["available"] is True and out["offset_minutes"] == 600

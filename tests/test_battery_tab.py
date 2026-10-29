@@ -7,12 +7,14 @@ against the markup or a controller member being renamed out from under it.
 import pytest
 from fastapi.testclient import TestClient
 
-from franklinwh_direct_connect_bridge import app as app_module
+from franklinwh_direct_connect_bridge import app as app_module, state
 
 
 @pytest.fixture(scope="module")
 def client():
-    return TestClient(app_module.create_app())
+    state.register_gateway("gw-bat", "", "No aGate")   # named, never configured (#379)
+    yield TestClient(app_module.create_app())
+    state.unregister_gateway("gw-bat")
 
 
 # -- endpoint ----------------------------------------------------------------
@@ -28,13 +30,13 @@ def test_battery_endpoint_takes_an_id_within_range(client):
     params = {p["name"]: p for p in spec["paths"]["/api/battery"]["get"]["parameters"]}
     assert params["id"]["schema"]["default"] == 1
     assert params["id"]["schema"]["minimum"] == 1
-    assert client.get("/api/battery?id=0").status_code == 422   # rejected, not clamped
-    assert client.get("/api/battery?id=99").status_code == 422
+    assert client.get("/api/battery?id=0&gateway=gw-bat").status_code == 422   # rejected, not clamped
+    assert client.get("/api/battery?id=99&gateway=gw-bat").status_code == 422
 
 
 def test_battery_endpoint_returns_a_shape_even_with_no_device(client):
     """No aGate configured in tests — it must still answer, not 500."""
-    r = client.get("/api/battery")
+    r = client.get("/api/battery?gateway=gw-bat")
     assert r.status_code == 200
     body = r.json()
     assert body["ok"] is False

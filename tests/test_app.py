@@ -1,9 +1,22 @@
 """Phase 0 tests — app wiring, no hardware (client calls are monkeypatched)."""
 
+import pytest
 from fastapi.testclient import TestClient
 
 from franklinwh_direct_connect_bridge import app as app_module
 from franklinwh_direct_connect_bridge import client as client_module
+from franklinwh_direct_connect_bridge import state
+
+
+GW = "gw-app"
+G = f"?gateway={GW}"     # every device route names its gateway (#379)
+
+
+@pytest.fixture(autouse=True)
+def _gateway():
+    state.register_gateway(GW, "10.0.0.1", "Test")
+    yield
+    state.unregister_gateway(GW)
 
 
 def _app():
@@ -21,7 +34,7 @@ def test_health_endpoint(monkeypatch):
                         lambda s, host=None: {"ok": True, "host": "10.0.0.1",
                                               "latency_ms": 12.3})
     c = _app()
-    r = c.get("/api/health")
+    r = c.get("/api/health" + G)
     assert r.status_code == 200 and r.json()["ok"] is True
 
 
@@ -30,7 +43,7 @@ def test_summary_endpoint(monkeypatch):
                         lambda s, host=None: {"ok": True, "power": {"soc": 55},
                                               "mode": {"modes": []}, "latency_ms": 10.0})
     c = _app()
-    r = c.get("/api/summary")
+    r = c.get("/api/summary" + G)
     assert r.status_code == 200 and r.json()["power"]["soc"] == 55
 
 
@@ -38,7 +51,7 @@ def test_power_endpoint(monkeypatch):
     monkeypatch.setattr(client_module, "power",
                         lambda s, host=None: {"soc": 55, "p_load": 500})
     c = _app()
-    r = c.get("/api/power")
+    r = c.get("/api/power" + G)
     assert r.status_code == 200 and r.json()["soc"] == 55
 
 
@@ -50,7 +63,7 @@ def test_read_endpoint_maps_transport_error_to_502(monkeypatch):
 
     monkeypatch.setattr(client_module, "firmware", boom)
     c = _app()
-    assert c.get("/api/firmware").status_code == 502
+    assert c.get("/api/firmware" + G).status_code == 502
 
 
 # -- gated control writes ---------------------------------------------------
@@ -58,8 +71,8 @@ def test_read_endpoint_maps_transport_error_to_502(monkeypatch):
 def test_write_endpoints_403_when_writes_disabled(monkeypatch):
     monkeypatch.setattr(client_module, "writes_enabled", lambda s: False)
     c = _app()
-    assert c.post("/api/mode", json={"mode": "self"}).status_code == 428
-    assert c.post("/api/offgrid", json={"on": False}).status_code == 428
+    assert c.post("/api/mode" + G, json={"mode": "self"}).status_code == 428
+    assert c.post("/api/offgrid" + G, json={"on": False}).status_code == 428
 
 
 def test_set_mode_when_enabled(monkeypatch):
@@ -69,7 +82,7 @@ def test_set_mode_when_enabled(monkeypatch):
                                                     "current_id_before": 2,
                                                     "current_id_after": 3})
     c = _app()
-    r = c.post("/api/mode", json={"mode": "tou", "confirm": True})
+    r = c.post("/api/mode" + G, json={"mode": "tou", "confirm": True})
     assert r.status_code == 200 and r.json()["ok"] is True
 
 
@@ -78,20 +91,20 @@ def test_set_offgrid_when_enabled(monkeypatch):
     monkeypatch.setattr(client_module, "set_offgrid",
                         lambda s, on, soc, host=None: {"ok": True, "result": 0})
     c = _app()
-    r = c.post("/api/offgrid", json={"on": False, "confirm": True})
+    r = c.post("/api/offgrid" + G, json={"on": False, "confirm": True})
     assert r.status_code == 200 and r.json()["ok"] is True
 
 
 def test_cloud_write_endpoints_403_when_writes_disabled(monkeypatch):
     monkeypatch.setattr(client_module, "writes_enabled", lambda s: False)
     c = _app()
-    assert c.post("/api/cloud/set-mode",
+    assert c.post("/api/cloud/set-mode" + G,
                   json={"requestedOperatingMode": 2}).status_code == 428
-    assert c.post("/api/cloud/grid-status",
+    assert c.post("/api/cloud/grid-status" + G,
                   json={"status": "Normal"}).status_code == 403
-    assert c.post("/api/cloud/smart-circuit/state",
+    assert c.post("/api/cloud/smart-circuit/state" + G,
                   json={"circuit": 1, "turn_on": True}).status_code == 403
-    assert c.post("/api/cloud/reserve",
+    assert c.post("/api/cloud/reserve" + G,
                   json={"requestedSOC": 20}).status_code == 403
 
 
@@ -106,7 +119,7 @@ def test_cloud_set_mode_maps_workmode_and_lists_not_applied(monkeypatch):
     monkeypatch.setattr(client_module, "set_mode", fake_set_mode)
     c = _app()
     # workMode 3 (Emergency Backup) → local 'backup' alias; requestedSOC provided.
-    r = c.post("/api/cloud/set-mode",
+    r = c.post("/api/cloud/set-mode" + G,
                json={"requestedOperatingMode": 3, "requestedSOC": 30, "confirm": True})
     assert r.status_code == 200
     body = r.json()
@@ -121,7 +134,7 @@ def test_cloud_set_mode_no_extras_has_empty_not_applied(monkeypatch):
     monkeypatch.setattr(client_module, "set_mode",
                         lambda s, mode, host=None: {"ok": True, "result": 0})
     c = _app()
-    r = c.post("/api/cloud/set-mode", json={"requestedOperatingMode": "tou", "confirm": True})
+    r = c.post("/api/cloud/set-mode" + G, json={"requestedOperatingMode": "tou", "confirm": True})
     assert r.status_code == 200
     assert r.json()["not_applied_locally"] == []
 
@@ -137,7 +150,7 @@ def test_cloud_set_mode_uses_cloud_numbering_not_oldindex(monkeypatch):
                         lambda s, mode, host=None: seen.__setitem__("mode", mode) or {"ok": True, "result": 0})
     c = _app()
     for wm, alias in ((1, "tou"), (2, "self"), (3, "backup")):
-        c.post("/api/cloud/set-mode", json={"requestedOperatingMode": wm, "confirm": True})
+        c.post("/api/cloud/set-mode" + G, json={"requestedOperatingMode": wm, "confirm": True})
         assert seen["mode"] == alias, f"cloud workMode {wm} must map to {alias!r}, got {seen['mode']!r}"
 
 
@@ -152,9 +165,9 @@ def test_cloud_grid_status_normal_is_reconnect(monkeypatch):
 
     monkeypatch.setattr(client_module, "set_offgrid", fake_offgrid)
     c = _app()
-    r = c.post("/api/cloud/grid-status", json={"status": "Normal", "soc": 5, "confirm": True})
+    r = c.post("/api/cloud/grid-status" + G, json={"status": "Normal", "soc": 5, "confirm": True})
     assert r.status_code == 200 and seen["on"] is False
-    r = c.post("/api/cloud/grid-status", json={"status": "OFF", "soc": 10, "confirm": True})
+    r = c.post("/api/cloud/grid-status" + G, json={"status": "OFF", "soc": 10, "confirm": True})
     assert r.status_code == 200 and seen["on"] is True and seen["soc"] == 10
 
 
@@ -167,7 +180,7 @@ def test_cloud_grid_status_needs_confirm_like_offgrid(monkeypatch):
                         lambda s, on, soc, host=None: called.append(on) or {"ok": True})
     c = _app()
     for status in ("OFF", "DOWN", "Normal"):
-        r = c.post("/api/cloud/grid-status", json={"status": status, "soc": 10})
+        r = c.post("/api/cloud/grid-status" + G, json={"status": status, "soc": 10})
         assert r.status_code == 428, (status, r.status_code)
     assert called == []                      # nothing reached the gateway
 
@@ -180,7 +193,7 @@ def test_cloud_smart_circuit_state_returns_readback(monkeypatch):
                                                            "requested": 1, "before": 0,
                                                            "after": 1, "confirmed": True})
     c = _app()
-    r = c.post("/api/cloud/smart-circuit/state", json={"circuit": 2, "turn_on": True})
+    r = c.post("/api/cloud/smart-circuit/state" + G, json={"circuit": 2, "turn_on": True})
     assert r.status_code == 200
     body = r.json()
     assert body["ok"] is True and body["confirmed"] is True
@@ -201,7 +214,7 @@ def test_cloud_reserve_503_without_provider(monkeypatch):
     monkeypatch.setattr(providers, "_breaker_loaded", True)
     providers._cloud_auth.update(state="valid", fail_count=0, error=None, checked_at=_t.time())
     c = _app()
-    r = c.post("/api/cloud/reserve", json={"requestedSOC": 20, "workMode": 2})
+    r = c.post("/api/cloud/reserve" + G, json={"requestedSOC": 20, "workMode": 2})
     assert r.status_code == 503
     assert "reserve" in r.json()["detail"].lower()
 
@@ -216,7 +229,7 @@ def test_set_mode_maps_transport_error_to_502(monkeypatch):
 
     monkeypatch.setattr(client_module, "set_mode", boom)
     c = _app()
-    assert c.post("/api/mode", json={"mode": "self", "confirm": True}).status_code == 502
+    assert c.post("/api/mode" + G, json={"mode": "self", "confirm": True}).status_code == 502
 
 
 def test_live_endpoint_no_device_io():
@@ -234,14 +247,14 @@ def test_summary_served_from_poller_cache_not_device(monkeypatch):
     from franklinwh_direct_connect_bridge import state as state_module
     cached = {"ok": True, "power": {"soc": 77},
               "mode": {"modes": [{"name": "Self-Consumption", "active": True}]}}
-    monkeypatch.setattr(state_module.get_state(), "last_summary", cached)
+    monkeypatch.setattr(state_module.get_gateway(GW), "last_summary", cached)
 
     def boom(s, host=None):
         raise AssertionError("client.summary must NOT be called when the cache is warm")
 
     monkeypatch.setattr(client_module, "summary", boom)
     c = _app()
-    r = c.get("/api/summary")
+    r = c.get("/api/summary" + G)
     assert r.status_code == 200
     body = r.json()
     assert body["cached"] is True and body["power"]["soc"] == 77
@@ -250,12 +263,12 @@ def test_summary_served_from_poller_cache_not_device(monkeypatch):
 
 def test_summary_falls_back_to_device_when_cache_empty(monkeypatch):
     from franklinwh_direct_connect_bridge import state as state_module
-    monkeypatch.setattr(state_module.get_state(), "last_summary", {})
+    monkeypatch.setattr(state_module.get_gateway(GW), "last_summary", {})
     monkeypatch.setattr(client_module, "summary",
                         lambda s, host=None: {"ok": True, "power": {"soc": 42},
                                               "fresh": True})
     c = _app()
-    r = c.get("/api/summary")
+    r = c.get("/api/summary" + G)
     assert r.status_code == 200 and r.json().get("fresh") is True
 
 
@@ -273,7 +286,7 @@ def test_raw_read_returns_request_and_response_verbatim(monkeypatch):
 
     monkeypatch.setattr(client_module, "raw_command", fake)
     r = TestClient(app_module.create_app()).post(
-        "/api/raw", json={"cmd": 1405, "data": {"opt": 0}})
+        "/api/raw" + G, json={"cmd": 1405, "data": {"opt": 0}})
     assert r.status_code == 200
     body = r.json()
     assert body["request"]["dataArea"] == {"opt": 0}
@@ -291,7 +304,7 @@ def test_raw_write_requires_confirmation(monkeypatch):
     monkeypatch.setattr(client_module, "raw_command",
                         lambda *a, **k: called.append(1) or {"response": {}})
     r = TestClient(app_module.create_app()).post(
-        "/api/raw", json={"cmd": 1721, "data": {"opt": 1, "reboot": 1}})
+        "/api/raw" + G, json={"cmd": 1721, "data": {"opt": 1, "reboot": 1}})
     assert r.status_code == 428 and not called          # nothing was sent
     assert "WRITE" in r.json()["detail"]
 
@@ -300,7 +313,7 @@ def test_raw_write_names_the_hazard(monkeypatch):
     """1727 opt:3 switched the live operating mode during a probe — say so first."""
     monkeypatch.setattr(client_module, "writes_enabled", lambda s: True)
     r = TestClient(app_module.create_app()).post(
-        "/api/raw", json={"cmd": 1727, "data": {"opt": 3, "current_id": 1}})
+        "/api/raw" + G, json={"cmd": 1727, "data": {"opt": 3, "current_id": 1}})
     assert "SWITCHES THE ACTIVE OPERATING MODE" in r.json()["detail"]
 
 
@@ -308,7 +321,7 @@ def test_raw_write_requires_confirm():
     # The global write-gate is gone (FEAT-WRITE-CONFIRM), but a raw WRITE (opt != the
     # command's read opt) is still refused without an explicit confirm (428).
     r = TestClient(app_module.create_app()).post(
-        "/api/raw", json={"cmd": 1409, "data": {"opt": 1}})
+        "/api/raw" + G, json={"cmd": 1409, "data": {"opt": 1}})
     assert r.status_code == 428
 
 
@@ -329,7 +342,7 @@ def test_raw_read_opt_is_per_command_not_always_zero(monkeypatch):
                         lambda s, cmd, data=None, host=None: seen.update(
                             cmd=cmd, data=data) or {"response": {}, "is_write": False})
     r = TestClient(app_module.create_app()).post(
-        "/api/raw", json={"cmd": 1725, "data": {"opt": 1}})
+        "/api/raw" + G, json={"cmd": 1725, "data": {"opt": 1}})
     assert r.status_code == 200, "opt:1 on 1725 is a READ and must not need confirm"
     assert seen["data"] == {"opt": 1}
 
@@ -338,7 +351,7 @@ def test_raw_opt_zero_on_1725_is_treated_as_a_write(monkeypatch):
     """The converse: opt:0 is NOT 1725's read, so it needs the confirm gate."""
     monkeypatch.setattr(client_module, "writes_enabled", lambda s: True)
     r = TestClient(app_module.create_app()).post(
-        "/api/raw", json={"cmd": 1725, "data": {"opt": 0}})
+        "/api/raw" + G, json={"cmd": 1725, "data": {"opt": 0}})
     assert r.status_code == 428
     assert "reads with opt=1" in r.json()["detail"]
 
@@ -356,7 +369,7 @@ def test_empty_dataarea_is_sent_verbatim_not_replaced_by_the_default(monkeypatch
                         lambda s, cmd, data=None, host=None: seen.update(data=data)
                         or {"response": {}, "is_write": True})
     TestClient(app_module.create_app()).post(
-        "/api/raw", json={"cmd": 1725, "data": {}, "confirm": True})
+        "/api/raw" + G, json={"cmd": 1725, "data": {}, "confirm": True})
     assert seen["data"] == {}, "an explicitly empty dataArea must not be substituted"
 
 
@@ -366,7 +379,7 @@ def test_omitted_dataarea_falls_back_to_the_read_payload(monkeypatch):
     monkeypatch.setattr(client_module, "raw_command",
                         lambda s, cmd, data=None, host=None: seen.update(data=data)
                         or {"response": {}, "is_write": False})
-    TestClient(app_module.create_app()).post("/api/raw", json={"cmd": 1725})
+    TestClient(app_module.create_app()).post("/api/raw" + G, json={"cmd": 1725})
     assert seen["data"] is None      # client passes through; raw_command defaults
 
 
@@ -409,7 +422,7 @@ def test_reboot_button_exists_and_is_gated():
 
 
 def test_reboot_requires_confirm_flag():
-    r = TestClient(app_module.create_app()).post("/api/reboot", json={"confirm": False})
+    r = TestClient(app_module.create_app()).post("/api/reboot" + G, json={"confirm": False})
     assert r.status_code in (400, 403)
 
 
@@ -431,7 +444,7 @@ def test_disabling_sunsmden_requires_explicit_confirmation(monkeypatch):
     monkeypatch.setattr(client_module, "writes_enabled", lambda s: True)
     monkeypatch.setattr(client_module, "set_der_comms",
                         lambda *a, **k: {"ok": True})
-    r = _app().post("/api/der-comms", json={"sunspec_modbus": False})
+    r = _app().post("/api/der-comms" + G, json={"sunspec_modbus": False})
     assert r.status_code == 409
     assert "every client" in r.json()["detail"]
     assert "/api/modbus" in r.json()["detail"], "must point at the bridge-local switch"
@@ -441,7 +454,7 @@ def test_enabling_sunsmden_is_not_blocked(monkeypatch):
     """Only the disable direction is dangerous; turning the listener back on is not."""
     monkeypatch.setattr(client_module, "writes_enabled", lambda s: True)
     monkeypatch.setattr(client_module, "set_der_comms", lambda *a, **k: {"ok": True})
-    r = _app().post("/api/der-comms", json={"sunspec_modbus": True})
+    r = _app().post("/api/der-comms" + G, json={"sunspec_modbus": True})
     assert r.status_code != 409
 
 
@@ -452,7 +465,7 @@ def test_the_confirmed_disable_still_goes_through(monkeypatch):
     def _fake(s, **kw):
         seen.update(kw); return {"ok": True}
     monkeypatch.setattr(client_module, "set_der_comms", _fake)
-    r = _app().post("/api/der-comms",
+    r = _app().post("/api/der-comms" + G,
                     json={"sunspec_modbus": False, "confirm": True})
     assert r.status_code != 409 and seen.get("sunspec_modbus") is False
 

@@ -54,12 +54,12 @@ def test_timeline_and_test_use_the_site_clock(c, monkeypatch):
     monkeypatch.setattr(scheduler, "ratings_snapshot", lambda host: {})
     monkeypatch.setattr(system_setup, "snapshot", lambda *a, **k: {})
     now = _site_now(SITE_OFF)
-    assert abs(c.get("/api/schedules/timeline").json()["now_min"]
+    assert abs(c.get("/api/schedules/timeline?gateway=g1").json()["now_min"]
                - (now.hour * 60 + now.minute)) <= 1
     start = (now - dt.timedelta(minutes=5)).strftime("%H:%M")
     sid = c.post("/api/schedules", json={"name": "open now", "fire_at": start,
                                          "duration_min": 30}).json()["id"]
-    assert c.post(f"/api/schedules/{sid}/test").json()["window"] == "inside"
+    assert c.post(f"/api/schedules/{sid}/test?gateway=g1").json()["window"] == "inside"
 
 
 def test_an_unreadable_site_clock_keeps_the_last_known_offset(monkeypatch):

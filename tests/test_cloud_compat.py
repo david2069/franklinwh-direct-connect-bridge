@@ -7,9 +7,10 @@ cleanly (importorskip) when the cloud lib is not installed; the plain endpoint
 shape tests below run regardless.
 """
 
+import pytest
 from fastapi.testclient import TestClient
 
-from franklinwh_direct_connect_bridge import app as app_module
+from franklinwh_direct_connect_bridge import app as app_module, state
 from franklinwh_direct_connect_bridge import client as client_module
 from franklinwh_direct_connect_bridge import cloud_compat
 
@@ -82,6 +83,17 @@ POWER_INFO_KEYS = {
     "loadSolarRelay1Stat", "loadSolarRelay2Stat",
     "dspRunStatus", "ibgRunStatus", "electricity_type",
 }
+
+
+GW = "gw-cc"
+G = f"?gateway={GW}"     # every device route names its gateway (#379)
+
+
+@pytest.fixture(autouse=True)
+def _gateway():
+    state.register_gateway(GW, "10.0.0.1", "Test")
+    yield
+    state.unregister_gateway(GW)
 
 
 def _app():
@@ -269,7 +281,7 @@ def test_network_accepts_flat_and_nested():
 def test_cloud_reserves_endpoint(monkeypatch):
     monkeypatch.setattr(client_module, "cloud_reserves",
                         lambda s, host=None: cloud_compat.reserves_from_mode_list(SAMPLE_MODE_LIST, SAMPLE_MODE_SOC))
-    r = _app().get("/api/cloud/reserves")
+    r = _app().get("/api/cloud/reserves" + G)
     assert r.status_code == 200
     body = r.json()
     assert isinstance(body, list) and len(body) == 3
@@ -283,13 +295,13 @@ def test_cloud_reserves_endpoint_502(monkeypatch):
         raise TransportError("host is down")
 
     monkeypatch.setattr(client_module, "cloud_reserves", boom)
-    assert _app().get("/api/cloud/reserves").status_code == 502
+    assert _app().get("/api/cloud/reserves" + G).status_code == 502
 
 
 def test_cloud_tou_endpoint(monkeypatch):
     monkeypatch.setattr(client_module, "cloud_tou",
                         lambda s, host=None: cloud_compat.tou_from_mode_list(SAMPLE_MODE_LIST, SAMPLE_TOU_SCHEDULE))
-    r = _app().get("/api/cloud/tou")
+    r = _app().get("/api/cloud/tou" + G)
     assert r.status_code == 200
     body = r.json()
     assert set(body.keys()) == {"code", "message", "result"}
@@ -304,12 +316,12 @@ def test_cloud_tou_endpoint_502(monkeypatch):
         raise TransportError("host is down")
 
     monkeypatch.setattr(client_module, "cloud_tou", boom)
-    assert _app().get("/api/cloud/tou").status_code == 502
+    assert _app().get("/api/cloud/tou" + G).status_code == 502
 
 
 def test_cloud_runtime_endpoint(monkeypatch):
     monkeypatch.setattr(client_module, "read", lambda s, name, host=None: SAMPLE_IBG_RUN)
-    r = _app().get("/api/cloud/runtime")
+    r = _app().get("/api/cloud/runtime" + G)
     assert r.status_code == 200
     body = r.json()
     assert isinstance(body, dict)
@@ -318,7 +330,7 @@ def test_cloud_runtime_endpoint(monkeypatch):
 
 def test_cloud_power_info_endpoint(monkeypatch):
     monkeypatch.setattr(client_module, "read", lambda s, name, host=None: SAMPLE_RELAY)
-    r = _app().get("/api/cloud/power-info")
+    r = _app().get("/api/cloud/power-info" + G)
     assert r.status_code == 200
     body = r.json()
     assert POWER_INFO_KEYS <= set(body.keys())
@@ -327,14 +339,14 @@ def test_cloud_power_info_endpoint(monkeypatch):
 
 def test_cloud_device_info_endpoint(monkeypatch):
     monkeypatch.setattr(client_module, "read", lambda s, name, host=None: SAMPLE_DEVICE_INFO)
-    r = _app().get("/api/cloud/device-info")
+    r = _app().get("/api/cloud/device-info" + G)
     assert r.status_code == 200
     assert r.json() == SAMPLE_DEVICE_INFO
 
 
 def test_cloud_network_endpoint(monkeypatch):
     monkeypatch.setattr(client_module, "read", lambda s, name, host=None: SAMPLE_NETWORK)
-    r = _app().get("/api/cloud/network")
+    r = _app().get("/api/cloud/network" + G)
     assert r.status_code == 200
     body = r.json()
     assert isinstance(body, dict)
@@ -351,7 +363,7 @@ def test_cloud_facade_502_on_device_error(monkeypatch):
     monkeypatch.setattr(client_module, "read", boom)
     # tou/reserves use their own two-read client helpers (covered by dedicated 502 tests).
     for route in ("runtime", "power-info", "device-info", "network"):
-        assert _app().get(f"/api/cloud/{route}").status_code == 502
+        assert _app().get(f"/api/cloud/{route}" + G).status_code == 502
 
 
 # ── Endpoint shape tests (monkeypatched client) [phase 1] ────────────────────
@@ -359,7 +371,7 @@ def test_cloud_facade_502_on_device_error(monkeypatch):
 def test_cloud_stats_endpoint(monkeypatch):
     monkeypatch.setattr(client_module, "cloud_stats",
                         lambda s, host=None: cloud_compat.stats_from_power_flow(SAMPLE_PF, sw_payload=SAMPLE_SW))
-    r = _app().get("/api/cloud/stats")
+    r = _app().get("/api/cloud/stats" + G)
     assert r.status_code == 200
     body = r.json()
     assert set(body.keys()) == {"current", "totals", "is_stale"}
@@ -373,12 +385,12 @@ def test_cloud_stats_endpoint_502(monkeypatch):
         raise TransportError("host is down")
 
     monkeypatch.setattr(client_module, "cloud_stats", boom)
-    assert _app().get("/api/cloud/stats").status_code == 502
+    assert _app().get("/api/cloud/stats" + G).status_code == 502
 
 
 def test_cloud_smart_circuits_endpoint(monkeypatch):
     monkeypatch.setattr(client_module, "read", lambda s, name, host=None: SAMPLE_SW)
-    r = _app().get("/api/cloud/smart-circuits")
+    r = _app().get("/api/cloud/smart-circuits" + G)
     assert r.status_code == 200
     body = r.json()
     assert set(body.keys()) == {"1", "2", "3"}
@@ -387,7 +399,7 @@ def test_cloud_smart_circuits_endpoint(monkeypatch):
 
 def test_cloud_smart_circuits_info_endpoint(monkeypatch):
     monkeypatch.setattr(client_module, "read", lambda s, name, host=None: SAMPLE_SW)
-    r = _app().get("/api/cloud/smart-circuits/info")
+    r = _app().get("/api/cloud/smart-circuits/info" + G)
     assert r.status_code == 200
     assert r.json() == SAMPLE_SW
 
@@ -399,7 +411,7 @@ def test_cloud_smart_circuits_502(monkeypatch):
         raise TransportError("host is down")
 
     monkeypatch.setattr(client_module, "read", boom)
-    assert _app().get("/api/cloud/smart-circuits").status_code == 502
+    assert _app().get("/api/cloud/smart-circuits" + G).status_code == 502
 
 
 # ── Cloud-model key-parity tests (skip if franklinwh_cloud not installed) ─────

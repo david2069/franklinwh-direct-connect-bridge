@@ -20,9 +20,9 @@ def test_no_gateway_means_no_connect_attempt(monkeypatch):
     try:
         c = TestClient(app_module.create_app())
         assert c.get("/api/gateways").json() == []
-        s = c.get("/api/summary").json()
-        assert s["ok"] is False and s["error"] == "no gateway configured"
-        assert c.get("/api/site/timezone").json() == {"available": False}
+        # No gateway to name: device reads are refused (#379), before any connection.
+        assert c.get("/api/summary").status_code == 400
+        assert c.get("/api/site/timezone").status_code == 400
     finally:
         logging.getLogger("franklinwh_direct_connect_api").removeHandler(h)
     assert not [m for m in seen if "connect to" in m], seen

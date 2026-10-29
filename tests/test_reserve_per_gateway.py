@@ -59,10 +59,10 @@ def test_the_reserve_goes_to_the_viewed_gateways_serial(env):
     assert env["store"].rows[-1]["gateway_id"] == "gw-b"
 
 
-def test_no_gateway_means_the_default(env):
-    assert _post().status_code == 200
-    assert env["written"] == ["SERIALA"]
-    assert env["store"].rows[-1]["gateway_id"] == "gw-a"
+def test_no_gateway_is_refused_not_the_default(env):
+    """No default-gateway fallback any more (#379): an unnamed reserve write is a 400."""
+    assert _post().status_code == 400
+    assert env["written"] == []
 
 
 def test_refused_when_the_cloud_credentials_are_for_another_gateway(env):

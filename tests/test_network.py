@@ -3,9 +3,10 @@
 The aGate reads are mocked (no hardware in tests); this covers the bridge's job: translate the
 raw interfaces into the cloud get_network_info shape, and REDACT cloud credentials.
 """
+import pytest
 from fastapi.testclient import TestClient
 
-from franklinwh_direct_connect_bridge import app as app_module, client as client_mod, config, environment, db
+from franklinwh_direct_connect_bridge import app as app_module, client as client_mod, config, environment, db, state
 from franklinwh_direct_connect_bridge.db import MetricsStore
 
 FIXTURE = {
@@ -21,6 +22,16 @@ FIXTURE = {
               "region": "ap-southeast-2", "mqttPassword": "SECRET", "clientKey": "PRIVATEKEY", "psk": ""},
 }
 
+GW = "gw-net"
+G = f"gateway={GW}"     # every device route names its gateway (#379)
+
+
+@pytest.fixture(autouse=True)
+def _gateway():
+    state.register_gateway(GW, "1.2.3.4", "Home")
+    yield
+    state.unregister_gateway(GW)
+
 
 def _client(tmp_path, monkeypatch):
     st = MetricsStore(str(tmp_path / "m.db"))
@@ -32,7 +43,7 @@ def _client(tmp_path, monkeypatch):
 
 
 def test_network_endpoint_translates_and_redacts(tmp_path, monkeypatch):
-    out = _client(tmp_path, monkeypatch).get("/api/network").json()
+    out = _client(tmp_path, monkeypatch).get("/api/network?" + G).json()
     # reachability passes through
     assert out["reachability"]["ok"] is True and out["reachability"]["latency_ms"] == 42.0
     # raw interfaces → cloud get_network_info shape
@@ -69,11 +80,11 @@ class _FakeClient:
 def test_ping_endpoint(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
     monkeypatch.setattr(client_mod, "_client", lambda s, host=None: _FakeClient())
-    out = c.get("/api/network/ping?count=3").json()
+    out = c.get("/api/network/ping?count=3&" + G).json()
     assert out["count"] == 3 and len(out["samples"]) == 3
     assert out["loss_pct"] == 0.0 and out["avg"] is not None and out["min"] is not None
     # the live Watch loop polls count=1 each tick and reads samples[0] — that shape must hold
-    one = c.get("/api/network/ping?count=1").json()
+    one = c.get("/api/network/ping?count=1&" + G).json()
     assert one["count"] == 1 and len(one["samples"]) == 1
 
 
@@ -83,7 +94,7 @@ def test_network_endpoint_handles_absent_blocks(tmp_path, monkeypatch):
                         lambda s, host=None: {"host": "x", "reachability": {"ok": False},
                                               "connectivity": None, "interfaces_raw": None,
                                               "switches": None, "cloud": None})
-    out = c.get("/api/network").json()
+    out = c.get("/api/network?" + G).json()
     assert out["interfaces"] is None and out["cloud"] is None and out["reachability"]["ok"] is False
 
 
@@ -98,7 +109,7 @@ def test_network_topology_home_assistant_node(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "_settings", None)
     monkeypatch.setattr(db, "get_store", lambda s: st)
     monkeypatch.setattr(client_mod, "network_bundle", lambda s, host=None: dict(FIXTURE))
-    out = TestClient(app_module.create_app()).get("/api/network").json()
+    out = TestClient(app_module.create_app()).get("/api/network?" + G).json()
     ha = out["topology"]["home_assistant"]
     assert ha["configured"] is True and ha["count"] == 2
     hosts = {i["host"] for i in ha["instances"]}
@@ -122,5 +133,5 @@ def test_network_topology_preserves_not_probed(tmp_path, monkeypatch):
     monkeypatch.setattr(client_mod, "network_bundle", lambda s, host=None: dict(fx))
     c = _client(tmp_path, monkeypatch)
     monkeypatch.setattr(client_mod, "network_bundle", lambda s, host=None: dict(fx))
-    ports = c.get("/api/network").json()["topology"]["agate"]["ports"]
+    ports = c.get("/api/network?" + G).json()["topology"]["agate"]["ports"]
     assert ports["modbus_502"] is None, f"not-probed was flattened to {ports['modbus_502']!r}"

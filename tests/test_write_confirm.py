@@ -18,10 +18,16 @@ def _client(tmp_path, monkeypatch):
 def test_consequential_actions_require_confirm(tmp_path, monkeypatch):
     """Mode change / off-grid are refused without confirm — and the guard fires
     BEFORE any gateway call, so this is fast and never touches hardware."""
+    from franklinwh_direct_connect_bridge import state
     c = _client(tmp_path, monkeypatch)
-    assert c.post("/api/mode", json={"mode": "self"}).status_code == 428
-    assert c.post("/api/offgrid", json={"on": True, "soc": 5}).status_code == 428
-    assert c.post("/api/cloud/set-mode", json={"requestedOperatingMode": 2}).status_code == 428
+    state.register_gateway("gw-wc", "10.0.0.1", "Home")             # the routes name it (#379)
+    try:
+        assert c.post("/api/mode?gateway=gw-wc", json={"mode": "self"}).status_code == 428
+        assert c.post("/api/offgrid?gateway=gw-wc", json={"on": True, "soc": 5}).status_code == 428
+        assert c.post("/api/cloud/set-mode?gateway=gw-wc",
+                      json={"requestedOperatingMode": 2}).status_code == 428
+    finally:
+        state.unregister_gateway("gw-wc")
 
 
 def test_reversible_write_needs_no_confirm(tmp_path, monkeypatch):

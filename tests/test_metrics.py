@@ -2,11 +2,23 @@
 
 import time
 
+import pytest
 from fastapi.testclient import TestClient
 
-from franklinwh_direct_connect_bridge import app as app_module
+from franklinwh_direct_connect_bridge import app as app_module, state
 from franklinwh_direct_connect_bridge import db as db_module
 from franklinwh_direct_connect_bridge.db import MetricsStore
+
+
+GW = "gw-met"     # no serial yet, so its metrics rows are tagged by id
+G = f"gateway={GW}"     # every device route names its gateway (#379)
+
+
+@pytest.fixture(autouse=True)
+def _gateway():
+    state.register_gateway(GW, "10.0.0.1", "Home")
+    yield
+    state.unregister_gateway(GW)
 
 
 def _app():
@@ -20,7 +32,7 @@ def _seeded_store(tmp_path):
         store.insert(
             {"soc": 50 + i, "grid_w": i * 10, "solar_w": 0,
              "battery_w": -i, "load_w": 100, "generator_w": 0, "mode": "Self"},
-            now - 600 + i * 60,
+            now - 600 + i * 60, gateway_id=GW,
         )
     return store
 
@@ -29,7 +41,7 @@ def test_metrics_returns_series(monkeypatch, tmp_path):
     store = _seeded_store(tmp_path)
     monkeypatch.setattr(db_module, "get_store", lambda s: store)
     c = _app()
-    r = c.get("/api/metrics?range=24h")
+    r = c.get("/api/metrics?range=24h&" + G)
     assert r.status_code == 200
     body = r.json()
     assert body["enabled"] is True
@@ -52,7 +64,7 @@ def test_metrics_info_has_count(monkeypatch, tmp_path):
 def test_metrics_disabled_returns_empty(monkeypatch):
     monkeypatch.setattr(db_module, "get_store", lambda s: None)
     c = _app()
-    r = c.get("/api/metrics?range=6h")
+    r = c.get("/api/metrics?range=6h&" + G)
     assert r.status_code == 200
     body = r.json()
     assert body["enabled"] is False
@@ -66,7 +78,7 @@ def test_metrics_12h_range_resolves(monkeypatch, tmp_path):
     store = _seeded_store(tmp_path)
     monkeypatch.setattr(db_module, "get_store", lambda s: store)
     c = _app()
-    r = c.get("/api/metrics?range=12h")
+    r = c.get("/api/metrics?range=12h&" + G)
     assert r.status_code == 200
     body = r.json()
     assert body["enabled"] is True
@@ -79,7 +91,7 @@ def test_metrics_explicit_bucket_and_window(monkeypatch, tmp_path):
     monkeypatch.setattr(db_module, "get_store", lambda s: store)
     c = _app()
     now = int(time.time())
-    r = c.get(f"/api/metrics?start={now - 3600}&end={now}&bucket=300")
+    r = c.get(f"/api/metrics?start={now - 3600}&end={now}&bucket=300&" + G)
     assert r.status_code == 200
     body = r.json()
     assert body["bucket_s"] == 300

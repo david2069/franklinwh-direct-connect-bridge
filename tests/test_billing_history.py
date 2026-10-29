@@ -3,10 +3,18 @@ endpoints. The live period-to-date engine (billing.py) already existed; this cov
 rollover snapshot + the Energy-Costs backend."""
 import datetime as dt
 
+import pytest
 from fastapi.testclient import TestClient
 
-from franklinwh_direct_connect_bridge import app as app_module, config, environment, db, billing
+from franklinwh_direct_connect_bridge import app as app_module, config, environment, db, billing, state
 from franklinwh_direct_connect_bridge.db import MetricsStore
+
+
+@pytest.fixture(autouse=True)
+def _gateway():
+    state.register_gateway("gwX", "10.0.0.9", "Home")   # the routes name it (#379)
+    yield
+    state.unregister_gateway("gwX")
 
 
 def _setup(tmp_path):
@@ -101,12 +109,12 @@ def test_billing_close_endpoint(tmp_path, monkeypatch):
     monkeypatch.setattr(environment, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(config, "_settings", None)
     monkeypatch.setattr(db, "get_store", lambda s: st)
-    billing.billing_tick(st, None, 1000.0, now=dt.datetime(2026, 8, 20, 12, 0, 0))
-    billing.billing_tick(st, None, 1000.0, now=dt.datetime(2026, 8, 20, 13, 0, 0))
+    billing.billing_tick(st, "gwX", 1000.0, now=dt.datetime(2026, 8, 20, 12, 0, 0))
+    billing.billing_tick(st, "gwX", 1000.0, now=dt.datetime(2026, 8, 20, 13, 0, 0))
     c = TestClient(app_module.create_app())
-    out = c.post("/api/billing/close").json()
+    out = c.post("/api/billing/close?gateway=gwX").json()
     assert out["ok"] and out["closed"]
-    assert len(c.get("/api/billing/history").json()["periods"]) == 1
+    assert len(c.get("/api/billing/history?gateway=gwX").json()["periods"]) == 1
 
 
 MODBUS_HISTORY = [
@@ -169,7 +177,7 @@ def test_billing_import_modbus_requires_url(tmp_path, monkeypatch):
     monkeypatch.setattr(environment, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(config, "_settings", None)
     monkeypatch.setattr(db, "get_store", lambda s: st)
-    out = TestClient(app_module.create_app()).post("/api/billing/import-modbus", json={"source_url": ""}).json()
+    out = TestClient(app_module.create_app()).post("/api/billing/import-modbus?gateway=gwX", json={"source_url": ""}).json()
     assert out["ok"] is False and "URL" in out["reason"]
 
 
@@ -179,16 +187,16 @@ def test_billing_overview_and_history_api(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "_settings", None)
     monkeypatch.setattr(db, "get_store", lambda s: st)
     c = TestClient(app_module.create_app())
-    ov = c.get("/api/billing/overview").json()
+    ov = c.get("/api/billing/overview?gateway=gwX").json()
     assert ov["configured"] is True and ov["meta"]["retailer"] == "AGL"
     assert "net.period_cost" in ov and ov["period_days"] is not None
 
-    st.record_billing_period(gateway_id=None, retailer="AGL", network="Ausgrid",
+    st.record_billing_period(gateway_id="gwX", retailer="AGL", network="Ausgrid",
                              tariff_name="Flat 30c", period_start=1.0, period_end=2.0,
                              import_kwh=10, import_cost=3.0, net_total=3.0)
-    hist = c.get("/api/billing/history").json()
+    hist = c.get("/api/billing/history?gateway=gwX").json()
     assert len(hist["periods"]) == 1 and hist["periods"][0]["retailer"] == "AGL"
-    csv = c.get("/api/billing/history?fmt=csv")
+    csv = c.get("/api/billing/history?fmt=csv&gateway=gwX")
     assert "text/csv" in csv.headers["content-type"]
     assert csv.text.splitlines()[0].startswith("period_start,period_end,retailer")
 
@@ -199,4 +207,4 @@ def test_overview_unconfigured_without_tariff(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "_settings", None)
     monkeypatch.setattr(db, "get_store", lambda s: st)
     c = TestClient(app_module.create_app())
-    assert c.get("/api/billing/overview").json()["configured"] is False
+    assert c.get("/api/billing/overview?gateway=gwX").json()["configured"] is False

@@ -7,7 +7,7 @@ groupings and the two scaling traps.
 import pytest
 from fastapi.testclient import TestClient
 
-from franklinwh_direct_connect_bridge import solar
+from franklinwh_direct_connect_bridge import solar, state
 from franklinwh_direct_connect_bridge.app import create_app
 
 CFG = {
@@ -151,14 +151,22 @@ def test_undecoded_field_is_labelled_not_guessed():
 
 
 # ── endpoints ────────────────────────────────────────────────────────────────
-def test_api_solar(monkeypatch):
+@pytest.fixture
+def gw():
+    """The gateway a device route names (#379)."""
+    state.register_gateway("gw-solar", "10.0.0.1", "Home")
+    yield "gw-solar"
+    state.unregister_gateway("gw-solar")
+
+
+def test_api_solar(monkeypatch, gw):
     from franklinwh_direct_connect_bridge import client as c
     monkeypatch.setattr(c, "solar", lambda s, host=None: solar.build(CFG, FLOW))
-    body = TestClient(create_app()).get("/api/solar").json()
+    body = TestClient(create_app()).get(f"/api/solar?gateway={gw}").json()
     assert body["inputs"]["total_rated_kw"] == 6.6
 
 
-def test_api_device_model_regression(monkeypatch):
+def test_api_device_model_regression(monkeypatch, gw):
     """Regression: client.device_model was deleted by a refactor and 500'd live.
 
     No test covered the endpoint, so the suite stayed green. This pins it.
@@ -167,5 +175,5 @@ def test_api_device_model_regression(monkeypatch):
     assert hasattr(c, "device_model")
     monkeypatch.setattr(c, "device_model",
                         lambda s, host=None: {"known": True, "model": "aGate X-01-AU"})
-    r = TestClient(create_app()).get("/api/device/model")
+    r = TestClient(create_app()).get(f"/api/device/model?gateway={gw}")
     assert r.status_code == 200 and r.json()["model"] == "aGate X-01-AU"

@@ -1,4 +1,6 @@
 """Automation constants (const.* sensors) — KV store, clamp/persist, snapshot."""
+import pytest
+
 from franklinwh_direct_connect_bridge.db import MetricsStore
 from franklinwh_direct_connect_bridge import constants as C
 from franklinwh_direct_connect_bridge import scheduler
@@ -62,7 +64,16 @@ def _client(tmp_path, monkeypatch, store):
     return TestClient(app_module.create_app())
 
 
-def test_api_constants_get_put_and_sensor_group(tmp_path, monkeypatch):
+@pytest.fixture
+def gw():
+    """The gateway /api/schedules/evaluate names (#379)."""
+    from franklinwh_direct_connect_bridge import state
+    state.register_gateway("gw-const", "10.0.0.5", "Home")
+    yield "gw-const"
+    state.unregister_gateway("gw-const")
+
+
+def test_api_constants_get_put_and_sensor_group(tmp_path, monkeypatch, gw):
     st = MetricsStore(str(tmp_path / "m.db"))
     c = _client(tmp_path, monkeypatch, st)
 
@@ -84,7 +95,7 @@ def test_api_constants_get_put_and_sensor_group(tmp_path, monkeypatch):
     ids = {s["id"]: s["group"] for s in sensors}
     assert ids.get("const.min_discharge_soc") == "Automation Constants"
 
-    ev = c.post("/api/schedules/evaluate", json={"match": "ALL", "conditions": [
+    ev = c.post(f"/api/schedules/evaluate?gateway={gw}", json={"match": "ALL", "conditions": [
         {"sensor": "const.demand_charge_min_soc", "op": ">=", "value": 30}]})
     assert ev.status_code == 200 and ev.json()["result"] is True
 

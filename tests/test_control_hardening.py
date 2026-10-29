@@ -31,12 +31,14 @@ def test_control_log_roundtrip(tmp_path):
 
 # ── Modbus master switch ─────────────────────────────────────────────────────
 def test_modbus_toggle_persists_and_audits(tmp_path, monkeypatch):
+    from franklinwh_direct_connect_bridge import state
     c, store = _client(tmp_path, monkeypatch)
+    state.register_gateway("gw-mb", "10.0.0.4", "Home")             # the routes name it (#379)
     try:
-        assert c.get("/api/modbus").json()["enabled"] is False          # new install: off (#88)
-        assert c.put("/api/modbus", json={"enabled": True}).json()["enabled"] is True
+        assert c.get("/api/modbus?gateway=gw-mb").json()["enabled"] is False   # new install: off (#88)
+        assert c.put("/api/modbus?gateway=gw-mb", json={"enabled": True}).json()["enabled"] is True
         assert store.get_config("modbus_enabled") == "1"
-        assert c.put("/api/modbus", json={"enabled": False}).json()["enabled"] is False
+        assert c.put("/api/modbus?gateway=gw-mb", json={"enabled": False}).json()["enabled"] is False
         assert battery_control.is_enabled() is False
         assert battery_control.available()[0] is False                  # gate closed
         assert store.get_config("modbus_enabled") == "0"                # persisted
@@ -45,6 +47,7 @@ def test_modbus_toggle_persists_and_audits(tmp_path, monkeypatch):
         assert any(e["action"] == "modbus_toggle" for e in log)
     finally:
         battery_control.set_enabled(True)   # never leak the disabled flag to other tests
+        state.unregister_gateway("gw-mb")
 
 
 # ── FEAT-TOPNAV-RUNSTATUS roster derivation ──────────────────────────────────
