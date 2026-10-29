@@ -1024,12 +1024,15 @@
               <td class="px-4 py-2">
                 <div class="flex items-center gap-2">
                   <span class="w-1.5 h-1.5 rounded-full shrink-0"
-                        :class="gw.ok ? 'bg-emerald-400' : (gw.enabled ? 'bg-amber-400' : 'bg-slate-600')"></span>
+                        :class="gw.identity_error ? 'bg-red-500' : (gw.ok ? 'bg-emerald-400' : (gw.enabled ? 'bg-amber-400' : 'bg-slate-600'))"></span>
                   <span class="font-medium" style="color:var(--text-primary)" x-text="gw.label"></span>
                   <span x-show="gw.is_mock" class="text-[9px] px-1.5 rounded"
                         style="background:rgba(167,139,250,.2);color:#c4b5fd">MOCK</span>
                   <span x-show="gw.is_default" class="chip ok" style="font-size:.55rem">default</span>
                 </div>
+                <!-- Stopped: its aGate is not the one this gateway is locked to (#381) -->
+                <div x-show="gw.identity_error" x-cloak class="text-xs mt-1" style="color:#f87171"
+                     x-text="gw.identity_error"></div>
               </td>
               <td class="px-3 py-2 font-mono text-xs" style="color:var(--text-secondary)"
                   x-text="(gw.host || '—') + (gw.port && gw.port !== 9000 ? ':' + gw.port : '')"></td>
@@ -1043,7 +1046,7 @@
                   :style="gw.enabled ? 'color:#6ee7b7' : 'color:var(--text-secondary)'"
                   x-text="gw.enabled ? 'Enabled' : 'Disabled'"></td>
               <td class="px-3 py-2 text-right text-xs hidden md:table-cell" style="color:var(--text-secondary)"
-                  x-text="!gw.enabled ? 'off' : (gw.ok ? 'live' : (gw.cached ? 'stale' : 'cold'))"></td>
+                  x-text="!gw.enabled ? 'off' : (gw.identity_error ? 'stopped' : (gw.ok ? 'live' : (gw.cached ? 'stale' : 'cold')))"></td>
               <td class="px-3 py-2 text-right">
                 <button class="btn btn-secondary btn-sm" @click="openEditGateway(gw)"
                         title="Edit gateway">Edit</button>

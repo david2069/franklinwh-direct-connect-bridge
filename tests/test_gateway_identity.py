@@ -144,3 +144,12 @@ def test_no_gateway_gets_its_host_as_an_id_when_the_roster_is_unreadable(monkeyp
     for g in state.gateways():
         if g.id not in before:
             state.unregister_gateway(g.id)
+
+
+def test_a_disabled_gateway_still_shows_its_locked_serial():
+    st = _store()
+    st.create_gateway(gw_id="d1", label="Shed", host="192.0.2.30", enabled=False)
+    st.lock_gateway_serial("d1", "SN-D")
+    c = TestClient(app_module.create_app())
+    row = {g["id"]: g for g in c.get("/api/gateways").json()}["d1"]
+    assert row["serial"] == "SN-D" and row["identity_error"] is None

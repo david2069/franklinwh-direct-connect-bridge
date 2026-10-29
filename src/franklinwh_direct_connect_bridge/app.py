@@ -1726,7 +1726,8 @@ def create_app() -> FastAPI:
         gw = state.get_gateway(row["id"])
         base = _roster_entry(gw) if gw is not None else {
             "id": row["id"], "label": row.get("label"), "host": row.get("host"),
-            "configured_host": row.get("host"), "serial": None, "firmware": None,
+            "configured_host": row.get("host"), "serial": row.get("serial") or None,
+            "identity_error": None, "firmware": None,
             "ok": False, "stale": False, "soc": None, "mode": None,
             "mqtt_connected": False, "cached": False, "updated": False,
         }
