@@ -168,7 +168,7 @@ def _roster_entry(gw: GatewayState) -> dict:
         "updated": ok and not bool(summ.get("stale")),
         # For the All gateways view (#383): the flows and when the poller last had a reading.
         "power": {k: power.get(k) for k in ("battery_w", "grid_w", "solar_w", "load_w")},
-        "last_poll_ts": gw.state_ts or None,
+        "last_poll_ts": getattr(gw, "state_ts", 0) or None,
     }
 
 

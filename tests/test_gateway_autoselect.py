@@ -53,12 +53,13 @@ def test_the_roster_is_polled_fast_while_there_is_no_gateway():
     assert "clearInterval(this._gwInterval)" in body      # no interval left running
 
 
-def test_selecting_still_persists_and_refetches():
-    """The manual path must keep doing what made it the one that worked."""
+def test_selecting_refetches_and_is_not_remembered():
+    """The manual path must keep doing what made it the one that worked. The choice is not
+    remembered across reloads: the page opens on the default gateway (#383)."""
     body = _fn("selectGateway(id)")
     for call in ("this.poll()", "this._loadGeneratorInstalled()", "this.loadHistory("):
         assert call in body
-    assert "localStorage.setItem('fwh-gateway'" in body
+    assert "localStorage" not in body
 
 
 # --- the add-on cannot discover from its own network -----------------------------------------
