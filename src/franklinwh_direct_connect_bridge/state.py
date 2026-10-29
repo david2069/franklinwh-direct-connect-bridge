@@ -14,14 +14,18 @@ from dataclasses import dataclass, field
 
 @dataclass
 class GatewayState:
-    id: str                             # stable id (opaque for DB rows; host for env seed)
+    id: str                             # bridge-generated, never changes (#381)
     label: str = ""
     configured_host: str = ""
     active_host: str | None = None      # overrides configured_host once re-discovered
     port: int = 9000                    # per-gateway port (9000 real; ephemeral for in-proc mock)
     is_mock: bool = False               # in-process emulator gateway (Phase 2)
     publish_ha: bool = True             # publish this gateway to MQTT/HA (mocks default off)
-    serial: str | None = None
+    serial: str | None = None           # the LOCKED serial once the roster has one (#381)
+    serial_locked: bool = False
+    #: Why this gateway was stopped: its aGate reported a serial other than the locked one,
+    #: or one another gateway owns (#381). Cleared only by a restart, which re-checks.
+    identity_error: str | None = None
     firmware: str | None = None
 
     # MQTT / poller runtime state (read by the REST layer for the MQTT + Settings tabs)
@@ -63,14 +67,15 @@ _default_id: str | None = None
 
 def register_gateway(id: str, host: str, label: str | None = None, *,
                      port: int = 9000, is_mock: bool = False,
-                     publish_ha: bool = True) -> GatewayState:
+                     publish_ha: bool = True, serial: str | None = None) -> GatewayState:
     """Create (or return the existing) gateway for ``id``. Idempotent — registering an
     already-known id returns the same instance so the poller/REST share one object."""
     gw = _gateways.get(id)
     if gw is None:
         gw = GatewayState(id=id, configured_host=host, active_host=host,
                           label=label or host or id, port=port, is_mock=is_mock,
-                          publish_ha=publish_ha)
+                          publish_ha=publish_ha,
+                          serial=serial or None, serial_locked=bool(serial))
         _gateways[id] = gw
     return gw
 

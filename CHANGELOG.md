@@ -35,6 +35,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   saved is kept. The unused `release_stale()`, which would have released any force, is gone.
 
 ### Fixed
+- **Each gateway is locked to one aGate serial** (#381). The bridge used to take whatever
+  serial a gateway's aGate reported on every read, so a gateway pointed at another aGate
+  carried on as if nothing had changed, and two gateways could share one aGate. Now the
+  serial is stored and locked to the gateway the first time it is reported. A gateway
+  that later reports a different serial, or one another gateway already has, is stopped:
+  nothing is recorded, published or written for it. The reason is logged, sent as a
+  "FranklinWH gateway stopped" notice and shown on the gateway, and the API refuses it
+  with 409. Existing gateways lock on their first read after the update. A gateway's ID
+  is always the bridge's own: if the roster cannot be read at start-up, no gateway is
+  set up under its IP address any more; the bridge logs the error instead.
 - **Re-discovery adopts only this gateway's own aGate** (#356). When a gateway stopped
   answering, the network sweep could pick another aGate: a gateway whose serial was never
   read used the default gateway's serial, and with no serial match the first aGate that

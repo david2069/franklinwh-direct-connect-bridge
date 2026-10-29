@@ -140,7 +140,8 @@ def _roster_entry(gw: GatewayState) -> dict:
         "label": gw.label or gw.configured_host or gw.id,
         "host": gw.active_host or gw.configured_host,
         "configured_host": gw.configured_host,
-        "serial": gw.serial or fwb.get("IBG_SN"),
+        "serial": gw.serial,
+        "identity_error": gw.identity_error,
         "firmware": fwb.get("IBG_VER") or gw.firmware,
         "ok": ok,
         "stale": bool(summ.get("stale")),
@@ -1002,15 +1003,19 @@ def create_app() -> FastAPI:
                                              units=int(r.get("mock_units") or 1),
                                              tz_offset_hours=_site_tz_hours(store))
                     state.register_gateway(r["id"], host, r.get("label"), is_mock=True,
-                                           publish_ha=bool(r.get("publish_ha")))
+                                           publish_ha=bool(r.get("publish_ha")),
+                                           serial=r.get("serial"))
                 else:
                     state.register_gateway(r["id"], r.get("host", ""), r.get("label"),
                                            port=int(r.get("port") or 9000),
-                                           publish_ha=bool(r.get("publish_ha")))
+                                           publish_ha=bool(r.get("publish_ha")),
+                                           serial=r.get("serial"))
             state.set_default(next((r["id"] for r in db_rows if r.get("is_default")), None))
-        else:
-            for host, label in env_entries:
-                state.register_gateway(host, host, label)
+        elif env_entries:
+            # Every gateway's id is generated and stored by the roster (#381). Without the
+            # roster there is no id to give these, so none is made up from the host.
+            log.error("gateway roster could not be read — no gateway is polled until it can "
+                      "be (configured: %s)", ", ".join(h for h, _ in env_entries))
         if s.mqtt_enabled or metrics_active(s):
             gws = state.gateways()
             log.info("starting %d poller(s) (mqtt=%s, metrics=%s)",
@@ -1323,8 +1328,11 @@ def create_app() -> FastAPI:
             if gw is None:
                 raise HTTPException(status_code=404,
                                     detail=f"unknown gateway {gateway!r}")
-            return gw
-        return get_state()   # default (lazily-created) gateway — single-gateway back-compat
+        else:
+            gw = get_state()   # default (lazily-created) gateway — single-gateway back-compat
+        if gw.identity_error:          # stopped: not the aGate it is locked to (#381)
+            raise HTTPException(status_code=409, detail=gw.identity_error)
+        return gw
 
     def _metrics_gw_key(gateway: str | None):
         """Metrics rows are tagged by gateway SERIAL (poller: gw.serial or gw.id). The UI
@@ -1807,11 +1815,13 @@ def create_app() -> FastAPI:
             host = mockgw.start_mock(gid, seed=seed, units=int(row.get("mock_units") or 1),
                                      tz_offset_hours=_site_tz_hours(db.get_store(s)))
             gw = state.register_gateway(gid, host, row.get("label"), is_mock=True,
-                                        publish_ha=bool(row.get("publish_ha")))
+                                        publish_ha=bool(row.get("publish_ha")),
+                                        serial=row.get("serial"))
         else:
             gw = state.register_gateway(gid, row.get("host", ""), row.get("label"),
                                         port=int(row.get("port") or 9000),
-                                        publish_ha=bool(row.get("publish_ha")))
+                                        publish_ha=bool(row.get("publish_ha")),
+                                        serial=row.get("serial"))
         await supervisor.start_poller(s, gw)
 
     @app.post("/api/gateways", status_code=201)

@@ -35,6 +35,14 @@ poller stops nothing else would. The dialog shows the release result. If the rel
 the gateway stays enabled and the dialog says why. As of 0.5.2, `allow_writes` no longer blocks them (see
 [Control](control.md#1-allow_writes-no-longer-blocks-writes)).
 
+### Gateway identity
+
+The bridge gives each gateway its own ID when the gateway is added. You never type it, and it never changes. The name is only a label.
+
+The first time a gateway's aGate reports its serial number, that serial is locked to the gateway. A serial belongs to one gateway only (#381). If a gateway later reports a different serial, or a serial another gateway already has, the bridge stops that gateway. It logs the reason and sends a **FranklinWH gateway stopped** notice. The gateway's readings are not recorded or published, and the API refuses requests for it with 409. Settings → Gateways shows the reason. Restarting the gateway checks it again.
+
+If an aGate is replaced, remove its gateway and add it again. A locked serial is never changed in place.
+
 ### The default gateway
 
 ![The gateway selector in the top bar](../images/multi-gateway/03-default-gateway.png)

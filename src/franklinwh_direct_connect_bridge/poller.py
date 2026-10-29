@@ -79,6 +79,44 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
     free. MQTT is optional: if it's off (or fails to connect) the loop still runs to collect
     metrics. Crash-proof — a read/DB/MQTT error never kills the loop."""
     node, serial, fw = "agate", "", None
+    notifier = Notifier(settings)
+    _wname = f"poller:{gw.id}"
+
+    async def _identity_ok(reported: str) -> bool:
+        """The aGate's serial is locked to this gateway the first time it is reported
+        (#381). A serial another gateway owns, or one different from the locked serial,
+        stops this gateway: its readings are not recorded or published and nothing is
+        written to it, because it is not the aGate this gateway is. Logged and notified."""
+        if not reported:
+            return True
+        if gw.serial_locked and (gw.serial or "").upper() == reported.upper():
+            return True
+        store = get_store(settings)
+        outcome, detail = await asyncio.to_thread(store.lock_gateway_serial, gw.id, reported)
+        if outcome in ("locked", "ok"):
+            if outcome == "locked":
+                log.info("[%s] serial %s locked to this gateway", gw.id, detail)
+            gw.serial, gw.serial_locked = detail, True
+            return True
+        if outcome == "unregistered":      # no roster row to lock it in
+            gw.serial = reported
+            return True
+        where = gw.active_host or gw.configured_host
+        if outcome == "mismatch":
+            why = (f"Gateway '{gw.label or gw.id}' ({gw.id}) is locked to aGate {detail}, "
+                   f"but {where} reported {reported}. Stopped. If the aGate was replaced, "
+                   "remove this gateway and add it again.")
+        else:
+            why = (f"aGate {reported} at {where} already belongs to gateway {detail}. "
+                   f"Gateway '{gw.label or gw.id}' ({gw.id}) is stopped.")
+        gw.identity_error = why
+        log.error("[%s] %s", gw.id, why)
+        _workers.registry.beat(_wname, state=_workers.WorkerState.STOPPED, detail=why)
+        try:
+            await asyncio.to_thread(notifier.notify, "FranklinWH gateway stopped", why)
+        except Exception as e:  # noqa: BLE001
+            log.debug("[%s] identity notice not sent: %s", gw.id, e)
+        return False
 
     async def _resolve_identity() -> None:
         """Read the firmware manifest for this gateway's serial — which is the MQTT
@@ -88,9 +126,10 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
         try:
             fwb = await asyncio.to_thread(client.firmware, settings, gw.active_host)
             serial = str(fwb.get("IBG_SN", ""))
+            if not await _identity_ok(serial):
+                return
             node = (serial or "agate").lower()
             fw = fwb.get("IBG_VER")
-            gw.serial = serial or gw.serial
             gw.firmware = fw or gw.firmware
             _hw = fwb.get("SyHdVersion")
             if _hw is not None:
@@ -100,6 +139,8 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
         gw.node = node
 
     await _resolve_identity()
+    if gw.identity_error:
+        return
 
     # Publishing OFF means nothing of ours is left in Home Assistant. Until #98 a gateway
     # with publishing off (every mock, by default) was published anyway; once the flag is
@@ -177,7 +218,6 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
     if store is not None:
         log.info("[%s] metrics store active (%s)", gw.id, settings.metrics_db)
 
-    notifier = Notifier(settings)
     net_state: dict = {}
     net_last = 0.0
     next_sweep = 0.0
@@ -189,7 +229,6 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
     starting_since: float | None = None   # first all-zero start-up frame of a run (#309)
     alerts_sig: tuple | None = None   # last alert summary published to MQTT (#271)
     alerts_pub_ts = 0.0
-    _wname = f"poller:{gw.id}"
     try:
         while not stop.is_set():
             # Proof of life for this cycle (BR-36). DEGRADED while the aGate is
@@ -219,6 +258,8 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                     log.debug("[%s] Supervisor MQTT re-check failed: %s", gw.id, e)
                 if not serial:
                     await _resolve_identity()
+                    if gw.identity_error:
+                        break
                     if not serial:
                         log.debug("[%s] serial still unknown — discovery stays deferred", gw.id)
                 if serial:                       # never publish under the fallback node
@@ -283,6 +324,9 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                         timeout=_poll_timeout)
                 except asyncio.TimeoutError:
                     summ = {"ok": False, "error": f"poll timed out after {_poll_timeout}s"}
+                if summ.get("ok") and not await _identity_ok(
+                        str((summ.get("firmware") or {}).get("IBG_SN") or "")):
+                    break
                 # An all-zero start-up frame after a reboot or reconnect (#309): client.py
                 # has blanked its values. It is neither recorded nor published, so history
                 # and Home Assistant never get a 0 W that was not a reading.
@@ -457,8 +501,6 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                 # its own worker (scheduler_worker.py) reading the snapshot stamped above.
 
                 if summ.get("ok"):
-                    fwb2 = summ.get("firmware") or {}
-                    gw.serial = fwb2.get("IBG_SN") or gw.serial
                     # Record a history sample tagged with this gateway. A DB error must not
                     # kill the loop — log and continue.
                     if store is not None and not starting:

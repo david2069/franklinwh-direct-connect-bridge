@@ -507,7 +507,37 @@ class MetricsStore:
         cols = [r[1] for r in self._conn.execute("PRAGMA table_info(gateways)").fetchall()]
         if "meter_id" not in cols:
             self._conn.execute("ALTER TABLE gateways ADD COLUMN meter_id TEXT")
+        # The aGate serial, locked to the gateway the first time it reports it (#381).
+        # Empty until then; one gateway per serial.
+        if "serial" not in cols:
+            self._conn.execute("ALTER TABLE gateways ADD COLUMN serial TEXT NOT NULL DEFAULT ''")
+        self._conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS gateways_serial "
+                           "ON gateways(serial) WHERE serial != ''")
         self._conn.commit()
+
+    def lock_gateway_serial(self, gw_id: str, serial: str) -> tuple[str, str]:
+        """Lock ``serial`` to gateway ``gw_id`` the first time the aGate reports it (#381).
+        Returns ``(outcome, detail)``: ``("locked"|"ok", serial)``; ``("mismatch", the
+        serial it is locked to)``; ``("duplicate", the id of the gateway that has it)``;
+        or ``("unregistered", "")`` when ``gw_id`` has no roster row."""
+        serial = (serial or "").strip()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT serial FROM gateways WHERE id=?", (gw_id,)).fetchone()
+            if row is None:
+                return ("unregistered", "")
+            have = row[0] or ""
+            if have:
+                return ("ok", have) if have.upper() == serial.upper() else ("mismatch", have)
+            other = self._conn.execute(
+                "SELECT id FROM gateways WHERE upper(serial)=upper(?) AND id!=?",
+                (serial, gw_id)).fetchone()
+            if other:
+                return ("duplicate", other[0])
+            self._conn.execute("UPDATE gateways SET serial=?, updated_at=? WHERE id=?",
+                               (serial, time.time(), gw_id))
+            self._conn.commit()
+            return ("locked", serial)
 
     def sites(self) -> list[dict]:
         with self._lock:
