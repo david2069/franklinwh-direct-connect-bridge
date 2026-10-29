@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 import datetime as _dt
 import json as _json
 
-from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -1322,29 +1322,46 @@ def create_app() -> FastAPI:
                 "reason": ("" if _guide_bundled else
                            "This build does not bundle the documentation site.")}
 
-    # -- gateway resolvers (multi-gateway, Phase 2) --------------------------
-    # No ``gateway`` param ⇒ the default (first-registered) gateway ⇒ exactly the
-    # single-gateway behaviour. An unknown id ⇒ 404 (before any device I/O).
+    # -- gateway resolvers (#379) ----------------------------------------------
+    # Every route that acts on an aGate names it, by gateway id or by the aGate's serial.
+    # There is no default gateway: missing ⇒ 400, malformed ⇒ 422, unknown ⇒ 404, each
+    # before any device I/O.
+    _GW_REF = re.compile(r"[A-Za-z0-9._:-]{1,64}")
+
     def _gw_or_404(gateway: str | None) -> GatewayState:
-        if gateway:
-            gw = state.get_gateway(gateway)
-            if gw is None:
-                raise HTTPException(status_code=404,
-                                    detail=f"unknown gateway {gateway!r}")
-        else:
-            gw = get_state()   # default (lazily-created) gateway — single-gateway back-compat
+        if not gateway:
+            raise HTTPException(status_code=400, detail=(
+                "gateway is required: pass ?gateway=<gateway id or aGate serial>"))
+        if not _GW_REF.fullmatch(gateway):
+            raise HTTPException(status_code=422,
+                                detail=f"not a gateway id or aGate serial: {gateway!r}")
+        gw = state.get_gateway(gateway)
+        if gw is None:              # by serial: only a LOCKED one, which is unique (#381)
+            ref = gateway.upper()
+            gw = next((g for g in state.gateways() if getattr(g, "serial_locked", False)
+                       and (g.serial or "").upper() == ref), None)
+        if gw is None:
+            raise HTTPException(status_code=404, detail=f"unknown gateway {gateway!r}")
         if getattr(gw, "identity_error", None):   # stopped: not its locked aGate (#381)
             raise HTTPException(status_code=409, detail=gw.identity_error)
         return gw
 
+    def _gateway_q(gateway: str | None = Query(
+            None, description="Gateway id or aGate serial (required)")) -> str:
+        """Route dependency: the named gateway's id. The route never sees a serial or a
+        missing value, so everything it passes on is keyed by a real gateway id."""
+        return _gw_or_404(gateway).id
+
+    def _gateway_opt(gateway: str | None = Query(
+            None, description="Gateway id or aGate serial (optional filter)")) -> str | None:
+        """As ``_gateway_q`` for routes where no gateway means every gateway, not the
+        default one."""
+        return _gw_or_404(gateway).id if gateway else None
+
     def _metrics_gw_key(gateway: str | None):
-        """Metrics rows are tagged by gateway SERIAL (poller: gw.serial or gw.id). The UI
-        passes a gateway id, so map id → serial before querying; pass-through if a serial
-        (or None) was given so single-gateway and already-serial callers still work."""
-        if not gateway:
-            return None
-        g = state.get_gateway(gateway)
-        return g.serial if (g is not None and g.serial) else gateway
+        """Metrics rows are tagged by gateway SERIAL (poller: gw.serial or gw.id)."""
+        g = _gw_or_404(gateway)
+        return g.serial or g.id
 
     def _gw_host(gateway: str | None) -> str:
         gw = _gw_or_404(gateway)
@@ -1421,11 +1438,11 @@ def create_app() -> FastAPI:
             return {"error": str(e)}
 
     @app.get("/api/health")
-    def api_health(gateway: str | None = Query(None)):
+    def api_health(gateway: str = Depends(_gateway_q)):
         return client.health(get_settings(), host=_gw_host(gateway))
 
     @app.get("/api/health/link")
-    def api_health_link(gateway: str | None = Query(None), limit: int = Query(20, ge=1, le=200)):
+    def api_health_link(gateway: str = Depends(_gateway_q), limit: int = Query(20, ge=1, le=200)):
         """The link's HISTORY, not another probe of this instant (RUNTIME_DESIGN §6.9).
 
         `/api/health` re-probes and tells you about now; it cannot say when the gateway
@@ -1437,7 +1454,7 @@ def create_app() -> FastAPI:
         single timed-out poll no longer reads as an outage.
         """
         store = _ha_store()
-        gw = gateway or (get_state().id if get_state() else "")
+        gw = gateway
         legs = []
         for row in store.link_states(gw):
             ol = store.link_outages(gw, leg=row["leg"], limit=limit)
@@ -1668,7 +1685,7 @@ def create_app() -> FastAPI:
         }
 
     @app.get("/api/health/link/hourly")
-    def api_health_link_hourly(gateway: str | None = Query(None),
+    def api_health_link_hourly(gateway: str = Depends(_gateway_q),
                                leg: str | None = Query(None),
                                hours: int = Query(24, ge=1, le=720)):
         """Hourly rollup per gateway and leg — the before/after measurement.
@@ -1684,8 +1701,7 @@ def create_app() -> FastAPI:
         quietly wrong.
         """
         store = _ha_store()
-        gw = gateway or (get_state().id if get_state() else "")
-        rows = store.link_hourly(gw or None, leg=leg, hours=hours)
+        rows = store.link_hourly(gateway, leg=leg, hours=hours)
         tot = {"probes": 0, "ok": 0, "failed": 0, "unknown": 0,
                "connects": 0, "reconnects": 0}
         for r in rows:
@@ -1704,7 +1720,7 @@ def create_app() -> FastAPI:
         }
 
     @app.get("/api/summary")
-    def api_summary(gateway: str | None = Query(None)):
+    def api_summary(gateway: str = Depends(_gateway_q)):
         # Serve the poller's cached last-good summary when warm — avoids a full device
         # session (login + 4 cmdType reads) on every 5 s browser poll, which over flaky
         # wifi caused the operating-mode section to flicker + slow first load. The cache
@@ -2178,7 +2194,7 @@ def create_app() -> FastAPI:
 
     # ── Energy Costs / billing view (FEAT-BILLING-SERVICE) ────────────────────
     @app.get("/api/billing/overview")
-    def api_billing_overview(gateway: str | None = Query(None)):
+    def api_billing_overview(gateway: str = Depends(_gateway_q)):
         """Live period-to-date billing for the gateway's meter's tariff: the running
         energy/demand/bonus/export-charge/fixed points + the retailer/tariff it prices
         against + billing-cycle progress. `configured:false` when no tariff is assigned."""
@@ -2214,7 +2230,7 @@ def create_app() -> FastAPI:
         return out
 
     @app.get("/api/billing/history")
-    def api_billing_history(gateway: str | None = Query(None),
+    def api_billing_history(gateway: str = Depends(_gateway_q),
                             limit: int = Query(60, ge=1, le=200), fmt: str = Query("json")):
         """Closed billing periods (newest first), or a CSV export with ?fmt=csv."""
         st = _ha_store()
@@ -2232,7 +2248,7 @@ def create_app() -> FastAPI:
         return {"periods": rows}
 
     @app.post("/api/billing/close")
-    def api_billing_close(gateway: str | None = Query(None)):
+    def api_billing_close(gateway: str = Depends(_gateway_q)):
         """Manually close the CURRENT billing period now — snapshots its itemised breakdown
         into history immediately (rather than waiting for the cycle to roll over). The
         automatic rollover later replaces that row with the final numbers, so there is no
@@ -2244,7 +2260,7 @@ def create_app() -> FastAPI:
         return billing.force_close_current(st, gateway)
 
     @app.post("/api/billing/import")
-    def api_billing_import(req: BillingImportReq, gateway: str | None = Query(None)):
+    def api_billing_import(req: BillingImportReq, gateway: str | None = Depends(_gateway_opt)):
         """Backfill closed billing periods from a Modbus bridge ``/api/tariff/history`` payload
         (same physical aGate). Idempotent — re-importing replaces same-period rows. Returns
         {ok, imported, skipped}."""
@@ -2252,14 +2268,16 @@ def create_app() -> FastAPI:
         st = _ha_store()
         if st is None:
             return {"ok": False, "reason": "metrics store is disabled"}
-        return billing.import_modbus_periods(st, req.periods, gateway or req.gateway)
+        # The gateway may come in the query or the body; one of them must name it (#379).
+        return billing.import_modbus_periods(st, req.periods, _gw_or_404(gateway or req.gateway).id)
 
     @app.post("/api/billing/import-modbus")
-    def api_billing_import_modbus(req: BillingImportModbusReq, gateway: str | None = Query(None)):
+    def api_billing_import_modbus(req: BillingImportModbusReq, gateway: str | None = Depends(_gateway_opt)):
         """One-click: log in to a Modbus bridge, pull its closed periods, and import them.
         ``dry_run`` previews (fetch + count, no write). Idempotent. Returns {ok, imported,
         skipped} — or {ok:false, reason} on a bad URL / auth / network failure."""
         from . import billing
+        gw_id = _gw_or_404(gateway or req.gateway).id   # before any fetch (#379)
         st = _ha_store()
         if st is None:
             return {"ok": False, "reason": "metrics store is disabled"}
@@ -2273,7 +2291,7 @@ def create_app() -> FastAPI:
         if req.dry_run:
             return {"ok": True, "dry_run": True, "available": len(periods),
                     "sample": periods[:3]}
-        out = billing.import_modbus_periods(st, periods, gateway or req.gateway)
+        out = billing.import_modbus_periods(st, periods, gw_id)
         out["fetched"] = len(periods)
         return out
 
@@ -2404,15 +2422,15 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=str(e))
 
     @app.get("/api/power")
-    def api_power(gateway: str | None = Query(None)):
+    def api_power(gateway: str = Depends(_gateway_q)):
         return _read(client.power, gateway)
 
     @app.get("/api/der-comms")
-    def api_der_comms(gateway: str | None = Query(None)):
+    def api_der_comms(gateway: str = Depends(_gateway_q)):
         return _read(client.der_comms, gateway)
 
     @app.get("/api/firmware")
-    def api_firmware(gateway: str | None = Query(None)):
+    def api_firmware(gateway: str = Depends(_gateway_q)):
         return _read(client.firmware, gateway)
 
     # -- cloud-aligned facade -------------------------------------------------
@@ -2422,13 +2440,13 @@ def create_app() -> FastAPI:
     from . import circuits as circuits_mod, cloud_compat
 
     @app.get("/api/cloud/stats")
-    def api_cloud_stats(gateway: str | None = Query(None)):
+    def api_cloud_stats(gateway: str = Depends(_gateway_q)):
         """Cloud ``Stats`` shape ({current, totals, is_stale}) from local power_flow
         (+ smart_circuits for switch states) in one aGate session. 502 on device error."""
         return _read(client.cloud_stats, gateway)
 
     @app.get("/api/cloud/smart-circuits")
-    def api_cloud_smart_circuits(gateway: str | None = Query(None)):
+    def api_cloud_smart_circuits(gateway: str = Depends(_gateway_q)):
         """Cloud ``get_smart_circuits`` shape: {"1": {...}, "2": {...}, "3": {...}}."""
         host = _gw_host(gateway)
         try:
@@ -2438,7 +2456,7 @@ def create_app() -> FastAPI:
         return cloud_compat.smart_circuits_map(payload)
 
     @app.get("/api/cloud/smart-circuits/info")
-    def api_cloud_smart_circuits_info(gateway: str | None = Query(None)):
+    def api_cloud_smart_circuits_info(gateway: str = Depends(_gateway_q)):
         """Raw local smart_circuits payload — mirrors cloud ``get_smart_circuits_info``."""
         host = _gw_host(gateway)
         try:
@@ -2451,7 +2469,7 @@ def create_app() -> FastAPI:
                        "reason": "No gateway is set up yet."}
 
     @app.get("/api/generator")
-    def api_generator(gateway: str | None = Query(None)):
+    def api_generator(gateway: str = Depends(_gateway_q)):
         """Generator config + run state (1901).
 
         ``installed`` is evidence-based — the gateway returns the 1901 block whether
@@ -2469,7 +2487,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=str(e))
 
     @app.get("/api/generator/raw")
-    def api_generator_raw(gateway: str | None = Query(None)):
+    def api_generator_raw(gateway: str = Depends(_gateway_q)):
         """Raw 1901 payload, including fields the view-model deliberately omits."""
         host = _gw_host(gateway)
         if not host:
@@ -2480,7 +2498,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=str(e))
 
     @app.post("/api/generator/mode")
-    def api_generator_mode(req: GeneratorModeReq, gateway: str | None = Query(None)):
+    def api_generator_mode(req: GeneratorModeReq, gateway: str = Depends(_gateway_q)):
         """Refused, writes nothing (#237).
 
         This used to write ``manuSw``, which franklinwh-cloud's captures show acts as a
@@ -2494,7 +2512,7 @@ def create_app() -> FastAPI:
 
     @app.put("/api/circuits/{circuit}/schedule")
     def api_circuit_schedule(circuit: int, req: CircuitScheduleReq,
-                             gateway: str | None = Query(None)):
+                             gateway: str = Depends(_gateway_q)):
         """Attempt a circuit schedule write — 1409 full-block RMW, read-back verified.
 
         ⚠️ The gateway **silently discards** these on the observed firmware: live-tested
@@ -2520,7 +2538,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=str(e))
 
     @app.post("/api/raw")
-    def api_raw(req: RawCmdReq, gateway: str | None = Query(None)):
+    def api_raw(req: RawCmdReq, gateway: str = Depends(_gateway_q)):
         """Send one arbitrary cmdType and return the request + raw response verbatim.
 
         A protocol console for the gateway's owner. Reads (``opt:0``) need nothing.
@@ -2570,7 +2588,7 @@ def create_app() -> FastAPI:
         }
 
     @app.get("/api/firmware/all")
-    def api_firmware_all(gateway: str | None = Query(None)):
+    def api_firmware_all(gateway: str = Depends(_gateway_q)):
         """Gateway firmware PLUS per-battery firmware and serials.
 
         ``/api/firmware`` returns the flat 1101 manifest and is left alone — its shape
@@ -2921,7 +2939,7 @@ def create_app() -> FastAPI:
             return None
 
     @app.get("/api/setup")
-    def api_setup(gateway: str | None = Query(None)):
+    def api_setup(gateway: str | None = Depends(_gateway_opt)):
         """Where setup stands — every step, whether it is already satisfied, and whether to
         prompt. Safe to call repeatedly; re-running the wizard is always allowed."""
         st = db.get_store(get_settings())
@@ -3026,7 +3044,7 @@ def create_app() -> FastAPI:
                 "hold": providers.cloud_hold()}
 
     @app.get("/api/setup/ha-checks")
-    def api_setup_ha_checks(gateway: str | None = Query(None)):
+    def api_setup_ha_checks(gateway: str | None = Depends(_gateway_opt)):
         """The four things that decide whether this bridge shows up in Home Assistant.
 
         Measured, each with its own remedy, because they fail independently and the fixes
@@ -3141,7 +3159,7 @@ def create_app() -> FastAPI:
                 "addon": environment.IS_HA_ADDON}
 
     @app.get("/api/setup/capabilities")
-    def api_setup_capabilities(gateway: str | None = Query(None)):
+    def api_setup_capabilities(gateway: str = Depends(_gateway_q)):
         """Which capability-gated tabs apply to this SITE. Not a permissions answer."""
         from . import system_setup
         s = get_settings()
@@ -3155,7 +3173,7 @@ def create_app() -> FastAPI:
         return {"tabs": setup_wizard.capability_tabs(values, generator_installed=gen)}
 
     @app.get("/api/system-setup")
-    def api_system_setup(gateway: str | None = Query(None)):
+    def api_system_setup(gateway: str = Depends(_gateway_q)):
         """Per-gateway System Setup: resolved values (default → derived → override) + spec."""
         from . import system_setup
         st = _gw_store()
@@ -3163,7 +3181,7 @@ def create_app() -> FastAPI:
                 "spec": system_setup.spec()}
 
     @app.put("/api/system-setup")
-    def api_system_setup_put(req: SystemSetupBody, gateway: str | None = Query(None)):
+    def api_system_setup_put(req: SystemSetupBody, gateway: str = Depends(_gateway_q)):
         """Set user overrides (null reverts a field to the derived value). No device write."""
         from . import system_setup
         st = _gw_store()
@@ -3181,7 +3199,7 @@ def create_app() -> FastAPI:
         return {"values": constants.values(st), "spec": constants.spec()}
 
     @app.get("/api/constants/modes")
-    def api_constants_modes(gateway: str | None = Query(None)):
+    def api_constants_modes(gateway: str = Depends(_gateway_q)):
         """Operating-mode options for the Default-Mode picker, DERIVED from what this
         aGate actually reports (mode_list). Falls back to the full catalogue if the
         device can't be reached, so the picker is never empty."""
@@ -3561,7 +3579,7 @@ def create_app() -> FastAPI:
                 "tick_s": tick_s}
 
     @app.get("/api/schedules/timeline")
-    def api_schedule_timeline(gateway: str | None = Query(None)):
+    def api_schedule_timeline(gateway: str = Depends(_gateway_q)):
         """Today's timeline: each enabled schedule's planned window, plus the real
         work-mode band, the SoC % line, and fire markers from the activity log — all
         in minutes-from-midnight. (No VPP-override band: the local channel has no
@@ -3592,7 +3610,7 @@ def create_app() -> FastAPI:
         return base
 
     @app.post("/api/schedules/{sid}/test")
-    def api_schedule_test(sid: str, gateway: str | None = Query(None)):
+    def api_schedule_test(sid: str, gateway: str | None = Depends(_gateway_opt)):
         """Evaluate the conditions against live values WITHOUT firing anything —
         the 'Test verification' the user asked for."""
         st = _ha_store()
@@ -3601,9 +3619,10 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail=f"no schedule '{sid}'")
         # The schedule's own gateway (or the one asked for): its values and its clock, as
         # the tick would see them, not always the default gateway's (#161).
-        bound = entry.get("gateway_id") or ""
-        gateway = gateway or (bound if state.get_gateway(bound) is not None else None)
-        gw = _sched_gateway(gateway) or get_state()
+        # The gateway asked for, else the schedule's own; with neither there is nothing
+        # to test against — never the default gateway (#379).
+        gateway = gateway or _gw_or_404(entry.get("gateway_id") or None).id
+        gw = _gw_or_404(gateway)
         snap = scheduler.snapshot_from_state(getattr(gw, "last_state", {}) or {})
         snap.update(scheduler.ha_snapshot(st))
         snap.update(scheduler.solar_snapshot(get_settings()))
@@ -3632,12 +3651,12 @@ def create_app() -> FastAPI:
                 "rows": rows, "snapshot": snap}
 
     @app.post("/api/schedules/evaluate")
-    def api_schedule_evaluate(req: ConditionEvalReq, gateway: str | None = Query(None)):
+    def api_schedule_evaluate(req: ConditionEvalReq, gateway: str = Depends(_gateway_q)):
         """Evaluate an UNSAVED condition tree against live values — the editor's
         Test Verification. Returns per-leaf pass/fail (`result` + `live_value`) so
         the UI can outline each row green/red/amber, plus the overall result."""
         st = _ha_store()
-        gw = (get_gateway(gateway) or get_state()) if gateway else get_state()
+        gw = _gw_or_404(gateway)
         snap = scheduler.snapshot_from_state(getattr(gw, "last_state", {}) or {})
         snap.update(scheduler.ha_snapshot(st))
         snap.update(scheduler.solar_snapshot(get_settings()))
@@ -3660,7 +3679,7 @@ def create_app() -> FastAPI:
         return {"result": result, "per_condition": trace}
 
     @app.post("/api/schedules/{sid}/run")
-    def api_schedule_run(sid: str, gateway: str | None = Query(None)):
+    def api_schedule_run(sid: str, gateway: str | None = Depends(_gateway_opt)):
         """Run a schedule's actions NOW, ignoring its window. Still honours the
         write gate — this performs real actions."""
         _guard_writes()
@@ -3670,11 +3689,11 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail=f"no schedule '{sid}'")
         # A schedule bound to a gateway runs there, whatever gateway the UI is showing
         # (#193). The query names the gateway only for an unbound or scope-"all" one;
-        # with neither, the default gateway.
+        # with neither, nothing runs — never the default gateway (#379).
         bound = (entry.get("gateway_id") or None
                  if str(entry.get("gateway_scope") or "one").lower() != "all" else None)
-        target_gw = bound or gateway or None
-        gw = (get_gateway(target_gw) or get_state()) if target_gw else get_state()
+        gw = _gw_or_404(bound or gateway)
+        target_gw = gw.id
         snap = scheduler.snapshot_from_state(getattr(gw, "last_state", {}) or {})
         snap.update(scheduler.ha_snapshot(st))
         host = _gw_host(target_gw)
@@ -3745,7 +3764,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/battery/command")
     def api_battery_command_state(refresh: bool = Query(False),
-                                  gateway: str | None = Query(None)):
+                                  gateway: str = Depends(_gateway_q)):
         """The Battery Command state. Polled by every open browser tab, so it must not
         open the Modbus TCP Server (aGate :502) each time (#223): that made this bridge a
         second client every 30 s beside the Modbus Bridge.
@@ -3784,7 +3803,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/battery/command")
     def api_battery_command(req: BatteryCmdReq, dry: bool = Query(False),
-                            gateway: str | None = Query(None)):
+                            gateway: str = Depends(_gateway_q)):
         """Store a control value, or (on the `battery_command` slug) execute it.
         Executing actually moves the battery, so it is gated on allow_writes AND a
         reachable, configured Modbus path — otherwise it refuses with the reason."""
@@ -3879,7 +3898,7 @@ def create_app() -> FastAPI:
         }
 
     @app.get("/api/device/model")
-    def api_device_model(gateway: str | None = Query(None)):
+    def api_device_model(gateway: str = Depends(_gateway_q)):
         """Gateway model/SKU/region from ``SyHdVersion`` in the login manifest.
 
         Unknown ids report ``known: false`` with the raw value rather than a guess.
@@ -3894,7 +3913,7 @@ def create_app() -> FastAPI:
     # with read-back). Verified on a site with NO generator fitted: the settings
     # persist, which is not the same as proving a generator acts on them.
     @app.put("/api/generator/enable")
-    def api_generator_enable(req: GenEnableReq, gateway: str | None = Query(None)):
+    def api_generator_enable(req: GenEnableReq, gateway: str = Depends(_gateway_q)):
         """Turn the generator feature on/off (``genEn``).
 
         The official mobile app lets you enable this on a gateway with no module
@@ -3913,7 +3932,7 @@ def create_app() -> FastAPI:
 
     @app.put("/api/generator/window/{window}")
     def api_generator_window(window: int, req: GenWindowReq,
-                             gateway: str | None = Query(None)):
+                             gateway: str = Depends(_gateway_q)):
         """Set one of the three generator operating windows."""
         _guard_writes()
         host = _gw_host(gateway)
@@ -3926,7 +3945,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=str(e))
 
     @app.put("/api/generator/exercise")
-    def api_generator_exercise(req: GenExerciseReq, gateway: str | None = Query(None)):
+    def api_generator_exercise(req: GenExerciseReq, gateway: str = Depends(_gateway_q)):
         """Set the generator maintenance/exercise run."""
         _guard_writes()
         host = _gw_host(gateway)
@@ -3939,7 +3958,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=str(e))
 
     @app.put("/api/generator/soc")
-    def api_generator_soc(req: GenSocReq, gateway: str | None = Query(None)):
+    def api_generator_soc(req: GenSocReq, gateway: str = Depends(_gateway_q)):
         """Set generator auto start/stop SoC thresholds."""
         _guard_writes()
         host = _gw_host(gateway)
@@ -3952,7 +3971,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=str(e))
 
     @app.get("/api/solar")
-    def api_solar(gateway: str | None = Query(None)):
+    def api_solar(gateway: str = Depends(_gateway_q)):
         """All things solar: PV inputs, remote solar/aPbox, relays, export limit.
 
         Groups fields the generic Live Points view cannot, because the firmware names
@@ -3966,7 +3985,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=str(e))
 
     @app.get("/api/solar/raw")
-    def api_solar_raw(gateway: str | None = Query(None)):
+    def api_solar_raw(gateway: str = Depends(_gateway_q)):
         """Raw 1903 payload."""
         host = _gw_host(gateway)
         try:
@@ -3975,7 +3994,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=str(e))
 
     @app.get("/api/circuits/raw")
-    def api_circuits_raw(gateway: str | None = Query(None)):
+    def api_circuits_raw(gateway: str = Depends(_gateway_q)):
         """Raw 1409 payload — the Smart Circuits counterpart to /api/generator/raw."""
         host = _gw_host(gateway)
         try:
@@ -3984,7 +4003,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=str(e))
 
     @app.get("/api/circuits/meter")
-    def api_circuits_meter(gateway: str | None = Query(None)):
+    def api_circuits_meter(gateway: str = Depends(_gateway_q)):
         """Raw 1411 metering for the Monitoring sub-view — one read, no config."""
         host = _gw_host(gateway)
         try:
@@ -3997,7 +4016,7 @@ def create_app() -> FastAPI:
     # mirror the cloud shape exactly (always three keys, warts and all). These add
     # metering and presence detection, which the cloud surface has no room for.
     @app.get("/api/circuits")
-    def api_circuits(gateway: str | None = Query(None)):
+    def api_circuits(gateway: str = Depends(_gateway_q)):
         """Smart circuits: config (1409) + metering (1411) + presence detection.
 
         Always returns all three circuits. ``present`` is True/False/None(unknown) with
@@ -4013,7 +4032,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/circuits/{circuit}/power")
     def api_circuit_power(circuit: int, req: CircuitPowerReq,
-                          gateway: str | None = Query(None)):
+                          gateway: str = Depends(_gateway_q)):
         """Turn one circuit on/off — 1409 full-block RMW with read-back verification.
 
         Same proven write as /api/cloud/smart-circuit/state (live-verified 2026-08-08).
@@ -4039,14 +4058,14 @@ def create_app() -> FastAPI:
         return translate(payload)
 
     @app.get("/api/cloud/reserves")
-    def api_cloud_reserves(gateway: str | None = Query(None)):
+    def api_cloud_reserves(gateway: str = Depends(_gateway_q)):
         """Cloud ``get_all_mode_soc`` shape: list of per-mode reserve dicts
         (workMode/name/soc/minSoc/maxSoc/editSocFlag/active) from local mode_list +
         mode_soc in one aGate session. 502 on device error."""
         return _read(client.cloud_reserves, gateway)
 
     @app.get("/api/cloud/tou")
-    def api_cloud_tou(gateway: str | None = Query(None)):
+    def api_cloud_tou(gateway: str = Depends(_gateway_q)):
         """Cloud ``get_gateway_tou_list`` envelope ({code, message, result}) from local
         mode_list (1726, → result.currendId + result.list) enriched with tou_schedule
         (1408) in one aGate session. 502 on device error."""
@@ -4054,7 +4073,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/cloud/mode")
     def api_cloud_mode(requestedMode: int | None = Query(None),
-                       gateway: str | None = Query(None)):
+                       gateway: str = Depends(_gateway_q)):
         """Cloud ``get_mode`` flat dict from local power_flow + mode_list (+ mode_soc,
         tou_schedule) in one aGate session. Active mode by default; ``?requestedMode=``
         (cloud workMode 1/2/3) queries a specific mode. 502 on device error."""
@@ -4065,24 +4084,24 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=str(e))
 
     @app.get("/api/cloud/runtime")
-    def api_cloud_runtime(gateway: str | None = Query(None)):
+    def api_cloud_runtime(gateway: str = Depends(_gateway_q)):
         """Cloud ``get_runtime_data`` shape from local ibg_run_status (1708)."""
         return _cloud_read("ibg_run_status", cloud_compat.runtime_from_ibg_run_status,
                            gateway)
 
     @app.get("/api/cloud/power-info")
-    def api_cloud_power_info(gateway: str | None = Query(None)):
+    def api_cloud_power_info(gateway: str = Depends(_gateway_q)):
         """Cloud ``get_power_info`` (raw 211) shape from local relay_status (1710)."""
         return _cloud_read("relay_status", cloud_compat.power_info_from_relay_status,
                            gateway)
 
     @app.get("/api/cloud/device-info")
-    def api_cloud_device_info(gateway: str | None = Query(None)):
+    def api_cloud_device_info(gateway: str = Depends(_gateway_q)):
         """Cloud ``get_device_info`` passthrough from local device_info (1116)."""
         return _cloud_read("device_info", cloud_compat.device_info_passthrough, gateway)
 
     @app.get("/api/cloud/network")
-    def api_cloud_network(gateway: str | None = Query(None)):
+    def api_cloud_network(gateway: str = Depends(_gateway_q)):
         """Cloud ``get_network_info`` shape (currentNetType/wifi/eth0/eth1/operator/
         awsStatus) from local network_interfaces (1118)."""
         return _cloud_read("network_interfaces", cloud_compat.network_from_interfaces,
@@ -4129,7 +4148,7 @@ def create_app() -> FastAPI:
         return None
 
     @app.get("/api/network")
-    def api_network(request: Request, gateway: str | None = Query(None)):
+    def api_network(request: Request, gateway: str = Depends(_gateway_q)):
         """Consolidated on-LAN network diagnostics for the selected aGate — the local answer to
         the Cloud CLI's network view, plus reachability the cloud can't see. In one session:
         reachability (:9000/:502 + latency), the router→internet→cloud chain (1113), interfaces
@@ -4137,7 +4156,7 @@ def create_app() -> FastAPI:
         block (nodes + edges + ports) for the Network diagram, and the bridge's uptime."""
         s = get_settings()
         host = _gw_host(gateway)
-        gw = (get_gateway(gateway) if gateway else None) or get_state()
+        gw = _gw_or_404(gateway)
         nb = client.network_bundle(s, host=host)
         raw_if = nb.pop("interfaces_raw", None)
         nb["interfaces"] = cloud_compat.network_from_interfaces(raw_if) if isinstance(raw_if, dict) else None
@@ -4219,7 +4238,7 @@ def create_app() -> FastAPI:
         return out
 
     @app.get("/api/diagnostics/link")
-    def api_diagnostics_link(gateway: str | None = Query(None)):
+    def api_diagnostics_link(gateway: str | None = Depends(_gateway_opt)):
         """Reachability and load (#123): per gateway (or the one named), a timed ping and a
         timed TCP connect to :9000, and how many TCP connections THIS bridge holds to it by
         port — Direct Connect :9000 and the aGate Modbus TCP Server :502 (counted from
@@ -4238,7 +4257,7 @@ def create_app() -> FastAPI:
         return {"gateways": rows, "bridge": _dg.resources(), "ts": time.time()}
 
     @app.get("/api/network/ping")
-    def api_network_ping(gateway: str | None = Query(None), count: int = Query(5, ge=1, le=20)):
+    def api_network_ping(gateway: str = Depends(_gateway_q), count: int = Query(5, ge=1, le=20)):
         """Latency test: N sendMqtt round-trips to the aGate in one session. Returns per-sample
         ms + min/avg/max + loss%. The on-LAN equivalent of a ping to the Direct-Connect API."""
         s = get_settings()
@@ -4264,7 +4283,7 @@ def create_app() -> FastAPI:
                 "loss_pct": round(100 * (count - len(ok)) / count, 1) if count else 0}
 
     @app.get("/api/grid")
-    def api_grid(gateway: str | None = Query(None)):
+    def api_grid(gateway: str = Depends(_gateway_q)):
         """Grid & Inverter profile (read-only): grid connection + import/export power-plane limits
         from install_profile (1701), and the inverter's real max charge/discharge kW from Modbus
         SunSpec 702 (1701's fhpRatePower reads 0 on this firmware, so it is NOT the source)."""
@@ -4381,7 +4400,7 @@ def create_app() -> FastAPI:
             return {"available": False, "reason": f"{type(e).__name__}: {e}"}
 
     @app.post("/api/grid/limits")
-    def api_set_grid_limits(req: GridLimitsReq, gateway: str | None = Query(None)):
+    def api_set_grid_limits(req: GridLimitsReq, gateway: str = Depends(_gateway_q)):
         """Write the 1701 grid import/export power-plane limits (the FWHAI PCS modal) by
         full-block read-modify-write with a self-verifying read-back. **UNVERIFIED local
         write** — see client.set_grid_limits. ``dry_run`` previews the exact frame. A real
@@ -4463,7 +4482,7 @@ def create_app() -> FastAPI:
                 "tz_name": (now.tzname() or None), "host_time": now.strftime("%Y-%m-%d %H:%M:%S")}
 
     @app.get("/api/site/timezone")
-    def api_site_timezone(gateway: str | None = Query(None)):
+    def api_site_timezone(gateway: str = Depends(_gateway_q)):
         """The SITE's timezone from the aGate (1201), so charts show aGate-local time — not the
         browser's (which may be in a different country). The authoritative offset is the aGate's
         own wall-clock minus UTC (DST-correct); ``timezoneStr`` is usually empty so we don't rely
@@ -4543,7 +4562,7 @@ def create_app() -> FastAPI:
         return {"ok": True, "was": was, "hold": providers.cloud_hold()}
 
     @app.post("/api/mode")
-    def api_set_mode(req: ModeReq, gateway: str | None = Query(None)):
+    def api_set_mode(req: ModeReq, gateway: str = Depends(_gateway_q)):
         _guard_consequential(req.confirm, "set operating mode")
         host = _gw_host(gateway)   # SAFETY: the write must hit the SELECTED gateway
         try:
@@ -4556,7 +4575,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=str(e))
 
     @app.post("/api/offgrid")
-    def api_set_offgrid(req: OffgridReq, gateway: str | None = Query(None)):
+    def api_set_offgrid(req: OffgridReq, gateway: str = Depends(_gateway_q)):
         _guard_consequential(req.confirm, "go off-grid / reconnect")
         host = _gw_host(gateway)   # SAFETY: the write must hit the SELECTED gateway
         action = "go_off_grid" if req.on else "reconnect_grid"
@@ -4574,7 +4593,7 @@ def create_app() -> FastAPI:
     def api_ha_dashboard_yaml(layout: str = Query("grouped"),
                               diagnostics: bool = Query(False),
                               instance_id: str | None = Query(None),
-                              gateway: str | None = Query(None)):
+                              gateway: str = Depends(_gateway_q)):
         """A copy-paste Home Assistant dashboard card for the entities we publish.
 
         Every id is one Home Assistant actually reports. Entities we publish but cannot find
@@ -4637,7 +4656,7 @@ def create_app() -> FastAPI:
         }
 
     @app.get("/api/control-log")
-    def api_control_log(limit: int = 100, gateway: str | None = Query(None),
+    def api_control_log(limit: int = 100, gateway: str | None = Depends(_gateway_opt),
                         action: str | None = Query(None)):
         """The control audit trail — consequential actions (off-grid / reconnect / reboot /
         mode / Modbus toggle), newest first. Read-only; empty list when the store is off."""
@@ -4721,7 +4740,7 @@ def create_app() -> FastAPI:
     # so FWHAI can call the bridge first and fall back to the Cloud API. All gated by
     # allow_writes (403 when off); device errors → 502 (never 500).
     @app.post("/api/cloud/set-mode")
-    def api_cloud_set_mode(req: SetModeReq, gateway: str | None = Query(None)):
+    def api_cloud_set_mode(req: SetModeReq, gateway: str = Depends(_gateway_q)):
         """Cloud ``set_mode``. Maps requestedOperatingMode (cloud workMode 1=Time-of-Use /
         2=Self-Consumption / 3=Emergency Backup, or a name/alias) to the local mode write
         (1727). Reserve SOC is cloud-owned; backup-forever / next-mode / duration are
@@ -4750,7 +4769,7 @@ def create_app() -> FastAPI:
         return out
 
     @app.post("/api/cloud/grid-status")
-    def api_cloud_grid_status(req: GridStatusReq, gateway: str | None = Query(None)):
+    def api_cloud_grid_status(req: GridStatusReq, gateway: str = Depends(_gateway_q)):
         """Cloud ``set_grid_status``. Parses ``status`` against the cloud GridStatus
         names/values (NORMAL=0 / DOWN=1 / OFF=2); ``on = status != NORMAL`` → local
         set_offgrid (1723) with ``soc`` as the off-grid floor.
@@ -4772,7 +4791,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/cloud/smart-circuit/state")
     def api_cloud_smart_circuit_state(req: SmartCircuitStateReq,
-                                      gateway: str | None = Query(None)):
+                                      gateway: str = Depends(_gateway_q)):
         """Cloud ``set_smart_circuit_state`` → local 1409 full-block read-modify-write.
         Read-back self-verified: ``ok`` is True only when the re-read confirms the mode
         flipped. The write path was live-verified on a real aGate (2026-08-08: Sw2 toggled
@@ -4873,7 +4892,7 @@ def create_app() -> FastAPI:
         return None
 
     @app.post("/api/cloud/reserve")
-    def api_cloud_reserve(req: ReserveReq, gateway: str | None = Query(None)):
+    def api_cloud_reserve(req: ReserveReq, gateway: str = Depends(_gateway_q)):
         """Set a mode's reserve SoC via the CLOUD provider (HYBRID Phase 3) — the local API
         silently discards this write (reserve is cloud-owned), so it routes to the cloud
         ``updateSocV2``. Gated by allow_writes. 503 = no cloud provider configured · 501 =
@@ -4938,7 +4957,7 @@ def create_app() -> FastAPI:
         return out
 
     @app.get("/api/battery")
-    def api_battery(gateway: str | None = Query(None),
+    def api_battery(gateway: str = Depends(_gateway_q),
                     id: int = Query(1, ge=1, le=32)):
         """Full BMS view for one aPower in a SINGLE aGate session.
 
@@ -4957,7 +4976,7 @@ def create_app() -> FastAPI:
     # Runs in a background thread, NOT the poll loop: it samples far faster than
     # the 30s poll and must not perturb the long-run history.
     @app.post("/api/battery/record")
-    def api_bms_record(req: BmsRecordReq, gateway: str | None = Query(None)):
+    def api_bms_record(req: BmsRecordReq, gateway: str = Depends(_gateway_q)):
         """Start a recording session. 409 if one is already running, 422 on bad
         parameters, 503 if metrics storage is disabled."""
         store = db.get_store(get_settings())
@@ -5050,7 +5069,7 @@ def create_app() -> FastAPI:
     # every /api/cmd/<name> individually. Live, on-demand reads — never auto-polled.
     for _name in sorted(client.READ_METHODS):
         def _mk(nm):
-            def handler(response: Response, gateway: str | None = Query(None)):
+            def handler(response: Response, gateway: str = Depends(_gateway_q)):
                 host = _gw_host(gateway)
                 try:
                     payload, sent = client.read_with_request(get_settings(), nm, host=host)
@@ -5071,7 +5090,7 @@ def create_app() -> FastAPI:
 
     # -- generic passthrough --------------------------------------------------
     @app.post("/api/call/{cmd}")
-    def api_call(cmd: int, req: CallReq, gateway: str | None = Query(None)):
+    def api_call(cmd: int, req: CallReq, gateway: str = Depends(_gateway_q)):
         """Issue any request cmdType with a dataArea of {opt, **data}. opt != 0 is a write
         and requires allow_writes."""
         if req.opt != 0:
@@ -5150,7 +5169,7 @@ def create_app() -> FastAPI:
             return None
 
     @app.post("/api/der-comms")
-    def api_set_der_comms(req: DerCommsReq, gateway: str | None = Query(None)):
+    def api_set_der_comms(req: DerCommsReq, gateway: str = Depends(_gateway_q)):
         """Write DER comms toggles (SunSpec Modbus / IEEE 2030.5). Delayed-apply — the
         device reply is not proof; verify at the interface level (:502 / status2030_5).
 
@@ -5183,7 +5202,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=str(e))
 
     @app.post("/api/reboot")
-    def api_reboot(req: RebootReq, gateway: str | None = Query(None)):
+    def api_reboot(req: RebootReq, gateway: str = Depends(_gateway_q)):
         """DESTRUCTIVE — reboot the aGate. Double-gated (allow_writes + confirm=true). The
         gateway drops the connection while it restarts and may trigger 4G failover."""
         _guard_writes()
@@ -5210,10 +5229,7 @@ def create_app() -> FastAPI:
         safe). Gated by allow_writes. 503 = no provider, 501 = library path not wired,
         422 = bad action, 502 = provider unreachable."""
         _guard_writes()
-        gw = req.gateway_id or ""
-        if gw and get_gateway(gw) is None:
-            raise HTTPException(404, f"unknown gateway {gw!r} — refusing to dispatch to "
-                                     "the default instead of the one you named")
+        gw = _gw_or_404(req.gateway_id).id     # required: never the default gateway (#379)
         try:
             return providers.dispatch(
                 get_settings(), req.action, power_w=req.power_w, power_pct=req.power_pct,
@@ -5230,7 +5246,7 @@ def create_app() -> FastAPI:
 
     # -- MQTT tab -------------------------------------------------------------
     @app.get("/api/mqtt/config")
-    def api_mqtt_config(gateway: str | None = Query(None)):
+    def api_mqtt_config(gateway: str = Depends(_gateway_q)):
         s = get_settings()
         gw = _gw_or_404(gateway)
         return {
@@ -5243,7 +5259,7 @@ def create_app() -> FastAPI:
         }
 
     @app.get("/api/mqtt/conflicts")
-    def api_mqtt_conflicts(gateway: str | None = Query(None)):
+    def api_mqtt_conflicts(gateway: str = Depends(_gateway_q)):
         """Scan the shared broker for OTHER FranklinWH producers (a Modbus bridge, FWHAI, or a
         second Local bridge). On a shared broker each producer names the aGate under its own
         node, so the SAME device shows up as duplicate HA cards — this surfaces them (and any
@@ -5483,7 +5499,7 @@ def create_app() -> FastAPI:
         return {"enabled": enabled, "groups": entities.GROUPS}
 
     @app.get("/api/mqtt/entities")
-    def api_mqtt_entities(gateway: str | None = Query(None)):
+    def api_mqtt_entities(gateway: str = Depends(_gateway_q)):
         """Entities for the SELECTED gateway (multi-gateway; mocks included). Values come
         from that gateway's last poll (so a mock shows its synthetic values); the row set
         reflects the enabled publish groups and includes the writable Controls. `publishing`
@@ -5517,7 +5533,7 @@ def create_app() -> FastAPI:
                 "enabled_groups": sorted(enabled), "groups": entities.GROUPS}
 
     @app.post("/api/mqtt/republish")
-    async def api_mqtt_republish(gateway: str | None = Query(None)):
+    async def api_mqtt_republish(gateway: str = Depends(_gateway_q)):
         """Publish this gateway to Home Assistant (again). If it was unpublished, turn
         publishing back ON for it (saved), so it stays published across restarts."""
         s = get_settings()
@@ -5534,7 +5550,7 @@ def create_app() -> FastAPI:
         return {"ok": True, "detail": "Re-publishing HA discovery…"}
 
     @app.post("/api/mqtt/unpublish")
-    async def api_mqtt_unpublish(gateway: str | None = Query(None),
+    async def api_mqtt_unpublish(gateway: str = Depends(_gateway_q),
                                  dry_run: bool = Query(False)):
         """Remove THIS gateway from Home Assistant and keep it removed (#119).
 
@@ -5773,14 +5789,14 @@ def create_app() -> FastAPI:
 
     # -- Logs tab (in-memory ring buffer, P6) ---------------------------------
     @app.get("/api/apower-specs")
-    def api_apower_specs(gateway: str | None = Query(None)):
+    def api_apower_specs(gateway: str = Depends(_gateway_q)):
         """aPower model spec table (usable/rated kWh, kW) + the selected gateway's aPower COUNT,
         so the UI can derive battery capacity = usable_kwh × count (the local API can't read the
         model). Count comes from the cached firmware (FHP_SN array) when available."""
         from . import devicedb as _ddb
         count = None
         try:
-            gw = (get_gateway(gateway) or get_state()) if gateway else get_state()
+            gw = _gw_or_404(gateway)
             fwb = (gw.last_summary or {}).get("firmware") or {}
             fhp = fwb.get("FHP_SN")
             count = len(fhp) if isinstance(fhp, list) else None
@@ -6026,7 +6042,7 @@ def create_app() -> FastAPI:
         end: int | None = Query(None),
         bucket: int | None = Query(None),
         points: int | None = Query(None),
-        gateway: str | None = Query(None),
+        gateway: str = Depends(_gateway_q),
     ):
         """Time-series power history from the bridge's own SQLite store. Never 500s —
         returns an empty series when metrics are disabled or the DB is empty. Pass
@@ -6050,7 +6066,7 @@ def create_app() -> FastAPI:
         day: str | None = Query(None),
         start: float | None = Query(None),
         end: float | None = Query(None),
-        gateway: str | None = Query(None),
+        gateway: str = Depends(_gateway_q),
     ):
         """Directional energy flows (the Sankey's data) for a local day or an
         explicit span. Flows are RECONSTRUCTED from the bridge's power samples by a
@@ -6117,7 +6133,7 @@ def create_app() -> FastAPI:
                        "lat": cfg.pv_latitude, "lon": cfg.pv_longitude}}
 
     @app.post("/api/solar/sync-location")
-    def api_solar_sync_location(gateway: str | None = Query(None)):
+    def api_solar_sync_location(gateway: str = Depends(_gateway_q)):
         """Read the aGate's OWN configured location (cmd 1201 time_location) and save it
         as the solar-forecast location — no cloud needed. NB the firmware key for
         latitude is misspelled 'laitude'."""
@@ -6271,7 +6287,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/admin/metrics/export")
     def api_admin_metrics_export(fmt: str = Query("csv"), hours: int = Query(24),
-                                 gateway: str | None = Query(None),
+                                 gateway: str = Depends(_gateway_q),
                                  start: int | None = Query(None),
                                  end: int | None = Query(None)):
         """Export power samples as CSV or JSON: between ``start`` and ``end`` (epoch
