@@ -181,7 +181,7 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
 
         pub = MqttPublisher(settings, node, device, command_handler=_on_control,
                             groups=entities.enabled_from_store(get_store(settings)),
-                            skip=(entities.NETWORK_KEYS if getattr(gw, "is_mock", False)
+                            skip=(entities.MOCK_ABSENT_KEYS if getattr(gw, "is_mock", False)
                                   else frozenset()))
         pub.start()
         return pub

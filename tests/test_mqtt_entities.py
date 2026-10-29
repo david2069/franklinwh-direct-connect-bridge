@@ -13,8 +13,9 @@ def test_entities_grouped_and_controls_included():
 def test_discovery_configs_filter_by_group():
     all_cfgs, _, _ = entities.discovery_configs("n", {}, "p", "d")   # default groups
     core_cfgs, _, _ = entities.discovery_configs("n", {}, "p", "d", ["core"])
-    # core = soc + mode, plus the bridge-health pair that every group set carries (#271)
-    assert len(core_cfgs) == 2 + len(entities.BRIDGE_ENTITIES) and len(all_cfgs) > len(core_cfgs)
+    # core = soc + mode + grid status + active reserve (#386), plus the bridge-health
+    # pair that every group set carries (#271)
+    assert len(core_cfgs) == 4 + len(entities.BRIDGE_ENTITIES) and len(all_cfgs) > len(core_cfgs)
     # controls only appear when the controls group is enabled
     no_ctrl, _, _ = entities.discovery_configs("n", {}, "p", "d", ["power"])
     assert not any("/switch/" in t or "/select/" in t for t, _ in no_ctrl)
@@ -49,6 +50,8 @@ def test_api_entities_and_groups(tmp_path, monkeypatch):
     e = c.get("/api/mqtt/entities?gateway=gw-mq").json()
     assert "entities" in e and "publishing" in e and "groups" in e
     assert any(x["writable"] for x in e["entities"])               # controls included
+    relay = next(x for x in e["entities"] if x["slug"] == "relay_main1")
+    assert relay["ha_type"] == "binary_sensor"                      # not "sensor" (#386)
     n_all = len(e["entities"])
     assert c.put("/api/mqtt/groups", json={"groups": ["core", "power", "energy", "controls"]}).status_code == 200
     e2 = c.get("/api/mqtt/entities?gateway=gw-mq").json()

@@ -46,7 +46,29 @@ ENTITIES: list[dict[str, Any]] = [
     {"key": "net_if_4g", "name": "4G Link", "unit": None, "device_class": None, "state_class": None, "group": "diagnostic"},
     {"key": "net_cloud", "name": "Cloud Connection", "unit": None, "device_class": None, "state_class": None, "group": "diagnostic"},
     {"key": "net_cloud_endpoint", "name": "Cloud Endpoint", "unit": None, "device_class": None, "state_class": None, "group": "diagnostic"},
+    # From reads every poll already makes (#386 batch 1). Slugs follow the Modbus Bridge
+    # where it has the entity, else FWHAI.
+    {"key": "status_grid_status", "name": "Grid Status", "unit": None, "device_class": "enum", "state_class": None, "group": "core",
+     "options": ["Connected", "SimulatedOffGrid", "Outage", "OffGrid"]},
+    {"key": "active_reserve_pct", "name": "Active Reserve SOC", "unit": "%", "device_class": None, "state_class": "measurement", "group": "core"},
+    {"key": "device_firmware", "name": "Firmware Version", "unit": None, "device_class": None, "state_class": None, "group": "diagnostic"},
+    # 1707 relays. Named as the Solar tab names them: which physical relay FWHAI's cloud
+    # "Grid Relay 1" is has not been checked, so its slugs are not borrowed.
+    {"key": "relay_main1", "name": "Main Relay 1", "ha_type": "binary_sensor", "unit": None, "device_class": "power", "state_class": None, "group": "diagnostic"},
+    {"key": "relay_main2", "name": "Main Relay 2", "ha_type": "binary_sensor", "unit": None, "device_class": "power", "state_class": None, "group": "diagnostic"},
+    {"key": "relay_grid2", "name": "Grid Relay 2", "ha_type": "binary_sensor", "unit": None, "device_class": "power", "state_class": None, "group": "diagnostic"},
+    {"key": "relay_black_start", "name": "Black Start Relay", "ha_type": "binary_sensor", "unit": None, "device_class": "power", "state_class": None, "group": "diagnostic"},
 ]
+
+#: 1707 field -> relay entity key. raw 1 is FranklinWH's "OPEN", which is conducting
+#: (solar.py _relay; mainRelay1Status read 0 through a real island, docs/OFFGRID_DESIGN.md).
+RELAY_KEYS = {"mainRelay1Status": "relay_main1", "mainRelay2Status": "relay_main2",
+              "gridRelay2": "relay_grid2", "blackStartRelay": "relay_black_start"}
+
+#: off_grid_kind (client._off_grid_kind) -> Grid Status. FWHAI's values. "Outage" means
+#: islanded with no request we know about; a real outage has not been measured yet
+#: (docs/OFFGRID_DESIGN.md §3). "OffGrid" is islanded when 1723 could not be read.
+GRID_STATUS = {"simulated": "SimulatedOffGrid", "outage": "Outage", None: "OffGrid"}
 
 #: The three operating work modes. HA shows these names; the bridge maps the
 #: chosen one to the stable `scheduling_type` alias, never to the site-specific
@@ -245,6 +267,21 @@ def state_payload(summary: dict) -> dict[str, Any]:
         st["ambient_temp_c"] = t_amb
     for n, on in (summary.get("circuits_on") or {}).items():
         st[f"circuit_{n}_on"] = bool(on)        # the switches' state_key (C1)
+    og = st.get("off_grid")
+    if og is not None:
+        st["status_grid_status"] = (GRID_STATUS.get(st.get("off_grid_kind"), "OffGrid")
+                                    if og else "Connected")
+    active = next((m for m in (summary.get("mode") or {}).get("modes") or []
+                   if m.get("active")), None)
+    if active and active.get("reserved_soc") is not None:
+        st["active_reserve_pct"] = active["reserved_soc"]
+    fw = (summary.get("firmware") or {}).get("IBG_VER")
+    if fw:
+        st["device_firmware"] = fw
+    for raw, key in RELAY_KEYS.items():
+        v = (summary.get("relays") or {}).get(raw)
+        if v is not None:
+            st[key] = "ON" if int(v) == 1 else "OFF"
     bw = st.get("battery_w")
     if bw is not None:
         # Same convention as build_state: negative battery power is charging.
@@ -310,6 +347,8 @@ def device_info(node: str, serial: str, firmware: str | None = None, *,
 
 #: Keys that only a REAL gateway has a source for (the emulator models no network, #134).
 NETWORK_KEYS = frozenset(e["key"] for e in ENTITIES if e["key"].startswith("net_"))
+#: ...nor the 1707 relays (#386). A mock gateway publishes none of these.
+MOCK_ABSENT_KEYS = NETWORK_KEYS | frozenset(RELAY_KEYS.values())
 
 
 def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: str, groups=None,
@@ -337,6 +376,8 @@ def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: st
             cfg["device_class"] = e["device_class"]
         if e["state_class"]:
             cfg["state_class"] = e["state_class"]
+        if e.get("options"):
+            cfg["options"] = e["options"]
         if e.get("group") == "diagnostic":
             # HA files these under the device page's "Diagnostic" card, as the Modbus
             # Bridge does (#121). A display category, not identity: ids are unchanged.
@@ -345,7 +386,8 @@ def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: st
         if prec is not None:
             # Display only: HA keeps the full value in history and statistics (#114).
             cfg["suggested_display_precision"] = prec
-        configs.append((f"{discovery_prefix}/sensor/{node}/{e['key']}/config", cfg))
+        ha_type = e.get("ha_type", "sensor")
+        configs.append((f"{discovery_prefix}/{ha_type}/{node}/{e['key']}/config", cfg))
 
     # Controls. Each gets its own command topic; the publisher subscribes to
     # `<prefix>/<node>/control/+/set` and routes by the key in the topic.

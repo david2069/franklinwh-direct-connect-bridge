@@ -61,7 +61,7 @@ for the node id:
 | State (all values, one JSON object) | `franklinwh-local/<node>/state` |
 | Availability | `franklinwh-local/<node>/availability` |
 | Commands in | `franklinwh-local/<node>/control/<key>/set` |
-| Discovery configs | `homeassistant/<sensor\|select\|switch>/<node>/<key>/config` |
+| Discovery configs | `homeassistant/<sensor\|binary_sensor\|select\|switch>/<node>/<key>/config` |
 
 **The node id is your gateway's serial number, lower-cased.** Each discovery config pulls
 its own field out of the shared state JSON with a `value_template`, and availability is a
@@ -109,6 +109,10 @@ Measured live on 2026-10-15: **21 entities — 17 sensors and 4 controls.**
 | `ambient_temp_c` | Ambient Temperature | °C | diagnostic |
 | `run_status` | Run Status | — | diagnostic |
 | `latency_ms` | Round-trip Latency | ms | diagnostic |
+| `status_grid_status` | Grid Status (Connected / SimulatedOffGrid / Outage / OffGrid) | — | core |
+| `active_reserve_pct` | Active Reserve SOC | % | core |
+| `device_firmware` | Firmware Version | — | diagnostic |
+| `relay_main1`, `relay_main2`, `relay_grid2`, `relay_black_start` | Main Relay 1, Main Relay 2, Grid Relay 2, Black Start Relay (binary sensors) | — | diagnostic |
 
 The six daily `kWh` counters are published as `total_increasing` with the `energy` device
 class, which is what the **Home Assistant Energy dashboard** needs. They come out of the
@@ -116,6 +120,13 @@ same payload the bridge already polls, so they cost nothing extra.
 
 `battery_status` is derived from the sign of battery power: negative is charging,
 positive is discharging, zero is standby.
+
+**Grid Status** is *SimulatedOffGrid* when the aGate is off grid because someone asked it
+to be, and *Outage* when it is off grid with no request the bridge knows about. A real
+outage has not been measured yet, so *Outage* means "not requested", not a confirmed
+outage. *OffGrid* means off grid with the cause unknown. **Active Reserve SOC** is the
+reserve of the operating mode in use. A relay is on when it conducts. Mock gateways don't
+publish the relays, because the emulator doesn't model them.
 
 ### Controls (writable)
 

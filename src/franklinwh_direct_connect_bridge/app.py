@@ -5529,7 +5529,7 @@ def create_app() -> FastAPI:
             g = e.get("group", "core")
             if g not in enabled:
                 continue
-            rows.append({"slug": e["key"], "name": e["name"], "ha_type": "sensor", "writable": False,
+            rows.append({"slug": e["key"], "name": e["name"], "ha_type": e.get("ha_type", "sensor"), "writable": False,
                          "group": g, "diagnostic": g == "diagnostic", "unit": e.get("unit"),
                          "value": st.get(e["key"]), "stat_key": e["key"], "state_topic": state_topic,
                          "command_topic": None, "options": []})

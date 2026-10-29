@@ -31,9 +31,9 @@ def test_the_poll_succeeds(mock_summary):
 
 def test_every_sensor_template_key_is_published(mock_summary):
     st = entities.state_payload(mock_summary)
-    # A mock publishes no network entities (no source, #134), so none are expected here.
+    # A mock publishes no network (#134) or relay (#386) entities: no source.
     missing = [e["key"] for e in entities.ENTITIES
-               if e["key"] not in st and e["key"] not in entities.NETWORK_KEYS]
+               if e["key"] not in st and e["key"] not in entities.MOCK_ABSENT_KEYS]
     assert not missing, f"entities whose template key is never published: {missing}"
 
 
@@ -41,7 +41,7 @@ def test_published_values_are_real_values_not_none(mock_summary):
     """A key that is present but always None is the same defect in disguise."""
     st = entities.state_payload(mock_summary)
     nones = [e["key"] for e in entities.ENTITIES
-             if st.get(e["key"]) is None and e["key"] not in entities.NETWORK_KEYS]
+             if st.get(e["key"]) is None and e["key"] not in entities.MOCK_ABSENT_KEYS]
     assert not nones, f"published as null: {nones}"
 
 
