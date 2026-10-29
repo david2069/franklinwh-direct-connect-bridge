@@ -168,13 +168,20 @@ def still_at_address(host: str | None) -> bool:
 
 
 def rediscover(s: Settings, host: str | None = None,
-               serial: str | None = None) -> str | None:
-    """Scan the subnet for the aGate (it can move IP on reboot / DHCP). Prefer the host
-    whose serial matches the one we've seen. Returns the new host (or None); the caller
-    adopts it. Back-compat: a single-arg call (host=None) still updates the default
-    gateway's ``active_host`` so existing behaviour/tests are preserved."""
+               serial: str | None = None, taken: set[str] | frozenset[str] = frozenset()
+               ) -> str | None:
+    """Scan the subnet for the aGate (it can move IP on reboot / DHCP). Adopt only the host
+    whose serial is this gateway's own, and never one in ``taken`` (hosts other registered
+    gateways use) (#356). Returns the new host (or None); the caller adopts it. Back-compat:
+    a single-arg call (host=None) is for the default gateway, uses its serial and updates
+    its ``active_host``."""
     target = host or active_host(s)
-    known_serial = serial if serial is not None else get_state().serial
+    # Only the default gateway's own call may use the default's serial; another gateway
+    # whose serial was never read has nothing to match, so it does not sweep (#356).
+    known_serial = serial if host is not None else (serial or get_state().serial)
+    if not known_serial:
+        log.warning("not re-discovering %s: its serial has not been read yet", target)
+        return None
     subnet = s.fwh_subnet or (target.rsplit(".", 1)[0] + ".0/24")
     try:
         targets = discover.expand_targets(subnet)
@@ -186,12 +193,10 @@ def rediscover(s: Settings, host: str | None = None,
     # minute during an outage (#123).
     results = discover.scan(targets, ports=(discover.PORT_SENDMQTT,), timeout=1.0, probe=True)
     hits = [r for r in results if getattr(r, "sendmqtt_confirmed", False)]
-    chosen = None
-    if known_serial:
-        chosen = next((r.host for r in hits
-                       if (r.manifest or {}).get("IBG_SN") == known_serial), None)
-    if not chosen and hits:
-        chosen = hits[0].host
+    taken_ips = {h.split(":")[0] for h in taken if h}
+    chosen = next((r.host for r in hits
+                   if (r.manifest or {}).get("IBG_SN") == known_serial
+                   and r.host.split(":")[0] not in taken_ips), None)
     if chosen and chosen != target:
         log.warning("aGate moved: %s → %s", target, chosen)
         if host is None:            # back-compat: single-arg adopts on the default gateway

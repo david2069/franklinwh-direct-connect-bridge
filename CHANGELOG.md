@@ -35,6 +35,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   saved is kept. The unused `release_stale()`, which would have released any force, is gone.
 
 ### Fixed
+- **Re-discovery adopts only this gateway's own aGate** (#356). When a gateway stopped
+  answering, the network sweep could pick another aGate: a gateway whose serial was never
+  read used the default gateway's serial, and with no serial match the first aGate that
+  answered was taken. Two gateways could then poll the same aGate, and forces and
+  schedules acted on the wrong battery. Now only an aGate with the gateway's own serial is
+  adopted, never an address another gateway uses, and a gateway with no serial yet does
+  not sweep. The "FranklinWH aGate moved" notice names the gateway.
 - **Site view no longer writes to the default gateway** (#350). Site view shows every
   gateway, but some per-gateway controls (the top bar's operating mode, grid limits, the
   raw console and Terminal, MQTT Republish/Unpublish, battery recording, Energy costs

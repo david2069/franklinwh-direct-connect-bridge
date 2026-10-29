@@ -22,7 +22,7 @@ from . import notify_engine
 from . import workers as _workers
 from .publish import entities
 from .publish.mqtt_publisher import MqttPublisher
-from .state import GatewayState
+from .state import GatewayState, gateways as _all_gateways
 
 log = logging.getLogger("franklinwh_direct_connect_bridge.poller")
 
@@ -501,13 +501,17 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                         else:
                             next_sweep = now + sweep_gap
                             sweep_gap = min(sweep_gap * 2, SWEEP_GAP_MAX_S)
+                            # Hosts the other gateways use are never adopted (#356).
+                            taken = {h for g in _all_gateways() if g.id != gw.id
+                                     for h in (g.active_host, g.configured_host) if h}
                             newhost = await asyncio.to_thread(
-                                client.rediscover, settings, gw.active_host, gw.serial)
+                                client.rediscover, settings, gw.active_host, gw.serial,
+                                taken=taken)
                             if newhost and newhost != gw.active_host:   # it really moved
                                 gw.active_host = newhost
                                 await asyncio.to_thread(
                                     notifier.notify, "FranklinWH aGate moved",
-                                    f"Re-discovered on the LAN at {newhost}.")
+                                    f"{gw.label or gw.id} re-discovered on the LAN at {newhost}.")
             except Exception as e:  # noqa: BLE001
                 log.warning("[%s] poll failed: %s", gw.id, e)
                 if pub:
