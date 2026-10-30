@@ -78,6 +78,7 @@ class MetricsStore:
         self._migrate_sites()
         self._migrate_meters()
         self._migrate_gateway_meter()
+        self._migrate_gateway_modbus_port()
         self._migrate_utilities()
         self._migrate_tariffs()
         self._migrate_dispatches()
@@ -386,7 +387,7 @@ class MetricsStore:
         return rows[0] if rows else None
 
     def create_gateway(self, *, gw_id: str, label: str, host: str = "", port: int = 9000,
-                       is_default: bool = False, enabled: bool = True, is_mock: bool = False,
+                       modbus_port: int = 502, is_default: bool = False, enabled: bool = True, is_mock: bool = False,
                        mock_seed: int | None = None, mock_units: int = 1,
                        publish_ha: bool = True, description: str = "",
                        now: float | None = None) -> dict:
@@ -395,16 +396,16 @@ class MetricsStore:
             if is_default:
                 self._conn.execute("UPDATE gateways SET is_default=0")
             self._conn.execute(
-                "INSERT INTO gateways(id,label,host,port,is_default,enabled,is_mock,"
-                "mock_seed,mock_units,publish_ha,description,created_at,updated_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (gw_id, label, host, int(port), int(is_default), int(enabled), int(is_mock),
+                "INSERT INTO gateways(id,label,host,port,modbus_port,is_default,enabled,"
+                "is_mock,mock_seed,mock_units,publish_ha,description,created_at,updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (gw_id, label, host, int(port), int(modbus_port), int(is_default), int(enabled), int(is_mock),
                  mock_seed, int(mock_units), int(publish_ha), description, ts, ts))
             self._conn.commit()
         return self.gateway(gw_id)
 
     def update_gateway(self, gw_id: str, **fields) -> dict | None:
-        allowed = {"label", "host", "port", "is_default", "enabled", "is_mock",
+        allowed = {"label", "host", "port", "modbus_port", "is_default", "enabled", "is_mock",
                    "mock_seed", "mock_units", "publish_ha", "description", "meter_id"}
         sets = {k: v for k, v in fields.items() if k in allowed and v is not None}
         if not sets:
@@ -415,7 +416,7 @@ class MetricsStore:
             for k in ("is_default", "enabled", "is_mock", "publish_ha"):
                 if k in sets:
                     sets[k] = int(bool(sets[k]))
-            for k in ("port", "mock_units"):
+            for k in ("port", "modbus_port", "mock_units"):
                 if k in sets:
                     sets[k] = int(sets[k])
             cols = ", ".join(f"{k}=?" for k in sets)
@@ -500,6 +501,15 @@ class MetricsStore:
                    is_default INTEGER NOT NULL DEFAULT 0,
                    created_at REAL NOT NULL DEFAULT 0, updated_at REAL NOT NULL DEFAULT 0)""")
         self._conn.commit()
+
+    def _migrate_gateway_modbus_port(self) -> None:
+        """Each gateway's Modbus TCP Server port (#364); ``port`` stays Direct Connect's.
+        Additive column on the existing gateways table."""
+        cols = [r[1] for r in self._conn.execute("PRAGMA table_info(gateways)").fetchall()]
+        if "modbus_port" not in cols:
+            self._conn.execute(
+                "ALTER TABLE gateways ADD COLUMN modbus_port INTEGER NOT NULL DEFAULT 502")
+            self._conn.commit()
 
     def _migrate_gateway_meter(self) -> None:
         """Gateway → Meter link (a gateway connects to exactly one meter; its site is

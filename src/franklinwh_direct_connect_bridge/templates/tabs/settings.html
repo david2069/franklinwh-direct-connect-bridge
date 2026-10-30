@@ -1108,8 +1108,10 @@
               <input class="form-control form-control-sm block mt-1" style="width:10rem" x-model="gwAdd.label" placeholder="Home"></label>
             <label class="text-xs" style="color:var(--text-secondary)">Host
               <input class="form-control form-control-sm block mt-1" style="width:11rem" x-model="gwAdd.host" placeholder="192.0.2.110"></label>
-            <label class="text-xs" style="color:var(--text-secondary)">Port
-              <input type="number" class="form-control form-control-sm block mt-1" style="width:5.5rem" x-model.number="gwAdd.port"></label>
+            <label class="text-xs" style="color:var(--text-secondary)">Direct Connect port
+              <input type="number" min="1" max="65535" class="form-control form-control-sm block mt-1" style="width:5.5rem" x-model.number="gwAdd.port"></label>
+            <label class="text-xs" style="color:var(--text-secondary)">Modbus port
+              <input type="number" min="1" max="65535" class="form-control form-control-sm block mt-1" style="width:5.5rem" x-model.number="gwAdd.modbus_port"></label>
             <button class="btn btn-primary btn-sm" @click="saveAddGateway()">Add</button>
           </div>
         </div>
@@ -1168,8 +1170,12 @@
               <input class="form-control form-control-sm block mt-1 w-full" x-model="gwEdit.host"></label>
           </template>
           <template x-if="!gwEdit.is_mock">
-            <label class="text-xs" style="color:var(--text-secondary)">Port
-              <input type="number" class="form-control form-control-sm block mt-1 w-full" x-model.number="gwEdit.port"></label>
+            <label class="text-xs" style="color:var(--text-secondary)">Direct Connect port
+              <input type="number" min="1" max="65535" class="form-control form-control-sm block mt-1 w-full" x-model.number="gwEdit.port"></label>
+          </template>
+          <template x-if="!gwEdit.is_mock">
+            <label class="text-xs" style="color:var(--text-secondary)">Modbus port
+              <input type="number" min="1" max="65535" class="form-control form-control-sm block mt-1 w-full" x-model.number="gwEdit.modbus_port"></label>
           </template>
           <template x-if="gwEdit.is_mock">
             <label class="text-xs" style="color:var(--text-secondary)">aPowers

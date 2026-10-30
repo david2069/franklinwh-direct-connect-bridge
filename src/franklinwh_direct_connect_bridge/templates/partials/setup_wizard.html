@@ -151,6 +151,12 @@
                 <label class="text-xs">Address
                   <input class="form-control form-control-sm block mt-1" style="width:11rem"
                          placeholder="192.0.2.110" x-model="manual.host"></label>
+                <label class="text-xs">Direct Connect port
+                  <input type="number" min="1" max="65535" class="form-control form-control-sm block mt-1"
+                         style="width:5.5rem" x-model.number="manual.port"></label>
+                <label class="text-xs">Modbus port
+                  <input type="number" min="1" max="65535" class="form-control form-control-sm block mt-1"
+                         style="width:5.5rem" x-model.number="manual.modbus_port"></label>
                 <button class="btn btn-secondary btn-sm" :disabled="busy || !manual.host"
                         @click="addManual()">Add by address</button>
               </div>

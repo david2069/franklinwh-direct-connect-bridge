@@ -312,7 +312,7 @@ function settingsTab() {
       } catch (e) { this.gwErr = e.message; }
     },
 
-    openAddGateway() { this.gwErr = ''; this.scanCands = null; this.gwAdd = { label: '', host: '', port: 9000, enabled: true }; },
+    openAddGateway() { this.gwErr = ''; this.scanCands = null; this.gwAdd = { label: '', host: '', port: 9000, modbus_port: 502, enabled: true }; },
     cancelAddGateway() { this.gwAdd = null; },
     async saveAddGateway() {
       if (!this.canWrite()) { this.gwErr = 'Enable writes (ALLOW_WRITES) to add a gateway.'; return; }
@@ -327,11 +327,15 @@ function settingsTab() {
     },
 
     // ── Edit Gateway modal ──
-    gwEdit: { open: false, id: '', label: '', host: '', port: 9000, description: '', publish_ha: true, is_mock: false, mock_units: 1, is_default: false, enabled: true, was_enabled: true, meter_id: '' },
+    gwEdit: { open: false, id: '', label: '', host: '', port: 9000, modbus_port: 502, description: '', publish_ha: true, is_mock: false, mock_units: 1, is_default: false, enabled: true, was_enabled: true, meter_id: '' },
     gwTest: null, gwTesting: false, gwNote: '',
     openEditGateway(gw) {
       this.gwErr = ''; this.gwNote = ''; this.gwTest = null;
-      this.gwEdit = { open: true, id: gw.id, label: gw.label, host: gw.host || '', port: gw.port || 9000,
+      // The roster shows a non-standard port in the address (host:port, #364); the form
+      // has its own port fields, so the host field gets the host alone.
+      const port = gw.port || 9000;
+      const host = (gw.host || '').endsWith(':' + port) ? gw.host.slice(0, -(String(port).length + 1)) : (gw.host || '');
+      this.gwEdit = { open: true, id: gw.id, label: gw.label, host, port, modbus_port: gw.modbus_port || 502,
         description: gw.description || '', publish_ha: !!gw.publish_ha, is_mock: !!gw.is_mock,
         mock_units: gw.mock_units || 1, is_default: !!gw.is_default, enabled: !!gw.enabled,
         was_enabled: !!gw.enabled, meter_id: gw.meter_id || '' };
@@ -847,7 +851,7 @@ function settingsTab() {
       const body = e.is_mock
         ? { label: e.label, description: e.description, publish_ha: e.publish_ha,
             mock_units: Math.max(1, Math.min(8, e.mock_units || 1)) }
-        : { label: e.label, host: e.host, port: e.port, description: e.description, publish_ha: e.publish_ha };
+        : { label: e.label, host: e.host, port: e.port, modbus_port: e.modbus_port, description: e.description, publish_ha: e.publish_ha };
       if (e.enabled !== e.was_enabled) body.enabled = e.enabled;
       if (e.meter_id) body.meter_id = e.meter_id;
       this.gwErr = ''; this.gwNote = '';
