@@ -11,6 +11,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+- **A schedule's Stop or Pause no longer forgets a force it failed to release** (#366).
+  Both ended the dispatch row even when Release failed, so a force still running on the
+  aGate was invisible to the boot reconcile and the conflict check. Now, like Delete, the
+  row stays active, Stop answers `stopped: false` with the failure (shown as an error in
+  the Scheduler tab), and Pause leaves the run unpaused.
+- **Shutdown waits for a running scheduler tick before releasing forces** (#367). A tick
+  in progress could arm a force after the release, and that force kept running until its
+  watchdog deadline. The wait is capped at 8 s, inside Home Assistant's 10 s stop timeout.
+
 ## [0.5.18] — 2026-10-30
 
 ### Breaking
