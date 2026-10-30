@@ -11,6 +11,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+- **Home Assistant gets Grid Status, Active Reserve SOC, Firmware Version and four relay
+  sensors** (#386). Grid Status says whether the aGate is connected, off grid on request,
+  or off grid without a request. Active Reserve SOC is the reserve of the mode in use.
+  The relays are Main Relay 1 and 2, Grid Relay 2 and Black Start Relay. All of them come
+  from reads the bridge already makes every poll; no new reads of the aGate.
+
+## [0.5.18] — 2026-10-30
+
 ### Breaking
 - **Every API call that acts on an aGate must name its gateway** (#379). `?gateway=`
   takes the gateway's ID or its locked aGate serial. Leaving it out used to mean the default
@@ -27,11 +36,6 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   status is stored only on the gateway with that serial, never on the default.
 
 ### Added
-- **Home Assistant gets Grid Status, Active Reserve SOC, Firmware Version and four relay
-  sensors** (#386). Grid Status says whether the aGate is connected, off grid on request,
-  or off grid without a request. Active Reserve SOC is the reserve of the mode in use.
-  The relays are Main Relay 1 and 2, Grid Relay 2 and Black Start Relay. All of them come
-  from reads the bridge already makes every poll; no new reads of the aGate.
 - **Scheduler Monitor** (#345). A Monitor card at the top of Scheduler → History shows
   why each schedule is or is not running: idle, blocked (with the failing conditions and
   their live values), holding, ready, running, skipped, deferred, retrying or done. One
