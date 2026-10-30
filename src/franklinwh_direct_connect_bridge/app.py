@@ -1256,6 +1256,15 @@ def create_app() -> FastAPI:
             _alert_stop.set()
             _sup_stop.set()
             _sup_task.cancel()
+            # Let a tick already running finish before releasing (#367): it can arm a
+            # force after release_held has read the held hosts. Bounded, because Home
+            # Assistant kills the add-on 10 s after asking it to stop.
+            try:
+                await asyncio.wait_for(asyncio.shield(_sched_task), timeout=8.0)
+            except asyncio.TimeoutError:
+                log.warning("scheduler tick still running at shutdown; releasing anyway")
+            except Exception as e:  # noqa: BLE001
+                log.warning("scheduler stopped with an error: %s", e)
             # Release any dispatch WE are holding before the bridge stops — a running
             # bridge is the only thing that can release it (hardware timer is cosmetic).
             try:
@@ -3408,9 +3417,20 @@ def create_app() -> FastAPI:
         mine = [d for d in st.active_dispatches()
                 if d.get("schedule_id") == sid and d.get("host")]
         if mine:
+            # Like DELETE (#195): a row ends only when its Release succeeded, so a force
+            # still running on the aGate stays visible to reconcile and conflicts (#366).
+            failed = []
             for d in mine:
                 out = battery_control.execute("Release", host=d["host"])
-                st.end_dispatch(d["id"], status="stopped")
+                if out.get("ok"):
+                    st.end_dispatch(d["id"], status="stopped")
+                else:
+                    failed.append(out.get("result", ""))
+            if failed:
+                st.log_schedule_event(sid, entry["name"], "stop_failed",
+                                      f"release failed, dispatch kept: {'; '.join(failed)}")
+                return {"stopped": False, "failed": True,
+                        "result": "release failed: " + "; ".join(failed)}
             st.log_schedule_event(sid, entry["name"], "stopped",
                                   f"dispatch released by user: {out.get('result', '')}")
             return {"stopped": True, "result": out.get("result", "")}
@@ -3443,7 +3463,13 @@ def create_app() -> FastAPI:
         released = ""
         for d in st.active_dispatches():
             if d.get("schedule_id") == sid and d.get("host"):       # its own aGate (#192)
-                released = battery_control.execute("Release", host=d["host"]).get("result", "")
+                out = battery_control.execute("Release", host=d["host"])
+                released = out.get("result", "")
+                if not out.get("ok"):
+                    # Control was not released, so the run is not paused (#366).
+                    st.log_schedule_event(sid, entry["name"], "pause_failed",
+                                          f"release failed, run kept active: {released}")
+                    return {"paused": False, "detail": f"release failed: {released}"}
                 st.end_dispatch(d["id"], status="paused")
         st.pause_occurrence(occ["id"], reason="paused by user")
         st.log_schedule_event(sid, entry["name"], "paused",

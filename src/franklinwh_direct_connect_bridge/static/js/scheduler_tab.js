@@ -553,7 +553,7 @@ document.addEventListener('alpine:init', () => {
         const r = await fetch(`api/schedules/${s.id}/stop`, { method: 'POST' });
         const d = await r.json();
         this.$store.app.toast(d.stopped ? `Stopped "${s.name}"` : (d.result || 'nothing to stop'),
-                              d.stopped ? 'success' : 'info');
+                              d.stopped ? 'success' : (d.failed ? 'error' : 'info'));
         await this.load();
       } catch (e) { this.$store.app.toast(`Stop failed: ${e.message}`, 'error'); }
     },
