@@ -5239,14 +5239,24 @@ def create_app() -> FastAPI:
         release, target-SoC) via the resolved Modbus provider. This is a HARD WALL for the
         local API, so it delegates to an installed Modbus Bridge (whose watchdog makes it
         safe). Gated by allow_writes. 503 = no provider, 501 = library path not wired,
-        422 = bad action, 502 = provider unreachable."""
+        422 = bad action, 409 = named gateway the bridge cannot address, 502 = provider
+        unreachable."""
         _guard_writes()
         gw = _gw_or_404(req.gateway_id).id     # required: never the default gateway (#379)
+        s = get_settings()
+        try:
+            # Before the provider probe signs in to the Modbus Bridge: a request that will
+            # be refused must not reach the device (the 404 above has the same property).
+            providers.ensure_gateway_targetable(s, gw or None)
+        except providers.GatewayNotTargetable as e:
+            raise HTTPException(status_code=409, detail=str(e))
         try:
             return providers.dispatch(
-                get_settings(), req.action, power_w=req.power_w, power_pct=req.power_pct,
+                s, req.action, power_w=req.power_w, power_pct=req.power_pct,
                 duration_s=req.duration_s, target_soc=req.target_soc,
                 gateway_id=gw or None)
+        except providers.GatewayNotTargetable as e:
+            raise HTTPException(status_code=409, detail=str(e))
         except providers.DispatchUnavailable as e:
             raise HTTPException(status_code=503, detail=str(e))
         except ValueError as e:

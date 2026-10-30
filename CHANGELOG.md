@@ -11,6 +11,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+- **A dispatch naming a gateway the Modbus Bridge cannot address is refused** (#365). The
+  Bridge's `/api/command` has no gateway selector and this bridge keeps no record of which
+  aGate that Bridge polls, so `POST /api/dispatch` with a `gateway_id` other than the stored
+  default used to sign in to the Bridge and dispatch anyway, echoing the requested id. It
+  now answers 409 before any provider I/O and names the stored default gateway; Battery
+  Control on the other gateway's own page acts on the gateway on screen (#375).
+
 ## [0.5.18] — 2026-10-30
 
 ### Breaking

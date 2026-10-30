@@ -274,3 +274,97 @@ def test_set_reserve_needs_the_gateways_serial(monkeypatch):
             providers.set_reserve(s, "self", 10, serial=blank); assert False
         except ValueError as e:
             assert "serial" in str(e)
+
+
+# ── #365: a named gateway the Modbus Bridge cannot address is refused ────────
+def test_dispatch_refuses_a_gateway_the_bridge_cannot_target(monkeypatch):
+    """#365: the Modbus Bridge's /api/command has no gateway selector and this bridge
+    cannot verify which aGate it polls. Naming a different gateway must be refused, not
+    silently dispatched to the wrong battery."""
+    from types import SimpleNamespace
+
+    from franklinwh_direct_connect_bridge import state as state_mod
+
+    def _must_not_probe(*a, **k):
+        raise AssertionError("a refused gateway must not sign in to the Bridge")
+
+    monkeypatch.setattr(providers.modbus_bridge, "status", _must_not_probe)
+    monkeypatch.setattr(state_mod, "default_gateway",
+                        lambda: SimpleNamespace(id="gw-a"))
+
+    def _must_not_dispatch(*a, **k):
+        raise AssertionError("a refused gateway must not reach the Bridge")
+
+    monkeypatch.setattr(providers, "_post_command", _must_not_dispatch)
+
+    with pytest.raises(providers.GatewayNotTargetable) as exc:
+        providers.dispatch(_s(modbus_bridge_url="http://mb:8101"), "charge", gateway_id="gw-b")
+    assert "gw-b" in str(exc.value) and "gw-a" in str(exc.value)
+
+
+def test_dispatch_default_gateway_is_honoured_and_echoed(monkeypatch):
+    from types import SimpleNamespace
+
+    from franklinwh_direct_connect_bridge import state as state_mod
+
+    monkeypatch.setattr(providers.modbus_bridge, "status",
+                        lambda *a, **k: {"state": "ready", "reason": None,
+                                         "capabilities": ["control"]})
+    monkeypatch.setattr(state_mod, "default_gateway",
+                        lambda: SimpleNamespace(id="gw-a"))
+    monkeypatch.setattr(providers, "_post_command",
+                        lambda base, slug, value, **k: {"ok": True})
+    out = providers.dispatch(_s(modbus_bridge_url="http://mb:8101"), "release",
+                             gateway_id="gw-a")
+    assert out["ok"] is True and out["gateway_id"] == "gw-a"
+
+
+@pytest.fixture
+def two_gateways():
+    """gw-a (the stored default) and gw-b, registered for the endpoint contract test."""
+    state.register_gateway("gw-a", "10.0.0.11", "A")
+    state.register_gateway("gw-b", "10.0.0.12", "B")
+    state.set_default("gw-a")
+    yield ("gw-a", "gw-b")
+    state.set_default(None)
+    state.unregister_gateway("gw-a")
+    state.unregister_gateway("gw-b")
+
+
+def test_dispatch_endpoint_refuses_the_wrong_gateway_before_provider_io(
+        writes_on, monkeypatch, two_gateways):
+    """#365 (endpoint contract): 409, and before the provider probe signs in to the Bridge.
+    gateway_id is required since #385, so the request names gw-b explicitly."""
+    def _must_not_probe(*a, **k):
+        raise AssertionError("a refused gateway must not sign in to the Bridge")
+
+    monkeypatch.setattr(providers.modbus_bridge, "status", _must_not_probe)
+    monkeypatch.setenv("MODBUS_BRIDGE_URL", "http://mb:8101")
+    config._settings = None
+
+    c = TestClient(app_module.create_app())
+    r = c.post("/api/dispatch", json={"action": "charge", "gateway_id": "gw-b"})
+    assert r.status_code == 409
+    detail = r.json()["detail"]
+    assert "gw-b" in detail and "gw-a" in detail
+
+
+def test_dispatch_endpoint_dispatches_the_default_gateway(
+        writes_on, monkeypatch, two_gateways):
+    """The other case stands: naming the stored default is dispatched and echoed."""
+    monkeypatch.setattr(providers.modbus_bridge, "status",
+                        lambda *a, **k: {"state": "ready", "reason": None,
+                                         "capabilities": ["control"]})
+    calls = []
+    monkeypatch.setattr(providers, "_post_command",
+                        lambda base, slug, value, **k:
+                        calls.append((slug, value)) or {"ok": True})
+    monkeypatch.setenv("MODBUS_BRIDGE_URL", "http://mb:8101")
+    config._settings = None
+
+    c = TestClient(app_module.create_app())
+    r = c.post("/api/dispatch", json={"action": "release", "gateway_id": "gw-a"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True and body["gateway_id"] == "gw-a"
+    assert calls == [("battery_command", "Release")]
