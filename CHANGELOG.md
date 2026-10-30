@@ -11,6 +11,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+- **Cloud status follows a cloud gateway changed in Settings** (#357). The cloud status
+  loop fixed its target serial when it started, while each poll read the current one. After
+  the cloud gateway was changed in Settings, the new aGate's VPP and mode status was shown
+  on the gateway it replaced until the add-on restarted. Both now come from the same
+  settings on every pass. (The rest of #357 was already fixed: the VPP monitor watches
+  every gateway with its own state (#388), and cloud status attaches by serial, never to the
+  first gateway (#387).)
+
 ### Docs
 - **The README no longer credits the library with the force watchdog.** The bridge gives
   `franklinwh-modbus` no duration; its own watchdog is the only safety. The README also

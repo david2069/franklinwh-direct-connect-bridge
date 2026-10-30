@@ -1145,24 +1145,16 @@ def create_app() -> FastAPI:
             except ValueError:
                 interval = 300
             _t.sleep(8)
-            want = (get_settings().fwh_cloud_gateway or "").upper()
             _last_status = None   # only log cloud status on a real CHANGE (see Logs policy)
             _fail_streak = 0      # for failure VISIBILITY without 5-min spam (onset + recovery)
             while True:
                 _workers.registry.beat("cloud-status", state=_workers.WorkerState.RUNNING)
                 ok = False
                 try:
-                    data = cloud_status.poll(get_settings())
+                    data, target = cloud_status.poll_and_attach(get_settings())
                     if data is not None:
                         ok = True
-                        # Store on the gateway whose locked serial is the cloud's, and
-                        # on no other: never the default gateway (#379).
-                        target = state.gateway_by_serial(want)
                         if target is not None:
-                            target.cloud_vpp = bool(data["is_vpp"])
-                            target.cloud_mode = data.get("effective_mode") or ""
-                            target.cloud_programme = data.get("programme")
-                            target.cloud_ts = data["ts"]
                             # Log ONLY a real state change — not every 5-min poll (matches the
                             # Logs policy: startup, state changes and errors). A transient unknown
                             # (empty mode -> "?") is skipped so it can't flap the log.
