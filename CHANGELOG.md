@@ -23,6 +23,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - **The Modbus client (this bridge) uses the gateway's Modbus port.** It used to take the
   port from the gateway's address, so a gateway entered as `host:9020` was sent Modbus on
   9020. The Modbus host override still applies to the active gateway only.
+- **Several gateways can share one IP address** on different ports (an emulator host).
+  Forces, their watchdogs and SoC readers are now held per gateway address (host and
+  port), and Modbus reachability per Modbus target, instead of per IP, so a force or a
+  failed connection on one no longer shows on, replaces or ends another's. Inverter
+  ratings are cached per gateway too.
 
 ### Docs
 - **The README no longer credits the library with the force watchdog.** The bridge gives

@@ -4323,7 +4323,7 @@ def create_app() -> FastAPI:
         line_v = _num(rg("gridLineVol"))
         chg_w, dis_w = (None, None)
         try:
-            chg_w, dis_w = battery_control.cached_ratings((host or "").split(":")[0])
+            chg_w, dis_w = battery_control.cached_ratings(host or "")
         except Exception:  # noqa: BLE001
             pass
         return {
@@ -5892,7 +5892,7 @@ def create_app() -> FastAPI:
                         "kw_rate_power": gg("kwRatePower"),
                     }
                     from . import battery_control as _bc
-                    chg, dis = _bc.cached_ratings((_host or "").split(":")[0])
+                    chg, dis = _bc.cached_ratings(_host or "")
                     if chg:
                         grid["inverter_max_charge_kw"] = round(chg / 1000, 2)
                     if dis:

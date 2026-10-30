@@ -45,3 +45,10 @@ def _isolate_data_dir(request, tmp_path, monkeypatch):
     yield
     db.reset_store()
     logbuffer.set_store(None)
+    # Poller tasks belong to this test's event loop, which is gone once it ends. Left in
+    # the registry, a later app's shutdown awaits them: a cancelled one raises
+    # CancelledError out of the lifespan, an unfinished one stalls it for the 35 s timeout.
+    from franklinwh_direct_connect_bridge import supervisor
+    supervisor._pollers.clear()
+    supervisor._stopping.clear()
+    supervisor._reaping.clear()
