@@ -18,11 +18,12 @@ log = logging.getLogger(__name__)
 MODBUS_PORT = 502
 UNIT_ID = 2  # FranklinWH default (per the library)
 
-# In-memory record of the forces WE started, one per aGate (#194), keyed by host part, so
+# In-memory record of the forces WE started, one per aGate (#194), keyed by gateway address
+# (``_key``: host and port, so two gateways on one IP stay apart), so
 # the bridge owns each one's watchdog and Release, independent of any per-request Modbus
 # connection. Each record carries its own stop event, SoC reader and event sink, so a
 # force on a second gateway never ends or rewires the first one's.
-_active: dict[str, dict] = {}  # host part -> {command, watts, host, started, duration_s,
+_active: dict[str, dict] = {}  # _key(host) -> {command, watts, host, started, duration_s,
                                #   target_soc, key, stop, soc_getter, on_event}
 _lock = threading.Lock()
 
@@ -41,7 +42,7 @@ def current(host: str | None = None) -> dict:
     Without a host: the most recent force on any aGate."""
     with _lock:
         if host:
-            rec = _active.get(_host_part(host))
+            rec = _active.get(_key(host))
         else:
             rec = max(_active.values(), key=lambda r: r["started"], default=None)
         return _view(rec) if rec else {"active": "Not Active"}
@@ -58,7 +59,7 @@ def holds_force(*hosts) -> bool:
     The dashboard shows FORCE only for these; any other remote controller is VPP (#333)."""
     with _lock:
         held = set(_active)
-    return bool(held & {_host_part(h) for h in hosts if h})
+    return bool(held & {_key(h) for h in hosts if h})
 
 
 def _fire(status: str, detail: str, rec: dict | None = None, sink=None) -> None:
@@ -81,10 +82,10 @@ def _release_now(host: str, key: float, reason: str) -> None:
     except Exception as e:                                       # noqa: BLE001
         log.error("battery force auto-release FAILED (%s): %s", reason, e)
     with _lock:
-        rec = _active.get(_host_part(host))
+        rec = _active.get(_key(host))
         if rec and rec["key"] == key:
-            del _active[_host_part(host)]
-    log.warning("battery force: released on %s (%s)", _host_part(host), reason)
+            del _active[_key(host)]
+    log.warning("battery force: released on %s (%s)", _key(host), reason)
     _fire("dispatch-end", f"released — {reason}", rec)
 
 
@@ -116,7 +117,7 @@ def _beat(*, running: bool) -> None:
 
 
 def _watch(host: str, key: float, duration_s: int, target_soc: int, watts) -> None:
-    hp = _host_part(host)
+    hp = _key(host)
     with _lock:
         rec = _active.get(hp)
         if not rec or rec["key"] != key:
@@ -150,7 +151,7 @@ def _arm_watchdog(host: str, command: str, watts, duration_s: int, target_soc: i
     """Hold a force on ``host``: replaces only that aGate's earlier force, if any. The SoC
     reader and event sink are this call's own, never shared state, so two gateways'
     forces armed at the same moment can't swap them (#355)."""
-    hp = _host_part(host)
+    hp = _key(host)
     with _lock:
         key = time.monotonic()
         old = _active.get(hp)
@@ -170,7 +171,7 @@ def _arm_watchdog(host: str, command: str, watts, duration_s: int, target_soc: i
 def _clear_active(host: str | None = None) -> None:
     """Forget the force on ``host``, or every force when no host is given."""
     with _lock:
-        recs = ([_active.pop(_host_part(host))] if host and _host_part(host) in _active
+        recs = ([_active.pop(_key(host))] if host and _key(host) in _active
                 else [] if host else list(_active.values()))
         if not host:
             _active.clear()
@@ -313,9 +314,9 @@ def _gateway_soc(host: str):
     def _soc():
         try:
             from . import state
-            hp = _host_part(host)
+            hp = _key(host)
             for gw in state.gateways():
-                if hp in {_host_part(h) for h in (gw.active_host, gw.configured_host) if h}:
+                if hp in {_key(h) for h in (gw.active_host, gw.configured_host) if h}:
                     return (getattr(gw, "last_state", {}) or {}).get("soc")
         except Exception:                                       # noqa: BLE001
             pass
@@ -438,13 +439,15 @@ def effective_target(host: str | None) -> tuple:
         return ov
     h, p = _split_hostport(host or "", MODBUS_PORT)
     gw = _gateway_at(host)
-    if gw is not None:
+    if gw is not None and not gw.is_mock:
         return h, int(gw.modbus_port or MODBUS_PORT)
     return h, p
 
 
 def _gateway_at(host: str | None):
-    """The registered real gateway whose address is exactly ``host``, or None."""
+    """The registered gateway at ``host``: the one whose address is exactly ``host``, else
+    the only one on that host part (a caller passed the IP alone). None when no gateway,
+    or more than one, matches — several gateways may share an IP on different ports."""
     if not host:
         return None
     try:
@@ -452,8 +455,22 @@ def _gateway_at(host: str | None):
         gws = state.gateways()
     except Exception:                                           # noqa: BLE001
         return None
-    return next((g for g in gws if not g.is_mock
-                 and host in (g.active_host, g.configured_host)), None)
+    exact = [g for g in gws if host in (g.active_host, g.configured_host)]
+    if exact:
+        return exact[0]
+    hp = _host_part(host)
+    near = [g for g in gws
+            if hp in {_host_part(h) for h in (g.active_host, g.configured_host) if h}]
+    return near[0] if len(near) == 1 else None
+
+
+def _key(host: str | None) -> str:
+    """The key a force and its watchdog are held under: the gateway's address (host and
+    port), so two gateways on one IP never end or replace each other's force. A host no
+    gateway owns keeps its host part, as before: ``FWH_MODBUS_HOST`` may name it with
+    ``:502``."""
+    gw = _gateway_at(host)
+    return (gw.active_host or gw.configured_host) if gw is not None else _host_part(host)
 
 
 def _no_connect_writes(c) -> None:
@@ -508,15 +525,15 @@ MOCK_REASON = "a mock gateway has no Modbus TCP Server to reach"
 
 #: The outcome of the last REAL connection per target host (#221, #223). Status and
 #: reachability are read from here, so showing them never opens a socket.
-#: host part -> {"state", "reachable", "ts", "source", "reason"}
+#: "host:port" of the Modbus target -> {"state", "reachable", "ts", "source", "reason"}
 _LAST: dict[str, dict] = {}
 
 
 def _record(host: str | None, state: str, source: str, reason: str = "") -> None:
-    eff_host, _ = effective_target(host)
+    eff_host, eff_port = effective_target(host)
     if not eff_host:
         return
-    _LAST[eff_host] = {"state": state, "source": source, "reason": reason,
+    _LAST[f"{eff_host}:{eff_port}"] = {"state": state, "source": source, "reason": reason,
                        # The socket opened in both of these; "ready" also means SunSpec
                        # answered. This is what modbus_502 has always meant.
                        "reachable": state in ("ready", "no_sunspec"),
@@ -525,8 +542,8 @@ def _record(host: str | None, state: str, source: str, reason: str = "") -> None
 
 def last_result(host: str | None) -> dict | None:
     """The last real connection's outcome for this target, or None if none was made."""
-    eff_host, _ = effective_target(host)
-    hit = _LAST.get(eff_host) if eff_host else None
+    eff_host, eff_port = effective_target(host)
+    hit = _LAST.get(f"{eff_host}:{eff_port}") if eff_host else None
     return dict(hit) if hit else None
 
 
@@ -729,7 +746,7 @@ def execute(command: str, *, host: str, power_w: int = 0, power_pct: int = 0,
                 return {"ok": True, "result": "[dry-run] release", "active": "Not Active"}
             was = current(host).get("active")
             with _lock:
-                held = _active.get(_host_part(host))     # its own event sink, for the end
+                held = _active.get(_key(host))     # its own event sink, for the end
             c.reset_control_state()
             # Report what the aGate says, not what was sent (#174).
             try:
