@@ -11,6 +11,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Docs
+- **The README no longer credits the library with the force watchdog.** The bridge gives
+  `franklinwh-modbus` no duration; its own watchdog is the only safety. The README also
+  named the wrong add-on slug (it is `franklinwh_local_bridge`), the editable install
+  pointed at `../franklinwh-local` (now `../franklinwh-direct-connect-api`), and
+  `docs/API_COMPARISON.md` counted 29 `/api/cmd/*` routes (there are 36). A test now
+  checks the slug, the route count and the install path.
+
 ## [0.5.18] — 2026-10-30
 
 ### Breaking
