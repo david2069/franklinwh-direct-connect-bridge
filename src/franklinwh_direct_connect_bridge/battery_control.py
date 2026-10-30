@@ -429,15 +429,31 @@ def _override_for(host: str | None) -> tuple | None:
 
 def effective_target(host: str | None) -> tuple:
     """The (host, port) actually used for Modbus: the override for the default gateway when
-    one is set, else the passed gateway host split into (host, port) — so a mock's
-    ``127.0.0.1:<ephemeral>`` is handled and a bare IP keeps the default 502. This is the
-    single source of truth for the target."""
+    one is set, else the gateway's own host and Modbus port (#364). A host no gateway owns
+    is split into (host, port) — so a mock's ``127.0.0.1:<ephemeral>`` is handled and a
+    bare IP keeps the default 502. This is the single source of truth for the target."""
     from .client import _split_hostport
     ov = _override_for(host)
     if ov:
         return ov
     h, p = _split_hostport(host or "", MODBUS_PORT)
+    gw = _gateway_at(host)
+    if gw is not None:
+        return h, int(gw.modbus_port or MODBUS_PORT)
     return h, p
+
+
+def _gateway_at(host: str | None):
+    """The registered real gateway whose address is exactly ``host``, or None."""
+    if not host:
+        return None
+    try:
+        from . import state
+        gws = state.gateways()
+    except Exception:                                           # noqa: BLE001
+        return None
+    return next((g for g in gws if not g.is_mock
+                 and host in (g.active_host, g.configured_host)), None)
 
 
 def _no_connect_writes(c) -> None:

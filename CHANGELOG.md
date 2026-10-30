@@ -11,6 +11,19 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+- **Each gateway has its own Direct Connect port and Modbus port** (#364). Settings (add
+  and edit) and the setup wizard's "Add by address" take both; they default to 9000 and
+  502. `/api/gateways` takes and returns `modbus_port` and refuses a port outside
+  1–65535. The stored Direct Connect port was saved but never used: every gateway was
+  read on the global port. A gateway's address now shows as `host:port` when its
+  Direct Connect port is not 9000.
+
+### Changed
+- **The Modbus client (this bridge) uses the gateway's Modbus port.** It used to take the
+  port from the gateway's address, so a gateway entered as `host:9020` was sent Modbus on
+  9020. The Modbus host override still applies to the active gateway only.
+
 ### Docs
 - **The README no longer credits the library with the force watchdog.** The bridge gives
   `franklinwh-modbus` no duration; its own watchdog is the only safety. The README also

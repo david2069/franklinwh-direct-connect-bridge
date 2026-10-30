@@ -26,7 +26,7 @@ window.setupWizard = function setupWizard() {
     scan_subnet: '',
     scan_source: '',
     scan_label: '',
-    manual: { host: '' },
+    manual: { host: '', port: 9000, modbus_port: 502 },
     // The four live Home Assistant checks, and whether to publish at all.
     ha: { checks: [], publishing: false, addon: false, busy: false, msg: '' },
     // Gateways added in THIS wizard run. "Publish this gateway to Home Assistant? Yes"
@@ -222,7 +222,8 @@ window.setupWizard = function setupWizard() {
     async addManual() {
       if (!this.manual.host) return;
       await this._addGateway({
-        label: 'aGate', host: this.manual.host.trim(), port: 9000, enabled: true });
+        label: 'aGate', host: this.manual.host.trim(), port: this.manual.port || 9000,
+        modbus_port: this.manual.modbus_port || 502, enabled: true });
     },
 
     // NB the roster field is `is_mock`, not `mock`. Sending the wrong key creates a REAL

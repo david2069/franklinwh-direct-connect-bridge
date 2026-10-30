@@ -411,7 +411,8 @@ class HaInstanceUpdate(BaseModel):
 class GatewayCreate(BaseModel):
     label: str
     host: str = ""
-    port: int = 9000
+    port: int = Field(9000, ge=1, le=65535)          # Direct Connect (#364)
+    modbus_port: int = Field(502, ge=1, le=65535)    # Modbus TCP Server (aGate :502)
     enabled: bool = True
     is_default: bool = False
     is_mock: bool = False
@@ -431,7 +432,8 @@ class GatewayCreate(BaseModel):
 class GatewayUpdate(BaseModel):
     label: str | None = None
     host: str | None = None
-    port: int | None = None
+    port: int | None = Field(None, ge=1, le=65535)
+    modbus_port: int | None = Field(None, ge=1, le=65535)
     enabled: bool | None = None
     is_default: bool | None = None
     mock_units: int | None = None
@@ -1012,6 +1014,7 @@ def create_app() -> FastAPI:
                 else:
                     state.register_gateway(r["id"], r.get("host", ""), r.get("label"),
                                            port=int(r.get("port") or 9000),
+                                           modbus_port=int(r.get("modbus_port") or 502),
                                            publish_ha=bool(r.get("publish_ha")),
                                            serial=r.get("serial"))
             state.set_default(next((r["id"] for r in db_rows if r.get("is_default")), None))
@@ -1755,6 +1758,7 @@ def create_app() -> FastAPI:
         base.update({
             "label": row.get("label") or base.get("label"),
             "port": row.get("port"),
+            "modbus_port": row.get("modbus_port"),
             "enabled": bool(row.get("enabled")),
             "is_mock": bool(row.get("is_mock")),
             "mock_units": row.get("mock_units"),
@@ -1847,6 +1851,7 @@ def create_app() -> FastAPI:
         else:
             gw = state.register_gateway(gid, row.get("host", ""), row.get("label"),
                                         port=int(row.get("port") or 9000),
+                                        modbus_port=int(row.get("modbus_port") or 502),
                                         publish_ha=bool(row.get("publish_ha")),
                                         serial=row.get("serial"))
         await supervisor.start_poller(s, gw)
@@ -1872,7 +1877,8 @@ def create_app() -> FastAPI:
         publish_ha = (not req.is_mock) if req.publish_ha is None else bool(req.publish_ha)
         row = st.create_gateway(
             gw_id=gid, label=req.label, host=("127.0.0.1" if req.is_mock else req.host),
-            port=req.port, is_default=(current is None), enabled=(req.enabled or current is None),
+            port=req.port, modbus_port=req.modbus_port,
+            is_default=(current is None), enabled=(req.enabled or current is None),
             is_mock=req.is_mock, mock_seed=seed, mock_units=req.mock_units,
             publish_ha=publish_ha, description=req.description)
         state.set_default(st.ensure_one_default())

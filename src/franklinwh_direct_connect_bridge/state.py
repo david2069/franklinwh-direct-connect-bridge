@@ -19,6 +19,7 @@ class GatewayState:
     configured_host: str = ""
     active_host: str | None = None      # overrides configured_host once re-discovered
     port: int = 9000                    # per-gateway port (9000 real; ephemeral for in-proc mock)
+    modbus_port: int = 502              # this gateway's Modbus TCP Server port (#364)
     is_mock: bool = False               # in-process emulator gateway (Phase 2)
     publish_ha: bool = True             # publish this gateway to MQTT/HA (mocks default off)
     serial: str | None = None           # the LOCKED serial once the roster has one (#381)
@@ -65,15 +66,27 @@ _gateways: dict[str, GatewayState] = {}
 _default_id: str | None = None
 
 
+def gateway_address(host: str, port: int | None) -> str:
+    """The address the bridge reads a gateway at: ``host`` alone on the standard port 9000,
+    else ``host:port`` (#364). The Direct Connect client splits it again, as it does a
+    mock's ``127.0.0.1:<ephemeral>``. A host that already carries a port keeps it."""
+    host = (host or "").strip()
+    if not host or not port or int(port) == 9000 or host.count(":") == 1:
+        return host
+    return f"{host}:{int(port)}"
+
+
 def register_gateway(id: str, host: str, label: str | None = None, *,
-                     port: int = 9000, is_mock: bool = False,
+                     port: int = 9000, modbus_port: int = 502, is_mock: bool = False,
                      publish_ha: bool = True, serial: str | None = None) -> GatewayState:
     """Create (or return the existing) gateway for ``id``. Idempotent — registering an
     already-known id returns the same instance so the poller/REST share one object."""
     gw = _gateways.get(id)
     if gw is None:
+        host = gateway_address(host, port)
         gw = GatewayState(id=id, configured_host=host, active_host=host,
-                          label=label or host or id, port=port, is_mock=is_mock,
+                          label=label or host or id, port=port,
+                          modbus_port=int(modbus_port or 502), is_mock=is_mock,
                           publish_ha=publish_ha,
                           serial=serial or None, serial_locked=bool(serial))
         _gateways[id] = gw
