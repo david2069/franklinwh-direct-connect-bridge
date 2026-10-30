@@ -294,3 +294,22 @@ def poll(s: Settings) -> dict | None:
         "programme": _programme_label(prog) if is_vpp else None,
         "ts": time.time(),
     }
+
+
+def poll_and_attach(s: Settings):
+    """One :func:`poll`, stored on the gateway whose locked serial is the one polled, and
+    on no other: never the default gateway (#379). The serial comes from the same settings
+    the poll used, read each pass, so a cloud gateway changed in Settings is never
+    reported on the gateway it replaced (#357). Returns ``(data, gateway)``; either may
+    be None."""
+    from . import state
+    data = poll(s)
+    if data is None:
+        return None, None
+    target = state.gateway_by_serial(s.fwh_cloud_gateway)
+    if target is not None:
+        target.cloud_vpp = bool(data["is_vpp"])
+        target.cloud_mode = data.get("effective_mode") or ""
+        target.cloud_programme = data.get("programme")
+        target.cloud_ts = data["ts"]
+    return data, target

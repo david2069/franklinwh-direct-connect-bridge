@@ -86,7 +86,7 @@ def test_a_serial_names_a_gateway_only_once_it_is_locked(monkeypatch):
 
 def test_the_cloud_status_worker_never_lands_on_the_default_gateway():
     import inspect
-    src = inspect.getsource(app_module.create_app)
-    body = src[src.index("data = cloud_status.poll(get_settings())"):]
-    body = body[:body.index("target.cloud_ts")]
-    assert "state.gateway_by_serial(want)" in body and "default_gateway()" not in body
+    from franklinwh_direct_connect_bridge import cloud_status
+    body = inspect.getsource(cloud_status.poll_and_attach)
+    assert "state.gateway_by_serial(s.fwh_cloud_gateway)" in body
+    assert "default_gateway()" not in body
