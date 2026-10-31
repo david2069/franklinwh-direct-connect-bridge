@@ -78,16 +78,17 @@ def test_the_host_override_applies_to_the_default_gateway_only():
     assert bc.effective_target("10.0.0.2") == ("10.0.0.2", 502)
 
 
-def test_fwh_modbus_host_applies_to_the_default_gateway_only(monkeypatch):
+def test_fwh_modbus_host_is_no_longer_read(monkeypatch):
+    """#379: every gateway's Modbus client connects to its own host."""
     _two_gateways()
     monkeypatch.setenv("FWH_MODBUS_HOST", "192.0.2.60")
-    assert bc.effective_target("10.0.0.1") == ("192.0.2.60", 502)
+    assert bc.effective_target("10.0.0.1") == ("10.0.0.1", 502)
     assert bc.effective_target("10.0.0.2") == ("10.0.0.2", 502)
 
 
-def test_with_one_gateway_the_override_still_applies(monkeypatch):
+def test_with_one_gateway_the_override_still_applies():
     state.register_gateway("gw-a", "10.0.0.1", "A")
-    monkeypatch.setenv("FWH_MODBUS_HOST", "192.0.2.60")
+    bc.set_host_override("192.0.2.60")
     assert bc.effective_target("10.0.0.1") == ("192.0.2.60", 502)
 
 

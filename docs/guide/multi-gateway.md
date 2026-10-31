@@ -65,7 +65,11 @@ active gateway when the page opens, and again whenever the active one is disable
 offline (its link is down) or stopped for its identity. Disabled gateways aren't offered in
 the selector.
 
-Schedules left on **Default gateway** still run on the default.
+**Every schedule names the gateway it runs on** (#379). The schedule form starts on the
+active gateway and has no "Default gateway" choice. On update, a schedule saved with no
+gateway is bound to the default gateway at start-up, and billing and System Setup data
+saved under "default" move to that gateway. With no gateway yet, they go to the first
+gateway you add.
 
 **Every API call that acts on an aGate must name it** (#379): `?gateway=<id>` (or
 `gateway` in the request body, `gateway_id` for `/api/dispatch`), where the value is the
@@ -195,7 +199,7 @@ The rule is worth stating precisely, because the wrong guess is expensive:
 | Rule's gateway setting | When it runs |
 |---|---|
 | **Bound** to a gateway | Only on **that** gateway's tick. |
-| **Unbound** (no gateway) | On the **default** gateway's tick only — so it does not fire once per gateway. |
+| **Unbound** (no gateway) | Nowhere. Saving needs a gateway, and one left from before #379 is bound at start-up. |
 | **Scope "all"** | Every gateway evaluates it on its own tick, producing one run **and one resource claim** per gateway. |
 
 That last row is the subtle one. An "all"-scope rule claims the resource on *the gateway
@@ -213,16 +217,13 @@ graceful shutdown and the start-up reconcile all act on the gateway the force wa
 (#193).
 
 **Battery Control** (Control tab) and the top bar's **Release** act on the gateway shown
-in the top bar (#349); `/api/battery/command` takes `?gateway=` (the default gateway
-when omitted).
+in the top bar (#349); `/api/battery/command` requires `?gateway=` (#379).
 
-The Modbus client's **host override** (Control → Modbus client) and `FWH_MODBUS_HOST`
-apply only to the **default gateway**. Every other gateway connects to its own IP (#354).
+The Modbus client's **host override** (Control → Modbus client) applies only to the
+**default gateway**. Every other gateway connects to its own IP (#354). `FWH_MODBUS_HOST`
+is no longer read: each gateway's Modbus client connects to that gateway's own host (#379).
 
-Not yet per gateway (part of the multi-gateway audit, #220):
-
-- The VPP monitor reads only the default gateway (#357).
-
-If you import a schedule that names a gateway this bridge does not have, validation
-raises a **warning** (not an error) and the rule falls back to the default gateway, so a
-bundle from another install still loads and you can fix the binding afterwards.
+If you import a schedule that names no gateway, or one this bridge does not have, it is
+bound to the gateway you import into (the active gateway). Validation raises a **warning**
+(not an error) for an unknown gateway, so a bundle from another install still loads and you
+can change the binding afterwards.

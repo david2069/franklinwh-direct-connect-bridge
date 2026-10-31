@@ -93,10 +93,10 @@ def test_tick_derives_the_site_clock_and_fires_on_it(tmp_path, monkeypatch):
     # A window that opened 10 minutes ago ON SITE and runs for an hour.
     fire_at = (site_now - dt.timedelta(minutes=10)).strftime("%H:%M")
     st.create_schedule(sid="s1", name="Site window",
-                       spec={"fire_at": fire_at, "duration_min": 60,
+                       spec={"gateway_id": "gw-h", "fire_at": fire_at, "duration_min": 60,
                              "conditions": [], "action": {}, "ha_actions": []})
 
-    fired = sch.tick(settings=None, client=None, store=st, state={}, gateway_id=None)
+    fired = sch.tick(settings=None, client=None, store=st, state={}, gateway_id="gw-h")
     assert [f["id"] for f in fired] == ["s1"], (
         f"site window {fire_at} (+60m) did not fire; the container clock reads "
         f"{container_now:%H:%M} and the site reads {site_now:%H:%M}"

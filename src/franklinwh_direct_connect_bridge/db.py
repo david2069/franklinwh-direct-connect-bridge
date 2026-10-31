@@ -444,6 +444,43 @@ class MetricsStore:
             self._conn.commit()
         return target["id"]
 
+    #: app_config keys that held a gateway's data under "default" before #379.
+    DEFAULT_KEYED = ("billing_state:", "system_setup:")
+
+    def adopt_default_data(self, gw_id: str) -> dict:
+        """Give data saved for no gateway to ``gw_id``, the default gateway (#379).
+
+        Before #379 a schedule could be left on no gateway (it ran on the default), and
+        billing and System Setup saved under the key "default". Every schedule and every
+        key now names its gateway. Runs at start-up and when the first gateway is added;
+        a second run finds nothing. A gateway's own key is never overwritten: the
+        "default" key is then left as it was. Returns what moved."""
+        out = {"schedules": 0, "keys": [], "billing_periods": 0}
+        if not gw_id:
+            return out
+        with self._lock:
+            for sid, spec in self._conn.execute("SELECT id, spec FROM schedules").fetchall():
+                try:
+                    d = json.loads(spec or "{}")
+                except (ValueError, TypeError):
+                    continue
+                if not d.get("gateway_id"):
+                    d["gateway_id"] = gw_id
+                    self._conn.execute("UPDATE schedules SET spec=?, updated_at=? WHERE id=?",
+                                       (json.dumps(d), time.time(), sid))
+                    out["schedules"] += 1
+            for prefix in self.DEFAULT_KEYED:
+                old, new = prefix + "default", prefix + gw_id
+                have = self._conn.execute("SELECT 1 FROM app_config WHERE key=?", (new,)).fetchone()
+                if not have and self._conn.execute(
+                        "UPDATE app_config SET key=? WHERE key=?", (new, old)).rowcount:
+                    out["keys"].append(prefix.rstrip(":"))
+            out["billing_periods"] = self._conn.execute(
+                "UPDATE billing_periods SET gateway_id=? WHERE gateway_id IS NULL OR gateway_id=''",
+                (gw_id,)).rowcount
+            self._conn.commit()
+        return out
+
     def delete_gateway(self, gw_id: str) -> bool:
         with self._lock:
             cur = self._conn.execute("DELETE FROM gateways WHERE id=?", (gw_id,))

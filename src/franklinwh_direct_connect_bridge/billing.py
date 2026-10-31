@@ -250,7 +250,7 @@ class BillingTracker:
             return  # nothing accrued — don't clutter history (auto-close only)
         try:
             pts = self.as_points(cfg, now)
-            gwid = None if gw == "default" else gw
+            gwid = gw
             fixed_total = 0.0
             try:
                 fx = fixed_snapshot(store, gwid, now)
@@ -311,6 +311,14 @@ def _period_meta(store, gateway_id) -> dict:
 _TRACKERS: dict[str, BillingTracker] = {}
 
 
+def _gw_key(gateway_id) -> str:
+    """A gateway's billing is kept under its id (#379). There is no "default" key: data
+    saved under one before #379 was given to the default gateway at start-up."""
+    if not gateway_id:
+        raise ValueError("billing needs a gateway")
+    return gateway_id
+
+
 def _billing_cfg(store, gateway_id) -> dict | None:
     """Resolve the gateway's meter → tariff into the billing config, or None if no
     tariff. demand/bonus/charge are None unless the tariff configures that window."""
@@ -355,7 +363,7 @@ def billing_tick(store, gateway_id=None, grid_w: float | None = None,
     cfg = _billing_cfg(store, gateway_id)
     if cfg is None:
         return {}
-    key = gateway_id or "default"
+    key = _gw_key(gateway_id)
     tr = _TRACKERS.get(key) or _TRACKERS.setdefault(key, BillingTracker())
     tr.update(store, key, grid_w, cfg, now, dynamic_rate)
     return tr.as_points(cfg, now)
@@ -416,7 +424,7 @@ def billing_read(store, gateway_id=None, now: dt.datetime | None = None) -> dict
     cfg = _billing_cfg(store, gateway_id)
     if cfg is None:
         return {}
-    key = gateway_id or "default"
+    key = _gw_key(gateway_id)
     tr = _TRACKERS.get(key)
     if tr is None:
         tr = BillingTracker()
@@ -434,8 +442,7 @@ def force_close_current(store, gateway_id=None, now: dt.datetime | None = None) 
     cfg = _billing_cfg(store, gateway_id)
     if cfg is None:
         return {"ok": False, "reason": "no tariff assigned to this meter"}
-    key = gateway_id or "default"
-    gwid = None if key == "default" else key
+    key = gwid = _gw_key(gateway_id)
     tr = _TRACKERS.get(key)
     if tr is None:
         tr = _TRACKERS.setdefault(key, BillingTracker())
@@ -491,7 +498,7 @@ def import_modbus_periods(store, periods, gateway_id=None,
     into our ``billing_periods`` (the aGate is the same physical device). Maps the Modbus
     column names to ours, skips degenerate (end<=start) and all-zero periods, and dedups by
     (gateway, period_start) so a re-import is idempotent. Returns {ok, imported, skipped}."""
-    gwid = None if (gateway_id in (None, "", "default")) else gateway_id
+    gwid = _gw_key(gateway_id)
     imported = skipped = 0
     for p in periods or []:
         ps, pe = _num(p.get("period_start")), _num(p.get("period_end"))

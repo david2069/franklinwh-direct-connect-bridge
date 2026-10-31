@@ -25,6 +25,38 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   their MQTT topics. Now it stops listening for them, and refuses (and logs) any that
   arrive anyway. Turning the group back on restores them.
 
+### Docs
+- **Up to two releases a day** (TEST_POLICY). Each still passes its own gates, including the
+  HAOS acceptance run; a release that changes how Home Assistant identifies things is still
+  released alone.
+
+## [0.5.19] — 2026-10-31
+
+### Breaking
+- **Every schedule names its gateway** (#379). The schedule form starts on the active
+  gateway, always shows the gateway, and has no "Default gateway" choice. Saving a schedule
+  with no gateway, or an unknown one, is refused (422). `/api/schedules/import` needs
+  `?gateway=`; entries with no gateway, or one this bridge doesn't have, are bound to it.
+  On update, schedules saved with no gateway, and billing and System Setup data saved under
+  "default", are given to the default gateway at start-up (or to the first gateway you add),
+  so nothing stops running. A schedule with no gateway no longer runs on the default.
+- **No call falls back to the default gateway's address** (#379). An internal aGate call
+  with no host is refused instead of going to the configured `fwh_host` or the default
+  gateway. The poller and Home Assistant controls use the gateway's re-discovered address,
+  else its configured one. Nothing registers a gateway on first use any more; the roster
+  is what start-up registered. `FWH_MODBUS_HOST` is no longer read: each gateway's Modbus
+  client connects to its own host (the host override in Control still applies to the
+  default gateway). A scheduler pass for no gateway runs no schedule. Settings → Connection
+  shows the active gateway's host, and none in All gateways.
+
+### Docs
+- **The README no longer credits the library with the force watchdog.** The bridge gives
+  `franklinwh-modbus` no duration; its own watchdog is the only safety. The README also
+  named the wrong add-on slug (it is `franklinwh_local_bridge`), the editable install
+  pointed at `../franklinwh-local` (now `../franklinwh-direct-connect-api`), and
+  `docs/API_COMPARISON.md` counted 29 `/api/cmd/*` routes (there are 36). A test now
+  checks the slug, the route count and the install path.
+
 ## [0.5.18] — 2026-10-30
 
 ### Breaking

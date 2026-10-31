@@ -7,6 +7,7 @@ import datetime as dt
 import pytest
 from fastapi.testclient import TestClient
 
+from franklinwh_direct_connect_bridge import state
 from franklinwh_direct_connect_bridge import app as app_module, client as client_module
 from franklinwh_direct_connect_bridge import scheduler as sch
 
@@ -39,7 +40,10 @@ def test_a_window_with_start_equal_to_end_is_empty():
 @pytest.fixture
 def c(monkeypatch):
     monkeypatch.setattr(client_module, "writes_enabled", lambda s: True)
-    return TestClient(app_module.create_app())
+    state.reset_gateways()
+    state.register_gateway("g1", "192.0.2.10", "first")    # a schedule names its gateway (#379)
+    yield TestClient(app_module.create_app())
+    state.reset_gateways()
 
 
 @pytest.mark.parametrize("body, says", [
@@ -54,7 +58,8 @@ def test_save_refuses_it_with_a_reason(c, body, says):
     assert r.status_code == 422 and says in r.json()["detail"]
     assert c.get("/api/schedules").json()["schedules"] == []
     # and an edit that would make a saved schedule invalid is refused too
-    sid = c.post("/api/schedules", json={"name": "ok", "fire_at": "18:00"}).json()["id"]
+    sid = c.post("/api/schedules", json={"name": "ok", "fire_at": "18:00",
+                                         "gateway_id": "g1"}).json()["id"]
     r = c.put(f"/api/schedules/{sid}", json={"name": "ok", **body})
     assert r.status_code == 422 and says in r.json()["detail"]
 

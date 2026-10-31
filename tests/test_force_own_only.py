@@ -56,13 +56,13 @@ def test_1707_without_our_force_is_remote_not_force():
     assert appmod._dispatch_kind(_Gw("10.0.0.5")) == (None, None)
 
 
-def test_modbus_host_env_counts_for_the_default_gateway(holding, monkeypatch):
+def test_modbus_host_env_no_longer_counts_for_the_default_gateway(holding, monkeypatch):
+    """#379: FWH_MODBUS_HOST is gone; a force is the gateway's only on its own host."""
     gw = _Gw("10.0.0.5", vpp_active=True)
     monkeypatch.setenv("FWH_MODBUS_HOST", "10.9.9.9")
     holding("10.9.9.9")
     monkeypatch.setattr(state, "default_gateway", lambda: gw)
-    assert appmod._dispatch_kind(gw)[0] == "force"
-    assert appmod._dispatch_kind(_Gw("10.0.0.7", vpp_active=True))[0] == "remote"
+    assert appmod._dispatch_kind(gw)[0] == "remote"
 
 
 def test_holds_force_is_false_when_idle():

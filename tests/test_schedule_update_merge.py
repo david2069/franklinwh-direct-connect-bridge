@@ -6,11 +6,12 @@ were silently lost. The edit form likewise dropped restore_on_exit and gateway_s
 import pytest
 from fastapi.testclient import TestClient
 
+from franklinwh_direct_connect_bridge import state
 from franklinwh_direct_connect_bridge import app as app_module, client as client_module
 
 FULL = {
     "name": "Evening peak", "enabled": True, "fire_at": "17:00", "duration_min": 180,
-    "match": "any", "entry_hold_s": 120, "gateway_id": "", "gateway_scope": "all",
+    "match": "any", "entry_hold_s": 120, "gateway_id": "g1", "gateway_scope": "all",
     "restore_on_exit": True, "conditions": [{"sensor": "battery.soc_pct", "op": ">", "value": 50}],
     "exit_conditions": [{"sensor": "battery.soc_pct", "op": "<", "value": 20}], "exit_match": "any",
     "days": [0, 1, 2, 3, 4], "months": [6, 7, 8], "priority": 5, "conflict": "defer",
@@ -24,7 +25,10 @@ KEEP = ["entry_hold_s", "gateway_scope", "restore_on_exit", "exit_conditions", "
 @pytest.fixture
 def c(monkeypatch):
     monkeypatch.setattr(client_module, "writes_enabled", lambda s: True)
-    return TestClient(app_module.create_app())
+    state.reset_gateways()
+    state.register_gateway("g1", "192.0.2.10", "first")    # a schedule names its gateway (#379)
+    yield TestClient(app_module.create_app())
+    state.reset_gateways()
 
 
 def _create(c):
@@ -41,7 +45,7 @@ def test_the_toggle_body_changes_only_enabled(c):
     sid = _create(c)
     s = _get(c, sid)
     toggle = {"name": s["name"], "enabled": False, "fire_at": s["fire_at"],
-              "duration_min": s["duration_min"], "match": s["match"], "gateway_id": "",
+              "duration_min": s["duration_min"], "match": s["match"], "gateway_id": "g1",
               "conditions": s["conditions"], "action": s["action"], "ha_actions": []}
     assert c.put(f"/api/schedules/{sid}", json=toggle).status_code == 200
     after = _get(c, sid)

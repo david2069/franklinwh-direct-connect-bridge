@@ -99,11 +99,18 @@ def _derive(settings, host) -> dict:
     return out
 
 
+def _gw_key(gateway_id) -> str:
+    """Overrides are kept under the gateway's id (#379); there is no "default" key."""
+    if not gateway_id:
+        raise ValueError("System Setup needs a gateway")
+    return gateway_id
+
+
 def _overrides(store, gateway_id: str) -> dict:
     if store is None:
         return {}
     try:
-        raw = store.get_config(_KEY_PREFIX + (gateway_id or "default"))
+        raw = store.get_config(_KEY_PREFIX + _gw_key(gateway_id))
         return json.loads(raw) if raw else {}
     except Exception:                                           # noqa: BLE001
         return {}
@@ -113,7 +120,7 @@ def values(store, settings=None, gateway_id=None, host=None) -> dict:
     """Resolved System Setup: default → derived → user override (override wins).
     Also reports, per field, whether the value is user-set (`_overridden`)."""
     derived = _derive(settings, host) if settings is not None else {}
-    ov = _overrides(store, gateway_id or "default")
+    ov = _overrides(store, gateway_id)
     out: dict[str, Any] = {}
     for k, spc in _FIELDS.items():
         if k in ov and ov[k] is not None:
@@ -131,7 +138,7 @@ def update(store, gateway_id, updates: dict) -> dict:
     """Persist user overrides for the known fields; clearing (null) reverts to derived."""
     if store is None:
         return {}
-    ov = _overrides(store, gateway_id or "default")
+    ov = _overrides(store, gateway_id)
     for k, v in (updates or {}).items():
         if k not in _FIELDS:
             continue
@@ -143,7 +150,7 @@ def update(store, gateway_id, updates: dict) -> dict:
             ov[k] = _num(v)
         else:
             ov[k] = v
-    store.set_config(_KEY_PREFIX + (gateway_id or "default"), json.dumps(ov))
+    store.set_config(_KEY_PREFIX + _gw_key(gateway_id), json.dumps(ov))
     return ov
 
 

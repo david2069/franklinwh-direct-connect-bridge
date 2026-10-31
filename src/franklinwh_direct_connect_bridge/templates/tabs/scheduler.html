@@ -607,10 +607,11 @@
                 <option value="defer">defer</option>
                 <option value="wait">wait</option>
               </select></label>
-            <!-- Which gateway the action targets. Shown only when there is more than one. -->
-            <select x-show="gateways.length > 1" class="form-control form-control-sm"
-                    style="width:auto" x-model="form.gateway_id">
-              <option value="">Default gateway</option>
+            <!-- The gateway it runs on (#379). Always named; a new schedule starts on the
+                 active gateway. Shown with one gateway too, so you can see which it is. -->
+            <select class="form-control form-control-sm" title="Gateway"
+                    style="width:auto" x-model="form.gateway_id"
+                    x-init="$nextTick(() => { $el.value = form.gateway_id })">
               <template x-for="g in gateways" :key="g.id">
                 <option :value="g.id" x-text="g.name"></option>
               </template>

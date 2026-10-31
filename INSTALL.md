@@ -96,7 +96,7 @@ FWH_HOST=<your aGate IP> franklinwh-direct-connect-bridge run
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[test,cloud]"
-pip install -e ../franklinwh-local      # optional: the library, editable
+pip install -e ../franklinwh-direct-connect-api   # optional: the library, editable
 tools/dev.sh                             # build, restart, and VERIFY
 ```
 

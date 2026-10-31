@@ -2,17 +2,21 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from franklinwh_direct_connect_bridge import state
 from franklinwh_direct_connect_bridge import app as app_module, client as client_module
 from franklinwh_direct_connect_bridge import scheduler as sch
 
-BASE = {"name": "x", "fire_at": "18:00", "duration_min": 60}
+BASE = {"name": "x", "fire_at": "18:00", "duration_min": 60, "gateway_id": "g1"}
 SOC = {"sensor": "battery.soc_pct", "op": "<", "value": 20}
 
 
 @pytest.fixture
 def c(monkeypatch):
     monkeypatch.setattr(client_module, "writes_enabled", lambda s: True)
-    return TestClient(app_module.create_app())
+    state.reset_gateways()
+    state.register_gateway("g1", "192.0.2.10", "first")    # a schedule names its gateway (#379)
+    yield TestClient(app_module.create_app())
+    state.reset_gateways()
 
 
 @pytest.mark.parametrize("extra, says", [

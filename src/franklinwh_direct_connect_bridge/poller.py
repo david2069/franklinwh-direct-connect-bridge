@@ -124,7 +124,8 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
         ``"agate"`` fallback in place if the read fails; never raises."""
         nonlocal node, serial, fw
         try:
-            fwb = await asyncio.to_thread(client.firmware, settings, gw.active_host)
+            fwb = await asyncio.to_thread(client.firmware, settings,
+                                          gw.active_host or gw.configured_host)
             serial = str(fwb.get("IBG_SN", ""))
             if not await _identity_ok(serial):
                 return
@@ -174,7 +175,7 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                 return
             try:
                 result = handle_command(key, payload, settings=settings, client=client,
-                                        host=gw.active_host)
+                                        host=gw.active_host or gw.configured_host)
                 log.info("[%s] control %s=%s -> %s", gw.id, key, payload, result)
             except Exception as e:  # noqa: BLE001
                 log.warning("[%s] control %s failed: %s", gw.id, key, e)
@@ -319,7 +320,8 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                 _poll_timeout = max(10, min(settings.poll_interval, 30))
                 try:
                     summ = await asyncio.wait_for(
-                        asyncio.to_thread(client.summary, settings, gw.active_host,
+                        asyncio.to_thread(client.summary, settings,
+                                          gw.active_host or gw.configured_host,
                                           mock=bool(getattr(gw, 'is_mock', False))),
                         timeout=_poll_timeout)
                 except asyncio.TimeoutError:
@@ -347,7 +349,8 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                     net_last = time.time()
                     try:
                         nb = await asyncio.wait_for(asyncio.to_thread(
-                            client.network_light, settings, gw.active_host), timeout=_poll_timeout)
+                            client.network_light, settings,
+                            gw.active_host or gw.configured_host), timeout=_poll_timeout)
                         from .cloud_compat import network_from_interfaces as _nfi
                         from .publish.network import network_state as _ns
                         raw = nb.get("interfaces_raw")
@@ -537,7 +540,8 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                     # Then back off (5 → 10 → … 60 min) while it stays gone.
                     now = time.time()
                     if fail_streak >= REDISCOVER_AFTER_FAILS and now >= next_sweep:
-                        here = await asyncio.to_thread(client.still_at_address, gw.active_host)
+                        here = await asyncio.to_thread(client.still_at_address,
+                                                     gw.active_host or gw.configured_host)
                         if here:
                             log.info("[%s] %s still answers — not sweeping the network",
                                      gw.id, gw.active_host)
@@ -548,7 +552,8 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                             taken = {h for g in _all_gateways() if g.id != gw.id
                                      for h in (g.active_host, g.configured_host) if h}
                             newhost = await asyncio.to_thread(
-                                client.rediscover, settings, gw.active_host, gw.serial,
+                                client.rediscover, settings,
+                                gw.active_host or gw.configured_host, gw.serial,
                                 taken=taken)
                             if newhost and newhost != gw.active_host:   # it really moved
                                 gw.active_host = newhost

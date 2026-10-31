@@ -61,18 +61,18 @@ def test_empty_period_is_not_persisted(tmp_path):
 def test_force_close_snapshots_current_period_and_dedups(tmp_path):
     st = _setup(tmp_path)
     # accrue ~1 kWh @ $0.30 in the LIVE tracker (the one force_close reads)
-    billing.billing_tick(st, None, 1000.0, now=dt.datetime(2026, 8, 20, 12, 0, 0))
-    billing.billing_tick(st, None, 1000.0, now=dt.datetime(2026, 8, 20, 13, 0, 0))
+    billing.billing_tick(st, "gw1", 1000.0, now=dt.datetime(2026, 8, 20, 12, 0, 0))
+    billing.billing_tick(st, "gw1", 1000.0, now=dt.datetime(2026, 8, 20, 13, 0, 0))
     assert st.billing_periods() == []                       # nothing closed yet
     # manual close now → snapshots the current (August) period into history
-    r = billing.force_close_current(st, None, now=dt.datetime(2026, 8, 20, 13, 0, 0))
+    r = billing.force_close_current(st, "gw1", now=dt.datetime(2026, 8, 20, 13, 0, 0))
     assert r["ok"] and r["closed"] and r["period"]["net_total"] > 0
     rows = st.billing_periods()
     assert len(rows) == 1 and rows[0]["import_kwh"] >= 0.9 and rows[0]["net_total"] > 0
     ps = rows[0]["period_start"]
     # keep accruing, close again → REPLACES the same-period row (no duplicate)
-    billing.billing_tick(st, None, 1000.0, now=dt.datetime(2026, 8, 20, 14, 0, 0))
-    billing.force_close_current(st, None, now=dt.datetime(2026, 8, 20, 14, 0, 0))
+    billing.billing_tick(st, "gw1", 1000.0, now=dt.datetime(2026, 8, 20, 14, 0, 0))
+    billing.force_close_current(st, "gw1", now=dt.datetime(2026, 8, 20, 14, 0, 0))
     rows2 = st.billing_periods()
     assert len(rows2) == 1 and rows2[0]["period_start"] == ps          # dedup: still one row
     assert rows2[0]["import_kwh"] >= rows[0]["import_kwh"]             # updated with more accrual
@@ -89,7 +89,7 @@ def test_force_close_snapshots_fixed_only_period(tmp_path):
                      fixed_charges=[{"type": "supply", "frequency": "daily", "rate": 1.0, "tax_rate": 0}])
     st.create_meter(mid="m1", site_id=sid, utility_id="u1", tariff_id="t1", is_default=True)
     billing._TRACKERS.clear()
-    r = billing.force_close_current(st, None, now=dt.datetime(2026, 8, 20, 12, 0, 0))
+    r = billing.force_close_current(st, "gw1", now=dt.datetime(2026, 8, 20, 12, 0, 0))
     assert r["ok"] and r["closed"]
     row = st.billing_periods()[0]
     assert row["fixed_total"] > 0 and row["net_total"] > 0
@@ -98,8 +98,8 @@ def test_force_close_snapshots_fixed_only_period(tmp_path):
 
 def test_force_close_refuses_empty_period(tmp_path):
     st = _setup(tmp_path)
-    billing.billing_tick(st, None, 0.0, now=dt.datetime(2026, 8, 20, 12, 0, 0))
-    r = billing.force_close_current(st, None, now=dt.datetime(2026, 8, 20, 12, 0, 0))
+    billing.billing_tick(st, "gw1", 0.0, now=dt.datetime(2026, 8, 20, 12, 0, 0))
+    r = billing.force_close_current(st, "gw1", now=dt.datetime(2026, 8, 20, 12, 0, 0))
     assert r["ok"] is False and "accru" in r["reason"]
     assert st.billing_periods() == []
 

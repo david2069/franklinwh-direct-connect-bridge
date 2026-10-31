@@ -1071,7 +1071,7 @@ def validate_import(entry: dict, *, gateway_ids: set, device_ids: set,
 
     gid = entry.get("gateway_id")
     if gid and gid not in gateway_ids:
-        warnings.append(f"gateway '{gid}' not found — will use the default gateway")
+        warnings.append(f"gateway '{gid}' not found — will run on the gateway you import into")
 
     for ha in entry.get("ha_actions") or []:
         did = ha.get("device_id")
@@ -1788,7 +1788,7 @@ def _force_dispatch(action: dict, *, host: str | None, window_min: int,
 
     def _soc():
         try:
-            gw = _state.get_gateway(gateway_id) if gateway_id else _state.get_state()
+            gw = _state.get_gateway(gateway_id) if gateway_id else None
             return (getattr(gw, "last_state", {}) or {}).get("soc")
         except Exception:                                       # noqa: BLE001
             return None
@@ -2117,17 +2117,6 @@ def holds_dispatch(store, schedule_id: str, host: str | None) -> bool:
         return False
 
 
-def _is_default_gateway(store, gateway_id: str) -> bool:
-    """True if this is the gateway an unbound schedule should run on: the roster's
-    stored default (#182), not whichever gateway was registered first."""
-    try:
-        from .state import default_gateway as _default
-        gw = _default()
-        return gw is not None and gw.id == gateway_id
-    except Exception:                                           # noqa: BLE001
-        return True     # single-gateway: always the default
-
-
 #: Dwell (entry_hold_s) timers — when conditions first met, keyed by
 #: "gateway:entry". In-memory: a restart restarts the hold, which is the safe
 #: direction (never fire earlier than the hold demands).
@@ -2200,8 +2189,11 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
 
     Called from the poller loop, so it inherits the poll interval — a schedule
     cannot react faster than the bridge reads the gateway, which is worth knowing
-    before relying on a short window.
+    before relying on a short window. Every tick is one gateway's (#379): with no
+    ``gateway_id`` nothing is evaluated, never every schedule.
     """
+    if not gateway_id:
+        return []
     # The SITE's clock, not the container's. docs/TIMEZONES.md: a schedule rule is authored
     # in site wall-clock. Aware, so every .timestamp() below converts correctly; falls back
     # to container-local (also aware) when the gateway cannot be read, which is what this
@@ -2217,8 +2209,8 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
     snapshot.update(billing_snapshot(store, gateway_id, now))   # tariff.*_window_active
     from . import billing
     _dyn = apply_dynamic_pricing(snapshot, settings, store, gateway_id)   # per-tariff wholesale override
-    snapshot.update(billing.billing_tick(store, gateway_id, snapshot.get("grid.power_w"), now,
-                                         dynamic_rate=_dyn))   # demand/energy/bonus/charge (fed here)
+    snapshot.update(billing.billing_tick(store, gateway_id, snapshot.get("grid.power_w"),
+                                         now, dynamic_rate=_dyn))   # demand/energy/bonus/charge
     snapshot.update(billing.fixed_snapshot(store, gateway_id, now))   # fixed.* (pure accrual)
     try:
         from . import system_setup
@@ -2236,21 +2228,17 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
     mon: dict[str, tuple[str, str]] = {}
     seen: list[dict] = []
     for entry in store.schedules():
-        # A schedule bound to a gateway fires only on THAT gateway's tick, so a
-        # battery action targets the right aGate. An unbound schedule (gateway_id
-        # empty) fires on the default gateway's tick only, so it is not run once
-        # per gateway on a multi-gateway site.
+        # A schedule fires only on its own gateway's tick, so a battery action targets
+        # the right aGate. Every schedule names its gateway (#379); one that doesn't
+        # (saved before #379 and not yet bound at start-up) runs nowhere.
         bound = entry.get("gateway_id") or ""
         # "all" means every gateway evaluates this rule on its own tick, producing one
         # run and one resource claim per gateway (BR-45). Only an exact "all" widens
         # the scope — an unrecognised value falls through to the narrower behaviour.
         scope_all = str(entry.get("gateway_scope") or "one").lower() == "all"
         entry["_scope_all"] = scope_all
-        if gateway_id is not None and not scope_all:
-            if bound and bound != gateway_id:
-                continue
-            if not bound and not _is_default_gateway(store, gateway_id):
-                continue
+        if not scope_all and bound != gateway_id:
+            continue
         dkey = f"{gateway_id or ''}:{entry['id']}"
         if entry.get("enabled"):
             seen.append(entry)

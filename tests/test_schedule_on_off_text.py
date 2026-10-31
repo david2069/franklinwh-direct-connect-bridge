@@ -6,6 +6,7 @@ Off turned it On, and one set to reconnect to the grid sent go-off-grid."""
 import pytest
 from fastapi.testclient import TestClient
 
+from franklinwh_direct_connect_bridge import state
 from franklinwh_direct_connect_bridge import app as app_module, client as client_module
 from franklinwh_direct_connect_bridge import scheduler as sch
 from franklinwh_direct_connect_bridge.config import Settings
@@ -59,7 +60,10 @@ def test_an_unreadable_value_writes_nothing(bad):
 @pytest.fixture
 def c(monkeypatch):
     monkeypatch.setattr(client_module, "writes_enabled", lambda s: True)
-    return TestClient(app_module.create_app())
+    state.reset_gateways()
+    state.register_gateway("g1", "192.0.2.10", "first")    # a schedule names its gateway (#379)
+    yield TestClient(app_module.create_app())
+    state.reset_gateways()
 
 
 def _get(c, sid):
@@ -68,7 +72,8 @@ def _get(c, sid):
 
 def test_a_saved_schedule_stores_a_real_boolean(c):
     body = {"name": "Pool pump off", "enabled": False, "fire_at": "22:00",
-            "action": {"kind": "smart_circuit", "circuit": "1", "on": "false"}}
+            "action": {"kind": "smart_circuit", "circuit": "1", "on": "false"},
+            "gateway_id": "g1"}
     r = c.post("/api/schedules", json=body)
     assert r.status_code == 201, r.text
     sid = r.json()["id"]

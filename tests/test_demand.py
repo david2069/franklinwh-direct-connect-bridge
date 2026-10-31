@@ -115,7 +115,7 @@ def test_billing_tick_end_to_end(tmp_path):
     m = next(x for x in st.meters() if x.get("is_default"))
     st.update_meter(m["id"], tariff_id="t1")
     billing._TRACKERS.clear()
-    out = billing.billing_tick(st, None, 4000, dt.datetime(2026, 9, 15, 10, 0))
+    out = billing.billing_tick(st, "gw1", 4000, dt.datetime(2026, 9, 15, 10, 0))
     # a flat tariff (no demand/bonus/charge windows) → energy.* only
     assert "energy.period_import_kwh" in out
     assert "demand.peak_kw" not in out and "bonus.export_kwh" not in out
@@ -125,7 +125,7 @@ def test_billing_tick_empty_without_tariff(tmp_path):
     st = MetricsStore(str(tmp_path / "m.db"))
     st.ensure_default_site_meter()
     billing._TRACKERS.clear()
-    assert billing.billing_tick(st, None, 4000, dt.datetime(2026, 9, 15, 10, 0)) == {}
+    assert billing.billing_tick(st, "gw1", 4000, dt.datetime(2026, 9, 15, 10, 0)) == {}
 
 
 # ── Phase 4: fixed charges (deterministic accrual) ──

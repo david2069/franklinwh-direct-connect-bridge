@@ -15,15 +15,15 @@ def test_defaults_when_nothing_set(tmp_path):
 
 def test_override_wins_and_clears(tmp_path):
     st = MetricsStore(str(tmp_path / "m.db"))
-    ss.update(st, None, {"solar_kwp": 6.6, "solar_type": "ac", "whole_home_backup": False,
+    ss.update(st, "gw1", {"solar_kwp": 6.6, "solar_type": "ac", "whole_home_backup": False,
                          "battery_label": "Home Battery"})
-    v = ss.values(st, None, None, None)
+    v = ss.values(st, None, "gw1", None)
     assert v["solar_kwp"] == 6.6 and v["solar_type"] == "ac"
     assert v["whole_home_backup"] is False and v["battery_label"] == "Home Battery"
     assert v["_overridden"]["solar_kwp"] is True
     # clearing (null) reverts to default/derived
-    ss.update(st, None, {"solar_kwp": None})
-    assert ss.values(st, None, None, None)["solar_kwp"] == 0.0
+    ss.update(st, "gw1", {"solar_kwp": None})
+    assert ss.values(st, None, "gw1", None)["solar_kwp"] == 0.0
 
 
 def test_derive_beats_default_but_override_beats_derive(tmp_path, monkeypatch):

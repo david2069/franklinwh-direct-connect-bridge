@@ -110,7 +110,6 @@ def test_link_leg_not_recorded_when_not_measured(monkeypatch):
 @pytest.fixture
 def api(monkeypatch):
     calls = []
-    monkeypatch.setenv("FWH_MODBUS_HOST", "192.0.2.10")
     monkeypatch.setattr(bc, "status", lambda host: calls.append(host) or
                         {"available": True, "state": "ready", "reason": "", "hint": "",
                          "max_charge_w": 5000, "max_discharge_w": 5000})
