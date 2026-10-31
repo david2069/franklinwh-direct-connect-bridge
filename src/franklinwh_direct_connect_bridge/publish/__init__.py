@@ -32,6 +32,9 @@ def handle_command(key: str, payload: str, *, settings, client, store=None,
     if key.startswith("reserve_soc_"):
         from .. import providers
         mode = key.removeprefix("reserve_soc_")
+        if mode not in ("tou", "self"):
+            # Emergency Backup's reserve is fixed at 100 %; nothing else is a mode.
+            return f"unknown control '{key}'"
         if gateway is None:
             return "reserve: no gateway"
         refused = providers.cloud_target_refusal(

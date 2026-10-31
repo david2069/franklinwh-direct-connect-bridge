@@ -93,20 +93,19 @@ CONTROLS: list[dict[str, Any]] = [
     # Reserve SoC per mode (C2, docs/MQTT_CONTROLS_PLAN.md). The aGate discards a local
     # reserve write, so these write through the cloud provider and are published only
     # when it is set up for this gateway. Their state is the local 1726 read every poll
-    # already makes. Names follow the Modbus Bridge's.
+    # already makes. Names follow the Modbus Bridge's. No Emergency Backup number: that
+    # mode's reserve is fixed at 100 % and can't be changed, so a control would do nothing.
     {"key": "reserve_soc_tou", "name": "TOU Reserve SOC", "ha_type": "number",
      "state_key": "reserve_tou_pct", "reserve_mode": "tou"},
     {"key": "reserve_soc_self", "name": "Self-Consumption Reserve SOC", "ha_type": "number",
      "state_key": "reserve_self_pct", "reserve_mode": "self"},
-    {"key": "reserve_soc_backup", "name": "Emergency Backup Reserve SOC", "ha_type": "number",
-     "state_key": "reserve_backup_pct", "reserve_mode": "backup"},
 ]
 
 #: The reserve controls, left out of discovery unless the cloud can write this gateway.
 RESERVE_KEYS = frozenset(c["key"] for c in CONTROLS if c.get("reserve_mode"))
 
 #: 1726 scheduling_type (== cloud workMode) -> the reserve control's mode.
-RESERVE_WORKMODE = {1: "tou", 2: "self", 3: "backup"}
+RESERVE_WORKMODE = {1: "tou", 2: "self"}
 
 #: The bridge's own health (#271, shared alert spec §6). Published for every gateway
 #: device whatever the groups, on its own topic, and WITHOUT the gateway's availability

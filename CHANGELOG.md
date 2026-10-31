@@ -12,8 +12,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
-- **Reserve SoC in Home Assistant** (C2). Three numbers, one per mode: TOU,
-  Self-Consumption and Emergency Backup Reserve SOC. They write through the FranklinWH
+- **Reserve SoC in Home Assistant** (C2). Two numbers: TOU and Self-Consumption
+  Reserve SOC (Emergency Backup's reserve is fixed at 100 %). They write through the FranklinWH
   cloud, because the aGate discards a local reserve write. They appear only when cloud
   credentials are set for this gateway's aGate. Each shows the reserve the aGate reports
   every poll.

@@ -19,7 +19,8 @@ def _modes():
 
 def test_each_modes_reserve_comes_from_the_poll():
     st = entities.state_payload(_modes())
-    assert (st["reserve_tou_pct"], st["reserve_self_pct"], st["reserve_backup_pct"]) == (15, 8, 100)
+    assert (st["reserve_tou_pct"], st["reserve_self_pct"]) == (15, 8)
+    assert "reserve_backup_pct" not in st
 
 
 def test_reserve_numbers_are_published_unless_skipped():
@@ -92,5 +93,13 @@ def test_a_cloud_failure_is_the_answer_not_a_raise(s, monkeypatch):
     def boom(*a, **k):
         raise providers.ReserveUnavailable("no provider")
     monkeypatch.setattr(providers, "set_reserve", boom)
-    out = handle_command("reserve_soc_backup", "100", settings=s, client=_NoLocal(), gateway=_gw())
-    assert out.startswith("reserve backup -> 100%: failed: ReserveUnavailable")
+    out = handle_command("reserve_soc_self", "10", settings=s, client=_NoLocal(), gateway=_gw())
+    assert out.startswith("reserve self -> 10%: failed: ReserveUnavailable")
+
+
+def test_emergency_backup_has_no_reserve_control(s, monkeypatch):
+    """Its reserve is fixed at 100 % and can't be changed (owner, 2026-10-31)."""
+    monkeypatch.setattr(providers, "set_reserve", lambda *a, **k: pytest.fail("no cloud call"))
+    assert "reserve_soc_backup" not in entities.RESERVE_KEYS
+    assert handle_command("reserve_soc_backup", "50", settings=s, client=_NoLocal(),
+                          gateway=_gw()) == "unknown control 'reserve_soc_backup'"

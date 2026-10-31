@@ -140,13 +140,12 @@ publish the relays, because the emulator doesn't model them.
 | `smart_circuit_3` | `switch` | ON / OFF |
 | `reserve_soc_tou` | `number` | 0–100 %, TOU Reserve SOC |
 | `reserve_soc_self` | `number` | 0–100 %, Self-Consumption Reserve SOC |
-| `reserve_soc_backup` | `number` | 0–100 %, Emergency Backup Reserve SOC |
 
 The publisher subscribes to `…/control/+/set` and routes by the key in the topic.
 
 **Reserve SoC goes through the FranklinWH cloud.** The aGate discards a reserve written
-over the local API, so the three reserve numbers write through the cloud, as the bridge's
-own Control page does. They appear only when your FranklinWH cloud credentials are set in
+over the local API, so the two reserve numbers write through the cloud, as the bridge's
+own Control page does. Emergency Backup has no number: its reserve is fixed at 100 %. They appear only when your FranklinWH cloud credentials are set in
 Settings and they are for this gateway's aGate. Mock gateways never have them. Each number
 shows the reserve the aGate reports locally every poll, so a change made in the app shows
 up too. The result of each change is in the bridge's log.
