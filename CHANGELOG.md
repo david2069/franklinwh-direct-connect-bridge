@@ -11,6 +11,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.19] — 2026-10-31
+
 ### Breaking
 - **Every schedule names its gateway** (#379). The schedule form starts on the active
   gateway, always shows the gateway, and has no "Default gateway" choice. Saving a schedule
