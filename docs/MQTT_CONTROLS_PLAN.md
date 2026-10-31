@@ -2,6 +2,11 @@
 
 Status: **agreed** (owner decisions in §4, 2026-10-16). Written 2026-10-16 after 0.4.4.
 
+> **Update 2026-10-31 (owner): decision 1 is overridden.** Controls may run unconfirmed from Home
+> Assistant: "If users can't see it in HA, they cannot test it." C2 (reserve SoC) is built.
+> Off-grid and other controls can now be planned as HA entities; a write still has to take
+> effect to become a control, so grid limits wait until their local write is proven.
+
 ## 1. Where it stands (0.4.4)
 
 21 entities per gateway:
