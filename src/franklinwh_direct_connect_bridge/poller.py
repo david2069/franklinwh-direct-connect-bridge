@@ -175,15 +175,19 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                 return
             try:
                 result = handle_command(key, payload, settings=settings, client=client,
-                                        host=gw.active_host or gw.configured_host)
+                                        host=gw.active_host or gw.configured_host, gateway=gw)
                 log.info("[%s] control %s=%s -> %s", gw.id, key, payload, result)
             except Exception as e:  # noqa: BLE001
                 log.warning("[%s] control %s failed: %s", gw.id, key, e)
 
+        skip = (entities.MOCK_ABSENT_KEYS if getattr(gw, "is_mock", False) else frozenset())
+        if not providers.cloud_can_write(settings, serial=gw.serial,
+                                         serial_locked=bool(getattr(gw, "serial_locked", False)),
+                                         is_mock=bool(getattr(gw, "is_mock", False))):
+            skip = skip | entities.RESERVE_KEYS       # C2: only when the cloud can write it
         pub = MqttPublisher(settings, node, device, command_handler=_on_control,
                             groups=entities.enabled_from_store(get_store(settings)),
-                            skip=(entities.MOCK_ABSENT_KEYS if getattr(gw, "is_mock", False)
-                                  else frozenset()))
+                            skip=skip)
         pub.start()
         return pub
 

@@ -4899,16 +4899,9 @@ def create_app() -> FastAPI:
         }
 
     def _cloud_target_refusal(gw: GatewayState) -> str | None:
-        """Why the cloud can't act for ``gw``, or None (#351, #379): the call goes to this
-        gateway's own locked serial, and only when the cloud account is for that aGate."""
-        if gw.is_mock:
-            return "A mock gateway has no FranklinWH cloud account."
-        if not (gw.serial and getattr(gw, "serial_locked", False)):
-            return "This gateway's serial hasn't been read yet. Try again once it's connected."
-        want = (get_settings().fwh_cloud_gateway or "").upper()
-        if want and want != gw.serial.upper():
-            return "The cloud credentials are for a different gateway."
-        return None
+        return providers.cloud_target_refusal(
+            get_settings(), serial=gw.serial,
+            serial_locked=bool(getattr(gw, "serial_locked", False)), is_mock=bool(gw.is_mock))
 
     @app.post("/api/cloud/reserve")
     def api_cloud_reserve(req: ReserveReq, gateway: str = Depends(_gateway_q)):
