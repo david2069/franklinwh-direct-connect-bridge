@@ -52,6 +52,9 @@ ENTITIES: list[dict[str, Any]] = [
      "options": ["Connected", "SimulatedOffGrid", "Outage", "OffGrid"]},
     {"key": "active_reserve_pct", "name": "Active Reserve SOC", "unit": "%", "device_class": None, "state_class": "measurement", "group": "core"},
     {"key": "device_firmware", "name": "Firmware Version", "unit": None, "device_class": None, "state_class": None, "group": "diagnostic"},
+    # 1707 gridLineVol / gridFreq, read every poll (#386). The Modbus Bridge's slugs.
+    {"key": "grid_voltage_v", "name": "Grid Voltage", "unit": "V", "device_class": "voltage", "state_class": "measurement", "group": "power"},
+    {"key": "grid_frequency_hz", "name": "Grid Frequency", "unit": "Hz", "device_class": "frequency", "state_class": "measurement", "group": "power"},
     # 1707 relays. Named as the Solar tab names them: which physical relay FWHAI's cloud
     # "Grid Relay 1" is has not been checked, so its slugs are not borrowed.
     {"key": "relay_main1", "name": "Main Relay 1", "ha_type": "binary_sensor", "unit": None, "device_class": "power", "state_class": None, "group": "diagnostic"},
@@ -261,6 +264,7 @@ _HA_KEYS = {
     "kwh_fhp_chg": "battery_charge_today_kwh",
     "kwh_fhp_di": "battery_discharge_today_kwh",
     "kwh_load": "load_today_kwh",
+    "grid_freq_hz": "grid_frequency_hz",
 }
 
 
@@ -318,8 +322,10 @@ def display_precision(e: dict) -> int | None:
         return 1
     if unit == "W" or unit == "ms":
         return 0
-    if unit == "kWh":
+    if unit == "kWh" or unit == "Hz":
         return 2
+    if unit == "V":
+        return 1
     return None
 
 

@@ -100,6 +100,8 @@ Measured live on 2026-10-15: **21 entities — 17 sensors and 4 controls.**
 | `load_w` | Load Power | W | power |
 | `generator_w` | Generator Power | W | power |
 | `battery_status` | Battery State (charging / discharging / standby) | — | power |
+| `grid_voltage_v` | Grid Voltage | V | power |
+| `grid_frequency_hz` | Grid Frequency | Hz | power |
 | `solar_today_kwh` | Solar Today | kWh | energy |
 | `grid_import_today_kwh` | Grid Import Today | kWh | energy |
 | `grid_export_today_kwh` | Grid Export Today | kWh | energy |
@@ -125,7 +127,8 @@ positive is discharging, zero is standby.
 to be, and *Outage* when it is off grid with no request the bridge knows about. A real
 outage has not been measured yet, so *Outage* means "not requested", not a confirmed
 outage. *OffGrid* means off grid with the cause unknown. **Active Reserve SOC** is the
-reserve of the operating mode in use. A relay is on when it conducts. Mock gateways don't
+reserve of the operating mode in use. **Grid Voltage** is the aGate's service voltage (1707 `gridLineVol`), and **Grid
+Frequency** the grid frequency (1707 `gridFreq`). A relay is on when it conducts. Mock gateways don't
 publish the relays, because the emulator doesn't model them.
 
 ### Controls (writable)
