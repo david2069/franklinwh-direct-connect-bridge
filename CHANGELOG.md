@@ -11,6 +11,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.20] — 2026-10-31
+
+Second release today, after 0.5.19 (two a day are now allowed).
+
 ### Added
 - **Home Assistant gets Grid Status, Active Reserve SOC, Firmware Version and four relay
   sensors** (#386). Grid Status says whether the aGate is connected, off grid on request,
