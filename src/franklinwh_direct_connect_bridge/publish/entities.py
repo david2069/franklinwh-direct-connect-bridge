@@ -78,8 +78,9 @@ MODE_ALIAS = {"Time-of-Use": "tou", "Self-Consumption": "self",
               "Emergency Backup": "backup"}
 
 #: WRITABLE entities. Only hardware-verified writes appear here — an HA control
-#: that silently does nothing is worse than no control. Reserve SoC and
-#: smart-circuit schedules are deliberately absent: the gateway discards both.
+#: that silently does nothing is worse than no control. Smart-circuit schedules are
+#: deliberately absent: the gateway discards them. Reserve SoC is here only because it
+#: is written through the cloud (C2), where it sticks.
 CONTROLS: list[dict[str, Any]] = [
     {"key": "operating_mode", "name": "Operating Mode", "ha_type": "select",
      "options": MODE_OPTIONS, "state_key": "mode"},
@@ -89,7 +90,22 @@ CONTROLS: list[dict[str, Any]] = [
      "state_key": "circuit_2_on", "circuit": 2},
     {"key": "smart_circuit_3", "name": "Smart Circuit 3", "ha_type": "switch",
      "state_key": "circuit_3_on", "circuit": 3},
+    # Reserve SoC per mode (C2, docs/MQTT_CONTROLS_PLAN.md). The aGate discards a local
+    # reserve write, so these write through the cloud provider and are published only
+    # when it is set up for this gateway. Their state is the local 1726 read every poll
+    # already makes. Names follow the Modbus Bridge's. No Emergency Backup number: that
+    # mode's reserve is fixed at 100 % and can't be changed, so a control would do nothing.
+    {"key": "reserve_soc_tou", "name": "TOU Reserve SOC", "ha_type": "number",
+     "state_key": "reserve_tou_pct", "reserve_mode": "tou"},
+    {"key": "reserve_soc_self", "name": "Self-Consumption Reserve SOC", "ha_type": "number",
+     "state_key": "reserve_self_pct", "reserve_mode": "self"},
 ]
+
+#: The reserve controls, left out of discovery unless the cloud can write this gateway.
+RESERVE_KEYS = frozenset(c["key"] for c in CONTROLS if c.get("reserve_mode"))
+
+#: 1726 scheduling_type (== cloud workMode) -> the reserve control's mode.
+RESERVE_WORKMODE = {1: "tou", 2: "self"}
 
 #: The bridge's own health (#271, shared alert spec §6). Published for every gateway
 #: device whatever the groups, on its own topic, and WITHOUT the gateway's availability
@@ -275,6 +291,10 @@ def state_payload(summary: dict) -> dict[str, Any]:
                    if m.get("active")), None)
     if active and active.get("reserved_soc") is not None:
         st["active_reserve_pct"] = active["reserved_soc"]
+    for m in (summary.get("mode") or {}).get("modes") or []:
+        mode = RESERVE_WORKMODE.get(m.get("workmode"))
+        if mode and m.get("reserved_soc") is not None:
+            st[f"reserve_{mode}_pct"] = m["reserved_soc"]
     fw = (summary.get("firmware") or {}).get("IBG_VER")
     if fw:
         st["device_firmware"] = fw
@@ -348,7 +368,7 @@ def device_info(node: str, serial: str, firmware: str | None = None, *,
 #: Keys that only a REAL gateway has a source for (the emulator models no network, #134).
 NETWORK_KEYS = frozenset(e["key"] for e in ENTITIES if e["key"].startswith("net_"))
 #: ...nor the 1707 relays (#386). A mock gateway publishes none of these.
-MOCK_ABSENT_KEYS = NETWORK_KEYS | frozenset(RELAY_KEYS.values())
+MOCK_ABSENT_KEYS = NETWORK_KEYS | frozenset(RELAY_KEYS.values()) | RESERVE_KEYS
 
 
 def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: str, groups=None,
@@ -392,6 +412,8 @@ def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: st
     # Controls. Each gets its own command topic; the publisher subscribes to
     # `<prefix>/<node>/control/+/set` and routes by the key in the topic.
     for c in CONTROLS if "controls" in enabled else []:
+        if c["key"] in skip:
+            continue
         cmd_topic = f"{prefix}/{node}/control/{c['key']}/set"
         cfg = {
             "name": c["name"],
@@ -405,6 +427,9 @@ def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: st
         }
         if c["ha_type"] == "select":
             cfg["options"] = c["options"]
+        if c["ha_type"] == "number":
+            cfg.update({"min": 0, "max": 100, "step": 1, "unit_of_measurement": "%",
+                        "mode": "box"})
         if c["ha_type"] == "switch":
             # The state JSON carries a bool; HA needs the payloads spelled out.
             cfg["payload_on"] = "ON"

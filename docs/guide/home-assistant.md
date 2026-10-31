@@ -138,14 +138,20 @@ publish the relays, because the emulator doesn't model them.
 | `smart_circuit_1` | `switch` | ON / OFF |
 | `smart_circuit_2` | `switch` | ON / OFF |
 | `smart_circuit_3` | `switch` | ON / OFF |
+| `reserve_soc_tou` | `number` | 0–100 %, TOU Reserve SOC |
+| `reserve_soc_self` | `number` | 0–100 %, Self-Consumption Reserve SOC |
 
 The publisher subscribes to `…/control/+/set` and routes by the key in the topic.
 
-**Two obvious candidates are deliberately absent**, and the reason is in the code:
-**reserve SoC** and **smart-circuit schedules** are not published because *the gateway
-discards both writes*. An HA control that silently does nothing is worse than no control.
-Reserve SoC is still settable from the bridge's own UI, because there it goes through the
-cloud instead — see [Control](control.md).
+**Reserve SoC goes through the FranklinWH cloud.** The aGate discards a reserve written
+over the local API, so the two reserve numbers write through the cloud, as the bridge's
+own Control page does. Emergency Backup has no number: its reserve is fixed at 100 %. They appear only when your FranklinWH cloud credentials are set in
+Settings and they are for this gateway's aGate. Mock gateways never have them. Each number
+shows the reserve the aGate reports locally every poll, so a change made in the app shows
+up too. The result of each change is in the bridge's log.
+
+**Smart-circuit schedules are not published**: the gateway discards that write, and an
+HA control that silently does nothing is worse than no control.
 
 ### Entity groups
 
