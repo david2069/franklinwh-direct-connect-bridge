@@ -2,7 +2,7 @@ name: "FranklinWH Direct Connect Bridge"
 # Kept SHORT: the add-on store clips this to two lines, and the old 88-character
 # version was cut mid-phrase ("...over the Direct Connect").
 description: "Local REST + MQTT bridge and web UI for the FranklinWH aGate"
-version: "0.5.20"
+version: "0.5.20.33"
 # DO NOT RENAME. The slug is the add-on's identity to the Supervisor: change it and
 # Home Assistant treats this as a different add-on, losing the existing configuration.
 # It keeps the pre-rename spelling deliberately. See the display `name` above.
@@ -14,7 +14,6 @@ arch:
   - amd64
 # Prebuilt image, published by .github/workflows/publish-image.yml before each release (#243).
 # The Supervisor pulls {image}:{version} instead of building locally, and GHCR counts pulls.
-image: "ghcr.io/david2069/{arch}-franklinwh-direct-connect-bridge"
 
 # Web UI + REST served through HA ingress (sidebar panel).
 ingress: true
