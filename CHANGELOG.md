@@ -11,6 +11,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+- **A pip install starts again.** The history store was fixed at `/data/metrics.db`, so the
+  INSTALL.md "Without Docker" install stopped at start-up on any host without a writable
+  `/data` (macOS, or Linux as a normal user). It now lives under the bridge's data folder:
+  `./data` for a pip install, `/data` in the add-on and Docker as before. `METRICS_DB` still
+  overrides it (#410).
+
 ### Testing
 - **Every PR now installs the bridge the two standalone ways INSTALL.md offers.** Docker
   Compose and pip into a fresh venv, each with and without a broker, then a mock gateway is
