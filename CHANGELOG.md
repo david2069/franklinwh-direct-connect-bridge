@@ -11,6 +11,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Docs
+- **Up to two releases a day** (TEST_POLICY). Each still passes its own gates, including the
+  HAOS acceptance run; a release that changes how Home Assistant identifies things is still
+  released alone.
+
 ## [0.5.19] — 2026-10-31
 
 ### Breaking

@@ -39,7 +39,9 @@ Reviewed by the franklinwh-modbus-bridge session on 2026-10-16. Its review is fo
   - Modbus bridge: `pyproject.toml`, `__init__.py`, `addon/config.yaml`, `addon/Dockerfile` `BRIDGE_REF`, `addon/CHANGELOG.md`
 - **Anything that changes how HA identifies things** (device identifiers, `unique_id`, device or entity
   naming, MQTT topics, add-on slug) is **released alone**. Its notes say exactly what users will see change.
-- **No release on the same day as the previous one** unless it is a hotfix for that release.
+- **Up to two releases a day** (owner, 2026-10-31; it was one). Each passes its own gates, G1
+  included, and is published and merged on its own. A release that changes how HA identifies
+  things is the only release that day. A hotfix for a release doesn't count toward the two.
 
 ## 2. Gates
 
