@@ -18,6 +18,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   The relays are Main Relay 1 and 2, Grid Relay 2 and Black Start Relay. All of them come
   from reads the bridge already makes every poll; no new reads of the aGate.
 
+### Security
+- **Home Assistant controls stop working when the Controls group is off** (#399). Turning
+  off Controls (writable) in the MQTT settings removed the Operating Mode select and the
+  Smart Circuit switches from Home Assistant, but the bridge still obeyed commands sent to
+  their MQTT topics. Now it stops listening for them, and refuses (and logs) any that
+  arrive anyway. Turning the group back on restores them.
+
 ## [0.5.18] — 2026-10-30
 
 ### Breaking
