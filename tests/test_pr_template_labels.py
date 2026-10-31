@@ -1,6 +1,7 @@
 """The PR template names the labels CLAUDE.md says to use, and none of the retired ones.
 
-The repository still has the older sev:S1-critical … S4-cosmetic labels on past issues, so their existence on GitHub is not a reason to use them on new work.
+The repository still has the older sev:S1-critical … S4-cosmetic labels on past issues,
+so their existence on GitHub is not a reason to use them on new work.
 """
 import re
 from pathlib import Path
