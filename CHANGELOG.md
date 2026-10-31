@@ -19,6 +19,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   On update, schedules saved with no gateway, and billing and System Setup data saved under
   "default", are given to the default gateway at start-up (or to the first gateway you add),
   so nothing stops running. A schedule with no gateway no longer runs on the default.
+- **No call falls back to the default gateway's address** (#379). An internal aGate call
+  with no host is refused instead of going to the configured `fwh_host` or the default
+  gateway. The poller and Home Assistant controls use the gateway's re-discovered address,
+  else its configured one. Nothing registers a gateway on first use any more; the roster
+  is what start-up registered. `FWH_MODBUS_HOST` is no longer read: each gateway's Modbus
+  client connects to its own host (the host override in Control still applies to the
+  default gateway). A scheduler pass for no gateway runs no schedule. Settings → Connection
+  shows the active gateway's host, and none in All gateways.
 
 ## [0.5.18] — 2026-10-30
 

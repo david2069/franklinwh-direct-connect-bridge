@@ -17,7 +17,6 @@ from franklinwh_direct_connect_api.client import LocalClient
 from franklinwh_direct_connect_api.transport import TransportError
 
 from .config import Settings
-from .state import get_state
 
 log = logging.getLogger("franklinwh_direct_connect_bridge.client")
 
@@ -32,9 +31,12 @@ VPP_PROGRAMME_ID = 9
 DEBUG_RUN_STATUS = 8
 
 
-def active_host(s: Settings) -> str:
-    """The IP we currently talk to — a re-discovered address wins over the configured one."""
-    return get_state().active_host or s.fwh_host
+def _need_host(host: str | None) -> str:
+    """Every aGate call names its gateway's host; there is no default to fall back to
+    (#379). An empty host is a caller bug, raised before any I/O."""
+    if not host:
+        raise ValueError("no aGate host: the caller must name the gateway (#379)")
+    return host
 
 
 def _split_hostport(h: str | None, default_port: int) -> tuple[str, int]:
@@ -51,7 +53,7 @@ def _split_hostport(h: str | None, default_port: int) -> tuple[str, int]:
 
 
 def _client(s: Settings, host: str | None = None) -> LocalClient:
-    h, port = _split_hostport(host or active_host(s), s.fwh_port)
+    h, port = _split_hostport(_need_host(host), s.fwh_port)
     return LocalClient(h, port, timeout=s.fwh_timeout, retries=s.fwh_retries)
 
 
@@ -98,7 +100,7 @@ def read(s: Settings, name: str, host: str | None = None) -> Any:
 
     ``name`` must be in :data:`READ_METHODS` (raises ValueError otherwise). This is the
     generic backing for the /api/cmd/<name> surface — a fair 1:1 with the library.
-    ``host`` selects the gateway (multi-gateway); None → the default gateway.
+    ``host`` is the gateway's host; it is required (#379).
     """
     if name not in READ_METHODS:
         raise ValueError(f"unknown read '{name}'")
@@ -172,13 +174,11 @@ def rediscover(s: Settings, host: str | None = None,
                ) -> str | None:
     """Scan the subnet for the aGate (it can move IP on reboot / DHCP). Adopt only the host
     whose serial is this gateway's own, and never one in ``taken`` (hosts other registered
-    gateways use) (#356). Returns the new host (or None); the caller adopts it. Back-compat:
-    a single-arg call (host=None) is for the default gateway, uses its serial and updates
-    its ``active_host``."""
-    target = host or active_host(s)
-    # Only the default gateway's own call may use the default's serial; another gateway
-    # whose serial was never read has nothing to match, so it does not sweep (#356).
-    known_serial = serial if host is not None else (serial or get_state().serial)
+    gateways use) (#356). Returns the new host (or None); the caller adopts it. ``host``
+    is required (#379); a gateway whose serial was never read has nothing to match, so it
+    does not sweep (#356)."""
+    target = _need_host(host)
+    known_serial = serial
     if not known_serial:
         log.warning("not re-discovering %s: its serial has not been read yet", target)
         return None
@@ -199,15 +199,13 @@ def rediscover(s: Settings, host: str | None = None,
                    and r.host.split(":")[0] not in taken_ips), None)
     if chosen and chosen != target:
         log.warning("aGate moved: %s → %s", target, chosen)
-        if host is None:            # back-compat: single-arg adopts on the default gateway
-            get_state().active_host = chosen
     return chosen
 
 
 def health(s: Settings, host: str | None = None) -> dict[str, Any]:
     """Interface-level health: ping (informational) + a real sendMqtt round-trip with
     latency + :502 (Modbus) + der_comms config. Mirrors the CLI ``health`` command."""
-    host = host or active_host(s)
+    host = _need_host(host)
     out: dict[str, Any] = {
         "host": host,
         "ping": discover.ping(host, timeout=1.0),
@@ -240,7 +238,7 @@ def network_bundle(s: Settings, host: str | None = None) -> dict[str, Any]:
     login latency), connectivity (1113 router/net/aws), interfaces (1118), interface switches
     (1119), and the AWS-IoT cloud config (1121). Each block is best-effort — a failed sub-read
     is left None so a partial view still returns. Credentials are redacted by the caller."""
-    host = host or active_host(s)
+    host = _need_host(host)
     reach: dict[str, Any] = {
         "host": host,
         "ping": discover.ping(host, timeout=1.0),
@@ -277,7 +275,7 @@ def network_light(s: Settings, host: str | None = None) -> dict[str, Any]:
     ping and NO :502 probe (this runs in the background, every few minutes)."""
     out: dict[str, Any] = {"connectivity": None, "interfaces_raw": None,
                            "switches": None, "cloud": None}
-    with _client(s, host or active_host(s)) as c:
+    with _client(s, host) as c:
         c.login()
         for key, fn in (("connectivity", c.connectivity),
                         ("interfaces_raw", c.network_interfaces),
@@ -706,7 +704,7 @@ def battery(s: Settings, host: str | None = None, dev_id: int = 1) -> dict[str, 
     out: dict[str, Any] = {"id": dev_id, "ok": False, "error": None}
     blocks = {}
     try:
-        with _client(s, host or active_host(s)) as c:
+        with _client(s, host) as c:
             c.login()
             for key, fn in (("cells", lambda: c.battery_cells(dev_id)),
                             ("electrical", lambda: c.power_electronics(dev_id)),
@@ -988,7 +986,7 @@ def summary(s: Settings, host: str | None = None, *, mock: bool = False) -> dict
     flaky local link vs. five separate connect/login round-trips. Reads ``host`` when given
     (multi-gateway); the caller (poller) stores serial/firmware/caches on its gateway — this
     function no longer mutates global state."""
-    host = host or active_host(s)
+    host = _need_host(host)
     out: dict[str, Any] = {
         "host": host, "ok": False, "latency_ms": None,
         "configured_host": s.fwh_host, "rediscovered": host != s.fwh_host,

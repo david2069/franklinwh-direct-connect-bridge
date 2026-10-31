@@ -907,7 +907,7 @@ function settingsTab() {
 
     async reload() {
       try {
-        const r = await fetch('api/settings');
+        const r = await fetch('api/settings' + this.$store.app.gwQuery());
         if (r.ok) {
           this.cfg = await r.json();
           this.syncForm();

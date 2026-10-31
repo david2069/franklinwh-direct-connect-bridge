@@ -36,11 +36,11 @@ def sent(monkeypatch):
 
 def _tick(st, now=T0, soc=50):
     return sch.tick(settings=None, client=None, store=st, state={"soc": soc}, host="h",
-                    gateway_id=None, now=now)
+                    gateway_id="gw-h", now=now)
 
 
 def _sched(st, sid, *, prio=0, conflict="override", conds=None, fire_at="14:00", dur=60):
-    st.create_schedule(sid=sid, name=f"rule-{sid}", spec={
+    st.create_schedule(sid=sid, name=f"rule-{sid}", spec={"gateway_id": "gw-h",
         "fire_at": fire_at, "duration_min": dur, "priority": prio, "conflict": conflict,
         "conditions": conds or [], "action": dict(FORCE)})
 
@@ -61,10 +61,10 @@ def test_a_rejected_mode_write_is_a_failed_run(st, monkeypatch):
     class Client:
         def set_mode(self, settings, mode, host=None):
             return {"ok": False, "result": 3}       # rejected; no "error" word in it
-    st.create_schedule(sid="m", name="mode", spec={
+    st.create_schedule(sid="m", name="mode", spec={"gateway_id": "gw-h",
         "fire_at": "14:00", "duration_min": 60, "action": {"kind": "set_mode", "mode": "self"}})
     fired = sch.tick(settings=None, client=Client(), store=st, state={"soc": 50}, host="h",
-                     gateway_id=None, now=T0)
+                     gateway_id="gw-h", now=T0)
     assert fired[0]["ok"] is False and "failed" in fired[0]["result"]
 
 
@@ -78,10 +78,10 @@ def test_a_failing_scheduled_write_never_sleeps_inside_the_tick(st, monkeypatch)
     class Client:
         def set_mode(self, settings, mode, host=None):
             raise ConnectionError("aGate unreachable")
-    st.create_schedule(sid="m", name="mode", spec={
+    st.create_schedule(sid="m", name="mode", spec={"gateway_id": "gw-h",
         "fire_at": "14:00", "duration_min": 60, "action": {"kind": "set_mode", "mode": "self"}})
     fired = sch.tick(settings=None, client=Client(), store=st, state={"soc": 50}, host="h",
-                     gateway_id=None, now=T0)
+                     gateway_id="gw-h", now=T0)
     assert fired[0]["ok"] is False
     assert slept == []                       # the run's own backoff retries it, not a sleep
 
@@ -157,7 +157,6 @@ def test_a_higher_priority_force_still_overrides(st, sent):
 
 def test_deleting_a_running_schedule_releases_its_force(st, sent, monkeypatch):
     monkeypatch.setattr(db, "get_store", lambda s: st)
-    monkeypatch.setenv("FWH_MODBUS_HOST", "h")
     _sched(st, "a")
     _tick(st)
     sent.clear()
@@ -168,7 +167,6 @@ def test_deleting_a_running_schedule_releases_its_force(st, sent, monkeypatch):
 
 def test_deleting_an_idle_schedule_sends_nothing(st, sent, monkeypatch):
     monkeypatch.setattr(db, "get_store", lambda s: st)
-    monkeypatch.setenv("FWH_MODBUS_HOST", "h")
     _sched(st, "a", fire_at="18:00")
     r = TestClient(app_module.create_app()).delete("/api/schedules/a").json()
     assert sent == [] and r["deleted"] == "a" and not r.get("released")

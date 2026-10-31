@@ -69,7 +69,7 @@ from . import setup_wizard
 from .publish import entities
 from . import mockgw
 from .publish import entities
-from .state import GatewayState, get_state, get_gateway, gateways as get_gateways
+from .state import GatewayState, get_gateway, gateways as get_gateways
 
 #: Bridge process start — for the Network tab's uptime. Module import ≈ process start.
 _STARTED_AT = time.time()
@@ -193,12 +193,9 @@ def _dispatch_kind(gw) -> tuple:
     import time as _t
     from . import battery_control as _bc
     from . import cloud_status as _cs
-    # Forces are recorded under the gateway's own host; FWH_MODBUS_HOST and the host
-    # override only change where the Modbus client connects (#354). An install with no
-    # gateway host records its force under FWH_MODBUS_HOST, so the default counts that too.
+    # Forces are recorded under the gateway's own host; the host override only changes
+    # where the Modbus client connects (#354).
     hosts = [getattr(gw, "active_host", None), getattr(gw, "configured_host", None)]
-    if gw is state.default_gateway():
-        hosts.append(os.environ.get("FWH_MODBUS_HOST"))
     if _bc.holds_force(*hosts):
         return "force", None
     cloud_fresh = (getattr(gw, "cloud_vpp", None) is not None
@@ -1382,7 +1379,7 @@ def create_app() -> FastAPI:
         """The poller's cached last-good summary when warm, else an on-demand read of
         this gateway's host. Shared by /api/summary and /api/gateways/{id}/summary."""
         summ = {**gw.last_summary, "cached": True} if gw.last_summary \
-            else client.summary(get_settings(), host=gw.active_host)
+            else client.summary(get_settings(), host=gw.active_host or gw.configured_host)
         return _apply_capabilities(_apply_vpp(summ, gw))
 
     def _apply_capabilities(summ: dict) -> dict:
@@ -1740,9 +1737,7 @@ def create_app() -> FastAPI:
         # (single-gateway behaviour unchanged).
         return _gateway_summary(_gw_or_404(gateway))
 
-    # -- multi-gateway roster (reads / monitoring, Phase 1) -------------------
-    # Control / cmd / cloud writes + MQTT endpoints remain on the DEFAULT gateway
-    # (get_state()) in Phase 1 — per-gateway writes are Phase 2.
+    # -- multi-gateway roster ---------------------------------------------------
     def _gw_store():
         # Never let a broken/absent store 500 the roster — fall back to the
         # registered-gateway view (env path) when the store can't be opened.
@@ -1790,16 +1785,8 @@ def create_app() -> FastAPI:
             rows = st.gateways()
             if rows:
                 return [_gw_merged(r) for r in rows]
-        gws = state.gateways()
-        if not gws:
-            # Do NOT invent a row from the unconfigured placeholder. It rendered as a
-            # blank gateway — no name, no host, disabled, poll off — which reads as a
-            # BROKEN gateway rather than as "none configured", and was reported as such
-            # from the live add-on (2026-10-15). An empty roster is the honest answer.
-            fallback = get_state()
-            if fallback.configured_host or fallback.active_host:
-                gws = [fallback]
-        return [_roster_entry(gw) for gw in gws]
+        # No gateway registered is an empty roster: never an invented row (2026-10-15).
+        return [_roster_entry(gw) for gw in state.gateways()]
 
     def _default_row(st) -> dict | None:
         return next((r for r in st.gateways() if r.get("is_default")), None)
@@ -2945,8 +2932,9 @@ def create_app() -> FastAPI:
     def _apowers_reporting(gateway: str | None) -> int | None:
         """aPower units the gateway reports, or None when it could not be asked."""
         try:
-            gw = _gw_or_404(gateway) if gateway else get_state()
-            n = getattr(gw, "apower_count", None)
+            if not gateway:
+                return None
+            n = getattr(_gw_or_404(gateway), "apower_count", None)
             return int(n) if n is not None else None
         except Exception:  # noqa: BLE001 — unknown is a valid answer here
             return None
@@ -3768,16 +3756,14 @@ def create_app() -> FastAPI:
     def _modbus_host(gateway: str | None = None) -> str | None:
         # The aGate's Modbus interface is on the SAME host as its Direct-Connect
         # interface: the gateway's host (port 502 added by battery_control). For the
-        # default gateway, battery_control applies FWH_MODBUS_HOST or the host override
-        # (#354), so a force is recorded under the gateway's own host either way.
+        # default gateway, battery_control applies the host override (#354), so a force
+        # is recorded under the gateway's own host either way.
         try:
-            host = _gw_host(gateway)
+            return _gw_host(gateway)
         except HTTPException:
             raise
         except Exception:  # noqa: BLE001
-            host = None
-        # No gateway host at all (an env-only install): FWH_MODBUS_HOST is the target.
-        return host or (None if gateway else os.environ.get("FWH_MODBUS_HOST"))
+            return None
 
     def _battery_force_status(host: str | None) -> dict:
         from . import battery_control
@@ -5163,7 +5149,7 @@ def create_app() -> FastAPI:
         single-phase. Unknown is reported as unknown.
         """
         try:
-            gw = (get_gateway(gateway) if gateway else None) or get_state()
+            gw = get_gateway(gateway) if gateway else None
             if gw is None:
                 return None
             # NB: deliberately does NOT consult three_phase/isThreePhaseInstall — that
@@ -5188,7 +5174,7 @@ def create_app() -> FastAPI:
     def _ac_type_source(gateway: str | None) -> str | None:
         """Where the ac_type came from, so a reader can weigh it."""
         try:
-            gw = (get_gateway(gateway) if gateway else None) or get_state()
+            gw = get_gateway(gateway) if gateway else None
             if gw is None:
                 return None
             m = scheduler._meter_for_gateway(_ha_store(), gw.id)
@@ -5649,12 +5635,14 @@ def create_app() -> FastAPI:
 
     # -- Settings tab (read-only, effective config; never returns secrets) -----
     @app.get("/api/settings")
-    def api_settings():
+    def api_settings(gateway: str | None = Depends(_gateway_opt)):
+        """Effective config. The host and MQTT link are per gateway: they come from
+        ``?gateway=``, and without it the host is unknown (no default gateway, #379)."""
         s = get_settings()
-        state = get_state()
+        gw = get_gateway(gateway) if gateway else None
         return {
             "connection": {
-                "host": client.active_host(s),
+                "host": (gw.active_host or gw.configured_host) if gw else None,
                 "configured_host": s.fwh_host,
                 "port": s.fwh_port,
                 "timeout": s.fwh_timeout,
@@ -5681,7 +5669,8 @@ def create_app() -> FastAPI:
                 "password_set": bool(s.mqtt_password),
                 "prefix": s.mqtt_prefix,
                 "discovery_prefix": s.ha_discovery_prefix,
-                "connected": state.mqtt_connected,
+                "connected": (gw.mqtt_connected if gw else
+                              any(g.mqtt_connected for g in get_gateways())),
             },
             "control": {
                 "read_only": s.read_only,

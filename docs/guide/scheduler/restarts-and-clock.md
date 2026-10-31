@@ -11,7 +11,7 @@ schedule runs on.
 
 | Step | What happens |
 |---|---|
-| Graceful shutdown | The scheduler worker is told to stop. If the bridge holds a force it started (in memory), it sends a **Release**, to `FWH_MODBUS_HOST` or else the **first** gateway's host. Exit HA actions do not run and History gets no *exit* row. |
+| Graceful shutdown | The scheduler worker is told to stop. If the bridge holds a force it started (in memory), it sends a **Release** to each aGate it holds a force on. Exit HA actions do not run and History gets no *exit* row. |
 | Crash or power loss | Nothing is released. The force stays on the aGate. |
 | Start-up: interrupted dispatches | A force a schedule (or the Battery Control widget) started is recorded until it is released. At start-up, if the Modbus client (this bridge) is on, rows still marked active are handled by **the interrupted-dispatch policy** (default **release**: release it if its window has ended, re-arm the auto-release if not). |
 | Start-up: paused runs | A run that was paused when the bridge stopped is closed as *stopped*. |

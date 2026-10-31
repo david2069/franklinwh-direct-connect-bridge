@@ -316,11 +316,11 @@ def test_a_fire_that_did_nothing_still_logs_why(tmp_path, monkeypatch):
     from franklinwh_direct_connect_bridge.db import MetricsStore
     st = MetricsStore(str(tmp_path / "t.db"))
     st.create_schedule(sid="s1", name="Empty",
-                       spec={"fire_at": "18:00", "duration_min": 90,
+                       spec={"gateway_id": "gw-h", "fire_at": "18:00", "duration_min": 90,
                              "conditions": [], "action": {}, "ha_actions": []})
     monkeypatch.setattr(sch, "ha_snapshot", lambda store: {})
     sch.tick(settings=None, client=None, store=st, state={},
-             gateway_id=None, now=dt.datetime(2026, 9, 16, 18, 30))
+             gateway_id="gw-h", now=dt.datetime(2026, 9, 16, 18, 30))
     log = st.schedule_log()
     assert log and log[0]["result"] == "nothing to do" and log[0]["status"] == "fired"
 
@@ -359,7 +359,7 @@ def test_exit_condition_ends_window_early_and_releases(tmp_path, monkeypatch):
     monkeypatch.setattr(bc, "current", lambda host=None: {"active": "Force Discharge"})
 
     st = MetricsStore(str(tmp_path / "m.db"))
-    st.create_schedule(sid="x1", name="Peak w/ early stop", spec={
+    st.create_schedule(sid="x1", name="Peak w/ early stop", spec={"gateway_id": "gw-h",
         "fire_at": "13:50", "duration_min": 60, "enabled": True,
         "action": {"kind": "force", "direction": "discharge", "unit": "pct", "power": 50},
         "exit_conditions": [{"sensor": "battery.soc_pct", "op": "<=", "value": 20}],
@@ -368,19 +368,19 @@ def test_exit_condition_ends_window_early_and_releases(tmp_path, monkeypatch):
 
     now = dt.datetime(2026, 9, 22, 14, 0, 0)                     # inside 13:50–14:50
     fired = sch.tick(settings=None, client=None, store=st, state={"soc": 50},
-                     host="h", gateway_id=None, now=now)
+                     host="h", gateway_id="gw-h", now=now)
     assert any(f["id"] == "x1" for f in fired) and "Force Discharge" in seen
 
     seen.clear()
     sch.tick(settings=None, client=None, store=st, state={"soc": 15},   # SoC hits the floor
-             host="h", gateway_id=None, now=now + dt.timedelta(minutes=5))
+             host="h", gateway_id="gw-h", now=now + dt.timedelta(minutes=5))
     assert "Release" in seen                                     # released early
     logs = st.schedule_log(schedule_id="x1")
     assert any(l["status"] == "exit" and "exit condition" in (l["result"] or "") for l in logs)
 
     seen.clear()
     sch.tick(settings=None, client=None, store=st, state={"soc": 50},   # recovers — must not re-fire
-             host="h", gateway_id=None, now=now + dt.timedelta(minutes=10))
+             host="h", gateway_id="gw-h", now=now + dt.timedelta(minutes=10))
     assert "Force Discharge" not in seen
 
 
@@ -574,15 +574,15 @@ def test_priority_resolution_defers_lower_on_same_target(tmp_path, monkeypatch):
     monkeypatch.setattr(bc, "execute", lambda cmd, **kw: (ran.append(cmd), {"ok": True, "result": "ok", "active": cmd})[1])
     monkeypatch.setattr(bc, "current", lambda host=None: {"active": "Not Active"})
     st = MetricsStore(str(tmp_path / "m.db"))
-    st.create_schedule(sid="lo", name="Low prio charge", spec={
+    st.create_schedule(sid="lo", name="Low prio charge", spec={"gateway_id": "gw-h",
         "fire_at": "14:00", "duration_min": 60, "enabled": True, "priority": 1,
         "action": {"kind": "force", "direction": "charge", "unit": "pct", "power": 50}})
-    st.create_schedule(sid="hi", name="High prio discharge", spec={
+    st.create_schedule(sid="hi", name="High prio discharge", spec={"gateway_id": "gw-h",
         "fire_at": "14:00", "duration_min": 60, "enabled": True, "priority": 10,
         "action": {"kind": "force", "direction": "discharge", "unit": "pct", "power": 50}})
     sch._window_inside.clear(); sch._dwell_since.clear(); sch._gated_day.clear()
     fired = sch.tick(settings=None, client=None, store=st, state={"soc": 50},
-                     host="h", gateway_id=None, now=_d.datetime(2026, 9, 22, 14, 30))
+                     host="h", gateway_id="gw-h", now=_d.datetime(2026, 9, 22, 14, 30))
     names = {f["name"]: f["result"] for f in fired}
     assert "High prio discharge" in names                      # winner ran
     assert ran == ["Force Discharge"]                          # only the winner touched the battery
@@ -599,17 +599,17 @@ def test_priority_single_entry_unaffected(tmp_path, monkeypatch):
     monkeypatch.setattr(bc, "execute", lambda cmd, **kw: {"ok": True, "result": "ok", "active": cmd})
     monkeypatch.setattr(bc, "current", lambda host=None: {"active": "Not Active"})
     st = MetricsStore(str(tmp_path / "m.db"))
-    st.create_schedule(sid="one", name="Solo", spec={
+    st.create_schedule(sid="one", name="Solo", spec={"gateway_id": "gw-h",
         "fire_at": "14:00", "duration_min": 60, "enabled": True,
         "action": {"kind": "force", "direction": "discharge", "unit": "pct", "power": 50}})
     sch._window_inside.clear(); sch._dwell_since.clear()
     fired = sch.tick(settings=None, client=None, store=st, state={"soc": 50},
-                     host="h", gateway_id=None, now=_d.datetime(2026, 9, 22, 14, 30))
+                     host="h", gateway_id="gw-h", now=_d.datetime(2026, 9, 22, 14, 30))
     assert [f["name"] for f in fired] == ["Solo"]
 
 
 def _mk_force_sched(st, sid, name, conflict="override", prio=0):
-    st.create_schedule(sid=sid, name=name, spec={
+    st.create_schedule(sid=sid, name=name, spec={"gateway_id": "gw-h",
         "fire_at": "14:00", "duration_min": 300, "enabled": True,
         "priority": prio, "conflict": conflict,
         "action": {"kind": "force", "direction": "discharge", "unit": "pct", "power": 50}})
@@ -629,7 +629,7 @@ def test_conflict_defer_skips_when_battery_busy(tmp_path, monkeypatch):
     _mk_force_sched(st, "B", "B defer", conflict="defer")
     sch._window_inside.clear(); sch._dwell_since.clear()
     fired = sch.tick(settings=None, client=None, store=st, state={"soc": 50}, host="h",
-                     gateway_id=None, now=_d.datetime(2026, 9, 22, 14, 30))
+                     gateway_id="gw-h", now=_d.datetime(2026, 9, 22, 14, 30))
     assert ran == []                                           # B never touched the battery
     assert st.schedule("B")["last_result"] == "deferred"
     assert any(e["status"] == "deferred" for e in st.schedule_log(schedule_id="B"))
@@ -648,7 +648,7 @@ def test_conflict_override_takes_control(tmp_path, monkeypatch):
     _mk_force_sched(st, "B", "B override", conflict="override")
     sch._window_inside.clear(); sch._dwell_since.clear()
     fired = sch.tick(settings=None, client=None, store=st, state={"soc": 50}, host="h",
-                     gateway_id=None, now=_d.datetime(2026, 9, 22, 14, 30))
+                     gateway_id="gw-h", now=_d.datetime(2026, 9, 22, 14, 30))
     assert "Force Discharge" in ran                            # B took control
     assert [f["name"] for f in fired] == ["B override"]
 
@@ -665,7 +665,7 @@ def test_conflict_wait_retries_not_fired(tmp_path, monkeypatch):
     _mk_force_sched(st, "B", "B wait", conflict="wait")
     sch._window_inside.clear(); sch._dwell_since.clear()
     sch.tick(settings=None, client=None, store=st, state={"soc": 50}, host="h",
-             gateway_id=None, now=_d.datetime(2026, 9, 22, 14, 30))
+             gateway_id="gw-h", now=_d.datetime(2026, 9, 22, 14, 30))
     # wait does NOT mark fired -> stays retry-able
     assert st.schedule("B")["last_fired_day"] in (None, "")
     assert any(e["status"] == "waiting" for e in st.schedule_log(schedule_id="B"))
@@ -680,7 +680,7 @@ def test_exit_condition_nested_group_ends_window(tmp_path, monkeypatch):
     monkeypatch.setattr(bc, "execute", lambda cmd, **kw: (seen.append(cmd), {"ok": True, "result": "ok", "active": cmd})[1])
     monkeypatch.setattr(bc, "current", lambda host=None: {"active": "Force Discharge"})
     st = MetricsStore(str(tmp_path / "m.db"))
-    st.create_schedule(sid="n1", name="nested exit", spec={
+    st.create_schedule(sid="n1", name="nested exit", spec={"gateway_id": "gw-h",
         "fire_at": "13:50", "duration_min": 60, "enabled": True,
         "action": {"kind": "force", "direction": "discharge", "unit": "pct", "power": 50},
         "exit_match": "any",
@@ -690,11 +690,11 @@ def test_exit_condition_nested_group_ends_window(tmp_path, monkeypatch):
     sch._window_inside.clear(); sch._dwell_since.clear()
     now = _d.datetime(2026, 9, 22, 14, 0)
     sch.tick(settings=None, client=None, store=st, state={"soc": 50, "grid_w": 100, "off_grid": False}, host="h",
-             gateway_id=None, now=now)                          # fires (group false: soc high)
+             gateway_id="gw-h", now=now)                          # fires (group false: soc high)
     seen.clear()
     # SoC≤20 AND grid connected → nested group true → exit
     sch.tick(settings=None, client=None, store=st, state={"soc": 15, "grid_w": 100, "off_grid": False}, host="h",
-             gateway_id=None, now=now + _d.timedelta(minutes=5))
+             gateway_id="gw-h", now=now + _d.timedelta(minutes=5))
     assert "Release" in seen
 
 
@@ -742,24 +742,24 @@ def test_trigger_always_fires_on_rising_edge(tmp_path, monkeypatch):
     monkeypatch.setattr(bc, "execute", lambda cmd, **kw: (seen.append(cmd), {"ok": True, "result": "ok", "active": cmd})[1])
     monkeypatch.setattr(bc, "current", lambda host=None: {"active": "Force Discharge"})
     st = MetricsStore(str(tmp_path / "m.db"))
-    st.create_schedule(sid="al", name="always high soc", spec={
+    st.create_schedule(sid="al", name="always high soc", spec={"gateway_id": "gw-h",
         "trigger_type": "always", "enabled": True,
         "conditions": [{"sensor": "battery.soc_pct", "op": ">=", "value": 90}],
         "action": {"kind": "force", "direction": "discharge", "unit": "pct", "power": 50}})
     sch._window_inside.clear(); sch._dwell_since.clear()
     now = _d.datetime(2026, 9, 22, 12, 0)
     # conditions false → no fire
-    sch.tick(settings=None, client=None, store=st, state={"soc": 50}, host="h", gateway_id=None, now=now)
+    sch.tick(settings=None, client=None, store=st, state={"soc": 50}, host="h", gateway_id="gw-h", now=now)
     assert seen == []
     # rising edge (soc≥90) → fire once
-    sch.tick(settings=None, client=None, store=st, state={"soc": 95}, host="h", gateway_id=None, now=now + _d.timedelta(minutes=1))
+    sch.tick(settings=None, client=None, store=st, state={"soc": 95}, host="h", gateway_id="gw-h", now=now + _d.timedelta(minutes=1))
     assert seen == ["Force Discharge"]
     seen.clear()
     # still true next tick → do NOT re-fire
-    sch.tick(settings=None, client=None, store=st, state={"soc": 95}, host="h", gateway_id=None, now=now + _d.timedelta(minutes=2))
+    sch.tick(settings=None, client=None, store=st, state={"soc": 95}, host="h", gateway_id="gw-h", now=now + _d.timedelta(minutes=2))
     assert seen == []
     # falling edge → release
-    sch.tick(settings=None, client=None, store=st, state={"soc": 50}, host="h", gateway_id=None, now=now + _d.timedelta(minutes=3))
+    sch.tick(settings=None, client=None, store=st, state={"soc": 50}, host="h", gateway_id="gw-h", now=now + _d.timedelta(minutes=3))
     assert "Release" in seen
 
 
@@ -773,7 +773,7 @@ def test_trigger_always_fires_on_every_rising_edge(tmp_path, monkeypatch):
     monkeypatch.setattr(bc, "execute", lambda cmd, **kw: (seen.append(cmd), {"ok": True, "result": "ok", "active": cmd})[1])
     monkeypatch.setattr(bc, "current", lambda host=None: {"active": "Force Discharge"})
     st = MetricsStore(str(tmp_path / "m.db"))
-    st.create_schedule(sid="al2", name="always high soc", spec={
+    st.create_schedule(sid="al2", name="always high soc", spec={"gateway_id": "gw-h",
         "trigger_type": "always", "enabled": True,
         "conditions": [{"sensor": "battery.soc_pct", "op": ">=", "value": 90}],
         "action": {"kind": "force", "direction": "discharge", "unit": "pct", "power": 50}})
@@ -781,15 +781,15 @@ def test_trigger_always_fires_on_every_rising_edge(tmp_path, monkeypatch):
     now = _d.datetime(2026, 9, 22, 12, 0)
     for i, soc in enumerate((95, 95, 50, 95)):
         sch.tick(settings=None, client=None, store=st, state={"soc": soc}, host="h",
-                 gateway_id=None, now=now + _d.timedelta(minutes=i))
+                 gateway_id="gw-h", now=now + _d.timedelta(minutes=i))
     assert seen == ["Force Discharge", "Release", "Force Discharge"]
     # A restart (fresh in-memory state, same database) does not leave it finished forever.
     sch._window_inside.clear(); sch._window_key.clear()
     seen.clear()
     sch.tick(settings=None, client=None, store=st, state={"soc": 50}, host="h",
-             gateway_id=None, now=now + _d.timedelta(minutes=10))
+             gateway_id="gw-h", now=now + _d.timedelta(minutes=10))
     sch.tick(settings=None, client=None, store=st, state={"soc": 95}, host="h",
-             gateway_id=None, now=now + _d.timedelta(minutes=11))
+             gateway_id="gw-h", now=now + _d.timedelta(minutes=11))
     assert seen == ["Force Discharge"]
 
 
