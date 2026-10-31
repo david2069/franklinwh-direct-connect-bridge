@@ -32,7 +32,7 @@ transport selection) and **Modbus** (`pymodbus` is not installed — see §1).
 | Database | **SQLite** (metrics + logs) | SQLite (v24, ~25 tables) | SQLite (~55 tables) |
 | Real-time | 5 s poll → UI | HTTP poll | 1 WebSocket (MQTT explorer) |
 
-The baseline exposes the library's full cmdType surface: **29 `/api/cmd/*` live
+The baseline exposes the library's full cmdType surface: **36 `/api/cmd/*` live
 reads** + generic `/api/call/{cmd}` + gated writes (mode, off-grid, der-comms,
 reboot), and now **14 `/api/cloud/*`** routes for the cloud-only capabilities.
 

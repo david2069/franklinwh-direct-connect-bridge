@@ -2,9 +2,9 @@
 
 Reuses the proven ``franklinwh-modbus`` library (``FranklinWHController`` + WSet
 Model 704) to drive the aGate's power setpoint directly over Modbus TCP —
-independent of the modbus-bridge SERVICE. Force writes MOVE the battery, so the
-library's software ``duration_s`` timer is the only safety on this firmware
-(hardware WSetRvrtTms is cosmetic); always release when done.
+independent of the modbus-bridge SERVICE. Force writes MOVE the battery. The
+hardware WSetRvrtTms is cosmetic on this firmware and the library is given no
+duration, so this module's own watchdog is the only safety; always release when done.
 """
 from __future__ import annotations
 

@@ -7,7 +7,7 @@ This integration is a proof-of-concept demonstration of how to integrate with a 
 > [`franklinwh-direct-connect-api`](https://github.com/david2069/franklinwh-direct-connect-api).
 > **This** is the application built on top of it. The repo, the Python package and the CLI are
 > still called `franklinwh-direct-connect-bridge`, and the Home Assistant add-on slug is still
-> `franklinwh_direct_connect_bridge` — renaming those would break existing installs, so only the
+> `franklinwh_local_bridge` — renaming those would break existing installs, so only the
 > display names changed.
 
 It is not intended for production use, and there is no guarantee it is compatible with your FranklinWH gateway(s), aPower(s) or connectivity — now or in the future. FranklinWH may block or deprecate this interface at any time. It has been tested on a local area network against my own single aGate X and aPower X.
@@ -209,7 +209,7 @@ tested before it ships.
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[test,cloud]"
-pip install -e ../franklinwh-local          # optional: the library, editable
+pip install -e ../franklinwh-direct-connect-api   # optional: the library, editable
 tools/dev.sh                                 # build image, restart container, VERIFY it
 ```
 
@@ -280,9 +280,9 @@ All three are wired, each used only where it is the right one.
   `/api/health` and testable at `/api/modbus/test`.
 
   > **Force writes move the battery.** On this firmware the hardware revert timer
-  > (`WSetRvrtTms`) is cosmetic, so the library's software `duration_s` watchdog is the only
-  > safety — always release when done. The bridge holds its own watchdog and a global
-  > Release so a dropped connection cannot leave the battery dispatched.
+  > (`WSetRvrtTms`) is cosmetic, and the bridge gives the library no duration, so the
+  > bridge's own watchdog is the only safety — always release when done. That watchdog
+  > and a global Release stop a dropped connection from leaving the battery dispatched.
 
   The SunSpec **enable toggle** (`/api/der-comms`, cmd 1205) is a separate thing and rides
   the *local* API, not Modbus. See [`docs/API_COMPARISON.md`](docs/API_COMPARISON.md).
