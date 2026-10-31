@@ -95,17 +95,19 @@ class Notifier:
             return str(e) or type(e).__name__
 
 
-def transitions(prev: dict | None, cur: dict) -> list[tuple[str, str]]:
-    """Notify only on state CHANGES (not every poll). Returns (title, message) pairs."""
+def transitions(prev: dict | None, cur: dict, gateway: str = "") -> list[tuple[str, str]]:
+    """Notify only on state CHANGES (not every poll). Returns (title, message) pairs, each
+    message naming ``gateway`` so a site with several aGates knows which one (#361)."""
     if prev is None:
         return []
+    who = f"{gateway}: " if gateway else ""
     out = []
     if prev.get("ok") != cur.get("ok"):
         out.append(("FranklinWH aGate",
-                    "aGate is reachable again." if cur.get("ok")
-                    else "aGate is UNREACHABLE (check network / WiFi / power)."))
+                    f"{who}aGate is reachable again." if cur.get("ok")
+                    else f"{who}aGate is UNREACHABLE (check network / WiFi / power)."))
     if prev.get("modbus_502") != cur.get("modbus_502"):
         out.append(("FranklinWH Modbus",
-                    "Modbus :502 is back up." if cur.get("modbus_502")
-                    else "Modbus :502 is DOWN."))
+                    f"{who}Modbus :502 is back up." if cur.get("modbus_502")
+                    else f"{who}Modbus :502 is DOWN."))
     return out

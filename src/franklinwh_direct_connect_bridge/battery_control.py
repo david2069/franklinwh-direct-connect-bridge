@@ -292,7 +292,9 @@ def reconcile_interrupted(store, host: str, policy: str, *, soc_getter=None,
             pass
         if notify and policy != "none" and action != "recorded":
             try:
-                notify(f"FranklinWH — scheduled dispatch {action}", detail)
+                who = _label_for_host(host)
+                notify(f"FranklinWH — scheduled dispatch {action}",
+                       f"{who}: {detail}" if who else detail)
             except Exception:                                   # noqa: BLE001
                 pass
         results.append({"name": name, "action": action, "detail": detail})
@@ -449,6 +451,16 @@ def _no_connect_writes(c) -> None:
     def _skipped():
         return {"skipped": "write test disabled by franklinwh-direct-connect-bridge (#224)"}
     c._test_extension_writability = _skipped
+
+
+def _label_for_host(host: str | None) -> str | None:
+    """The label of the gateway at ``host``, for messages (#361)."""
+    from . import state
+    hp = _host_part(host)
+    for g in state.gateways():
+        if hp in {_host_part(h) for h in (g.active_host, g.configured_host) if h}:
+            return g.label or g.id
+    return None
 
 
 def _host_part(host: str | None) -> str:

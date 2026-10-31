@@ -457,7 +457,7 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                     if not starting:
                         pub.publish_state(st)
                     pub.publish_availability(bool(summ.get("ok")))
-                for title, msg in transitions(prev, summ):
+                for title, msg in transitions(prev, summ, gw.label or gw.id):
                     await asyncio.to_thread(notifier.notify, title, msg)
                 # Configurable companion-push triggers + delivery log (FEAT-NOTIFY).
                 try:
@@ -529,7 +529,8 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                         log.warning("[%s] firmware changed: %s → %s", gw.id, last_fw, fw_now)
                         await asyncio.to_thread(
                             notifier.notify, "FranklinWH firmware updated",
-                            f"{last_fw} → {fw_now}. Behaviours can differ — re-verify writes "
+                            f"{gw.label or gw.id}: {last_fw} → {fw_now}. Behaviours can "
+                            "differ — re-verify writes "
                             "and re-scan cmdTypes.")
                     if fw_now:
                         last_fw = fw_now

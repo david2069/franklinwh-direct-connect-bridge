@@ -88,6 +88,15 @@ def get_gateway(id: str) -> GatewayState | None:
     return _gateways.get(id)
 
 
+def label_of(gw_id: str | None) -> str | None:
+    """The name a message gives a gateway: its label, else its id (#361). None when there
+    is no gateway, and the id itself for one no longer registered."""
+    if not gw_id:
+        return None
+    g = _gateways.get(gw_id)
+    return (g.label or g.id) if g else gw_id
+
+
 def gateway_by_serial(serial: str | None) -> GatewayState | None:
     """The gateway whose LOCKED serial is ``serial`` (case-insensitive), or None. Only a
     locked serial counts: it is unique (#381), so it can only ever name one gateway."""
