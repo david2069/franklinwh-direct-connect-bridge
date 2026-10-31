@@ -31,6 +31,9 @@ dependencies = [
     "pydantic-settings>=2.0",
     "paho-mqtt>=2.0",
     "croniter>=2.0",          # cron trigger type (lazy import; gated on availability)
+    # Home Assistant notifications, shared with the Modbus bridge (#374). Pinned: move only
+    # after G0 + G1.
+    "franklinwh-ha-notify==0.1.0",
 ]
 
 [project.optional-dependencies]

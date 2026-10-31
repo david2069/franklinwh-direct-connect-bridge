@@ -1,7 +1,7 @@
 """FEAT-NOTIFY — a configurable notification TRIGGER engine on the companion-push path.
 
 The bridge already had two notify channels: a persistent-notification ``Notifier`` (core HA)
-and per-device companion push (``ha_instances.send_notification``, used by the VPP monitor +
+and per-device companion push (``notify_push.push``, used by the VPP monitor +
 broadcast). This adds the missing piece the Energipays bridge has: user-configurable TRIGGERS
 that fire automatically on state transitions (aGate offline/online, off-grid start/end, battery
 dispatch, SoC thresholds), delivered to the enabled companion devices, with a delivery LOG +
@@ -111,43 +111,19 @@ def evaluate(gw_label: str, summ: dict, prev: dict | None, cfg: dict) -> list[tu
 def fire(store, event: str, title: str, message: str, *, cfg: dict | None = None) -> int:
     """Deliver a notification to every ENABLED companion device and record each delivery in
     the log. Respects the trigger's enable flag (so callers like the VPP monitor honour the
-    user's config too). Returns the number of devices that accepted it."""
-    from . import ha_instances
+    user's config too) and the Push notifications switch (#171); a test ignores the switch.
+    Returns the number of devices that accepted it."""
     cfg = cfg or config(store)
     if event in (cfg.get("triggers") or {}) and not _enabled(cfg, event):
         return 0
     # Every notification is also a line in the app log (Logs tab), whether or not any
     # device receives it: with no companion devices it was recorded nowhere else.
     (log.info if event == "test" else log.warning)("notify [%s]: %s", event, message)
-    sent = 0
+    from .config import get_settings
+    from .notify_push import push
     try:
-        by_id = {i["id"]: i for i in store.ha_instances()}
-        devices = [d for d in store.notify_devices() if d.get("enabled")]
-    except Exception as e:  # noqa: BLE001
-        log.warning("notify fire: roster read failed: %s", e)
+        return push(store, get_settings(), event, title, message,
+                    ignore_switch=(event == "test"))["sent"]
+    except Exception as e:  # noqa: BLE001 — a notification never breaks its caller
+        log.warning("notify fire failed: %s", e)
         return 0
-    if not devices:                                   # nothing to deliver to — still log once
-        store.log_notify(event, title=title, message=message, device="(no devices)", ok=None)
-        return 0
-    for d in devices:
-        inst = by_id.get(d["instance_id"])
-        if not inst:
-            store.log_notify(event, title=title, message=message,
-                             device=d.get("alias") or d["id"], ok=False)
-            continue
-        # A DISABLED instance suppresses its devices without anyone having to disable each
-        # one — that is the point of being able to turn an instance off instead of deleting
-        # it. Logged as skipped rather than failed: nothing went wrong, it was switched off.
-        if not inst.get("enabled", 1):
-            store.log_notify(event, title=title, message=message,
-                             device=f"{d.get('alias') or d['id']} (instance disabled)",
-                             ok=None)
-            continue
-        r = ha_instances.send_notification(inst["base_url"], inst.get("token"),
-                                           d["service"], title, message)
-        ok = bool(r.get("ok"))
-        store.log_notify(event, title=title, message=message,
-                         device=d.get("alias") or d["id"], ok=ok)
-        if ok:
-            sent += 1
-    return sent

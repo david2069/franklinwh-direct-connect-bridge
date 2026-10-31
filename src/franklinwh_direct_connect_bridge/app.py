@@ -2799,8 +2799,12 @@ def create_app() -> FastAPI:
         inst = st.ha_instance(instance_id)
         if inst is None:
             raise HTTPException(status_code=422, detail=f"no HA instance '{instance_id}'")
-        return ha_instances.send_notification(
-            inst["base_url"], inst.get("token"), service, req.title, req.message)
+        from .notify_push import push
+        dev = {"id": req.device_id, "alias": req.device_id or service,
+               "instance_id": instance_id, "service": service}
+        r = push(st, get_settings(), "test", req.title, req.message, devices=[dev],
+                 ignore_switch=True)["results"][0]
+        return {"ok": bool(r["ok"]), **({"error": r["error"]} if r.get("error") else {})}
 
     @app.post("/api/ha/notify-devices/broadcast")
     def api_notify_broadcast(req: NotifyBroadcastReq):
@@ -2808,26 +2812,16 @@ def create_app() -> FastAPI:
         explicit device_ids list. Sending is not a device write, so (like the
         per-device test) it is not gated by allow_writes; the result IS the answer."""
         st = _ha_store()
-        inst_by_id = {i["id"]: i for i in st.ha_instances()}
         targets = st.notify_devices()
         if req.device_ids is not None:
             want = set(req.device_ids)
             targets = [d for d in targets if d["id"] in want]
         else:
             targets = [d for d in targets if d["enabled"]]
-        results, sent = [], 0
-        for d in targets:
-            inst = inst_by_id.get(d["instance_id"])
-            if inst is None:
-                results.append({"device_id": d["id"], "alias": d["alias"],
-                                "ok": False, "error": "missing instance"})
-                continue
-            r = ha_instances.send_notification(
-                inst["base_url"], inst.get("token"), d["service"], req.title, req.message)
-            if r.get("ok"):
-                sent += 1
-            results.append({"device_id": d["id"], "alias": d["alias"], **r})
-        return {"sent": sent, "total": len(targets), "results": results}
+        from .notify_push import push
+        r = push(st, get_settings(), "broadcast", req.title, req.message, devices=targets,
+                 ignore_switch=True)
+        return {"sent": r["sent"], "total": r["total"], "results": r["results"]}
 
     # ── notification trigger engine (FEAT-NOTIFY) ─────────────────────────────
     @app.get("/api/notify/triggers")

@@ -154,7 +154,8 @@ Start with two tools on the Scheduler tab:
   `%ha:…%` placeholders are not replaced (#169).
 - A notify device that is switched off, or whose instance is gone, is skipped: the fired
   row's text says "notify skipped: …".
-- The **Push notifications** switch does not stop schedule notifications (#171).
+- With the **Push notifications** switch off, a schedule's notify action is skipped: the fired
+  row says "notify skipped: push notifications are off" (#171).
 
 ## Where the old sections went
 

@@ -115,8 +115,11 @@ def test_a_disabled_instance_suppresses_delivery_without_failing(ctx, monkeypatc
                              service="notify.pixel_tablet")
     ctx.update_ha_instance("a", enabled=False)
     sent = []
-    monkeypatch.setattr(ha_instances, "send_notification",
-                        lambda *a, **k: sent.append(a) or {"ok": True})
+    from franklinwh_direct_connect_bridge import notify_push
+
+    async def fake_send(instances, targets, *a, **k):
+        sent.extend(targets)
+    monkeypatch.setattr(notify_push, "send", fake_send)
     notify_engine.fire(ctx, "test", "T", "M")
     assert sent == []
     log = ctx.notify_log(limit=5)

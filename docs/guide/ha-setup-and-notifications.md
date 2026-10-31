@@ -163,12 +163,12 @@ settings. They are sent only while `ha_notify` is on (the default). From `poller
 
 There is no per-event switch for these.
 
-!!! warning "The Push notifications switch does not stop pushes"
-    The **Push notifications** switch at the top of the Notifications card says "Off —
-    no notifications are sent". It sets `ha_notify`, which controls only the persistent
-    notifications above. The pushes to your devices, from the triggers, from the
-    dispatch reconcile and from schedules, do not check it. To stop pushes, switch the
-    triggers off, or mute the devices.
+!!! note "The Push notifications switch"
+    The **Push notifications** switch at the top of the Notifications card stops every
+    automatic push to your devices: from the triggers, from the dispatch reconcile, from the
+    VPP monitor and from schedules (#171). Each push it stops is still recorded in the
+    notification log, as "push notifications are off". A **Test** or **Broadcast** you press
+    yourself is sent even when the switch is off.
 
 ### Alerts
 

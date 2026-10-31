@@ -240,31 +240,3 @@ def call_service(base_url: str, token: str | None, domain: str, service: str,
         return {"ok": False, "error": hint}
     except Exception as e:                                       # noqa: BLE001
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
-
-
-def send_notification(base_url: str, token: str | None, service: str,
-                      title: str, message: str) -> dict[str, Any]:
-    """Fire one HA ``notify.*`` service. Never raises — the result IS the answer.
-
-    ``service`` may be given with or without the ``notify.`` prefix; both forms turn
-    up in the wild and rejecting one would be a pointless trap.
-    """
-    name = service.split(".", 1)[1] if service.startswith("notify.") else service
-    payload = json.dumps({"title": title, "message": message}).encode()
-    url = base_url.rstrip("/") + f"/api/services/notify/{name}"
-    req = urllib.request.Request(url, data=payload, headers={
-        "Authorization": f"Bearer {token}" if token else "",
-        "Content-Type": "application/json",
-    }, method="POST")
-    if not token:
-        return {"ok": False, "error": "no token configured for this instance"}
-    try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
-            return {"ok": 200 <= resp.status < 300, "status": resp.status}
-    except urllib.error.HTTPError as e:
-        # 400 here usually means the service does not exist on that instance.
-        hint = ("no such notify service on this instance" if e.code == 400
-                else "token rejected" if e.code in (401, 403) else f"HTTP {e.code}")
-        return {"ok": False, "error": hint}
-    except Exception as e:                                       # noqa: BLE001
-        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
