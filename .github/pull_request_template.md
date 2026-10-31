@@ -8,7 +8,8 @@
      Label the PR as CLAUDE.md "Defect tracking and change management" says:
      a type (bug | enhancement | documentation | chore),
      a severity (sev:S1-blocker | sev:S2-high | sev:S3-medium | sev:S4-low)
-     and an area (area:..., the TEST_POLICY §1 release areas). -->
+     and an area (area:..., the TEST_POLICY §1 release areas).
+     Optional nature: nature:code | design-risk | device | doc | test-gap. -->
 
 Refs #
 
