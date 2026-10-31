@@ -70,3 +70,15 @@ def test_a_mock_gateway_publishes_no_relays():
     cfgs, _, _ = entities.discovery_configs("n", {}, "p", "d", ["diagnostic"],
                                             skip=entities.MOCK_ABSENT_KEYS)
     assert not any("/relay_" in t for t, _ in cfgs)
+
+
+def test_grid_voltage_and_frequency_from_the_poll():
+    """1707 gridLineVol / gridFreq are read every poll (client.py) but were not published."""
+    st = entities.state_payload(_summary(grid_voltage_v=247.4, grid_freq_hz=49.96))
+    assert (st["grid_voltage_v"], st["grid_frequency_hz"]) == (247.4, 49.96)
+    cfgs, _, _ = entities.discovery_configs("n", {}, "p", "d", ["power"])
+    by_topic = dict(cfgs)
+    v = by_topic["d/sensor/n/grid_voltage_v/config"]
+    f = by_topic["d/sensor/n/grid_frequency_hz/config"]
+    assert (v["device_class"], v["unit_of_measurement"]) == ("voltage", "V")
+    assert (f["device_class"], f["unit_of_measurement"]) == ("frequency", "Hz")

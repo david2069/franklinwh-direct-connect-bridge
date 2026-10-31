@@ -11,6 +11,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+- **Home Assistant gets Grid Voltage and Grid Frequency** (#386). The bridge already read
+  both every poll; now they're published, with the Modbus Bridge's entity IDs. No new reads
+  of the aGate.
+
 ## [0.5.20] — 2026-10-31
 
 Second release today, after 0.5.19 (two a day are now allowed).
