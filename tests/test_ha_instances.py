@@ -120,30 +120,6 @@ def test_device_crud(tmp_path):
     assert st.notify_device("d") is None
 
 
-def test_send_notification_accepts_either_service_form(monkeypatch):
-    seen = {}
-
-    class _Resp:
-        status = 200
-        def __enter__(self): return self
-        def __exit__(self, *a): return False
-
-    def fake_open(req, timeout=None):
-        seen["url"] = req.full_url
-        return _Resp()
-    monkeypatch.setattr(ha_instances.urllib.request, "urlopen", fake_open)
-
-    ha_instances.send_notification("http://ha", "t", "notify.mobile_app_x", "T", "M")
-    assert seen["url"].endswith("/api/services/notify/mobile_app_x")
-    ha_instances.send_notification("http://ha", "t", "mobile_app_x", "T", "M")
-    assert seen["url"].endswith("/api/services/notify/mobile_app_x")
-
-
-def test_send_notification_without_token_is_an_answer_not_a_raise():
-    out = ha_instances.send_notification("http://ha", None, "notify.x", "T", "M")
-    assert out["ok"] is False and "no token" in out["error"]
-
-
 def test_device_test_needs_a_device_or_an_instance_and_service(monkeypatch):
     """Testing an UNSAVED device is the point, so instance+service is accepted —
     but one of the two forms is required."""

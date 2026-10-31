@@ -2034,7 +2034,7 @@ def _run_action_body(action: dict, *, settings, client, store, snapshot: dict,
             return f"offgrid {on}: {'ok' if out.get('ok') else f'failed: {out}'}"
 
         if kind == "notify":
-            from . import ha_instances
+            from .notify_push import push
             dev = store.notify_device(action["device_id"])
             if dev is None:
                 return "notify skipped: device no longer exists"
@@ -2043,12 +2043,13 @@ def _run_action_body(action: dict, *, settings, client, store, snapshot: dict,
             inst = store.ha_instance(dev["instance_id"])
             if inst is None:
                 return f"notify skipped: '{dev['alias']}' has no HA instance"
-            res = ha_instances.send_notification(
-                inst["base_url"], inst.get("token"), dev["service"],
-                substitute(action.get("title", ""), snapshot),
-                substitute(action.get("message", ""), snapshot))
-            return (f"notify '{dev['alias']}': "
-                    f"{'sent' if res.get('ok') else res.get('error')}")
+            res = push(store, settings, "schedule",
+                       substitute(action.get("title", ""), snapshot),
+                       substitute(action.get("message", ""), snapshot), devices=[dev])
+            if res["skipped"]:
+                return f"notify skipped: {res['skipped']}"
+            r = res["results"][0]
+            return f"notify '{dev['alias']}': {'sent' if r['ok'] else r.get('error')}"
 
         if kind == "ha_service":
             from . import ha_instances

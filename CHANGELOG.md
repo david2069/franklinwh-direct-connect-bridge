@@ -11,6 +11,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+- **The Push notifications switch now stops every push** (#171). It used to stop only the
+  persistent notifications; trigger pushes, VPP and dispatch-reconcile pushes and schedule
+  notifications ignored it. A Test or Broadcast you press is still sent.
+
+### Changed
+- **Every push to your devices goes through one path**, the shared
+  `franklinwh-ha-notify` package (#374, phase 2). Schedule notifications, VPP and
+  dispatch pushes, tests and broadcasts are now in the notification log too, one row per
+  device; before, only trigger pushes were.
+
 ## [0.5.20] — 2026-10-31
 
 Second release today, after 0.5.19 (two a day are now allowed).

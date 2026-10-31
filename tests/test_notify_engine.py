@@ -49,7 +49,12 @@ def test_fire_logs_per_device_and_respects_enable(tmp_path, monkeypatch):
     st = MetricsStore(str(tmp_path / "m.db"))
     st.create_ha_instance(ha_id="ha1", name="Home", base_url="http://ha", token="t")
     st.create_notify_device(dev_id="d1", alias="Phone", instance_id="ha1", service="notify.mobile")
-    monkeypatch.setattr(ha_instances, "send_notification", lambda *a, **k: {"ok": True})
+    from franklinwh_ha_notify.send import Delivery, SendResult
+    from franklinwh_direct_connect_bridge import notify_push
+
+    async def fake_send(instances, targets, *a, **k):
+        return SendResult([Delivery(t.key, True) for t in targets])
+    monkeypatch.setattr(notify_push, "send", fake_send)
 
     sent = notify_engine.fire(st, "off_grid", "T", "M")
     assert sent == 1

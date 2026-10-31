@@ -43,23 +43,13 @@ def _metrics(snap: dict) -> str:
 
 def _notify_devices(store, title: str, message: str) -> int:
     """Send to every ENABLED notify device — the user's chosen targets."""
-    from . import ha_instances
-    sent = 0
+    from .config import get_settings
+    from .notify_push import push
     try:
-        by_id = {i["id"]: i for i in store.ha_instances()}
-        for d in store.notify_devices():
-            if not d.get("enabled"):
-                continue
-            inst = by_id.get(d["instance_id"])
-            if not inst:
-                continue
-            r = ha_instances.send_notification(inst["base_url"], inst.get("token"),
-                                               d["service"], title, message)
-            if r.get("ok"):
-                sent += 1
+        return push(store, get_settings(), "dispatch", title, message)["sent"]
     except Exception as e:                                       # noqa: BLE001
         log.error("VPP notify failed: %s", e)
-    return sent
+        return 0
 
 
 def _log_event(store, status: str, detail: str) -> None:
