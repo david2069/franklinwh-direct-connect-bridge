@@ -1,0 +1,96 @@
+name: Install smoke
+# #409: the HAOS add-on is the only install path G1 runs. This installs the two others that
+# INSTALL.md offers, from this checkout, exactly as written there (Docker Compose; pip into a
+# fresh venv), each with and without a broker, and runs tools/install_smoke.py against it.
+# Mock gateway only. Job names and checks follow the shared fwh-tools "install-smoke" spec,
+# so this and the Modbus bridge's workflow read alike.
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: docker-mqtt, install: docker, mqtt: true}
+          - {name: docker-nomqtt, install: docker, mqtt: false}
+          - {name: python-mqtt, install: python, mqtt: true}
+          - {name: python-nomqtt, install: python, mqtt: false}
+    env:
+      MQTT_ENABLED: ${{ matrix.mqtt }}
+      MQTT_PORT: '1883'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # The floor pyproject declares, so a newer-only construct fails here first.
+          python-version: '3.11'
+
+      - name: Smoke-check dependencies
+        run: python -m pip install --quiet paho-mqtt==2.1.0
+
+      - name: Start a broker
+        if: matrix.mqtt
+        run: docker run -d --name mosquitto -p 1883:1883 eclipse-mosquitto:2.0.20 mosquitto -c /mosquitto-no-auth.conf
+
+      # INSTALL.md §2: build, then compose up. The container reaches the runner's broker
+      # through host.docker.internal, which docker-compose.yml maps to the host gateway.
+      - name: Install with Docker Compose
+        if: matrix.install == 'docker'
+        env:
+          MQTT_HOST: host.docker.internal
+        run: |
+          # No aGate: docker-compose.yml falls back to a documentation address when FWH_HOST
+          # is empty, so blank it the way the install guide's no-hardware run does.
+          printf 'services:\n  franklinwh-direct-connect-bridge:\n    environment:\n      - FWH_HOST=\n' > docker-compose.override.yml
+          docker build -t franklinwh-direct-connect-bridge:dev .
+          docker compose up -d
+          for i in $(seq 1 45); do
+            h=$(docker inspect -f '{{.State.Health.Status}}' franklinwh-direct-connect-bridge)
+            [ "$h" = healthy ] && break; sleep 2
+          done
+          echo "container health: $h"; [ "$h" = healthy ]
+
+      # INSTALL.md "Without Docker", from a clean export so nothing outside the package
+      # (wheels/, data/, a developer's venv) can help it along.
+      - name: Install with pip
+        if: matrix.install == 'python'
+        env:
+          FWH_HOST: ''
+          MQTT_HOST: 127.0.0.1
+        run: |
+          mkdir -p "$RUNNER_TEMP/export" && git archive HEAD | tar -x -C "$RUNNER_TEMP/export"
+          cd "$RUNNER_TEMP/export"
+          python -m venv .venv && . .venv/bin/activate
+          pip install --quiet ".[cloud]"
+          nohup franklinwh-direct-connect-bridge run > "$RUNNER_TEMP/bridge.log" 2>&1 &
+
+      - name: Smoke checks
+        run: |
+          if [ "${{ matrix.install }}" = docker ]; then
+            log=(--log-cmd "docker compose logs --no-color --no-log-prefix")
+          else
+            log=(--log "$RUNNER_TEMP/bridge.log")
+          fi
+          version=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          python tools/install_smoke.py --base http://127.0.0.1:8101 --version "$version" \
+            ${{ matrix.mqtt && '--mqtt 127.0.0.1:1883' || '' }} "${log[@]}" --out "$RUNNER_TEMP/smoke"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: install-smoke-${{ matrix.name }}
+          path: ${{ runner.temp }}/smoke/
+          if-no-files-found: warn
