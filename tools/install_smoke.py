@@ -80,7 +80,8 @@ def main(argv=None) -> int:
     lg.add_argument("--log", help="the bridge's log file, read at the end")
     lg.add_argument("--log-cmd", help="a command that prints the bridge's log, run at the end")
     p.add_argument("--out", required=True)
-    p.add_argument("--timeout", type=float, default=120)
+    p.add_argument("--version", default="", help="the version under test; health must report it")
+    p.add_argument("--timeout", type=float, default=180)
     a = p.parse_args(argv)
     out = pathlib.Path(a.out)
     (out / "api").mkdir(parents=True, exist_ok=True)
@@ -105,7 +106,9 @@ def main(argv=None) -> int:
             pass
         time.sleep(2)
     save("live", live)
-    if check("the bridge answers its health check", st == 200, f"HTTP {st}"):
+    got = (live or {}).get("version") if isinstance(live, dict) else None
+    if check("the bridge answers its health check", st == 200 and (not a.version or got == a.version),
+             f"HTTP {st}, version {got}" + (f" (want {a.version})" if a.version else "")):
         method, path, body = BRIDGE["add_gateway"]
         st, gw = http(a.base, method, path, body, timeout=30)
         save("add-gateway", gw)
@@ -147,7 +150,7 @@ def main(argv=None) -> int:
     (out / "summary.json").write_text(json.dumps(
         {"base": a.base, "mqtt": a.mqtt or None, "passed": passed, "total": len(results),
          "checks": results}, indent=1))
-    print(f"{passed}/{len(results)} checks passed")
+    print(f"RESULT: {passed}/{len(results)} checks passed")
     return 0 if passed == len(results) else 1
 
 
