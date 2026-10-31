@@ -311,7 +311,9 @@ def retry_delay_s(attempts: int) -> float:
 
 def _ha_message(row: dict) -> str:
     msg = row.get("message") or ""
-    tail = f"\n\n{row['code']}" + (f" · gateway {row['gateway_id']}" if row["gateway_id"] else "")
+    from .state import label_of
+    gw = label_of(row["gateway_id"])
+    tail = f"\n\n{row['code']}" + (f" · gateway {gw}" if gw else "")
     return msg + tail + "\nAcknowledge it in the bridge; dismissing it here does not."
 
 

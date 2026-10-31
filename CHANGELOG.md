@@ -11,6 +11,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+- **Notifications name the gateway they are about** (#361). On a site with several aGates,
+  these didn't say which one:
+  - aGate reachable / unreachable and Modbus :502 up / down;
+  - firmware updated;
+  - the scheduled-dispatch reconcile after a restart;
+  - a failed schedule.
+  Alerts sent to Home Assistant now give the gateway's name, not its id.
+
 ## [0.5.20] — 2026-10-31
 
 Second release today, after 0.5.19 (two a day are now allowed).

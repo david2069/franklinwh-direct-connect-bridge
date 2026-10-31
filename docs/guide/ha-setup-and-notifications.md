@@ -155,10 +155,10 @@ settings. They are sent only while `ha_notify` is on (the default). From `poller
 
 | Event | Title | Message |
 |---|---|---|
-| The aGate stops or starts answering | FranklinWH aGate | "aGate is UNREACHABLE (check network / WiFi / power)." / "aGate is reachable again." |
-| The Modbus TCP Server (aGate :502) stops or starts answering this bridge's probe | FranklinWH Modbus | "Modbus :502 is DOWN." / "Modbus :502 is back up." |
+| The aGate stops or starts answering | FranklinWH aGate | "&lt;gateway&gt;: aGate is UNREACHABLE (check network / WiFi / power)." / "&lt;gateway&gt;: aGate is reachable again." |
+| The Modbus TCP Server (aGate :502) stops or starts answering this bridge's probe | FranklinWH Modbus | "&lt;gateway&gt;: Modbus :502 is DOWN." / "&lt;gateway&gt;: Modbus :502 is back up." |
 | Cloud credentials become invalid or locked | FranklinWH cloud credentials rejected | — |
-| The firmware version changes | FranklinWH firmware updated | old → new |
+| The firmware version changes | FranklinWH firmware updated | "&lt;gateway&gt;: old → new" |
 | The aGate is found again at a new address | FranklinWH aGate moved | "<gateway name> re-discovered on the LAN at <address>." Only an aGate with this gateway's own serial is adopted, never one another gateway uses. |
 
 There is no per-event switch for these.
