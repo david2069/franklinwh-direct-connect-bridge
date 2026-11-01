@@ -11,6 +11,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.23] — 2026-11-01
+
 ### Added
 - **System view: Customise diagram, place name and weather** (#428). A **Customise diagram**
   button lets you name the site, each gateway and each smart circuit. You can also set the

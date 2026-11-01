@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "franklinwh-direct-connect-bridge"
-version = "0.5.22"
+version = "0.5.23"
 description = "Home Assistant add-on / REST + MQTT bridge for the FranklinWH aGate local (sendMqtt) API"
 readme = "README.md"
 requires-python = ">=3.11"
