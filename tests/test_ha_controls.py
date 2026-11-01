@@ -69,12 +69,14 @@ def test_unknown_mode_is_rejected_without_calling_the_gateway():
     assert "unknown mode" in out and not c.calls, "there is no mode 0"
 
 
-def test_reserve_soc_and_schedules_are_not_exposed_as_controls():
-    """The gateway accepts and discards both, so an HA entity would appear to work
-    and would not."""
+def test_schedules_are_not_controls_and_reserve_only_via_the_cloud():
+    """The gateway accepts and discards a local schedule or reserve write, so an HA entity
+    for either would appear to work and would not. Reserve SoC is a control only because
+    it is written through the cloud (C2)."""
     keys = {c["key"] for c in entities.CONTROLS}
-    assert not any("reserve" in k for k in keys)
     assert not any("schedule" in k for k in keys)
+    assert {c["key"] for c in entities.CONTROLS if "reserve" in c["key"]} == entities.RESERVE_KEYS
+    assert all(c.get("reserve_mode") for c in entities.CONTROLS if "reserve" in c["key"])
 
 
 def test_energy_sensors_come_from_the_existing_poll():

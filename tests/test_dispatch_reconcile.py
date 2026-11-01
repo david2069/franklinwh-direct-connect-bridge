@@ -111,7 +111,6 @@ def test_widget_force_is_persisted_and_release_closes_it(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "_settings", None)
     monkeypatch.setattr(db, "get_store", lambda s: store)
     config.save_override("allow_writes", True)
-    monkeypatch.setenv("FWH_MODBUS_HOST", "testhost")
     # No real Modbus: execute() reports success + the active command.
     monkeypatch.setattr(bc, "execute",
                         lambda cmd, **kw: {"ok": True, "result": "ok",

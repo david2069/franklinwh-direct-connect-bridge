@@ -1194,7 +1194,7 @@
             <span x-show="gwEdit.is_default" class="chip ok" style="font-size:.6rem">default</span>
             <button x-show="!gwEdit.is_default" type="button" class="btn btn-secondary btn-sm"
                     :disabled="!gwEdit.was_enabled" @click="makeDefaultGateway()">Make default</button></div>
-          <p class="text-[10px]" style="color:var(--text-faint)">The default gateway is the one used by calls that don't name a gateway, by schedules left on <em>Default gateway</em>, and for Site view's single-gateway readings.<span x-show="!gwEdit.is_default && !gwEdit.was_enabled"> Enable this gateway before making it the default.</span></p>
+          <p class="text-[10px]" style="color:var(--text-faint)">The default gateway is listed first and is the active gateway when the page opens, and whenever the active one is disabled or offline.<span x-show="!gwEdit.is_default && !gwEdit.was_enabled"> Enable this gateway before making it the default.</span></p>
         </div>
         <p x-show="gwEdit.is_mock" class="text-[10px]" style="color:var(--text-faint)">Mock host/port are managed by the in-process emulator. Changing aPowers restarts it. Publishing synthetic energy to HA is discouraged.</p>
         <p class="text-[10px]" style="color:var(--text-faint)">Poll interval &amp; timeout are global (Connection, above) and apply on reconnect.</p>

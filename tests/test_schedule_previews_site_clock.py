@@ -38,13 +38,15 @@ def _expected_next(off, hhmm="18:00"):
 
 
 def test_next_fire_is_on_the_site_clock_of_the_schedules_gateway(c):
-    r = c.post("/api/schedules", json={"name": "unbound", "fire_at": "18:00", "duration_min": 60})
+    # Every schedule names its gateway (#379), and next fire is on that gateway's clock.
+    r = c.post("/api/schedules", json={"name": "on g1", "fire_at": "18:00", "duration_min": 60,
+                                       "gateway_id": "g1"})
     assert r.status_code == 201
-    c.post("/api/schedules", json={"name": "bound", "fire_at": "18:00", "duration_min": 60,
+    c.post("/api/schedules", json={"name": "on g2", "fire_at": "18:00", "duration_min": 60,
                                    "gateway_id": "g2"})
     by = {s["name"]: s for s in c.get("/api/schedules").json()["schedules"]}
-    assert by["unbound"]["next_fire"] == _expected_next(SITE_OFF)    # default gateway's zone
-    assert by["bound"]["next_fire"] == _expected_next(OTHER_OFF)     # its own gateway's zone
+    assert by["on g1"]["next_fire"] == _expected_next(SITE_OFF)
+    assert by["on g2"]["next_fire"] == _expected_next(OTHER_OFF)
 
 
 def test_timeline_and_test_use_the_site_clock(c, monkeypatch):
@@ -58,7 +60,7 @@ def test_timeline_and_test_use_the_site_clock(c, monkeypatch):
                - (now.hour * 60 + now.minute)) <= 1
     start = (now - dt.timedelta(minutes=5)).strftime("%H:%M")
     sid = c.post("/api/schedules", json={"name": "open now", "fire_at": start,
-                                         "duration_min": 30}).json()["id"]
+                                         "duration_min": 30, "gateway_id": "g1"}).json()["id"]
     assert c.post(f"/api/schedules/{sid}/test?gateway=g1").json()["window"] == "inside"
 
 

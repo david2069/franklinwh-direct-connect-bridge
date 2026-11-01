@@ -3,8 +3,8 @@ another registered gateway is using, and the "moved" notice names the gateway.""
 import asyncio
 from types import SimpleNamespace as NS
 
-from franklinwh_direct_connect_bridge import client, config, poller
-from franklinwh_direct_connect_bridge.state import GatewayState, get_state
+from franklinwh_direct_connect_bridge import client, config, poller, state
+from franklinwh_direct_connect_bridge.state import GatewayState
 
 
 def _hits(monkeypatch, *hits):
@@ -20,14 +20,24 @@ def _agate(host, serial):
 
 
 def test_no_serial_does_not_borrow_the_default_gateways(monkeypatch):
-    st = get_state()
-    old, st.serial = st.serial, "SN-DEFAULT"
+    state.reset_gateways()
+    state.register_gateway("gw-default", "192.0.2.5", serial="SN-DEFAULT")
+    state.set_default("gw-default")
     try:
         scans = _hits(monkeypatch, _agate("192.0.2.5", "SN-DEFAULT"))
         assert client.rediscover(config.get_settings(), "192.0.2.10", None) is None
         assert scans == []                       # no serial: nothing to match, no sweep
     finally:
-        st.serial = old
+        state.reset_gateways()
+
+
+def test_no_host_raises_before_any_sweep(monkeypatch):
+    """#379: there is no default gateway's host to sweep from."""
+    import pytest
+    scans = _hits(monkeypatch, _agate("192.0.2.5", "SN-MINE"))
+    with pytest.raises(ValueError, match="no aGate host"):
+        client.rediscover(config.get_settings(), None, "SN-MINE")
+    assert scans == []
 
 
 def test_no_serial_match_adopts_nothing(monkeypatch):

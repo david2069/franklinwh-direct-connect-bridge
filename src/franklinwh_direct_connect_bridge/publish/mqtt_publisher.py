@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 
 import paho.mqtt.client as mqtt
 
 from ..config import Settings
 from . import entities
+
+log = logging.getLogger("franklinwh_direct_connect_bridge.publish.mqtt_publisher")
 
 
 class MqttPublisher:
@@ -20,6 +23,9 @@ class MqttPublisher:
         #: Called as ``handler(key, payload)`` for an inbound control message.
         #: Runs on the paho network thread, so it must not block for long.
         self.command_handler = command_handler
+        #: Commands are obeyed only while the Controls group is published (#399): with it
+        #: off the entities leave HA, and the topics must stop working too.
+        self.controls_on = "controls" in entities._enabled(groups)
         self.configs, self.state_topic, self.avail_topic = entities.discovery_configs(
             node, device, settings.mqtt_prefix, settings.ha_discovery_prefix, groups,
             skip=self.skip,
@@ -39,7 +45,7 @@ class MqttPublisher:
         """Subscribe on every connect, not just the first — a reconnect otherwise
         silently stops accepting commands while still publishing state, which
         looks like working."""
-        if self.command_handler:
+        if self.command_handler and self.controls_on:
             client.subscribe(self.cmd_filter)
 
     def _on_message(self, client, userdata, msg):
@@ -47,6 +53,10 @@ class MqttPublisher:
             return
         key = entities.key_from_command_topic(msg.topic)
         if not key:
+            return
+        if not self.controls_on:
+            # In flight when the group went off, or sent before the unsubscribe landed.
+            log.warning("[%s] control '%s' refused: the Controls group is off", self.node, key)
             return
         try:
             payload = msg.payload.decode().strip()
@@ -77,6 +87,12 @@ class MqttPublisher:
             self.node, self.device, self.s.mqtt_prefix, self.s.ha_discovery_prefix, groups,
             skip=self.skip)
         self.publish_discovery()
+        was, self.controls_on = self.controls_on, "controls" in entities._enabled(groups)
+        if self.command_handler and self.controls_on != was:
+            if self.controls_on:
+                self.client.subscribe(self.cmd_filter)
+            else:
+                self.client.unsubscribe(self.cmd_filter)
 
     def clear_discovery(self) -> None:
         """Remove the entities from Home Assistant by publishing an empty retained

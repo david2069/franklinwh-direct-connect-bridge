@@ -24,6 +24,60 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   added and checked (`install-smoke.yml`, #409). Until now only the Home Assistant add-on
   was tested; the first run found that a pip install does not start (#410).
 
+## [0.5.21] — 2026-10-31
+
+### Added
+- **Home Assistant gets Grid Voltage and Grid Frequency** (#386). The bridge already read
+  both every poll; now they're published, with the Modbus Bridge's entity IDs. No new reads
+  of the aGate.
+- **Reserve SoC in Home Assistant** (C2). Two numbers: TOU and Self-Consumption
+  Reserve SOC (Emergency Backup's reserve is fixed at 100 %). They write through the FranklinWH
+  cloud, because the aGate discards a local reserve write. They appear only when cloud
+  credentials are set for this gateway's aGate. Each shows the reserve the aGate reports
+  every poll.
+
+## [0.5.20] — 2026-10-31
+
+Second release today, after 0.5.19 (two a day are now allowed).
+
+### Added
+- **Home Assistant gets Grid Status, Active Reserve SOC, Firmware Version and four relay
+  sensors** (#386). Grid Status says whether the aGate is connected, off grid on request,
+  or off grid without a request. Active Reserve SOC is the reserve of the mode in use.
+  The relays are Main Relay 1 and 2, Grid Relay 2 and Black Start Relay. All of them come
+  from reads the bridge already makes every poll; no new reads of the aGate.
+
+### Security
+- **Home Assistant controls stop working when the Controls group is off** (#399). Turning
+  off Controls (writable) in the MQTT settings removed the Operating Mode select and the
+  Smart Circuit switches from Home Assistant, but the bridge still obeyed commands sent to
+  their MQTT topics. Now it stops listening for them, and refuses (and logs) any that
+  arrive anyway. Turning the group back on restores them.
+
+### Docs
+- **Up to two releases a day** (TEST_POLICY). Each still passes its own gates, including the
+  HAOS acceptance run; a release that changes how Home Assistant identifies things is still
+  released alone.
+
+## [0.5.19] — 2026-10-31
+
+### Breaking
+- **Every schedule names its gateway** (#379). The schedule form starts on the active
+  gateway, always shows the gateway, and has no "Default gateway" choice. Saving a schedule
+  with no gateway, or an unknown one, is refused (422). `/api/schedules/import` needs
+  `?gateway=`; entries with no gateway, or one this bridge doesn't have, are bound to it.
+  On update, schedules saved with no gateway, and billing and System Setup data saved under
+  "default", are given to the default gateway at start-up (or to the first gateway you add),
+  so nothing stops running. A schedule with no gateway no longer runs on the default.
+- **No call falls back to the default gateway's address** (#379). An internal aGate call
+  with no host is refused instead of going to the configured `fwh_host` or the default
+  gateway. The poller and Home Assistant controls use the gateway's re-discovered address,
+  else its configured one. Nothing registers a gateway on first use any more; the roster
+  is what start-up registered. `FWH_MODBUS_HOST` is no longer read: each gateway's Modbus
+  client connects to its own host (the host override in Control still applies to the
+  default gateway). A scheduler pass for no gateway runs no schedule. Settings → Connection
+  shows the active gateway's host, and none in All gateways.
+
 ### Docs
 - **The README no longer credits the library with the force watchdog.** The bridge gives
   `franklinwh-modbus` no duration; its own watchdog is the only safety. The README also

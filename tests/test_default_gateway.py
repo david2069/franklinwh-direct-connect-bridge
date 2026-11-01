@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from franklinwh_direct_connect_bridge import app as app_module
 from franklinwh_direct_connect_bridge import battery_control as bc
 from franklinwh_direct_connect_bridge import client as client_module
-from franklinwh_direct_connect_bridge import db, mockgw, scheduler, state, supervisor
+from franklinwh_direct_connect_bridge import db, mockgw, state, supervisor
 
 TEMPLATES = os.path.join(os.path.dirname(__file__), "..", "src",
                          "franklinwh_direct_connect_bridge", "templates")
@@ -54,13 +54,6 @@ def test_editing_the_default_gateway_keeps_it_the_default(c):
     assert state.default_gateway().id == a
     assert c.patch(f"/api/gateways/{a}", json={"label": "A2"}).status_code == 200
     assert state.default_gateway().id == a          # re-registering moved A to the end
-
-
-def test_unbound_schedules_follow_the_stored_default(c, st):
-    a, b = _add(c, "A", "10.0.0.1"), _add(c, "B", "10.0.0.2")
-    c.post(f"/api/gateways/{a}/restart")             # A is now last in the registry
-    assert scheduler._is_default_gateway(st, a) is True
-    assert scheduler._is_default_gateway(st, b) is False
 
 
 def test_the_first_gateway_is_the_default_and_a_second_default_is_refused(c, st):

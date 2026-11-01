@@ -9,7 +9,6 @@ duration, so this module's own watchdog is the only safety; always release when 
 from __future__ import annotations
 
 import logging
-import os
 import threading
 import time
 
@@ -413,17 +412,13 @@ def _is_default_host(host: str | None) -> bool:
 
 
 def _override_for(host: str | None) -> tuple | None:
-    """The (host, port) to use instead of ``host``: the persisted override, else
-    ``FWH_MODBUS_HOST``. Either applies only to the DEFAULT gateway; every other gateway
-    keeps its own host, so one setting can't send every gateway's force to one aGate (#354)."""
-    from .client import _split_hostport
-    if _HOST_OVERRIDE:
-        target = (_HOST_OVERRIDE, _PORT_OVERRIDE or MODBUS_PORT)
-    else:
-        env = (os.environ.get("FWH_MODBUS_HOST") or "").strip()
-        if not env:
-            return None
-        target = _split_hostport(env, MODBUS_PORT)
+    """The (host, port) to use instead of ``host``: the persisted override. It applies only
+    to the DEFAULT gateway; every other gateway keeps its own host, so one setting can't
+    send every gateway's force to one aGate (#354). ``FWH_MODBUS_HOST`` is gone (#379):
+    every gateway's Modbus client connects to its own host."""
+    if not _HOST_OVERRIDE:
+        return None
+    target = (_HOST_OVERRIDE, _PORT_OVERRIDE or MODBUS_PORT)
     return target if _is_default_host(host) else None
 
 
