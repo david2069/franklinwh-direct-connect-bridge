@@ -11,6 +11,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.24] — 2026-11-02
+
 ### Fixed
 - System view and the top bar's gateway picker show the same gateway. The overlay opens on
   the picker's gateway and follows it, and a gateway picked in the overlay becomes the
