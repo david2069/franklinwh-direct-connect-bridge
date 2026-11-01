@@ -61,7 +61,7 @@ for the node id:
 | State (all values, one JSON object) | `franklinwh-local/<node>/state` |
 | Availability | `franklinwh-local/<node>/availability` |
 | Commands in | `franklinwh-local/<node>/control/<key>/set` |
-| Discovery configs | `homeassistant/<sensor\|select\|switch>/<node>/<key>/config` |
+| Discovery configs | `homeassistant/<sensor\|binary_sensor\|select\|switch>/<node>/<key>/config` |
 
 **The node id is your gateway's serial number, lower-cased.** Each discovery config pulls
 its own field out of the shared state JSON with a `value_template`, and availability is a
@@ -100,6 +100,8 @@ Measured live on 2026-10-15: **21 entities — 17 sensors and 4 controls.**
 | `load_w` | Load Power | W | power |
 | `generator_w` | Generator Power | W | power |
 | `battery_status` | Battery State (charging / discharging / standby) | — | power |
+| `grid_voltage_v` | Grid Voltage | V | power |
+| `grid_frequency_hz` | Grid Frequency | Hz | power |
 | `solar_today_kwh` | Solar Today | kWh | energy |
 | `grid_import_today_kwh` | Grid Import Today | kWh | energy |
 | `grid_export_today_kwh` | Grid Export Today | kWh | energy |
@@ -109,6 +111,10 @@ Measured live on 2026-10-15: **21 entities — 17 sensors and 4 controls.**
 | `ambient_temp_c` | Ambient Temperature | °C | diagnostic |
 | `run_status` | Run Status | — | diagnostic |
 | `latency_ms` | Round-trip Latency | ms | diagnostic |
+| `status_grid_status` | Grid Status (Connected / SimulatedOffGrid / Outage / OffGrid) | — | core |
+| `active_reserve_pct` | Active Reserve SOC | % | core |
+| `device_firmware` | Firmware Version | — | diagnostic |
+| `relay_main1`, `relay_main2`, `relay_grid2`, `relay_black_start` | Main Relay 1, Main Relay 2, Grid Relay 2, Black Start Relay (binary sensors) | — | diagnostic |
 
 The six daily `kWh` counters are published as `total_increasing` with the `energy` device
 class, which is what the **Home Assistant Energy dashboard** needs. They come out of the
@@ -116,6 +122,14 @@ same payload the bridge already polls, so they cost nothing extra.
 
 `battery_status` is derived from the sign of battery power: negative is charging,
 positive is discharging, zero is standby.
+
+**Grid Status** is *SimulatedOffGrid* when the aGate is off grid because someone asked it
+to be, and *Outage* when it is off grid with no request the bridge knows about. A real
+outage has not been measured yet, so *Outage* means "not requested", not a confirmed
+outage. *OffGrid* means off grid with the cause unknown. **Active Reserve SOC** is the
+reserve of the operating mode in use. **Grid Voltage** is the aGate's service voltage (1707 `gridLineVol`), and **Grid
+Frequency** the grid frequency (1707 `gridFreq`). A relay is on when it conducts. Mock gateways don't
+publish the relays, because the emulator doesn't model them.
 
 ### Controls (writable)
 
@@ -127,14 +141,20 @@ positive is discharging, zero is standby.
 | `smart_circuit_1` | `switch` | ON / OFF |
 | `smart_circuit_2` | `switch` | ON / OFF |
 | `smart_circuit_3` | `switch` | ON / OFF |
+| `reserve_soc_tou` | `number` | 0–100 %, TOU Reserve SOC |
+| `reserve_soc_self` | `number` | 0–100 %, Self-Consumption Reserve SOC |
 
 The publisher subscribes to `…/control/+/set` and routes by the key in the topic.
 
-**Two obvious candidates are deliberately absent**, and the reason is in the code:
-**reserve SoC** and **smart-circuit schedules** are not published because *the gateway
-discards both writes*. An HA control that silently does nothing is worse than no control.
-Reserve SoC is still settable from the bridge's own UI, because there it goes through the
-cloud instead — see [Control](control.md).
+**Reserve SoC goes through the FranklinWH cloud.** The aGate discards a reserve written
+over the local API, so the two reserve numbers write through the cloud, as the bridge's
+own Control page does. Emergency Backup has no number: its reserve is fixed at 100 %. They appear only when your FranklinWH cloud credentials are set in
+Settings and they are for this gateway's aGate. Mock gateways never have them. Each number
+shows the reserve the aGate reports locally every poll, so a change made in the app shows
+up too. The result of each change is in the bridge's log.
+
+**Smart-circuit schedules are not published**: the gateway discards that write, and an
+HA control that silently does nothing is worse than no control.
 
 ### Entity groups
 

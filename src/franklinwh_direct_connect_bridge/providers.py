@@ -579,6 +579,30 @@ def _cloud_set_reserve(email: str, password: str, gateway: str | None,
     return asyncio.run(_run())
 
 
+def cloud_target_refusal(s: Settings, *, serial: str | None, serial_locked: bool,
+                         is_mock: bool) -> str | None:
+    """Why the cloud can't act for this gateway, or None (#351, #379): the call goes to the
+    gateway's own locked serial, and only when the cloud account is for that aGate."""
+    if is_mock:
+        return "A mock gateway has no FranklinWH cloud account."
+    if not (serial and serial_locked):
+        return "This gateway's serial hasn't been read yet. Try again once it's connected."
+    want = (s.fwh_cloud_gateway or "").upper()
+    if want and want != serial.upper():
+        return "The cloud credentials are for a different gateway."
+    return None
+
+
+def cloud_can_write(s: Settings, *, serial: str | None, serial_locked: bool,
+                    is_mock: bool) -> bool:
+    """Whether cloud writes for this gateway are worth offering (the reserve controls in
+    Home Assistant, C2): credentials are set and the gateway is the account's."""
+    if not (s.fwh_cloud_email and s.fwh_cloud_password):
+        return False
+    return cloud_target_refusal(s, serial=serial, serial_locked=serial_locked,
+                                is_mock=is_mock) is None
+
+
 def set_reserve(s: Settings, mode: str, soc, *, serial: str) -> dict:
     """Set a mode's reserve SoC via the CLOUD provider — the local API silently discards this
     write (it's cloud-owned; see the reserve memory), so this is the only path that sticks.

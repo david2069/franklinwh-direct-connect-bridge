@@ -221,7 +221,7 @@ document.addEventListener('alpine:init', () => {
       }
       this._importBundle = bundle;
       try {
-        const r = await fetch('api/schedules/import?dry_run=true', {
+        const r = await fetch('api/schedules/import?dry_run=true' + this.$store.app.gwQuery('&'), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(bundle),
         });
@@ -241,7 +241,7 @@ document.addEventListener('alpine:init', () => {
     async confirmImport() {
       this.importMsg = null;
       try {
-        const r = await fetch('api/schedules/import?dry_run=false', {
+        const r = await fetch('api/schedules/import?dry_run=false' + this.$store.app.gwQuery('&'), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(this._importBundle),
         });
@@ -256,7 +256,8 @@ document.addEventListener('alpine:init', () => {
 
     blank() {
       return { id: '', name: '', enabled: true, fire_at: '18:00', duration_min: 90,
-               match: 'all', gateway_id: '', conditions: [], exit_conditions: [],
+               match: 'all', gateway_id: this.$store.app.selectedGateway || '',   // #379
+               conditions: [], exit_conditions: [],
                exit_match: 'all', entry_hold_s: 0, action: { kind: '' }, ha_actions: [],
                days: [], months: [], day_of_month: null, start_date: null, end_date: null,
                priority: 0, conflict: 'override',

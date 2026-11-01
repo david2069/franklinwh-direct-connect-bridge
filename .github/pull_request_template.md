@@ -2,11 +2,16 @@
 
 <!-- One or two sentences. -->
 
-## Severity and nature
+## Issue and labels
 
-<!-- For a defect fix: sev:S1-critical | S2-major | S3-minor | S4-cosmetic,
-     and nature:code | device | doc | test-gap | design-risk.
-     Label the PR to match. -->
+<!-- "Refs #N", never Fixes/Closes: the issue is closed only after the post-release check.
+     Label the PR as CLAUDE.md "Defect tracking and change management" says:
+     a type (bug | enhancement | documentation | chore),
+     a severity (sev:S1-blocker | sev:S2-high | sev:S3-medium | sev:S4-low)
+     and an area (area:..., the TEST_POLICY §1 release areas).
+     Optional nature: nature:code | design-risk | device | doc | test-gap. -->
+
+Refs #
 
 ## Evidence
 
