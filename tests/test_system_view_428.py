@@ -93,7 +93,28 @@ def test_the_overlay_files_are_served():
 
 def test_the_ui_hooks_are_one_mount_a_sidebar_entry_and_a_topbar_button():
     index = (TPL / "index.html").read_text()
-    assert 'FWHSystemView.mount({endpoint: "api/system", below: "header", above: "nav.fixed.bottom-0"})' in index
+    assert 'FWHSystemView.mount({endpoint: "api/system", below: "header", above: "nav.fixed.bottom-0",' in index
     assert "system-view/system-view.css" in index and "system-view/system-view.js" in index
     for part in ("partials/sidebar.html", "partials/topbar.html"):
         assert "FWHSystemView.open()" in (TPL / part).read_text(), part
+
+
+def test_the_overlay_and_the_top_bar_picker_show_the_same_gateway():
+    index = (TPL / "index.html").read_text()
+    assert 'gateway: () => window.Alpine && Alpine.store("app").selectedGateway' in index
+    assert "a.selectGateway(id)" in index                                   # picked in the overlay
+    assert 'FWHSystemView.showGateway(Alpine.store("app").selectedGateway)' in index   # picked in the top bar
+    js = TestClient(app_module.create_app()).get("/system-view/system-view.js").text
+    assert "showGateway" in js                                              # the pinned package has it
+
+
+def test_the_sidebar_logo_row_is_as_tall_as_a_wrapped_top_bar():
+    index = (TPL / "index.html").read_text()
+    assert 'setProperty("--topbar-h"' in index and "new ResizeObserver" in index
+    assert "min-height: var(--topbar-h, auto)" in (TPL / "partials/sidebar.html").read_text()
+
+
+def test_the_phone_more_sheet_names_system_view():
+    nav = (TPL / "partials/bottom-nav.html").read_text()
+    assert "$store.app.moreOpen = false; window.FWHSystemView && FWHSystemView.open()" in nav
+    assert "<span>System view</span>" in nav

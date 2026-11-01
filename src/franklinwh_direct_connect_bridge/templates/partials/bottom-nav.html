@@ -54,6 +54,16 @@
           <span x-text="tab.title"></span>
         </button>
       </template>
+      <!-- System view: on a phone the top bar's icon has no label, so it's named here too. -->
+      <button type="button" @click="$store.app.moreOpen = false; window.FWHSystemView && FWHSystemView.open()"
+              class="flex items-center justify-center gap-2 text-center px-2 py-3 rounded-lg text-sm min-h-[48px] transition border"
+              style="color:var(--text-secondary);background:var(--surface-1);border-color:var(--border)">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <rect x="9" y="8" width="6" height="8" rx="1"/>
+          <path stroke-linecap="round" d="M3 12h6M15 12h6M12 3v5M12 16v5"/>
+        </svg>
+        <span>System view</span>
+      </button>
       <!-- Docs and User Guide (#257): the sidebar has them, but the sidebar is hidden on
            mobile, so they are here too. -->
       <a href="{{ docs_url }}" target="_blank" rel="noopener" @click="$store.app.moreOpen = false"

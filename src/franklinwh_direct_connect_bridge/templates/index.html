@@ -349,6 +349,18 @@
 
 <!-- System view (#428): a self-contained overlay from franklinwh-system-view. -->
 <script src="system-view/system-view.js?v={{ cache_bust }}"></script>
-<script>FWHSystemView.mount({endpoint: "api/system", below: "header", above: "nav.fixed.bottom-0"});</script>
+<script>
+  // The overlay shows the gateway the top-bar picker has, and a gateway picked in the
+  // overlay becomes the picker's (they could disagree before).
+  FWHSystemView.mount({endpoint: "api/system", below: "header", above: "nav.fixed.bottom-0",
+    gateway: () => window.Alpine && Alpine.store("app").selectedGateway,
+    onGateway: (id) => { const a = Alpine.store("app"); if (a.selectedGateway !== id) a.selectGateway(id); }});
+  document.addEventListener("alpine:initialized", () =>
+    Alpine.effect(() => FWHSystemView.showGateway(Alpine.store("app").selectedGateway)));
+  // The sidebar's logo row is as tall as the top bar, also when the top bar wraps to two
+  // rows; otherwise a strip of sidebar showed between the logo and the overlay.
+  new ResizeObserver(() => document.documentElement.style.setProperty("--topbar-h",
+    document.querySelector("header").getBoundingClientRect().height + "px")).observe(document.querySelector("header"));
+</script>
 </body>
 </html>

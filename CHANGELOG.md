@@ -11,6 +11,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+- System view and the top bar's gateway picker show the same gateway. The overlay opens on
+  the picker's gateway and follows it, and a gateway picked in the overlay becomes the
+  picker's. Before, the overlay could show one gateway while the picker said another.
+- System view is in the phone's More sheet, by name. On a phone it was only the top bar's
+  unlabelled icon.
+- When the top bar wraps to two rows, the sidebar's logo row grows with it; a strip of
+  sidebar no longer shows between the logo and System view.
+- `franklinwh-system-view` 0.2.2 (was 0.2.0): adds the gateway hooks above; 0.2.1 draws
+  objects a bridge marks unavailable, which this bridge doesn't send.
+
 ## [0.5.23] — 2026-11-01
 
 ### Added

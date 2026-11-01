@@ -5,7 +5,7 @@
        class="flex flex-col bg-slate-800/50 border-r border-white/[0.08] flex-shrink-0 h-screen transition-all duration-300 relative">
 
   <!-- Logo -->
-  <div class="flex items-center gap-3 px-3 py-3 border-b border-white/[0.08] overflow-hidden">
+  <div class="flex items-center gap-3 px-3 py-3 border-b border-white/[0.08] overflow-hidden" style="min-height: var(--topbar-h, auto)">
     <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 cursor-pointer"
          style="background: linear-gradient(135deg, var(--primary-light), var(--primary-dark));"
          @click="$store.app.toggleSidebar()"
