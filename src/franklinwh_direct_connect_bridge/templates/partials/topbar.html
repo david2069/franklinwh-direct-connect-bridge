@@ -199,6 +199,7 @@
 
     <!-- System view (#428): the shared overlay; "Start on System view" lives inside it. -->
     <button type="button" :style="{order: $store.app.topbarOrder('systemview')}"
+            x-show="$store.app.topbarShow('systemview')"
             @click="window.FWHSystemView && FWHSystemView.open()"
             class="inline-flex p-1.5 rounded transition text-slate-400 hover:text-slate-200 hover:bg-slate-700"
             title="System view" aria-label="System view">

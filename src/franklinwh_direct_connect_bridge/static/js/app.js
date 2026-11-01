@@ -566,6 +566,7 @@ document.addEventListener('alpine:init', () => {
           { id: 'latency', label: 'Round-trip latency', on: true },
         ],
         right: [
+          { id: 'systemview', label: 'System view', on: true },
           { id: 'cards', label: 'Cards (dashboard)', on: true },
           { id: 'rawkeys', label: 'Raw keys </>', on: true },
           { id: 'refresh', label: 'Refresh', on: true },

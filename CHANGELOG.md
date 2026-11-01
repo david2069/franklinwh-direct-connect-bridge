@@ -16,7 +16,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   the picker's gateway and follows it, and a gateway picked in the overlay becomes the
   picker's. Before, the overlay could show one gateway while the picker said another.
 - System view is in the phone's More sheet, by name. On a phone it was only the top bar's
-  unlabelled icon.
+  unlabelled icon, always last. It is now in Top bar preferences, first by default, so it
+  can be moved or hidden like the other buttons (saved preferences get it at the end).
 - When the top bar wraps to two rows, the sidebar's logo row grows with it; a strip of
   sidebar no longer shows between the logo and System view.
 - `franklinwh-system-view` 0.2.2 (was 0.2.0): adds the gateway hooks above; 0.2.1 draws

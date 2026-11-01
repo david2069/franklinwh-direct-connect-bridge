@@ -118,3 +118,10 @@ def test_the_phone_more_sheet_names_system_view():
     nav = (TPL / "partials/bottom-nav.html").read_text()
     assert "$store.app.moreOpen = false; window.FWHSystemView && FWHSystemView.open()" in nav
     assert "<span>System view</span>" in nav
+
+
+def test_system_view_is_a_top_bar_preference_first_by_default():
+    js = (TPL.parent / "static/js/app.js").read_text()
+    right = js[js.index("right: [", js.index("_topbarDefaults")):]
+    assert right.index("id: 'systemview', label: 'System view'") < right.index("id: 'cards'")
+    assert "topbarShow('systemview')" in (TPL / "partials/topbar.html").read_text()
