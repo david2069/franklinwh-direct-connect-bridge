@@ -2423,7 +2423,20 @@ def create_app() -> FastAPI:
         shared franklinwh-system-view overlay. No device I/O."""
         import franklinwh_system_view as _sv
         from . import system_view as _svp
-        return _sv.build(_svp.payload())
+        return _sv.build(_svp.payload(get_settings()))
+
+    @app.put("/api/system/customise")
+    async def api_system_customise(request: Request):
+        """Save the System view's Customise diagram answers (#428). Bridge settings only:
+        nothing is sent to an aGate. Replaces the saved answers; empty means Automatic."""
+        import franklinwh_system_view as _sv
+        from . import system_view as _svp
+        try:
+            values = _sv.customise.clean(await request.json(), _svp.raw_payload(get_settings()))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        _svp.save(values)
+        return {"ok": True, "saved": values}
 
     def _read(fn, gateway: str | None = None):
         host = _gw_host(gateway)

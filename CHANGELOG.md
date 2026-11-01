@@ -11,6 +11,22 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+- **System view: Customise diagram, place name and weather** (#428). A **Customise diagram**
+  button lets you name the site, each gateway and each smart circuit. You can also set the
+  service legs, the battery model, where solar connects, whether a generator is fitted, a
+  picture for each smart circuit (heating/cooling, hot water, EV, pool, other) and whether
+  weather shows. The answers are saved in the bridge (`system_view.json`), so every browser
+  shows the same diagram. Where the aGate has a reading, it's shown beside your answer; a
+  mismatch is flagged, never overridden. Nothing is sent to the aGate. Above the diagram
+  are the site's name (by default the place from your location setting) and the weather
+  now, from the solar page's Open-Meteo forecast. The forecast refreshes in the background,
+  so opening the view never waits for it.
+
+### Fixed
+- **System view:** "100%" fits inside the battery ring, and the hover text no longer covers
+  the label under the picture (`franklinwh-system-view` 0.2.0).
+
 ## [0.5.22] — 2026-11-01
 
 ### Added

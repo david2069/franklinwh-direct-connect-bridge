@@ -45,7 +45,8 @@ def test_the_typical_us_site_maps_without_guessing():
     g = system_view.gateway_payload(gw(summary=us_summary()))
     assert g["online"] and g["mode"] == "Emergency Backup" and g["inverter"] == "Standby"
     assert g["reserve_pct"] == 100
-    assert g["grid"] == {"state": "connected", "power_w": 820.0, "voltage_v": 241.6, "freq_hz": 60.0}
+    assert g["grid"] == {"state": "connected", "power_w": 820.0, "voltage_v": 241.6, "freq_hz": 60.0,
+                         "legs_v": [120.8, 120.8]}
     assert g["battery"] == {"soc_pct": 100.0, "power_w": 0.0, "count": 1}
     assert g["solar"] == [] and g["generator"] is None
     assert [(c["id"], c["on"]) for c in g["circuits"]] == [(1, True), (2, True), (3, False)]
