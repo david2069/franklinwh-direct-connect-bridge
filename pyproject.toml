@@ -24,6 +24,9 @@ dependencies = [
     # untested (0.9.6 and 0.10.0 in two days). 0.9.6 is the version G2 ran on (0.5.9,
     # reference aGate, 2026-10-18). Move the pin only after G0 + G1 (+ G2 for force paths).
     "franklinwh-modbus==0.10.1",      # direct-Modbus WSet force control (Battery Control widget)
+    # The System view overlay (#428), shared with the Modbus Bridge. Pinned like the other
+    # shared packages; move it only after G0 + G1.
+    "franklinwh-system-view==0.1.0",
     "fastapi>=0.111",
     "uvicorn>=0.29",
     "jinja2>=3.1",

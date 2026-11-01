@@ -197,6 +197,17 @@
           x-show="$store.app.summary.latency_ms != null && $store.app.topbarShow('latency')"
           x-text="Math.round($store.app.summary.latency_ms) + ' ms'"></span>
 
+    <!-- System view (#428): the shared overlay; "Start on System view" lives inside it. -->
+    <button type="button" :style="{order: $store.app.topbarOrder('systemview')}"
+            @click="window.FWHSystemView && FWHSystemView.open()"
+            class="inline-flex p-1.5 rounded transition text-slate-400 hover:text-slate-200 hover:bg-slate-700"
+            title="System view" aria-label="System view">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <rect x="9" y="8" width="6" height="8" rx="1"/>
+        <path stroke-linecap="round" d="M3 12h6M15 12h6M12 3v5M12 16v5"/>
+      </svg>
+    </button>
+
     <!-- Cards (dashboard only) — toggles the dashboard card customiser -->
     <button :style="{order: $store.app.topbarOrder('cards')}"
             x-show="$store.app.activeTab === 'dashboard' && $store.app.topbarShow('cards')" x-cloak

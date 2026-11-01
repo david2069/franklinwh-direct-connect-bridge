@@ -1288,6 +1288,9 @@ def create_app() -> FastAPI:
         ),
         lifespan=lifespan)
 
+    # The System view overlay's page files (#428), from the shared package.
+    import franklinwh_system_view as _sv
+    app.mount("/system-view", StaticFiles(directory=str(_sv.static_dir())), name="system-view")
     app.mount("/static",
               StaticFiles(directory=str(Path(__file__).parent / "static")),
               name="static")
@@ -2413,6 +2416,14 @@ def create_app() -> FastAPI:
                     totals[k] += v
         return {"count": len(gws), "ok_count": ok_count, "totals": totals,
                 "gateways": [_roster_entry(gw) for gw in gws]}
+
+    @app.get("/api/system")
+    def api_system():
+        """The System view (#428): every gateway from the poller caches, laid out for the
+        shared franklinwh-system-view overlay. No device I/O."""
+        import franklinwh_system_view as _sv
+        from . import system_view as _svp
+        return _sv.build(_svp.payload())
 
     def _read(fn, gateway: str | None = None):
         host = _gw_host(gateway)

@@ -8,6 +8,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%2310b981'/%3E%3Cpath d='M13 3L6 13h4l-1 8 7-10h-4z' fill='white'/%3E%3C/svg%3E">
   <base href="{{ base_path }}/">
   <link rel="stylesheet" href="static/css/design-system.css?v={{ cache_bust }}">
+  <link rel="stylesheet" href="system-view/system-view.css?v={{ cache_bust }}">
 
   <!-- Tailwind 3.4.1 — local, no CDN -->
   <script src="static/js/tailwind-3.4.1.min.js"></script>
@@ -346,5 +347,8 @@
     {% include "partials/bottom-nav.html" %}
   </div> <!-- closes x-data scope -->
 
+<!-- System view (#428): a self-contained overlay from franklinwh-system-view. -->
+<script src="system-view/system-view.js?v={{ cache_bust }}"></script>
+<script>FWHSystemView.mount({endpoint: "api/system", below: "header", above: "nav.fixed.bottom-0"});</script>
 </body>
 </html>

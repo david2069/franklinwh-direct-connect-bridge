@@ -11,6 +11,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+- **System view** (#428, phase 1): a picture of your whole system: grid, aGate, batteries,
+  solar, home, smart circuits and generator, with live flows. Open it from **System view**
+  in the sidebar or the top bar. Tick **Start on System view** to make it the page this
+  browser opens on; **Standard dashboard** returns to today's dashboard. It fits desktop,
+  tablet and phone (zoom − / Fit / +, pinch, drag). Hover a picture for a sentence, click
+  for details. Grey means offline, amber a warning, red critical (for example a grid outage).
+  Only what your aGate reports is drawn: no solar, no solar picture. It reads the bridge's
+  cached data only and never sends anything to the aGate.
+
 ## [0.5.21] — 2026-10-31
 
 ### Added
