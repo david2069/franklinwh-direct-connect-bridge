@@ -106,6 +106,7 @@ def test_the_overlay_and_the_top_bar_picker_show_the_same_gateway():
     assert 'FWHSystemView.showGateway(Alpine.store("app").selectedGateway)' in index   # picked in the top bar
     js = TestClient(app_module.create_app()).get("/system-view/system-view.js").text
     assert "showGateway" in js                                              # the pinned package has it
+    assert "e.pointerType !== \"touch\"" in js                              # 0.2.3: no tip left over the details on a phone
 
 
 def test_the_sidebar_logo_row_is_as_tall_as_a_wrapped_top_bar():

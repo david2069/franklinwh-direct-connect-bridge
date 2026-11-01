@@ -20,8 +20,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   can be moved or hidden like the other buttons (saved preferences get it at the end).
 - When the top bar wraps to two rows, the sidebar's logo row grows with it; a strip of
   sidebar no longer shows between the logo and System view.
-- `franklinwh-system-view` 0.2.2 (was 0.2.0): adds the gateway hooks above; 0.2.1 draws
+- `franklinwh-system-view` 0.2.3 (was 0.2.0): adds the gateway hooks above; 0.2.1 draws
   objects a bridge marks unavailable, which this bridge doesn't send.
+- On a phone, tapping an object in System view left its hover box over the details
+  panel's ✕, so the details couldn't be closed ("Can't dismiss this view", iPhone).
+  Fixed in `franklinwh-system-view` 0.2.3.
 
 ## [0.5.23] — 2026-11-01
 
