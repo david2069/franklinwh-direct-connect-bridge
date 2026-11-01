@@ -50,6 +50,7 @@ Every change passes the gates its risk requires. A release passes all of them.
 | Gate | What | Required for |
 |---|---|---|
 | **G0 Suite** | Full suite green **on the pinned dependency set the image uses**. Modbus bridge: `pytest -m "not hardware"` with `constraints.txt`, plus `ruff check src/ tests/`. Each fix has a regression test **seen failing without the fix**. A test must not stub the component it is testing; stub only its edges (network, device, clock). | every PR |
+| **G0 Install smoke** | `.github/workflows/install-smoke.yml`, green: the two standalone installs INSTALL.md offers (Docker Compose; pip into a fresh venv), each with and without a broker. Jobs `docker-mqtt`, `docker-nomqtt`, `python-mqtt`, `python-nomqtt` run `tools/install_smoke.py`: health, a mock gateway added and polling, its discovery configs retained (with a broker), no ERROR or Traceback in the log. Follows the shared fwh-tools "install-smoke" spec (#409). | every PR (CI) |
 | **G1 HAOS acceptance** | Scripted run on the HAOS test VM, with a trace (§3). | every release; any PR touching setup, store, MQTT/HA identity or lifecycle, add-on config or packaging |
 | **G2 Real hardware** | Reference aGate, under §4. | device I/O, dispatch, writes, Modbus, anything "critical" in CLAUDE.md |
 | **G3 Sign-off** | When G0–G2 have passed, the **agent advises the owner that the merge will happen**. It names the PRs, the order and the gate results, then merges. The owner does not merge, and can stop it. Before merging, the agent checks the PR is still open and mergeable; afterwards it checks `main` (version, CHANGELOG). A failed or skipped gate is stated in the advice; the agent does not merge past it without the owner's word. | every release |
@@ -107,6 +108,9 @@ running code is the branch.** If you can't, the run tested something else and do
 
    A store in `/data` therefore has no "reinstall keeping data" path. Test what the bridge actually does.
 4. **Coexistence**: both bridges installed in one HA, with no clash of devices, entities or topics.
+5. **Docker update in place**: the previous release's image built and run by Docker Compose with a gateway, then this one
+   on the same `./data` volume. The store migrates, and the gateway and its retained topics survive with no duplicates.
+   Runs on the Debian VM (`~/dev/debian-qemu-g1d`) until it is scripted in CI (#409).
 
 ### The trace (every run, kept per run)
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from . import environment
@@ -56,7 +57,9 @@ class Settings(BaseSettings):
     # Metrics / history (local SQLite). Tri-state: None = auto (see ``metrics_active``);
     # True/False = explicit override from env / add-on options.
     metrics_enabled: bool | None = None
-    metrics_db: str = "/data/metrics.db"
+    # Under DATA_DIR: /data in the add-on and Docker, ./data for a pip install, where a fixed
+    # /data stopped the bridge starting (#410). Read at construction, like the overrides file.
+    metrics_db: str = Field(default_factory=lambda: str(Path(environment.DATA_DIR) / "metrics.db"))
     # 365d costs ~130 MB at a 30s poll (measured: 0.35 MB/day, ~0.67 with the tiers
     # column). Keeping a year locally removes the only reason the gateway's own
     # ~105-day history looked like the longer record.
