@@ -11,6 +11,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.22] — 2026-11-01
+
 ### Added
 - **System view** (#428, phase 1): a picture of your whole system: grid, aGate, batteries,
   solar, home, smart circuits and generator, with live flows. Open it from **System view**
