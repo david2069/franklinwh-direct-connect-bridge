@@ -32,6 +32,10 @@ class DispatchUnavailable(RuntimeError):
     """No dispatch provider is configured/reachable (→ 503)."""
 
 
+class GatewayNotTargetable(RuntimeError):
+    """The resolved dispatch provider cannot address the named gateway (→ 409)."""
+
+
 # Local dispatch action → the Modbus Bridge's battery_command value (Phase 2).
 _MB_ACTION = {
     "charge": "Force Charge",
@@ -175,21 +179,49 @@ def _dispatch_via_modbus_bridge(base: str, action: str, power_w, power_pct,
     return {"command": _MB_ACTION[action], "staged": staged, "reply": final}
 
 
+def ensure_gateway_targetable(s: Settings, gateway_id: str | None) -> None:
+    """Refuse a named gateway the Modbus Bridge cannot address, before any provider I/O.
+
+    The Bridge's ``/api/command`` has no gateway selector, and this bridge keeps no record
+    of which aGate that Bridge polls. A dispatch naming some other gateway could therefore
+    land on a battery the caller did not name while the response echoed the requested id
+    (#365). Until the Bridge exposes its target, the stored default gateway is the only
+    target we can claim; refuse a mismatch here rather than sign in to the Bridge first and
+    refuse afterwards, so a request that cannot be honoured does no device I/O.
+    """
+    if not gateway_id or not s.modbus_bridge_url:
+        return
+    from . import state as state_mod
+    default = state_mod.default_gateway()
+    default_id = getattr(default, "id", "") if default is not None else ""
+    if gateway_id != default_id:
+        raise GatewayNotTargetable(
+            f"gateway {gateway_id!r} cannot be dispatched through the Modbus Bridge: its "
+            f"/api/command has no gateway selector, and this bridge cannot verify which "
+            f"aGate that Bridge polls. The stored default gateway is "
+            f"{default_id or 'none registered'} — name that one explicitly, or use Battery "
+            f"Control on gateway {gateway_id!r}'s own page, which acts through the Modbus "
+            f"client on the gateway on screen.")
+
+
 def dispatch(s: Settings, action: str, *, power_w=None, power_pct=None,
              duration_s=None, target_soc=None, gateway_id: str | None = None) -> dict:
     """Actuate battery dispatch (force charge/discharge/standby/release + target-SoC) via
     the resolved provider. Gated upstream by allow_writes. Raises ``DispatchUnavailable``
-    (no provider), ``ValueError`` (bad action), ``NotImplementedError`` (library path not
-    wired), or a transport error (provider unreachable).
+    (no provider), ``GatewayNotTargetable`` (named gateway the bridge cannot address),
+    ``ValueError`` (bad action), ``NotImplementedError`` (library path not wired), or a
+    transport error (provider unreachable).
 
     ``gateway_id`` names WHICH battery (BR-34). It was absent, so on a multi-gateway
     site every dispatch went to the resolved default provider — a force-charge aimed at
     one aGate could land on another, and the response could not say which. It is echoed
-    in the result so the caller can verify the target rather than assume it.
+    in the result so the caller can verify the target rather than assume it; a target the
+    Modbus Bridge cannot address is refused before provider resolution.
     """
     act = (action or "").strip().lower()
     if act not in _MB_ACTION:
         raise ValueError(f"unknown action {action!r}; expected charge/discharge/standby/release")
+    ensure_gateway_targetable(s, gateway_id)
     prov = dispatch_provider(s)
     if not prov["available"]:
         raise DispatchUnavailable(
