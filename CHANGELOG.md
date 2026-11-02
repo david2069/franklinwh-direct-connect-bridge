@@ -11,6 +11,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.25] — 2026-11-03
+
 ### Fixed
 - **A dispatch naming a gateway the Modbus Bridge cannot address is refused** (#365). The
   Bridge's `/api/command` has no gateway selector and this bridge keeps no record of which
