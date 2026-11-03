@@ -11,6 +11,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.27] — 2026-11-03
+
 ### Changed
 - **One path for phone notifications** (#374). Trigger notifications, VPP dispatch
   notices, the restart reconcile notice, scheduler Notify actions and Broadcast now all go
