@@ -11,6 +11,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.26] — 2026-11-03
+
 ### Changed
 - **franklinwh-modbus 0.10.1 → 0.13.0** for Battery Control. With 0.13.0, closing the Modbus
   client after a force, release, status check or ratings read closes the TCP socket. Before,
