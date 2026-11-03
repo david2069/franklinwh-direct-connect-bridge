@@ -24,6 +24,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   catalogue, so a new aGate model is named once the library knows it. Rated amps, circuit
   count and vendor model name are not in the catalogue and stay in the bridge's table, which
   also answers when franklinwh-cloud is not installed. The five known models read the same.
+- **franklinwh-direct-connect-api 0.6.0** (was 0.5.x). Nothing the bridge uses changed. Its
+  mock aGate now answers the off-grid read (1723), so the Go Off-Grid switch has a state
+  on a mock gateway too.
 ### Added
 - **Buttons on notifications** (#374). On a phone with the Home Assistant Companion app:
   - a force still running when the bridge starts (one it did not start, or one a restart
@@ -60,6 +63,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   Ethernet 0, Ethernet 1, WiFi or 4G, from the network read the bridge already makes
   (`currentNetType`). The aGate switches links on its own, so this is what it's using, not
   a setting.
+- **Home Assistant: Go Off-Grid switch** (#386). On islands the house and Off reconnects it.
+  It's the same 1723 write as Control → Off-grid, with that route's default off-grid floor
+  (5 %), and no confirm step: in HA, the switch is the explicit action (owner, 2026-11-03).
+  The switch shows what was requested (1723 `offgridSet`), so a grid outage islands the
+  house with the switch still off. Grid Status says which it is: SimulatedOffGrid or Outage.
 
 ## [0.5.26] — 2026-11-03
 

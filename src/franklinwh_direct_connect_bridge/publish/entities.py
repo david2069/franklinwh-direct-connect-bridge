@@ -106,6 +106,11 @@ CONTROLS: list[dict[str, Any]] = [
      "state_key": "reserve_tou_pct", "reserve_mode": "tou"},
     {"key": "reserve_soc_self", "name": "Self-Consumption Reserve SOC", "ha_type": "number",
      "state_key": "reserve_self_pct", "reserve_mode": "self"},
+    # Go off-grid / reconnect (1723), as Control → Off-grid does, without its confirm step
+    # (owner, 2026-11-03). State is 1723 offgridSet, what was REQUESTED: an outage islands
+    # the house with the switch off, and Grid Status says which it is.
+    {"key": "off_grid", "name": "Go Off-Grid", "ha_type": "switch",
+     "state_key": "off_grid_requested_on"},
 ]
 
 #: The reserve controls, left out of discovery unless the cloud can write this gateway.
@@ -292,6 +297,9 @@ def state_payload(summary: dict) -> dict[str, Any]:
         st["ambient_temp_c"] = t_amb
     for n, on in (summary.get("circuits_on") or {}).items():
         st[f"circuit_{n}_on"] = bool(on)        # the switches' state_key (C1)
+    req = st.get("offgrid_requested")
+    if req is not None:
+        st["off_grid_requested_on"] = bool(int(req))    # the Go Off-Grid switch's state_key
     og = st.get("off_grid")
     if og is not None:
         st["status_grid_status"] = (GRID_STATUS.get(st.get("off_grid_kind"), "OffGrid")
