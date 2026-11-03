@@ -11,6 +11,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+- **Go off-grid and Reconnect keep their dialog open until the aGate answers** (#288). After
+  OK, the dialog shows *Sent to the aGate* and then *aGate reports off-grid* (or on-grid)
+  with a running timer, and ends with the result: "done in N s", the aGate's refusal, or
+  "No confirmation after 2 min" with a pointer to the top bar. Before, it closed on OK and a
+  toast said only that the command was sent. Hide closes it early; the result then comes
+  as a toast.
+
 ## [0.5.26] — 2026-11-03
 
 ### Changed

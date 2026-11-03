@@ -1653,24 +1653,19 @@ document.addEventListener('alpine:init', () => {
         : `Reconnect to the grid and resume normal operation?`;
       if (!await this.confirmDialog(warn,
             { title: on ? 'Go off-grid' : 'Reconnect to grid', danger: on })) return;
-      try {
-        const r = await fetch('api/offgrid' + this.gwQuery('?'), {
+      // The dialog stays until the aGate confirms, refuses or times out (#288).
+      await this.trackCommand({
+        title: on ? 'Going off-grid' : 'Reconnecting to grid',
+        waitLabel: on ? 'aGate reports off-grid' : 'aGate reports on-grid',
+        send: () => fetch('api/offgrid' + this.gwQuery('?'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ on, soc, confirm: true }),  // dialog above IS the confirm
-        });
-        if (r.status === 403) { this.toast('Control writes are disabled (read-only)', 'error'); return; }
-        const d = await r.json();
-        if (r.ok && d.ok) {
-          this.toast(on ? `Going off-grid (restore floor ${soc}%)` : 'Reconnecting to grid', 'info');
-        } else {
-          this.toast(`Off-grid change failed: ${d.detail || d.result || 'error'}`, 'error');
-        }
-      } catch (e) {
-        this.toast(`Off-grid error: ${e.message}`, 'error');
-      }
+        }),
+        confirmed: () => on ? this.isOffGrid : !this.isOffGrid,
+        doneText: on ? `Off-grid (restore floor ${soc}%)` : 'Back on the grid',
+      });
       this.loadControlLog();
-      this.poll();
     },
 
     // ── Modbus (SunSpec 502) master switch ──────────────────────────────────
@@ -2028,6 +2023,54 @@ document.addEventListener('alpine:init', () => {
         this.toasts = this.toasts.filter(t => t.id !== id);
       }, 4000);
     },
+
+    // ── Command progress (#288) ─────────────────────────────────────────────
+    // A long command's dialog stays open: sent → the aGate confirms (read back from the
+    // poll), or it refuses, or the time limit passes. Closing early only hides it; the
+    // result then comes as a toast.
+    cmdProgress: { open: false, title: '', steps: [], result: '', level: '', elapsed: 0, done: false },
+    CMD_POLL_MS: 3000,
+    async trackCommand({ title, waitLabel, send, confirmed, doneText, limitS = 120 }) {
+      this.cmdProgress = { open: true, title, result: '', level: '', elapsed: 0, done: false,
+                           steps: [{ label: 'Sent to the aGate', state: 'wait' },
+                                   { label: waitLabel, state: 'pending' }] };
+      const p = this.cmdProgress;
+      const t0 = Date.now();
+      const tick = setInterval(() => { p.elapsed = Math.round((Date.now() - t0) / 1000); }, 1000);
+      const finish = (level, result) => {
+        clearInterval(tick);
+        p.elapsed = Math.round((Date.now() - t0) / 1000);
+        Object.assign(p, { level, result, done: true });
+        if (!p.open) this.toast(`${title}: ${result}`, level === 'ok' ? 'info' : 'error');
+      };
+      try {
+        const r = await send();
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || d.ok === false) {
+          p.steps[0].state = 'fail';
+          const why = r.status === 403 ? 'control writes are disabled (read-only)'
+            : (d.detail || (d.result !== undefined ? `result ${d.result}` : `HTTP ${r.status}`));
+          return finish('fail', `The aGate refused it: ${why}.`);
+        }
+      } catch (e) {
+        p.steps[0].state = 'fail';
+        return finish('fail', `Not sent: ${e.message}.`);
+      }
+      p.steps[0].state = 'done';
+      p.steps[1].state = 'wait';
+      while (Date.now() - t0 < limitS * 1000) {
+        await new Promise(res => setTimeout(res, this.CMD_POLL_MS));
+        await this.poll();
+        if (confirmed()) {
+          p.steps[1].state = 'done';
+          return finish('ok', `${doneText} — done in ${Math.round((Date.now() - t0) / 1000)} s.`);
+        }
+      }
+      p.steps[1].state = 'fail';
+      finish('warn', `No confirmation after ${Math.round(limitS / 60)} min. The aGate may still `
+        + `switch: watch the top bar.`);
+    },
+    closeCmdProgress() { this.cmdProgress.open = false; },
 
     // ── Styled confirm dialog (replaces native confirm()) ──────────────────
     confirmState: { open: false, title: '', message: '', danger: false },

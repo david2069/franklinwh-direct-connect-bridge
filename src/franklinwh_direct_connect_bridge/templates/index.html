@@ -249,6 +249,36 @@
       </div>
     </div>
 
+    <!-- Command progress (#288): stays until the aGate confirms, refuses or times out -->
+    <div x-show="$store.app.cmdProgress.open" x-cloak id="cmd-progress"
+         class="fixed inset-0 z-[124] flex items-center justify-center p-4"
+         @keydown.escape.window="$store.app.closeCmdProgress()">
+      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
+      <div class="relative w-full max-w-md rounded-xl border shadow-2xl"
+           style="background:var(--surface-0, #0f172a);border-color:var(--border)">
+        <div class="px-5 py-4 border-b flex items-center justify-between" style="border-color:var(--border)">
+          <div class="text-sm font-semibold" style="color:var(--text-primary)" x-text="$store.app.cmdProgress.title"></div>
+          <div class="text-xs tabular-nums" style="color:var(--text-muted)" x-text="$store.app.cmdProgress.elapsed + ' s'"></div>
+        </div>
+        <ul class="px-5 py-4 space-y-2 text-sm">
+          <template x-for="s in $store.app.cmdProgress.steps" :key="s.label">
+            <li class="flex items-center gap-2" :data-state="s.state"
+                :style="'color:' + (s.state === 'done' ? 'var(--success, #34d399)' : s.state === 'fail' ? 'var(--danger, #f87171)' : s.state === 'wait' ? 'var(--text-primary)' : 'var(--text-muted)')">
+              <span class="w-4 text-center" x-text="s.state === 'done' ? '✓' : s.state === 'fail' ? '✕' : s.state === 'wait' ? '…' : '·'"></span>
+              <span x-text="s.label"></span>
+            </li>
+          </template>
+        </ul>
+        <div x-show="$store.app.cmdProgress.done" class="px-5 pb-4 text-sm" data-role="result"
+             :style="'color:' + ($store.app.cmdProgress.level === 'ok' ? 'var(--success, #34d399)' : $store.app.cmdProgress.level === 'warn' ? 'var(--warning, #fbbf24)' : 'var(--danger, #f87171)')"
+             x-text="$store.app.cmdProgress.result"></div>
+        <div class="px-5 py-3 border-t flex justify-end" style="border-color:var(--border)">
+          <button class="btn btn-secondary btn-sm" @click="$store.app.closeCmdProgress()"
+                  x-text="$store.app.cmdProgress.done ? 'Close' : 'Hide'"></button>
+        </div>
+      </div>
+    </div>
+
     <!-- New-build available modal -->
     <div x-show="$store.app.newBuild" x-cloak
          class="fixed inset-0 z-[115] flex items-center justify-center p-4"
