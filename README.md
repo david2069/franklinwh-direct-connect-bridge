@@ -247,7 +247,7 @@ inventory — prefer it over this table, which is a snapshot. The shape:
 
 | Group | Paths | What |
 |---|---|---|
-| `/api/cmd/*` | 36 | the library's local cmdType read surface, registered 1:1 from it |
+| `/api/cmd/*` | 37 | the library's local cmdType read surface, registered 1:1 from it |
 | `/api/cloud/*` | 16 | cloud reads + the cloud-only writes (reserve, mode, smart-circuit) |
 | `/api/ha/*` | 11 | Home Assistant topology, entities and WebSocket status |
 | `/api/schedules/*` | 11 | the automation engine: CRUD, templates, explain, import/export |
