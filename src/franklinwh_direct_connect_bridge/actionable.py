@@ -7,8 +7,11 @@ switch is off. Taps arrive over each instance's authenticated WebSocket; nothing
 bridge accepts an unauthenticated call.
 
 Events and their handlers are registered by the features that use them
-(``notifier().templates.register(...)`` and ``notifier().on(...)``), at import time,
-before :func:`start` opens the listeners.
+(``templates().register(...)`` and :func:`on`), at import time, before :func:`start`
+opens the listeners.
+
+The Notifier lives on the app's event loop. A worker thread reaches it with
+:func:`submit`.
 """
 from __future__ import annotations
 
@@ -21,12 +24,71 @@ from franklinwh_ha_notify import HAInstance, Ledger, Notifier, SendResult, Targe
 log = logging.getLogger(__name__)
 
 _notifier: Notifier | None = None
+_loop: asyncio.AbstractEventLoop | None = None
 _templates = Templates()
+_handlers: dict = {}
+
+#: How long a worker thread waits for a send on the Notifier's loop.
+SEND_TIMEOUT_S = 30.0
 
 
 def templates() -> Templates:
     """The shared template registry. Usable before :func:`start`."""
     return _templates
+
+
+def on(event: str, handler) -> None:
+    """Register the handler for taps on ``event``'s buttons; applied by :func:`build`."""
+    _handlers[event] = handler
+
+
+def submit(coro):
+    """Run ``coro`` on the Notifier's event loop from a worker thread. Returns a
+    ``concurrent.futures.Future``, or None (and the coroutine is closed) when the
+    Notifier is not running."""
+    if _notifier is None or _loop is None or _loop.is_closed():
+        coro.close()
+        return None
+    return asyncio.run_coroutine_threadsafe(coro, _loop)
+
+
+def targets(store, device_ids: list[str] | None = None) -> list[Target]:
+    """The enabled notify devices in the store, on enabled HA instances, as targets; or,
+    with ``device_ids``, exactly those devices (on or off) on enabled instances."""
+    live = {r["id"] for r in store.ha_instances() if r.get("enabled", 1)}
+    return [Target(d["instance_id"], d["service"].removeprefix("notify."),
+                   d.get("alias") or d["service"])
+            for d in store.notify_devices()
+            if ((d["id"] in device_ids) if device_ids is not None else d.get("enabled"))
+            and d["instance_id"] in live]
+
+
+def gateway_name(gateway_id: str | None) -> str:
+    """The gateway's label for a message (#361). No id means the default gateway."""
+    from . import state
+    gw = state.get_gateway(gateway_id) if gateway_id else state.default_gateway()
+    if gw is None:
+        return gateway_id or ""
+    return gw.label or gw.id
+
+
+def send(store, event: str, *, gateway: str | None = None,
+         device_ids: list[str] | None = None, **values) -> SendResult | None:
+    """Send ``event`` (no buttons) to :func:`targets` through the one Notifier, from a
+    worker thread, and wait for the result. The Notifier applies the master switch and
+    records the send. None when the Notifier is not running."""
+    n = _notifier
+    if n is None:
+        log.info("notify [%s] not sent: notifications are not running", event)
+        return None
+    # Instances added or switched since start are picked up here rather than at a
+    # restart. The package has no call for this yet (franklinwh-ha-notify#5).
+    n.instances = _instances(store)
+    fut = submit(n.notify(event, targets(store, device_ids), gateway=gateway, **values))
+    if fut is None:
+        log.info("notify [%s] not sent: notifications are not running", event)
+        return None
+    return fut.result(timeout=SEND_TIMEOUT_S)
 
 
 def _instances(store) -> dict[str, HAInstance]:
@@ -44,10 +106,14 @@ def _instances(store) -> dict[str, HAInstance]:
 
 
 def build(store, settings) -> Notifier:
-    """A Notifier over ``store``'s HA instances and ledger. No listeners started."""
+    """A Notifier over ``store``'s HA instances and ledger, with the registered
+    handlers. No listeners started."""
     conn = sqlite3.connect(store.path, check_same_thread=False)
-    return Notifier(_instances(store), Ledger(conn, create=False), _templates,
-                    enabled=lambda: bool(settings.ha_notify))
+    n = Notifier(_instances(store), Ledger(conn, create=False), _templates,
+                 enabled=lambda: bool(settings.ha_notify))
+    for event, handler in _handlers.items():
+        n.on(event, handler)
+    return n
 
 
 def notifier() -> Notifier | None:
@@ -55,53 +121,14 @@ def notifier() -> Notifier | None:
     return _notifier
 
 
-def gateway_name(gateway_id: str | None) -> str:
-    """The gateway's label for a message (#361). No id means the default gateway."""
-    from . import state
-    gw = state.get_gateway(gateway_id) if gateway_id else state.default_gateway()
-    if gw is None:
-        return gateway_id or ""
-    return gw.label or gw.id
-
-
-def device_targets(store, device_ids: list[str] | None = None) -> list[Target]:
-    """The companion devices to send to: every enabled one, or exactly ``device_ids``.
-    A switched-off HA instance suppresses its devices."""
-    by_id = {i["id"]: i for i in store.ha_instances()}
-    out = []
-    for d in store.notify_devices():
-        if (d["id"] not in device_ids) if device_ids is not None else not d.get("enabled"):
-            continue
-        inst = by_id.get(d["instance_id"])
-        if inst is not None and not inst.get("enabled", 1):
-            continue
-        out.append(Target(d["instance_id"], d["service"].removeprefix("notify."),
-                          d.get("alias") or d["id"]))
-    return out
-
-
-def send(store, event: str, *, gateway: str | None = None,
-         device_ids: list[str] | None = None, **values) -> SendResult | None:
-    """Send ``event`` to the companion devices through the one Notifier, from a worker
-    thread. The Notifier applies the master switch and records the send in the ledger.
-    None when notifications have not started."""
-    n = _notifier
-    if n is None:
-        log.info("notify [%s] not sent: notifications have not started", event)
-        return None
-    # Instances added or switched since start are picked up here, not at a restart.
-    n.instances = _instances(store)
-    return asyncio.run(n.notify(event, device_targets(store, device_ids),
-                                gateway=gateway, **values))
-
-
 async def start(store, settings) -> Notifier | None:
     """Build the Notifier and open one tap listener per HA instance. Never raises."""
-    global _notifier
+    global _notifier, _loop
     if store is None:
         return None
     try:
         _notifier = build(store, settings)
+        _loop = asyncio.get_running_loop()
         _notifier.listen()
         log.info("actionable notifications: listening on %d Home Assistant instance(s)",
                  len(_notifier.instances))

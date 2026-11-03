@@ -145,3 +145,30 @@ def test_recent_notifications_show_the_gateway():
     html = (Path(notify_engine.__file__).parent / "templates/tabs/settings.html").read_text()
     row = html[html.index("Recent notifications (delivery log)"):html.index("<!-- Add-on note -->")]
     assert 'data-testid="notify-log-gateway" x-text="e.gateway"' in row
+
+
+# ── sends run on the Notifier's own loop ────────────────────────────────────────────
+def test_a_send_runs_on_the_notifiers_loop(st, fake_notifier, monkeypatch):
+    import asyncio
+
+    from franklinwh_ha_notify import notifier as pkg_notifier
+    from franklinwh_ha_notify.send import SendResult
+
+    from franklinwh_direct_connect_bridge import actionable
+    fake_notifier(st)
+    seen = []
+
+    async def where(*a, **k):
+        seen.append(asyncio.get_running_loop())
+        return SendResult()
+    monkeypatch.setattr(pkg_notifier, "send", where)
+    notify_engine.fire(st, "off_grid", gateway="Shed")
+    assert seen == [actionable._loop]
+
+
+def test_no_send_when_the_notifier_loop_is_not_running(st, fake_notifier, monkeypatch):
+    from franklinwh_direct_connect_bridge import actionable
+    sends = fake_notifier(st)
+    monkeypatch.setattr(actionable, "_loop", None)
+    assert actionable.send(st, "off_grid", gateway="Shed") is None
+    assert sends == [] and _ledger(st) == []
