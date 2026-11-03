@@ -72,4 +72,9 @@ def network_state(connectivity: dict | None, interfaces: dict | None,
     out["net_cloud"] = None if aws is None else ("connected" if _ok(aws) else "not connected")
     addr = _dig(cloud, "serverAddr") if cloud else None
     out["net_cloud_endpoint"] = addr if isinstance(addr, str) and addr else None
+    # 1118 currentNetType: the link the aGate is using now (1 Eth0, 2 Eth1, 3 WiFi, 4 4G). It
+    # roams on its own, so this is observed state, not a setting.
+    via = {1: "Ethernet 0", 2: "Ethernet 1", 3: "WiFi", 4: "4G"}
+    cur = ifc.get("currentNetType")
+    out["net_cloud_via"] = via.get(int(cur)) if isinstance(cur, (int, str)) and str(cur).isdigit() else None
     return out
