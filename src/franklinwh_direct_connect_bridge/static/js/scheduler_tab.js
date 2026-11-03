@@ -42,6 +42,10 @@ document.addEventListener('alpine:init', () => {
     mon: { open: false, lines: [], since: 0, entry: '', paused: false, copied: '',
            max: 500, tick_s: 15, err: '' },
     _monTimer: null,
+    // Condition rows (owner, 2026-11-04): the sensor column's width and the sensor drop
+    // list's size, once dragged; remembered in this browser. Null until then.
+    condW: (() => { try { return Number(localStorage.getItem('fwh-sched-cond-w')) || null; } catch { return null; } })(),
+    condList: (() => { try { return JSON.parse(localStorage.getItem('fwh-sched-list-size')) || null; } catch { return null; } })(),
 
     init() {
       this.$watch('$store.app.activeTab', (t) => { if (t === 'scheduler' && !this.schedules.length) this.load(); });
@@ -683,6 +687,77 @@ document.addEventListener('alpine:init', () => {
     addExitRow() { (this.form.exit_conditions ||= []).push(this._newLeaf()); },
     addExitGroup() { (this.form.exit_conditions ||= []).push({ match: 'all', conditions: [this._newLeaf()], _cid: ++this._cidSeq }); },
     removeExitCond(i) { this.form.exit_conditions.splice(i, 1); },
+
+    /** The sensor field in a condition row. It fills the row until its grip is dragged;
+     *  after that every row's field has the dragged width (wider ones push the rest of
+     *  the row onto the next line), never past the row. */
+    condSensorStyle() {
+      const base = { minWidth: '150px', marginRight: '16px' };   // margin: room for the grip
+      return this.condW
+        ? { ...base, flex: `0 0 ${this.condW}px`, maxWidth: 'calc(100% - 16px)' }
+        : { ...base, flex: '1 1 0%' };
+    },
+    /** Drag the grip just right of a condition's sensor field to widen or narrow it. */
+    startCondResize(ev) {
+      const grip = ev.currentTarget;
+      const wrap = grip.parentElement;
+      const row = wrap.parentElement;
+      const cs = getComputedStyle(row);
+      const inner = row.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+      const minW = parseFloat(getComputedStyle(wrap).minWidth) || 150;
+      const maxW = Math.max(minW, inner - (parseFloat(getComputedStyle(wrap).marginRight) || 0));
+      const startX = ev.clientX, startW = wrap.getBoundingClientRect().width;
+      grip.classList.add('dragging');
+      const move = (e) => {
+        this.condW = Math.round(Math.min(maxW, Math.max(minW, startW + e.clientX - startX)));
+      };
+      const up = () => {
+        grip.classList.remove('dragging');
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        try { localStorage.setItem('fwh-sched-cond-w', String(this.condW)); } catch { /* this browser only */ }
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+    },
+    /** Size of a sensor drop list once its corner has been dragged; until then the
+     *  240px minimum width and the max-h-60 class apply. */
+    condListStyle() { return this.condList ? { width: `${this.condList.w}px` } : {}; },
+    condListScrollStyle() { return this.condList ? { maxHeight: `${this.condList.h}px` } : {}; },
+    /** Drag a sensor drop list's bottom-right corner to resize it. Never smaller than
+     *  the default, never past the dialog's edges. */
+    startListResize(ev) {
+      const grip = ev.currentTarget;
+      const list = grip.closest('[data-testid="sensor-list"]');
+      const scroll = list.querySelector('[data-testid="sensor-list-scroll"]');
+      const box = (list.closest('[x-data^="dialogSize"]') || document.documentElement).getBoundingClientRect();
+      const r = list.getBoundingClientRect(), sr = scroll.getBoundingClientRect();
+      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      const minW = 240, minH = 15 * rem;   // min-width:240px, max-h-60
+      const maxW = Math.max(minW, Math.min(box.right, window.innerWidth) - r.left - 8);
+      const maxH = Math.max(minH, Math.min(box.bottom, window.innerHeight) - sr.top - 8);
+      const startX = ev.clientX, startY = ev.clientY;
+      const startW = r.width, startH = Math.max(sr.height, (this.condList && this.condList.h) || minH);
+      grip.classList.add('dragging');
+      const move = (e) => {
+        this.condList = {
+          w: Math.round(Math.min(maxW, Math.max(minW, startW + e.clientX - startX))),
+          h: Math.round(Math.min(maxH, Math.max(minH, startH + e.clientY - startY))),
+        };
+      };
+      const up = () => {
+        grip.classList.remove('dragging');
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        // A release outside the list mustn't count as a click outside it (that closes it).
+        const eat = (e) => e.stopPropagation();
+        window.addEventListener('click', eat, { capture: true, once: true });
+        setTimeout(() => window.removeEventListener('click', eat, { capture: true }), 0);
+        try { localStorage.setItem('fwh-sched-list-size', JSON.stringify(this.condList)); } catch { /* this browser only */ }
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+    },
 
     triggerLabel(t) {
       return ({ window: 'Recurring windows', once: 'One-off date', daily: 'Daily at time',
