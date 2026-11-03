@@ -52,6 +52,12 @@ class _Device:
     def scan(self, *a, **kw):
         pass
 
+    def write(self, addr, data):
+        # pysunspec2's device write. franklinwh-modbus 0.12.0+ wraps it on connect (its
+        # write trace), so the fake needs one; a call is recorded as a function 16 frame.
+        self.client.socket.sendall(struct.pack(">HHHBBHH", 0, 0, 7 + len(data), 1, 16, addr,
+                                               len(data) // 2) + bytes(data))
+
     def close(self):
         pass
 
