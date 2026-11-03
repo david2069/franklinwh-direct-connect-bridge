@@ -3390,6 +3390,8 @@ def create_app() -> FastAPI:
                    for i, l in scheduler.CONST_SENSORS]
                 + [{"id": i, "label": l, "group": "Derived Battery"}
                    for i, l in scheduler.DERIVED_SENSORS]
+                + [{"id": i, "label": l, "group": "Ask before continuing"}
+                   for i, l in scheduler.ASK_SENSORS]
                 + scheduler.ha_sensor_options(_ha_store())
             ),
             "gateways": [{"id": g.id, "name": g.label or g.serial or g.id,

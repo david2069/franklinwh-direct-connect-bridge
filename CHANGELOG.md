@@ -11,6 +11,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+- **Ask before continuing: your own buttons, a text reply, and the answer passed on**
+  (#374). Instead of Yes and No, a schedule's question can offer 2 to 4 buttons you name,
+  each set to run the action or skip this run. One of them can ask for a typed reply. The
+  answer (the button's label, or the text typed) is the new **Ask: answer** sensor, so an
+  exit condition or an HA action's guard can test it, and `%ask.answer%` puts it in a
+  message. The run log shows which button was tapped and any reply. Schedules without
+  their own buttons still ask Yes and No as before.
+
+### Fixed
+- The Ask before continuing question now fills in `%sensor.id%` values, like messages do.
+
 ## [0.5.27] — 2026-11-03
 
 ### Changed

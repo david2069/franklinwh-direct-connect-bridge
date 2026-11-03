@@ -313,6 +313,9 @@ SoC %battery.soc_pct%%, mode %mode.name%, grid %grid.power_w%W
   `%schedule.priority%`, `%schedule.action%`, `%gateway.id%`, `%run.phase%` (fire or exit),
   `%run.occurrence%`, `%run.attempt%`, `%run.at%` and `%run.resource%` describe the run that
   sends the message. They are not set for **Run now**, where they print `?`.
+- **Direct Connect only: `%ask.answer%`** is the answer to the schedule's Ask before
+  continuing question in this run: the button's label, or the text typed into a reply. It
+  prints `?` when nobody answered.
   <!-- @b HAA-17 ;; src: scheduler.py:2375-2394, scheduler.py:2405-2406, scheduler.py:2017-2018 ;; tested: tests/test_scheduler.py::test_run_variables_substitute_in_the_same_namespace_as_sensors ;; write: no ;; b: run.* and schedule.* variables join the snapshot for fire and exit, in the same %name% syntax ;; test: — -->
 - Run now builds its values from the gateway's last poll and Home Assistant only, so tariff,
   weather and constant placeholders print `?` there.

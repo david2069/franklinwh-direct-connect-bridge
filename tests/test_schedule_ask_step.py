@@ -11,7 +11,7 @@ import threading
 
 import pytest
 from fastapi.testclient import TestClient
-from franklinwh_ha_notify import NO, YES, Answer
+from franklinwh_ha_notify import NO, REPLY, YES, Answer
 
 from franklinwh_direct_connect_bridge import actionable, state
 from franklinwh_direct_connect_bridge import app as app_module
@@ -32,6 +32,7 @@ class FakeNotifier:
 
     async def ask_and_wait(self, event, targets, buttons, *, timeout_s, gateway=None, **values):
         self.calls.append({"event": event, "targets": targets, "verbs": [b.verb for b in buttons],
+                           "buttons": [(b.title, b.reply) for b in buttons],
                            "timeout_s": timeout_s, "gateway": gateway, **values})
         self._answer = self.loop.create_future()
         return await self._answer
@@ -174,6 +175,134 @@ def test_targets_are_the_enabled_devices_without_the_notify_prefix(st):
         ("home", "mobile_app_phone", "Phone", True)]
 
 
+# ── a choice of buttons, a text reply, and the answer passed on ───────────────
+CHOICES = {**ASK, "question": "Charge to %battery.soc_pct%%?", "choices": [
+    {"label": "Full", "then": "run"}, {"label": "Not today", "then": "skip"},
+    {"label": "Why?", "then": "run", "reply": True}]}
+
+
+def test_the_question_takes_sensor_values(st, notifier, monkeypatch):
+    monkeypatch.setattr(sch, "snapshot_from_state", lambda state: {"battery.soc_pct": 41})
+    _schedule(st, ask={**ASK, "question": "SoC is %battery.soc_pct% for %schedule.name%. Charge?"})
+    _tick(st)
+    assert notifier.calls[0]["question"] == "SoC is 41 for Rule s1. Charge?"
+    assert any('asked "SoC is 41 for Rule s1. Charge?"' in r for _, r in _log(st))
+
+
+def test_without_choices_the_buttons_are_yes_and_no(st, notifier):
+    _schedule(st)
+    _tick(st)
+    assert notifier.calls[0]["buttons"] == [("Yes", False), ("No", False)]
+
+
+def test_own_buttons_are_offered_with_one_text_reply(st, notifier):
+    _schedule(st, ask=CHOICES)
+    _tick(st)
+    assert notifier.calls[0]["verbs"] == ["CHOICE_1", "CHOICE_2", REPLY]
+    assert notifier.calls[0]["buttons"] == [("Full", False), ("Not today", False), ("Why?", True)]
+
+
+def test_a_choice_that_runs_the_action(st, notifier):
+    _schedule(st, ask=CHOICES)
+    _tick(st)
+    notifier.answer(Answer("CHOICE_1"))
+    _settle()
+    assert [f["id"] for f in _tick(st)] == ["s1"]
+    assert ("continuing", "answered Full") in _log(st)
+
+
+def test_a_choice_that_skips_this_run(st, notifier):
+    _schedule(st, ask=CHOICES)
+    _tick(st)
+    notifier.answer(Answer("CHOICE_2"))
+    _settle()
+    assert _tick(st) == []
+    assert _occ(st)["status"] == "skipped"
+    assert ("skipped", "answered Not today: skipped this run") in _log(st)
+
+
+def test_a_text_reply_is_recorded_and_passed_on(st, notifier):
+    _schedule(st, ask=CHOICES)
+    _tick(st)
+    notifier.answer(Answer(REPLY, reply="price is high"))
+    _settle()
+    assert [f["id"] for f in _tick(st)] == ["s1"]
+    assert ("continuing", 'answered Why?: "price is high"') in _log(st)
+    entry = {"id": "s1", "_wkey": sch._asks["gw:s1"]["wkey"]}
+    assert sch._ask_answer(entry, "gw") == {"ask.answer": "price is high"}
+
+
+def test_the_answer_is_a_value_in_messages(st, notifier, monkeypatch):
+    sent = []
+    monkeypatch.setattr(sch, "_fire_ha_phase",
+                        lambda entry, phase, *, snapshot, **kw: sent.append(
+                            sch.substitute("you said %ask.answer%", snapshot)) or [])
+    _schedule(st, ask=CHOICES)
+    _tick(st)
+    notifier.answer(Answer("CHOICE_1"))
+    _settle()
+    _tick(st)
+    assert sent == ["you said Full"]
+
+
+def test_an_exit_condition_can_test_the_answer(st, notifier):
+    _schedule(st, ask=CHOICES, exit_conditions=[
+        {"sensor": "ask.answer", "op": "==", "value": "Full"}])
+    _tick(st)
+    notifier.answer(Answer("CHOICE_1"))
+    _settle()
+    assert [f["id"] for f in _tick(st)] == ["s1"]
+    later = NOW + dt.timedelta(seconds=30)
+    _tick(st, later)
+    assert any(s == "exit" and "exit condition met" in r for s, r in _log(st))
+
+
+def test_a_guard_can_test_the_answer(st, notifier):
+    entry = {"id": "s1", "_wkey": "k"}
+    sch._asks["gw:s1"] = {"wkey": "k", "answer": "Full", "open": False}
+    snap = sch.run_context(entry, gateway_id="gw", now=NOW, phase="fire")
+    assert sch._guard_ok({"sensor": "ask.answer", "op": "==", "value": "full"}, snap)
+    assert not sch._guard_ok({"sensor": "ask.answer", "op": "==", "value": "Not today"}, snap)
+
+
+def test_the_answer_belongs_to_its_own_run(st, notifier):
+    sch._asks["gw:s1"] = {"wkey": "yesterday", "answer": "Full", "open": False}
+    assert sch._ask_answer({"id": "s1", "_wkey": "today"}, "gw") == {}
+    assert "ask.answer" not in sch.run_context({"id": "s1", "_wkey": "today"},
+                                                gateway_id="gw", now=NOW, phase="fire")
+
+
+def test_no_reply_leaves_no_answer(st, notifier):
+    _schedule(st, ask={**CHOICES, "if_no_reply": "continue"})
+    _tick(st)
+    notifier.answer(Answer(None, timed_out=True))
+    _settle()
+    assert sch._asks["gw:s1"]["answer"] is None
+    assert [f["id"] for f in _tick(st)] == ["s1"]
+
+
+def test_the_answer_is_a_sensor_in_the_picker(c):
+    sensors = c.get("/api/schedules").json()["sensors"]
+    assert {"id": "ask.answer", "label": "Ask: answer (the button tapped, or the reply typed)",
+            "group": "Ask before continuing"} in sensors
+    assert "ask.answer" in sch.known_sensor_ids()
+
+
+def test_choices_validation():
+    assert sch._ask_errors(CHOICES) == []
+    one = {**ASK, "choices": [{"label": "A", "then": "run"}]}
+    assert any("2 to 4" in e for e in sch._ask_errors(one))
+    five = {**ASK, "choices": [{"label": str(i), "then": "run"} for i in range(5)]}
+    assert any("2 to 4" in e for e in sch._ask_errors(five))
+    bad = {**ASK, "choices": [{"label": "", "then": "maybe"}, {"label": "B", "then": "skip"}]}
+    assert len(sch._ask_errors(bad)) == 2
+    dup = {**ASK, "choices": [{"label": "A", "then": "run"}, {"label": "a", "then": "skip"}]}
+    assert any("own label" in e for e in sch._ask_errors(dup))
+    two_replies = {**ASK, "choices": [{"label": "A", "then": "run", "reply": True},
+                                      {"label": "B", "then": "skip", "reply": True}]}
+    assert any("one choice" in e for e in sch._ask_errors(two_replies))
+
+
 # ── saving, checking, export ──────────────────────────────────────────────────
 def test_validation():
     assert sch._ask_errors({}) == []
@@ -255,3 +384,14 @@ def test_the_editor_has_the_step_and_saves_it():
     assert "ask: this._askFromForm(this.form.ask)" in js          # saved
     assert "ask: this._askToForm(s.ask)" in js                    # loaded for editing
     assert "ask: this._askToForm(null)" in js                     # a new schedule starts without
+
+
+def test_the_editor_has_choices_and_saves_them():
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
+    js = (root / "static/js/scheduler_tab.js").read_text()
+    html = (root / "templates/tabs/scheduler.html").read_text()
+    for field in ('x-for="(c, ci) in form.ask.choices"', 'x-model="c.label"',
+                  'x-model="c.then"', 'x-model="c.reply"', "%ask.answer%"):
+        assert field in html
+    assert "out.choices = a.choices.map(" in js and "choices: []" in js

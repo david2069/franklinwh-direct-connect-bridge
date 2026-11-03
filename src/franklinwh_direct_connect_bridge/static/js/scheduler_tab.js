@@ -266,18 +266,27 @@ document.addEventListener('alpine:init', () => {
                ask: this._askToForm(null) };
     },
     // "Ask before continuing" (#374 P4): the saved step is {} (none) or
-    // {question, timeout_min, if_no_reply}; the form adds an on/off box.
+    // {question, timeout_min, if_no_reply, choices?}; the form adds an on/off box.
+    // No choices means Yes / No; each choice is {label, then: run|skip, reply}.
     _askToForm(a) {
+      const choices = ((a && a.choices) || []).map(c => ({
+        label: c.label || '', then: c.then || 'run', reply: !!c.reply }));
       return a && a.question
         ? { on: true, question: a.question, timeout_min: a.timeout_min,
-            if_no_reply: a.if_no_reply }
-        : { on: false, question: 'Run this schedule now?', timeout_min: 10, if_no_reply: 'skip' };
+            if_no_reply: a.if_no_reply, choices }
+        : { on: false, question: 'Run this schedule now?', timeout_min: 10, if_no_reply: 'skip',
+            choices: [] };
     },
     _askFromForm(a) {
-      return a && a.on
-        ? { question: a.question, timeout_min: Number(a.timeout_min) || 0,
-            if_no_reply: a.if_no_reply }
-        : {};
+      if (!a || !a.on) return {};
+      const out = { question: a.question, timeout_min: Number(a.timeout_min) || 0,
+                    if_no_reply: a.if_no_reply };
+      if ((a.choices || []).length) {
+        out.choices = a.choices.map(c => c.reply
+          ? { label: c.label, then: c.then, reply: true }
+          : { label: c.label, then: c.then });
+      }
+      return out;
     },
     newEntry() {
       this.formMsg = null;

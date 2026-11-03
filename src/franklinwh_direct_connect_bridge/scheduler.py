@@ -26,7 +26,7 @@ import re
 import time
 from typing import Any
 
-from franklinwh_ha_notify import NO, YES, Button, Event, Target
+from franklinwh_ha_notify import NO, REPLY, YES, Button, Event, Target
 
 from . import actionable
 from . import alerts
@@ -1011,6 +1011,26 @@ def _ask_errors(ask: Any) -> list[str]:
         out.append("ask before continuing: the wait must be 1 minute or more")
     if ask.get("if_no_reply") not in ("continue", "skip"):
         out.append("ask before continuing: if no reply must be continue or skip")
+    choices = ask.get("choices") or []
+    if not isinstance(choices, list):
+        return out + ["ask before continuing: choices must be a list"]
+    if choices and not 2 <= len(choices) <= ASK_MAX_CHOICES:
+        out.append(f"ask before continuing: give 2 to {ASK_MAX_CHOICES} choices")
+    labels = []
+    for i, c in enumerate(choices, 1):
+        if not isinstance(c, dict):
+            out.append(f"ask before continuing: choice {i} must be an object")
+            continue
+        label = str(c.get("label") or "").strip()
+        if not label:
+            out.append(f"ask before continuing: choice {i} needs a label")
+        labels.append(label.casefold())
+        if c.get("then") not in ("run", "skip"):
+            out.append(f"ask before continuing: choice {i} must run or skip the action")
+    if len(set(labels)) < len(labels):
+        out.append("ask before continuing: each choice needs its own label")
+    if sum(1 for c in choices if isinstance(c, dict) and c.get("reply")) > 1:
+        out.append("ask before continuing: only one choice can take a text reply")
     return out
 
 
@@ -1046,7 +1066,7 @@ def known_sensor_ids() -> set[str]:
     return {i for group in (SENSORS, SOLAR_SENSORS, TARIFF_SENSORS, BILLING_WINDOW_SENSORS,
                             DEMAND_SENSORS, ENERGY_SENSORS, BONUS_SENSORS,
                             EXPORT_CHARGE_SENSORS, FIXED_SENSORS, SYSTEM_SENSORS,
-                            CONST_SENSORS, DERIVED_SENSORS) for i, _ in group}
+                            CONST_SENSORS, DERIVED_SENSORS, ASK_SENSORS) for i, _ in group}
 
 
 def _sensor_ids_in(nodes: Any) -> list[str]:
@@ -1653,6 +1673,13 @@ SYSTEM_SENSORS = [
     ("system.load_shedding", "System: load shedding"),
     ("system.non_backup_loads", "System: non-backup loads panel"),
     ("system.battery_label", "System: battery label"),
+]
+
+#: The answer to this run's "Ask before continuing" question (#374 P4): the label of the
+#: button tapped, or the text typed into a reply. Absent until someone answers, so a
+#: condition on it fails and a message shows ``?``.
+ASK_SENSORS = [
+    ("ask.answer", "Ask: answer (the button tapped, or the reply typed)"),
 ]
 
 
@@ -2294,7 +2321,8 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
         entry["_wkey"], entry["_wend"] = wkey, wend
         exit_conds = entry.get("exit_conditions") or []
         exit_now = bool(exit_conds) and time_inside and evaluate(
-            exit_conds, snapshot, entry.get("exit_match", "all"))
+            exit_conds, {**snapshot, **_ask_answer(entry, gateway_id)},
+            entry.get("exit_match", "all"))
         effective_inside = time_inside and not exit_now
 
         # Exit edge: the window was open last tick and has now closed (time OR exit
@@ -2484,7 +2512,8 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                                     f"{occ.get('reason') or 'failed'}; next try in {wait:.0f}s")
                 continue                       # backing off; the window is still open
         if entry.get("ask"):
-            step, detail = _ask_step(entry, store=store, gateway_id=gateway_id, now=now)
+            step, detail = _ask_step(entry, store=store, gateway_id=gateway_id, now=now,
+                                     snapshot=snapshot)
             if step == "wait":
                 mon[entry["id"]] = ("holding", detail)
                 continue
@@ -2778,6 +2807,7 @@ def run_context(entry: dict, *, gateway_id: str | None, now: dt.datetime,
         "run.attempt": int(entry.get("_occ_attempts") or 1),
         "run.at": now.strftime("%Y-%m-%d %H:%M"),
         "run.resource": (entry.get("_resource") or "").partition("/")[2],
+        **_ask_answer(entry, gateway_id),
     }
 
 
@@ -2869,16 +2899,46 @@ actionable.templates().register(Event(
     ASK_EVENT, "{schedule} ({gateway})", "{question}", variables=("schedule", "question"),
     description="A schedule's Ask before continuing step"))
 
+#: Most buttons a question can offer.
+ASK_MAX_CHOICES = 4
+
 #: The question asked for each schedule's current run, keyed like the window state
 #: (gateway:schedule). The answer's future runs on the Notifier's event loop; the tick only
 #: checks whether it is done, so a schedule waiting for a reply never holds up the others.
-#: ``open`` stays True until the answer has been acted on.
+#: ``open`` stays True until the answer has been acted on; ``answer`` is what
+#: ``ask.answer`` reads for the rest of the run.
 _asks: dict[str, dict] = {}
 
 
 def _asking(dkey: str, wkey: str | None) -> bool:
     held = _asks.get(dkey)
     return bool(held and held["wkey"] == wkey and held["open"])
+
+
+def _ask_answer(entry: dict, gateway_id: str | None) -> dict[str, Any]:
+    """``{"ask.answer": …}`` for this run of ``entry`` once its question is answered,
+    else empty. Read by the exit conditions, the HA action guards and message templates.
+    The run is the one now open, or the one whose window is closing on this tick."""
+    dkey = f"{gateway_id or ''}:{entry.get('id')}"
+    held = _asks.get(dkey)
+    if not held or held.get("answer") is None:
+        return {}
+    if held["wkey"] not in (entry.get("_wkey"), _window_key.get(dkey)):
+        return {}
+    return {"ask.answer": held["answer"]}
+
+
+def _ask_choices(ask: dict) -> list[dict]:
+    """The step's buttons as ``{verb, label, then, reply}``. Without its own choices the
+    question offers Yes (runs the action) and No (skips this run)."""
+    choices = ask.get("choices") or []
+    if not choices:
+        return [{"verb": YES, "label": "Yes", "then": "run", "reply": False},
+                {"verb": NO, "label": "No", "then": "skip", "reply": False}]
+    return [{"verb": REPLY if c.get("reply") else f"CHOICE_{i}",
+             "label": str(c["label"]).strip(), "then": c["then"],
+             "reply": bool(c.get("reply"))}
+            for i, c in enumerate(choices, 1)]
 
 
 def _ask_targets(store) -> list[Target]:
@@ -2888,35 +2948,42 @@ def _ask_targets(store) -> list[Target]:
             for d in store.notify_devices() if d.get("enabled")]
 
 
-async def _ask(targets: list[Target], timeout_s: int, gateway: str, **values):
+async def _ask(targets: list[Target], buttons: list[Button], timeout_s: int, gateway: str,
+               **values):
     started = time.monotonic()
     answer = await actionable.notifier().ask_and_wait(
-        ASK_EVENT, targets, [Button(YES, "Yes"), Button(NO, "No")],
-        timeout_s=timeout_s, gateway=gateway, **values)
+        ASK_EVENT, targets, buttons, timeout_s=timeout_s, gateway=gateway, **values)
     return answer, time.monotonic() - started
 
 
 def _ask_step(entry: dict, *, store, gateway_id: str | None,
-              now: dt.datetime) -> tuple[str, str]:
+              now: dt.datetime, snapshot: dict | None = None) -> tuple[str, str]:
     """``("wait" | "fire" | "skip", why)`` for a schedule with an Ask before continuing
-    step. Asks once per run; Yes runs the action, No skips this run, and no reply (or
-    nobody could be asked) follows the step's "if no reply" rule."""
+    step. Asks once per run; each button runs the action or skips this run as the step
+    maps it (Yes and No by default), and no reply (or nobody could be asked) follows the
+    step's "if no reply" rule. The question takes ``%sensor.id%`` values."""
     ask = entry["ask"]
     dkey = f"{gateway_id or ''}:{entry['id']}"
     wkey = entry.get("_wkey") or now.date().isoformat()
     timeout_min = int(ask["timeout_min"])
     gid = gateway_id or ""
+    choices = _ask_choices(ask)
     held = _asks.get(dkey)
     if held is None or held["wkey"] != wkey:
         gw = _state.get_gateway(gateway_id) if gateway_id else None
+        question = substitute(ask["question"], {
+            **(snapshot or {}), **run_context(entry, gateway_id=gateway_id, now=now,
+                                              phase="fire")})
         fut = actionable.submit(_ask(
-            _ask_targets(store), timeout_min * 60, getattr(gw, "label", None) or gid,
-            schedule=entry.get("name") or "", question=ask["question"]))
-        held = _asks[dkey] = {"wkey": wkey, "fut": fut, "open": True, "decided": None}
+            _ask_targets(store), [Button(c["verb"], c["label"], c["reply"]) for c in choices],
+            timeout_min * 60, getattr(gw, "label", None) or gid,
+            schedule=entry.get("name") or "", question=question))
+        held = _asks[dkey] = {"wkey": wkey, "fut": fut, "open": True, "decided": None,
+                              "answer": None}
         if fut is not None:
             store.log_schedule_event(
                 entry["id"], entry["name"],
-                "asking", f"asked \"{ask['question']}\"; waiting up to {timeout_min} min "
+                "asking", f"asked \"{question}\"; waiting up to {timeout_min} min "
                 f"for a reply", gateway_id=gid)
     if held["decided"] is not None:
         return held["decided"]
@@ -2933,10 +3000,19 @@ def _ask_step(entry: dict, *, store, gateway_id: str | None,
                    else "the question could not be delivered to any phone")
         except Exception as e:  # noqa: BLE001 — recorded as a run nobody answered
             why = f"the question could not be sent: {e}"
-    if answer is not None and answer.verb == YES:
-        step, detail = "fire", "answered Yes"
-    elif answer is not None and answer.verb == NO:
-        step, detail = "skip", "answered No: skipped this run"
+    chosen = next((c for c in choices if answer is not None and c["verb"] == answer.verb),
+                  None)
+    if chosen is not None:
+        said = chosen["label"]
+        if chosen["reply"]:
+            held["answer"] = answer.reply or ""
+            said = f"{said}: \"{held['answer']}\""
+        else:
+            held["answer"] = chosen["label"]
+        if chosen["then"] == "run":
+            step, detail = "fire", f"answered {said}"
+        else:
+            step, detail = "skip", f"answered {said}: skipped this run"
     elif ask["if_no_reply"] == "continue":
         step, detail = "fire", f"{why}: continuing (if no reply: continue)"
     else:
