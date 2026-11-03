@@ -180,7 +180,8 @@ document.addEventListener('alpine:init', () => {
                     action: { ...(p.spec?.action || { kind: '' }) },
                     conditions: JSON.parse(JSON.stringify(p.spec?.conditions || [])),
                     entry_hold_s: p.spec?.entry_hold_s ?? 0,
-                    ha_actions: this._haToForm(p.spec?.ha_actions) };
+                    ha_actions: this._haToForm(p.spec?.ha_actions),
+                    ask: this._askToForm(p.spec?.ask) };
       this.presetOpen = false;
       this.testResult = null;
       this.traceByCid = {};
@@ -261,7 +262,22 @@ document.addEventListener('alpine:init', () => {
                exit_match: 'all', entry_hold_s: 0, action: { kind: '' }, ha_actions: [],
                days: [], months: [], day_of_month: null, start_date: null, end_date: null,
                priority: 0, conflict: 'override',
-               trigger_type: 'daily', windows: [], interval_min: 30, anchor: '', cron: '0 3 * * *' };
+               trigger_type: 'daily', windows: [], interval_min: 30, anchor: '', cron: '0 3 * * *',
+               ask: this._askToForm(null) };
+    },
+    // "Ask before continuing" (#374 P4): the saved step is {} (none) or
+    // {question, timeout_min, if_no_reply}; the form adds an on/off box.
+    _askToForm(a) {
+      return a && a.question
+        ? { on: true, question: a.question, timeout_min: a.timeout_min,
+            if_no_reply: a.if_no_reply }
+        : { on: false, question: 'Run this schedule now?', timeout_min: 10, if_no_reply: 'skip' };
+    },
+    _askFromForm(a) {
+      return a && a.on
+        ? { question: a.question, timeout_min: Number(a.timeout_min) || 0,
+            if_no_reply: a.if_no_reply }
+        : {};
     },
     newEntry() {
       this.formMsg = null;
@@ -289,6 +305,7 @@ document.addEventListener('alpine:init', () => {
         entry_hold_s: s.entry_hold_s ?? 0,
         action: JSON.parse(JSON.stringify(s.action || { kind: '' })),
         ha_actions: this._haToForm(s.ha_actions),
+        ask: this._askToForm(s.ask),
         // (advRepeat toggled below once form is built)
       };
       this.traceByCid = {};
@@ -575,7 +592,8 @@ document.addEventListener('alpine:init', () => {
           exit_conditions: this._buildTree(this.form.exit_conditions, false),
           exit_match: this.form.exit_match || 'all',
           entry_hold_s: Number(this.form.entry_hold_s) || 0,
-          ha_actions: this._haFromForm(this.form.ha_actions) };
+          ha_actions: this._haFromForm(this.form.ha_actions),
+          ask: this._askFromForm(this.form.ask) };
         delete body.id;
         const url = this.form.id ? `api/schedules/${this.form.id}` : 'api/schedules';
         const r = await fetch(url, {

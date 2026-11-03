@@ -695,6 +695,9 @@ class ScheduleReq(BaseModel):
     cron: str = ""
     action: dict = Field(default_factory=dict)
     ha_actions: list[dict] = Field(default_factory=list)
+    # "Ask before continuing" (#374 P4): {question, timeout_min, if_no_reply: continue|skip}.
+    # Empty = the schedule runs without asking.
+    ask: dict = Field(default_factory=dict)
 
 
 class ScheduleImportReq(BaseModel):
@@ -1259,6 +1262,9 @@ def create_app() -> FastAPI:
         _sup_worker._task = _sup_task
         log.info("worker supervision active (%d workers registered)",
                  len(_workers.registry.all()))
+        # Actionable notifications (#374): one tap listener per HA instance.
+        from . import actionable
+        await actionable.start(db.get_store(s), s)
         try:
             yield
         finally:
