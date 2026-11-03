@@ -108,19 +108,17 @@ def test_a_disabled_instance_offers_no_targets(ctx):
     assert {t["instance_id"] for t in body["targets"]} == {"b"}
 
 
-def test_a_disabled_instance_suppresses_delivery_without_failing(ctx, monkeypatch):
+def test_a_disabled_instance_suppresses_delivery_without_failing(ctx, fake_notifier):
     """Suppressed, not failed: nothing went wrong, it was switched off."""
     from franklinwh_direct_connect_bridge import notify_engine
     ctx.create_notify_device(dev_id="d1", alias="Tablet", instance_id="a",
                              service="notify.pixel_tablet")
     ctx.update_ha_instance("a", enabled=False)
-    sent = []
-    monkeypatch.setattr(ha_instances, "send_notification",
-                        lambda *a, **k: sent.append(a) or {"ok": True})
-    notify_engine.fire(ctx, "test", "T", "M")
-    assert sent == []
+    sends = fake_notifier(ctx)
+    notify_engine.fire(ctx, "test")
+    assert all(s["targets"] == [] for s in sends)
     log = ctx.notify_log(limit=5)
-    assert any("instance disabled" in (e.get("device") or "") for e in log)
+    assert log[0]["device"] == "(no devices)" and log[0]["ok"] is None
 
 
 # -- the Guide, when the docs site is not bundled -----------------------------------------

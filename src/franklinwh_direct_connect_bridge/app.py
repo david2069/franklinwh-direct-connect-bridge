@@ -1038,7 +1038,7 @@ def create_app() -> FastAPI:
         # Off-thread so a slow/unreachable aGate Modbus never delays startup.
         def _vpp_loop():
             import time as _t
-            from . import vpp_monitor, battery_control
+            from . import actionable, notify_engine, vpp_monitor, battery_control
             def _store():
                 try:
                     return db.get_store(get_settings())
@@ -1078,7 +1078,10 @@ def create_app() -> FastAPI:
                                 # its own aGate, with that gateway's SoC (#192).
                                 reconciled = battery_control.reconcile_all(
                                     st, policy,
-                                    notify=lambda t, m: vpp_monitor._notify_devices(st, t, m))
+                                    notify=lambda action, detail, gateway_id: notify_engine.fire(
+                                        st, "dispatch_reconcile",
+                                        gateway=actionable.gateway_name(gateway_id),
+                                        action=action, detail=detail))
                                 for r in reconciled:
                                     log.warning("dispatch reconcile [%s]: %s",
                                                 r.get("action"), r.get("detail"))
@@ -2834,28 +2837,25 @@ def create_app() -> FastAPI:
     def api_notify_broadcast(req: NotifyBroadcastReq):
         """Send one notification to many devices — all enabled devices, or an
         explicit device_ids list. Sending is not a device write, so (like the
-        per-device test) it is not gated by allow_writes; the result IS the answer."""
+        per-device test) it is not gated by allow_writes; the result IS the answer.
+        It goes through the one Notifier: the Push notifications switch applies (#171)
+        and the send is recorded."""
+        from . import actionable, notify_engine  # noqa: F401 — registers the event
         st = _ha_store()
-        inst_by_id = {i["id"]: i for i in st.ha_instances()}
-        targets = st.notify_devices()
-        if req.device_ids is not None:
-            want = set(req.device_ids)
-            targets = [d for d in targets if d["id"] in want]
-        else:
-            targets = [d for d in targets if d["enabled"]]
-        results, sent = [], 0
-        for d in targets:
-            inst = inst_by_id.get(d["instance_id"])
-            if inst is None:
-                results.append({"device_id": d["id"], "alias": d["alias"],
-                                "ok": False, "error": "missing instance"})
-                continue
-            r = ha_instances.send_notification(
-                inst["base_url"], inst.get("token"), d["service"], req.title, req.message)
-            if r.get("ok"):
-                sent += 1
-            results.append({"device_id": d["id"], "alias": d["alias"], **r})
-        return {"sent": sent, "total": len(targets), "results": results}
+        res = actionable.send(st, "broadcast", device_ids=req.device_ids,
+                              title=req.title, message=req.message)
+        if res is None:
+            raise HTTPException(status_code=503, detail="notifications have not started")
+        if not res.total and not actionable.notifier().enabled():
+            return {"sent": 0, "total": 0, "results": [],
+                    "detail": "Push notifications are off"}
+        by_key = {f"{d['instance_id']}::{d['service'].removeprefix('notify.')}": d
+                  for d in st.notify_devices()}
+        results = [{"device_id": (by_key.get(x.target) or {}).get("id"),
+                    "alias": (by_key.get(x.target) or {}).get("alias"),
+                    "ok": x.ok, **({"error": x.error} if x.error else {})}
+                   for x in res.deliveries]
+        return {"sent": res.delivered, "total": res.total, "results": results}
 
     # ── notification trigger engine (FEAT-NOTIFY) ─────────────────────────────
     @app.get("/api/notify/triggers")
@@ -2863,7 +2863,8 @@ def create_app() -> FastAPI:
         """The configurable auto-notification triggers + per-event delivery stats."""
         from . import notify_engine
         st = _ha_store()
-        return {"config": notify_engine.config(st), "stats": (st.notify_stats() if st else [])}
+        return {"config": notify_engine.config(st),
+                "stats": notify_engine.stats_by_trigger(st.notify_stats() if st else [])}
 
     @app.put("/api/notify/triggers")
     def api_notify_triggers_put(req: NotifyTriggersBody):
@@ -2884,8 +2885,7 @@ def create_app() -> FastAPI:
         st = _ha_store()
         if st is None:
             raise HTTPException(status_code=503, detail="metrics store is off")
-        sent = notify_engine.fire(st, "test", "FranklinWH — test",
-                                  "This is a test notification from the trigger engine.")
+        sent = notify_engine.fire(st, "test")
         return {"ok": True, "sent": sent}
 
     # ── scheduler ────────────────────────────────────────────────────────────

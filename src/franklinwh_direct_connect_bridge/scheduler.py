@@ -2034,7 +2034,7 @@ def _run_action_body(action: dict, *, settings, client, store, snapshot: dict,
             return f"offgrid {on}: {'ok' if out.get('ok') else f'failed: {out}'}"
 
         if kind == "notify":
-            from . import ha_instances
+            from . import actionable, notify_engine  # noqa: F401 — registers the event
             dev = store.notify_device(action["device_id"])
             if dev is None:
                 return "notify skipped: device no longer exists"
@@ -2043,12 +2043,20 @@ def _run_action_body(action: dict, *, settings, client, store, snapshot: dict,
             inst = store.ha_instance(dev["instance_id"])
             if inst is None:
                 return f"notify skipped: '{dev['alias']}' has no HA instance"
-            res = ha_instances.send_notification(
-                inst["base_url"], inst.get("token"), dev["service"],
-                substitute(action.get("title", ""), snapshot),
-                substitute(action.get("message", ""), snapshot))
+            # Through the one Notifier: the Push notifications switch applies (#171), the
+            # gateway is named (#361) and the send is recorded.
+            res = actionable.send(store, "schedule_notify", gateway=actionable.gateway_name(gateway_id),
+                                  device_ids=[dev["id"]],
+                                  title=substitute(action.get("title", ""), snapshot),
+                                  message=substitute(action.get("message", ""), snapshot))
+            if res is None:
+                return f"notify '{dev['alias']}': skipped: notifications have not started"
+            if not res.total:
+                why = ("notifications are off" if not actionable.notifier().enabled()
+                       else "its HA instance is switched off")
+                return f"notify '{dev['alias']}': skipped: {why}"
             return (f"notify '{dev['alias']}': "
-                    f"{'sent' if res.get('ok') else res.get('error')}")
+                    f"{'sent' if res.delivered else res.deliveries[0].error}")
 
         if kind == "ha_service":
             from . import ha_instances

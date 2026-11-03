@@ -461,15 +461,16 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                     if not starting:
                         pub.publish_state(st)
                     pub.publish_availability(bool(summ.get("ok")))
-                for title, msg in transitions(prev, summ):
+                for title, msg in transitions(prev, summ, gw.label or gw.id):
                     await asyncio.to_thread(notifier.notify, title, msg)
                 # Configurable companion-push triggers + delivery log (FEAT-NOTIFY).
                 try:
                     _st = get_store(settings)
                     if _st is not None:
                         _cfg = notify_engine.config(_st)
-                        for ev, ttl, msg in notify_engine.evaluate(gw.label, summ, prev, _cfg):
-                            await asyncio.to_thread(notify_engine.fire, _st, ev, ttl, msg, cfg=_cfg)
+                        for ev, vals in notify_engine.evaluate(summ, prev, _cfg):
+                            await asyncio.to_thread(notify_engine.fire, _st, ev,
+                                                    gateway=gw.label or gw.id, cfg=_cfg, **vals)
                 except Exception as e:  # noqa: BLE001 — never let notifications break the poll
                     log.debug("notify engine pass failed: %s", e)
                 prev = summ
@@ -533,7 +534,7 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                         log.warning("[%s] firmware changed: %s → %s", gw.id, last_fw, fw_now)
                         await asyncio.to_thread(
                             notifier.notify, "FranklinWH firmware updated",
-                            f"{last_fw} → {fw_now}. Behaviours can differ — re-verify writes "
+                            f"{gw.label or gw.id}: {last_fw} → {fw_now}. Behaviours can differ — re-verify writes "
                             "and re-scan cmdTypes.")
                     if fw_now:
                         last_fw = fw_now

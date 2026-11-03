@@ -1634,6 +1634,8 @@
           <span class="shrink-0 text-slate-500 tabular-nums" x-text="fmtNotifyTime(e.ts)"></span>
           <span class="truncate flex-1" style="color:var(--text-secondary)" :title="e.message"
                 x-text="e.message"></span>
+          <span x-show="e.gateway" class="chip muted shrink-0" style="font-size:.55rem"
+                data-testid="notify-log-gateway" x-text="e.gateway"></span>
           <span class="chip shrink-0" :class="e.ok === 1 ? 'ok' : (e.ok === 0 ? 'error' : 'muted')"
                 style="font-size:.55rem" x-text="e.device"></span>
         </div>

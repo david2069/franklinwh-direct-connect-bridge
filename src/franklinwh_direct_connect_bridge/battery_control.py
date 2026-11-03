@@ -292,7 +292,7 @@ def reconcile_interrupted(store, host: str, policy: str, *, soc_getter=None,
             pass
         if notify and policy != "none" and action != "recorded":
             try:
-                notify(f"FranklinWH — scheduled dispatch {action}", detail)
+                notify(action, detail, d.get("gateway_id"))
             except Exception:                                   # noqa: BLE001
                 pass
         results.append({"name": name, "action": action, "detail": detail})

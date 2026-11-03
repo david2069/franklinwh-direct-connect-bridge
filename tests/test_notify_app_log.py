@@ -7,10 +7,11 @@ from franklinwh_direct_connect_bridge import db, notify_engine
 from franklinwh_direct_connect_bridge.config import get_settings
 
 
-def test_a_notification_with_no_devices_is_in_the_app_log(caplog):
+def test_a_notification_with_no_devices_is_in_the_app_log(caplog, fake_notifier):
     store = db.get_store(get_settings())
+    fake_notifier(store)
     with caplog.at_level(logging.INFO, logger="franklinwh_direct_connect_bridge.notify_engine"):
-        notify_engine.fire(store, "aGate_offline", "FranklinWH", "aGate is UNREACHABLE [gw]")
+        notify_engine.fire(store, "aGate_offline", gateway="gw")
     rec = [r for r in caplog.records if "aGate is UNREACHABLE" in r.getMessage()]
     assert rec and rec[0].levelno == logging.WARNING
     assert store.notify_log(limit=1)[0]["device"] == "(no devices)"

@@ -1899,42 +1899,52 @@ class MetricsStore:
             "CREATE INDEX IF NOT EXISTS ix_notify_log ON notify_log(ts DESC)")
         self._conn.commit()
 
-    def log_notify(self, event: str, *, title: str = "", message: str = "",
-                   device: str = "", ok: bool | None = None, now: float | None = None) -> None:
-        """Record one notification delivery (per device). Never raises."""
-        try:
-            with self._lock:
-                self._conn.execute(
-                    "INSERT INTO notify_log(ts, event, title, message, device, ok) "
-                    "VALUES (?,?,?,?,?,?)",
-                    (float(now if now is not None else time.time()), event, title, message,
-                     device, None if ok is None else int(bool(ok))))
-                self._conn.execute(
-                    "DELETE FROM notify_log WHERE id NOT IN "
-                    "(SELECT id FROM notify_log ORDER BY ts DESC LIMIT 2000)")
-                self._conn.commit()
-        except Exception:  # pragma: no cover — logging must never break a notification
-            pass
+    def _notify_rows(self, event: str | None = None, limit: int | None = None) -> list[dict]:
+        """One row per device delivery, newest first: sends recorded in the ledger
+        (``notify_ledger``, #374) and, for history, the rows the bridge wrote to
+        ``notify_log`` before it. A send that reached no device is one row with
+        ``ok`` None."""
+        ev = " AND event=?" if event else ""
+        args = [event] if event else []
+        lim = f" LIMIT {int(limit)}" if limit else ""
+        with self._lock:
+            sent = self._conn.execute(
+                "SELECT ts, event, gateway, title, message, direction, detail FROM notify_ledger "
+                f"WHERE direction IN ('SENT','ERROR','SKIPPED'){ev} ORDER BY ts DESC, id DESC{lim}",
+                args).fetchall()
+            old = self._conn.execute(
+                "SELECT ts, event, title, message, device, ok FROM notify_log "
+                f"WHERE 1=1{ev} ORDER BY ts DESC{lim}", args).fetchall()
+        names = {f"{d['instance_id']}::{d['service'].removeprefix('notify.')}": d["alias"]
+                 for d in self.notify_devices()}
+        rows = []
+        for ts, e, gw, title, message, direction, detail in sent:
+            base = {"ts": ts, "event": e, "gateway": gw, "title": title, "message": message}
+            deliveries = json.loads(detail) if detail else []
+            if not deliveries:
+                rows.append({**base, "ok": None, "device": "(notifications off)"
+                             if direction == "SKIPPED" else "(no devices)"})
+            for x in deliveries:
+                key = x.get("target") or ""
+                rows.append({**base, "ok": int(bool(x.get("ok"))),
+                             "device": names.get(key) or key.split("::", 1)[-1]})
+        rows += [{"ts": r[0], "event": r[1], "gateway": None, "title": r[2], "message": r[3],
+                  "device": r[4], "ok": r[5]} for r in old]
+        rows.sort(key=lambda r: r["ts"], reverse=True)
+        return rows[:limit] if limit else rows
 
     def notify_log(self, *, limit: int = 100, event: str | None = None) -> list[dict]:
-        q = "SELECT ts, event, title, message, device, ok FROM notify_log"
-        args: list = []
-        if event:
-            q += " WHERE event=?"; args.append(event)
-        q += " ORDER BY ts DESC LIMIT ?"; args.append(max(1, min(limit, 500)))
-        with self._lock:
-            cur = self._conn.execute(q, args)
-            cols = [c[0] for c in cur.description]
-            return [dict(zip(cols, r)) for r in cur.fetchall()]
+        return self._notify_rows(event, max(1, min(limit, 500)))
 
     def notify_stats(self) -> list[dict]:
         """Per-event delivery count + last timestamp (successful or not)."""
-        with self._lock:
-            cur = self._conn.execute(
-                "SELECT event, COUNT(*), MAX(ts), SUM(CASE WHEN ok=1 THEN 1 ELSE 0 END) "
-                "FROM notify_log GROUP BY event ORDER BY MAX(ts) DESC")
-            return [{"event": r[0], "count": r[1], "last_ts": r[2], "delivered": r[3] or 0}
-                    for r in cur.fetchall()]
+        out: dict[str, dict] = {}
+        for r in self._notify_rows():
+            s = out.setdefault(r["event"], {"event": r["event"], "count": 0,
+                                            "last_ts": r["ts"], "delivered": 0})
+            s["count"] += 1
+            s["delivered"] += 1 if r["ok"] == 1 else 0
+        return list(out.values())
 
     # ── scheduled battery dispatches (for interruption reconcile) ──────────────
     def _migrate_notify_ledger(self) -> None:

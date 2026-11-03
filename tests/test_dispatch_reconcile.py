@@ -54,7 +54,7 @@ def test_no_active_rows_is_a_noop(modbus):
 def test_notify_never_touches_battery(modbus):
     st = FakeStore([_row()])
     notes = []
-    out = bc.reconcile_interrupted(st, "h", "notify", notify=lambda t, m: notes.append((t, m)))
+    out = bc.reconcile_interrupted(st, "h", "notify", notify=lambda a, d, g: notes.append((a, d)))
     assert not modbus["execute"] and not modbus["arm"]        # battery untouched
     assert st.ended == [(1, "interrupted")]
     assert notes and "interrupted" in notes[0][1]
@@ -64,7 +64,7 @@ def test_notify_never_touches_battery(modbus):
 def test_none_is_silent(modbus):
     st = FakeStore([_row()])
     notes = []
-    bc.reconcile_interrupted(st, "h", "none", notify=lambda t, m: notes.append(1))
+    bc.reconcile_interrupted(st, "h", "none", notify=lambda a, d, g: notes.append(1))
     assert not modbus["execute"] and not modbus["arm"] and not notes
     assert st.ended == [(1, "interrupted")]
 

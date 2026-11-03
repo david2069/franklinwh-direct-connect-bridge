@@ -45,3 +45,33 @@ def _isolate_data_dir(request, tmp_path, monkeypatch):
     yield
     db.reset_store()
     logbuffer.set_store(None)
+
+
+@pytest.fixture
+def fake_notifier(monkeypatch):
+    """Start the one Notifier (#374) on a store, with Home Assistant faked: each send is
+    recorded in the returned list and every target on a known instance accepts it.
+    ``fake_notifier(store, on=False)`` starts it with Push notifications off."""
+    import types
+
+    from franklinwh_ha_notify import notifier as _n
+    from franklinwh_ha_notify.send import Delivery, SendResult
+
+    from franklinwh_direct_connect_bridge import actionable
+
+    sends: list[dict] = []
+
+    async def fake_send(instances, targets, title, message, buttons=None, request_id=None):
+        sends.append({"targets": [t.key for t in targets], "title": title, "message": message})
+        return SendResult([Delivery(t.key, t.instance_id in instances,
+                                          "" if t.instance_id in instances else "unknown HA instance")
+                              for t in targets])
+
+    monkeypatch.setattr(_n, "send", fake_send)
+
+    def start(store, *, on: bool = True):
+        settings = types.SimpleNamespace(ha_notify=on)
+        monkeypatch.setattr(actionable, "_notifier", actionable.build(store, settings))
+        start.settings = settings
+        return sends
+    return start
