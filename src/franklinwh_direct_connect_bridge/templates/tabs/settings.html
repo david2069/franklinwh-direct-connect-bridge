@@ -1719,10 +1719,12 @@
 
     <!-- ── Companion Devices ── -->
     <div class="space-y-2 pt-1">
-      <div class="flex items-center justify-between">
+      <!-- Wraps on a phone: the links and buttons drop to their own lines instead of
+           squeezing the label and pushing + Add device off the screen. -->
+      <div class="flex flex-wrap items-center justify-between gap-2" data-testid="companion-header">
         <span class="metric-label">Companion Devices</span>
         <!-- #306: the set-up this card needs is in the guide; link straight to it -->
-        <span class="flex gap-3 ml-3 mr-auto">
+        <span class="flex flex-wrap gap-x-3 gap-y-1 mr-auto">
           <a :href="$store.app.guideUrl('phone-and-remote-access/#1-alerts-on-your-phone-the-home-assistant-companion-app')" target="_blank" rel="noopener" class="text-xs underline" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Get the Companion app</a>
           <a :href="$store.app.guideUrl('ha-setup-and-notifications/#3-add-a-notification-device')" target="_blank" rel="noopener" class="text-xs underline" style="color:var(--text-secondary)" title="Opens the user guide at this topic">How to add a device</a>
         </span>
@@ -1738,8 +1740,11 @@
         No companion devices yet — Add device, Discover its notify service, Test, then Save.
       </div>
       <template x-for="dev in notif.devices" :key="dev.id">
-        <div class="flex items-center justify-between rounded px-3 py-2 gap-3" style="background:var(--surface-1)">
-          <div class="min-w-0 flex items-center gap-3">
+        <!-- Wraps on a phone: the buttons go under the device instead of squeezing its name
+           and the test result into a sliver. The result has its own full-width line. -->
+        <div class="flex flex-wrap items-center justify-between rounded px-3 py-2 gap-x-3 gap-y-2"
+             style="background:var(--surface-1)" data-testid="companion-device">
+          <div class="min-w-[16rem] flex-1 flex items-center gap-3">
             <button @click="toggleDevice(dev)" role="switch" :aria-checked="dev.enabled"
                     class="relative inline-flex h-5 w-9 items-center rounded-full transition shrink-0"
                     :class="dev.enabled ? 'bg-emerald-500' : 'bg-slate-600'" :title="dev.enabled ? 'Mute' : 'Unmute'">
@@ -1764,18 +1769,18 @@
                 <span x-show="dev.instance_missing" class="chip warn ml-1">instance missing</span>
                 <span x-show="dev.instance_disabled" class="chip warn ml-1">instance disabled</span>
               </div>
-              <div x-show="notif.rt[dev.id]" class="text-xs mt-0.5" data-testid="notify-rt"
-                   :class="{ok:'text-emerald-400', warn:'text-amber-400', danger:'text-red-400', info:'text-slate-400'}[(notif.rt[dev.id]||{}).kind]"
-                   x-text="(notif.rt[dev.id]||{}).text"></div>
             </div>
           </div>
-          <div class="flex items-center gap-2 shrink-0">
+          <div class="flex flex-wrap items-center gap-2">
             <button @click="editDevice(dev)" class="btn btn-secondary btn-sm">Edit</button>
             <button @click="testDevice(dev)" :disabled="notif.busy" class="btn btn-secondary btn-sm">Test</button>
             <button x-show="dev.service.replace(/^notify\./, '').startsWith('mobile_app_')" @click="testButtons(dev)"
                     class="btn btn-secondary btn-sm" title="Sends Yes / No buttons and shows which one you tap">Test with buttons</button>
             <button @click="deleteDevice(dev)" class="text-slate-500 hover:text-red-400" title="Remove"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>
           </div>
+          <div x-show="notif.rt[dev.id]" class="basis-full text-xs" data-testid="notify-rt"
+               :class="{ok:'text-emerald-400', warn:'text-amber-400', danger:'text-red-400', info:'text-slate-400'}[(notif.rt[dev.id]||{}).kind]"
+               x-text="(notif.rt[dev.id]||{}).text"></div>
         </div>
       </template>
     </div>

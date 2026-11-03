@@ -19,9 +19,22 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   exit condition or an HA action's guard can test it, and `%ask.answer%` puts it in a
   message. The run log shows which button was tapped and any reply. Schedules without
   their own buttons still ask Yes and No as before.
+- **Schedule conditions: widen the sensor field and resize the sensor list, also with a
+  finger** (owner, 2026-11-04, on an iPad). A **⋮** grip just right of a condition's sensor
+  field drags it wider or narrower; every condition row follows, and a wider field moves
+  the rest of its row to the next line. The sensor list that opens from the field (and the
+  Lookup list) has a **◢** corner that drags it wider and taller, never smaller than its
+  default or past the dialog. This browser remembers both sizes. Applies to Entry
+  conditions and End early when…, including groups. Same as the Modbus Bridge scheduler.
 
 ### Fixed
 - The Ask before continuing question now fills in `%sensor.id%` values, like messages do.
+- **Logs on a phone**: each line stays on one row and the list swipes left and right, as in
+  the other bridges. Before, the message column wrapped a few letters per line. From tablet
+  width up, messages wrap as before.
+- **Companion devices on a phone or a narrow iPad**: the row wraps, so the device name stays
+  readable and the buttons go underneath. The button test's result ("you tapped Yes") has
+  its own line, and the header's Broadcast and + Add device no longer run off the screen.
 
 ## [0.5.27] — 2026-11-03
 

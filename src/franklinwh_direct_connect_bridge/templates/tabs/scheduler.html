@@ -769,19 +769,23 @@
                  class="flex flex-wrap items-center gap-2 p-1"
                  :class="(item.kind==='grouprow' ? 'border-x pl-3 ' : '') + condRingClass(item.node)"
                  :style="item.kind==='grouprow' ? 'border-color:var(--border);background:var(--surface-1)' : ''">
-              <div class="relative flex-1" style="min-width:150px" x-data="{ open:false, q:'', obj: item.node, key:'sensor' }" @click.outside="open=false; q=''">
+              <div class="relative" :style="condSensorStyle()" x-data="{ open:false, q:'', obj: item.node, key:'sensor' }" @click.outside="open=false; q=''">
                 <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
                   <span class="truncate" x-text="sensorLabel(obj[key]) || '&#8212; choose sensor &#8212;'"></span><span style="color:var(--text-faint)">&#9662;</span>
                 </button>
-                <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.q && $refs.q.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);min-width:240px;left:0">
+                <div class="cond-grip" data-testid="cond-grip" @pointerdown.prevent.stop="startCondResize($event)"
+                     title="Drag to widen this column"><span aria-hidden="true">&#8942;</span></div>
+                <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.q && $refs.q.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);min-width:240px;left:0"
+                     data-testid="sensor-list" :style="condListStyle()">
                   <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors&#8230;" class="form-control form-control-sm w-full"></div>
-                  <div class="max-h-60 overflow-y-auto py-1">
+                  <div class="max-h-60 overflow-y-auto py-1" data-testid="sensor-list-scroll" :style="condListScrollStyle()">
                     <template x-for="it in pickerItems(q)" :key="it.key"><div>
                       <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
                       <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
                     </div></template>
                     <div x-show="!pickerItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No match.</div>
                   </div>
+                  <span class="list-grip" data-testid="list-grip" @pointerdown.prevent.stop="startListResize($event)" title="Drag to resize this list" aria-hidden="true">&#9698;</span>
                 </div>
               </div>
               <select class="form-control form-control-sm" style="width:auto" x-model="item.node.op" x-init="$nextTick(() => { $el.value = item.node.op })">
@@ -800,15 +804,17 @@
                 <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
                   <span class="truncate" x-text="sensorLabel(obj[key]) || '&#8212; sensor &#8212;'"></span><span style="color:var(--text-faint)">&#9662;</span>
                 </button>
-                <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.q && $refs.q.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);min-width:240px;left:0">
+                <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.q && $refs.q.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);min-width:240px;left:0"
+                     data-testid="sensor-list" :style="condListStyle()">
                   <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors&#8230;" class="form-control form-control-sm w-full"></div>
-                  <div class="max-h-60 overflow-y-auto py-1">
+                  <div class="max-h-60 overflow-y-auto py-1" data-testid="sensor-list-scroll" :style="condListScrollStyle()">
                     <template x-for="it in pickerItems(q)" :key="it.key"><div>
                       <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
                       <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
                     </div></template>
                     <div x-show="!pickerItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No match.</div>
                   </div>
+                  <span class="list-grip" data-testid="list-grip" @pointerdown.prevent.stop="startListResize($event)" title="Drag to resize this list" aria-hidden="true">&#9698;</span>
                 </div>
               </div>
               <span x-show="condTested(item.node)" class="text-[11px] whitespace-nowrap" :class="condVerdictClass(item.node)" x-text="condVerdict(item.node)"></span>
@@ -885,19 +891,23 @@
                  class="flex flex-wrap items-center gap-2 p-1"
                  :class="(item.kind==='grouprow' ? 'border-x pl-3 ' : '') + condRingClass(item.node)"
                  :style="item.kind==='grouprow' ? 'border-color:var(--border);background:var(--surface-1)' : ''">
-              <div class="relative flex-1" style="min-width:150px" x-data="{ open:false, q:'', obj: item.node, key:'sensor' }" @click.outside="open=false; q=''">
+              <div class="relative" :style="condSensorStyle()" x-data="{ open:false, q:'', obj: item.node, key:'sensor' }" @click.outside="open=false; q=''">
                 <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
                   <span class="truncate" x-text="sensorLabel(obj[key]) || '&#8212; choose sensor &#8212;'"></span><span style="color:var(--text-faint)">&#9662;</span>
                 </button>
-                <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.q && $refs.q.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);min-width:240px;left:0">
+                <div class="cond-grip" data-testid="cond-grip" @pointerdown.prevent.stop="startCondResize($event)"
+                     title="Drag to widen this column"><span aria-hidden="true">&#8942;</span></div>
+                <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.q && $refs.q.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);min-width:240px;left:0"
+                     data-testid="sensor-list" :style="condListStyle()">
                   <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors&#8230;" class="form-control form-control-sm w-full"></div>
-                  <div class="max-h-60 overflow-y-auto py-1">
+                  <div class="max-h-60 overflow-y-auto py-1" data-testid="sensor-list-scroll" :style="condListScrollStyle()">
                     <template x-for="it in pickerItems(q)" :key="it.key"><div>
                       <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
                       <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
                     </div></template>
                     <div x-show="!pickerItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No match.</div>
                   </div>
+                  <span class="list-grip" data-testid="list-grip" @pointerdown.prevent.stop="startListResize($event)" title="Drag to resize this list" aria-hidden="true">&#9698;</span>
                 </div>
               </div>
               <select class="form-control form-control-sm" style="width:auto" x-model="item.node.op" x-init="$nextTick(() => { $el.value = item.node.op })">
@@ -916,15 +926,17 @@
                 <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
                   <span class="truncate" x-text="sensorLabel(obj[key]) || '&#8212; sensor &#8212;'"></span><span style="color:var(--text-faint)">&#9662;</span>
                 </button>
-                <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.q && $refs.q.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);min-width:240px;left:0">
+                <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.q && $refs.q.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);min-width:240px;left:0"
+                     data-testid="sensor-list" :style="condListStyle()">
                   <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="q" x-model="q" @click.stop type="text" placeholder="Filter sensors&#8230;" class="form-control form-control-sm w-full"></div>
-                  <div class="max-h-60 overflow-y-auto py-1">
+                  <div class="max-h-60 overflow-y-auto py-1" data-testid="sensor-list-scroll" :style="condListScrollStyle()">
                     <template x-for="it in pickerItems(q)" :key="it.key"><div>
                       <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
                       <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
                     </div></template>
                     <div x-show="!pickerItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No match.</div>
                   </div>
+                  <span class="list-grip" data-testid="list-grip" @pointerdown.prevent.stop="startListResize($event)" title="Drag to resize this list" aria-hidden="true">&#9698;</span>
                 </div>
               </div>
               <span x-show="condTested(item.node)" class="text-[11px] whitespace-nowrap" :class="condVerdictClass(item.node)" x-text="condVerdict(item.node)"></span>

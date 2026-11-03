@@ -98,16 +98,22 @@
 
   <!-- Log table -->
   <div class="card" style="padding:0;overflow:hidden">
-    <!-- Column header -->
-    <div class="flex items-center gap-3 px-4 py-2 border-b border-white/[0.08] text-[10px] uppercase tracking-wide"
-         style="color:var(--text-faint)">
-      <span class="w-20 shrink-0">Time</span>
-      <span class="w-16 shrink-0">Level</span>
-      <span class="w-28 shrink-0">Source</span>
-      <span class="flex-1">Message</span>
-    </div>
-
-    <div class="font-mono text-[11px] leading-relaxed overflow-y-auto" style="max-height:60vh">
+    <!-- On a phone a line stays on one row and the list swipes left/right (overflow-auto),
+         as in the other bridges; from sm up the message wraps. The header is inside the
+         scroller so it moves with the columns. -->
+    <div class="font-mono text-[11px] leading-relaxed overflow-auto" style="max-height:60vh"
+         data-testid="log-scroller">
+      <!-- One width for every row (the widest line), so dividers and the header run the
+           full width while swiping. -->
+      <div class="min-w-max sm:min-w-0" data-testid="log-rows">
+      <!-- Column header -->
+      <div class="sticky top-0 z-10 flex items-center gap-3 px-4 py-2 border-b border-white/[0.08] text-[10px] uppercase tracking-wide font-sans"
+           style="color:var(--text-faint);background:var(--surface-0)">
+        <span class="w-20 shrink-0">Time</span>
+        <span class="w-16 shrink-0">Level</span>
+        <span class="w-28 shrink-0">Source</span>
+        <span class="flex-1">Message</span>
+      </div>
       <template x-for="(e, i) in filtered()" :key="i">
         <div class="flex items-start gap-3 px-4 py-1.5 border-b border-white/[0.04]">
           <span class="w-20 shrink-0 text-slate-500 tabular-nums" x-text="fmtTime(e.ts)"></span>
@@ -117,13 +123,14 @@
           </span>
           <!-- Short module name; the full logger name is the tooltip (#239). -->
           <span class="w-28 shrink-0 text-slate-500 truncate" :title="e.name" x-text="e.short || e.name"></span>
-          <span class="flex-1 text-slate-200 break-all whitespace-pre-wrap" x-text="e.message"></span>
+          <span class="flex-1 text-slate-200 whitespace-pre sm:whitespace-pre-wrap sm:break-all" x-text="e.message"></span>
         </div>
       </template>
 
       <div x-show="filtered().length === 0" x-cloak class="px-4 py-6 text-center text-slate-500 text-xs">
         <span x-show="entries.length === 0">No log entries yet.</span>
         <span x-show="entries.length > 0">No lines match the current filter.</span>
+      </div>
       </div>
     </div>
 
