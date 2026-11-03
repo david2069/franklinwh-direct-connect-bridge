@@ -454,7 +454,8 @@ the picker. See [Actions](actions.md#placeholders-in-notifications).
 
 Generated from `scheduler.py` (`SENSORS`, `DERIVED_SENSORS`, `SOLAR_SENSORS`,
 `TARIFF_SENSORS`, `BILLING_WINDOW_SENSORS`, `EXPORT_CHARGE_SENSORS`, `DEMAND_SENSORS`,
-`BONUS_SENSORS`, `ENERGY_SENSORS`, `FIXED_SENSORS`, `SYSTEM_SENSORS`, `CONST_SENSORS`) as
+`BONUS_SENSORS`, `ENERGY_SENSORS`, `FIXED_SENSORS`, `SYSTEM_SENSORS`, `CONST_SENSORS`,
+`ASK_SENSORS`) as
 grouped by `GET /api/schedules`. *Needs* and *without it* are per group.
 
 | Picker group | Needs | Without it |
@@ -466,6 +467,7 @@ grouped by `GET /api/schedules`. *Needs* and *without it* are per group.
 | Demand / Tariff, Energy, Fixed Charges | a tariff with those charges or windows | None |
 | System Setup | nothing (defaults), better with Setup filled in | a default |
 | Automation Constants | nothing | the default |
+| Ask before continuing (`ask.answer`) | the schedule's Ask before continuing step, answered in this run; read by exit conditions and HA action guards | None |
 | an HA instance | the instance enabled and the entity exposed | None (also while the entity is `unavailable` or `unknown`, since 0.5.4, #167) |
 
 ??? example "All sensor ids (82 + your Home Assistant entities)"

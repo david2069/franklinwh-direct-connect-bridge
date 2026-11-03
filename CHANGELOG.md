@@ -12,6 +12,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Ask before continuing: your own buttons, a text reply, and the answer passed on**
+  (#374). Instead of Yes and No, a schedule's question can offer 2 to 4 buttons you name,
+  each set to run the action or skip this run. One of them can ask for a typed reply. The
+  answer (the button's label, or the text typed) is the new **Ask: answer** sensor, so an
+  exit condition or an HA action's guard can test it, and `%ask.answer%` puts it in a
+  message. The run log shows which button was tapped and any reply. Schedules without
+  their own buttons still ask Yes and No as before.
 - **Schedule conditions: widen the sensor field and resize the sensor list, also with a
   finger** (owner, 2026-11-04, on an iPad). A **⋮** grip just right of a condition's sensor
   field drags it wider or narrower; every condition row follows, and a wider field moves
@@ -21,6 +28,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   conditions and End early when…, including groups. Same as the Modbus Bridge scheduler.
 
 ### Fixed
+- The Ask before continuing question now fills in `%sensor.id%` values, like messages do.
 - **Logs on a phone**: each line stays on one row and the list swipes left and right, as in
   the other bridges. Before, the message column wrapped a few letters per line. From tablet
   width up, messages wrap as before.

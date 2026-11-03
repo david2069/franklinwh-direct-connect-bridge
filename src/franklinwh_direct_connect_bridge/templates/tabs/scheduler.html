@@ -658,7 +658,8 @@
            x-text="(actions[form.action.kind] || {}).note"></p>
       </div>
 
-      <!-- Ask before continuing (#374 P4): Yes / No on the enabled notification devices -->
+      <!-- Ask before continuing (#374 P4): Yes / No, or the user's own buttons, on the
+           enabled notification devices -->
       <div class="rounded-lg border p-3 space-y-2" style="border-color:var(--border)">
         <label class="flex items-center gap-2 text-xs font-semibold" style="color:var(--text-secondary)">
           <input type="checkbox" x-model="form.ask.on" data-testid="ask-on">
@@ -667,11 +668,51 @@
         <div x-show="form.ask.on" class="space-y-2">
           <p class="text-xs" style="color:var(--text-secondary)">
             Before the action runs, the enabled notification devices get this question
-            with Yes and No. Yes runs it, No skips this run. Only Home Assistant
-            Companion apps (mobile_app) show the buttons.</p>
+            with Yes and No, or your own buttons. Yes runs it, No skips this run. Only Home
+            Assistant Companion apps (mobile_app) show the buttons.</p>
           <label class="block text-xs" style="color:var(--text-secondary)">Question
             <input class="form-control form-control-sm w-full mt-1" type="text"
-                   x-model="form.ask.question" data-testid="ask-question"></label>
+                   placeholder="%sensor.id% ok" x-model="form.ask.question"
+                   data-testid="ask-question"></label>
+          <div class="space-y-1">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs" style="color:var(--text-secondary)">Buttons</span>
+              <span class="flex items-center gap-2">
+                <button type="button" class="btn btn-secondary btn-sm" x-show="!form.ask.choices.length"
+                        @click="form.ask.choices = [{ label: 'Yes', then: 'run', reply: false },
+                                                    { label: 'No', then: 'skip', reply: false }]"
+                        data-testid="ask-own-buttons">Use my own buttons</button>
+                <button type="button" class="btn btn-secondary btn-sm"
+                        x-show="form.ask.choices.length && form.ask.choices.length < 4"
+                        @click="form.ask.choices.push({ label: '', then: 'run', reply: false })"
+                        data-testid="ask-add-choice">+ Button</button>
+              </span>
+            </div>
+            <p x-show="!form.ask.choices.length" class="text-xs" style="color:var(--text-secondary)">
+              Yes and No.</p>
+            <template x-for="(c, ci) in form.ask.choices" :key="ci">
+              <div class="flex items-center gap-2 flex-wrap" data-testid="ask-choice">
+                <input class="form-control form-control-sm" style="flex:1 1 8rem" type="text"
+                       placeholder="Button label" x-model="c.label" data-testid="ask-choice-label">
+                <select class="form-control form-control-sm" style="width:auto" x-model="c.then"
+                        data-testid="ask-choice-then">
+                  <option value="run">Runs the action</option>
+                  <option value="skip">Skips this run</option>
+                </select>
+                <label class="flex items-center gap-1 text-xs" style="color:var(--text-secondary)"
+                       title="The phone asks for text when this button is tapped">
+                  <input type="checkbox" x-model="c.reply"
+                         :disabled="!c.reply && form.ask.choices.some(o => o.reply)"
+                         data-testid="ask-choice-reply"> Text reply</label>
+                <button type="button" class="btn btn-secondary btn-sm" title="Remove this button"
+                        @click="form.ask.choices.splice(ci, 1)">&times;</button>
+              </div>
+            </template>
+            <p class="text-xs" style="color:var(--text-secondary)">
+              The answer (the button's label, or the text of a reply) is the
+              <span class="font-mono">Ask: answer</span> sensor in exit conditions and HA
+              action guards, and <span class="font-mono">%ask.answer%</span> in messages.</p>
+          </div>
           <div class="grid grid-cols-2 gap-2">
             <label class="block text-xs" style="color:var(--text-secondary)">Wait for a reply (minutes)
               <input class="form-control form-control-sm w-full mt-1" type="number" min="1"
