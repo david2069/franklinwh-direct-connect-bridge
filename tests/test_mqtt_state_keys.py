@@ -12,8 +12,10 @@ import pytest
 from franklinwh_direct_connect_bridge import client, config, mockgw
 from franklinwh_direct_connect_bridge.publish import entities
 
-#: Every control's state key is now in the poll (C1 added the 1409 circuit read).
-NOT_IN_POLL: set = set()
+#: Every control's state key is in the poll (C1 added the 1409 circuit read), except Go
+#: Off-Grid's: a real aGate answers 1723 with offgridSet, the library's emulator does not
+#: answer it yet, so a mock poll has no request to publish (reported to fwh-local).
+NOT_IN_POLL: set = {"off_grid_requested_on"}
 
 
 @pytest.fixture
