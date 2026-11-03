@@ -20,6 +20,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   default or past the dialog. This browser remembers both sizes. Applies to Entry
   conditions and End early when…, including groups. Same as the Modbus Bridge scheduler.
 
+### Fixed
+- **Logs on a phone**: each line stays on one row and the list swipes left and right, as in
+  the other bridges. Before, the message column wrapped a few letters per line. From tablet
+  width up, messages wrap as before.
+- **Companion devices on a phone or a narrow iPad**: the row wraps, so the device name stays
+  readable and the buttons go underneath. The button test's result ("you tapped Yes") has
+  its own line, and the header's Broadcast and + Add device no longer run off the screen.
+
 ## [0.5.27] — 2026-11-03
 
 ### Changed
