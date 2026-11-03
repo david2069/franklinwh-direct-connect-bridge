@@ -25,6 +25,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   count and vendor model name are not in the catalogue and stay in the bridge's table, which
   also answers when franklinwh-cloud is not installed. The five known models read the same.
 ### Added
+- **Groundwork for notifications with buttons** (#374). The bridge now uses the shared
+  franklinwh-ha-notify package. It keeps one connection to each Home Assistant
+  instance for button taps, opened when the bridge starts and over Home Assistant's
+  authenticated WebSocket only. It also keeps a record of every notification sent and
+  every tap. Nothing sends buttons yet, and the existing notifications are unchanged. The
+  "Push notifications" switch turns the new path off too.
 - **Home Assistant: Run Status Description** (diagnostic). Run Status is the bare code; this
   says it in words as the FranklinWH cloud does: Standby, Charging, Discharging, Off-Grid
   Standby / Charging / Discharging. It reads **VPP Mode** while the aGate runs programme 9,

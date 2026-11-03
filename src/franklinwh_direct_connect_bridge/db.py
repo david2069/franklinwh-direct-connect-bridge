@@ -65,6 +65,7 @@ class MetricsStore:
         self._migrate_ha_exposed()
         self._migrate_schedule_log()
         self._migrate_occurrences()
+        self._migrate_notify_ledger()
         self._migrate_link_history()
         self._migrate_link_hourly()
         self._migrate_control_log()
@@ -1936,6 +1937,14 @@ class MetricsStore:
                     for r in cur.fetchall()]
 
     # ── scheduled battery dispatches (for interruption reconcile) ──────────────
+    def _migrate_notify_ledger(self) -> None:
+        """franklinwh-ha-notify's send/tap record (#374). The package leaves the table to
+        the bridge (``Ledger(create=False)``); its SCHEMA is idempotent."""
+        from franklinwh_ha_notify import SCHEMA
+        with self._lock:
+            self._conn.executescript(SCHEMA)
+            self._conn.commit()
+
     def _migrate_occurrences(self) -> None:
         """The execution queue: one row per EXPECTED run of a schedule.
 
