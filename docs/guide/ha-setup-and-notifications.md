@@ -3,13 +3,84 @@
 [Back to the guide index](index.md) · [Home Assistant and MQTT](home-assistant.md)
 
 This page covers the bridge's link **into** Home Assistant: how to connect it, how to
-check the connection, how to add your phone as a notification device, and what the
-bridge will notify you about. Publishing the aGate's entities **to** Home Assistant over
-MQTT is a separate thing, covered in [Home Assistant and MQTT](home-assistant.md).
+check the connection, how to add your phone as a notification device, what the bridge
+will notify you about, and the notifications with buttons that let you answer from your
+phone. Publishing the aGate's entities **to** Home Assistant over MQTT is a separate
+thing, covered in [Home Assistant and MQTT](home-assistant.md).
 
-Everything here was read from the bridge's code on `main` (release 0.5.2) on
-2026-10-17. It was not exercised against a running Home Assistant for this page. File
+Everything here was read from the bridge's code on `main` (release 0.5.28) and from
+`franklinwh-ha-notify` 0.1.1, the package the bridge sends notifications with, on
+2026-11-04. It was not exercised against a running Home Assistant for this page. File
 and function names are given so you can check them.
+
+---
+
+## Before you start: what you need
+
+Home Assistant calls notifications with buttons
+**[actionable notifications](https://companion.home-assistant.io/docs/notifications/actionable-notifications/)**.
+They are a feature of the **Home Assistant Companion app**. Only a phone or tablet with
+the Companion app, whose service is `notify.mobile_app_<device>` (for example
+`notify.mobile_app_my_phone`), shows the buttons. Every other `notify.*` service, such as
+an email or a TV, gets the same title and message as plain text, without buttons
+(`Target.buttons` in `franklinwh-ha-notify`).
+
+To get notifications on your phone, with or without buttons, you need two things:
+
+1. **A Home Assistant instance in the bridge's list**: its URL and a token. See
+   [step 1](#1-link-the-bridge-to-home-assistant).
+2. **The Companion app on your phone**, signed in to that Home Assistant, with
+   notifications allowed. See [Your phone, notifications and access from
+   away](phone-and-remote-access.md#1-alerts-on-your-phone-the-home-assistant-companion-app).
+
+You do **not** need to run the bridge as a Home Assistant add-on. The add-on only saves
+you step 1: it adds **Home Assistant (this add-on)** to the list by itself, with the
+token the Supervisor gives it. In Docker or a pip install you add your Home Assistant
+yourself, with a long-lived access token. After that, notifications and buttons work the
+same way.
+
+### Does Home Assistant need to reach the bridge?
+
+No. Every connection goes **from the bridge to Home Assistant**:
+
+- A notification is a call from the bridge to Home Assistant's REST API,
+  `POST /api/services/notify/<service>` (`send.py` in `franklinwh-ha-notify`).
+- A tap on a button comes back over Home Assistant's **WebSocket API**. The bridge opens
+  the WebSocket itself, signs in with the instance's token, and subscribes to the
+  Companion app's `mobile_app_notification_action` event (`listener.py` in
+  `franklinwh-ha-notify`; `actionable.start()` opens one listener per instance).
+
+Home Assistant never calls the bridge. You don't need a webhook, YAML in Home Assistant,
+an open port, or a URL for the bridge that Home Assistant can reach. The only
+requirement is the one you already have: the bridge must reach Home Assistant at the
+instance's URL. Your phone reaches Home Assistant the usual way, at home or from away.
+
+So buttons add no setup over plain notifications. The minimal steps:
+
+| Install | Steps |
+|---|---|
+| Home Assistant add-on | Install the Companion app on your phone. In the bridge: **Settings → Integrations → Companion Devices → + Add device**, pick your phone, **Save**, then **Test with buttons**. |
+| Docker or pip | Create a long-lived access token in Home Assistant. In the bridge: **Settings → Integrations → HA Instances → + Add instance** (name, URL, token), **Save**, then **restart the bridge** so it starts listening for taps on the new instance (see below). Then add your phone as for the add-on. |
+
+The bridge opens its tap listeners once, at start-up, for the instances in the list then
+(`actionable.start()`, `Notifier.listen()`). An instance added later sends notifications
+straight away (`actionable.send()` re-reads the list), but taps on it are only received
+after a restart.
+
+```mermaid
+flowchart TD
+    A{"How is the bridge installed?"}
+    A -->|"Home Assistant add-on"| B["'Home Assistant (this add-on)' is added for you"]
+    A -->|"Docker or pip"| C["Create a long-lived token in Home Assistant"]
+    C --> D["Settings → Integrations → HA Instances → + Add instance"]
+    D --> R["Restart the bridge, to listen for taps"]
+    B --> E["Install the Companion app on the phone, allow notifications"]
+    R --> E
+    E --> F["Companion Devices → + Add device → Discover → notify.mobile_app_my_phone"]
+    F --> G["Save, and leave the device switched on"]
+    G --> H["Push notifications switch on"]
+    H --> I["Test with buttons → tap Yes or No"]
+```
 
 ---
 
@@ -17,9 +88,10 @@ and function names are given so you can check them.
 
 The bridge keeps a list of **Home Assistant instances**. Each one is a base URL and a
 token. The bridge uses an instance to read entity states for the Scheduler, to find
-notification services, to send notifications, and to call services from schedules. It
-talks to Home Assistant's REST API; see
-[Reading Home Assistant](../developers/reading-home-assistant.md) for the details.
+notification services, to send notifications, to receive button taps, and to call
+services from schedules. It talks to Home Assistant's REST API, and to its WebSocket API
+for taps; see [Reading Home Assistant](../developers/reading-home-assistant.md) for the
+details.
 
 ### As a Home Assistant add-on: automatic
 
@@ -34,7 +106,11 @@ The add-on asks Home Assistant for API access (`homeassistant_api: true` in
 
 You do not need a long-lived token. After an add-on update the Supervisor issues a new
 token, and the bridge copies it into that instance on start-up (fixed in #99). It never
-changes instances you added yourself.
+changes instances you added yourself. Settings shows it as **auto-detected**, at "This
+Home Assistant (Supervisor)".
+
+You can still add other Home Assistant instances, to reach phones that are signed in to
+another Home Assistant.
 
 ### Docker or standalone: URL and token
 
@@ -47,8 +123,11 @@ changes instances you added yourself.
 4. Press **Test**. It calls Home Assistant's `/api/` with the token, and reports "token
    rejected" for a 401 or 403 (`ha_instances.probe()`).
 5. Press **Save**.
+6. Restart the bridge, so it listens for button taps on the new instance.
 
-The same list is also under **Settings → Integrations → HA Instances → + Add instance**.
+The same list is also under **Settings → Integrations → HA Instances → + Add instance**
+(Name, URL, Long-lived token, Default instance). **Disable** on an instance keeps it, and
+its devices, but sends nothing through it.
 
 The token is **write-only**. The bridge never sends it back to the browser: the list
 shows **Token set** or **No token — reads will fail**, and an edit form shows the token
@@ -78,7 +157,7 @@ also asks "Publish this gateway's entities to Home Assistant?", and has a **Chec
 button (`templates/partials/setup_wizard.html`, `loadHaChecks()` in
 `static/js/setup_wizard.js`).
 
-There is no check for notifications.
+There is no check for notifications. Use **Test with buttons** (step 3) instead.
 
 ---
 
@@ -87,7 +166,8 @@ There is no check for notifications.
 A **notification device** is a name for one of Home Assistant's `notify` services on
 one instance. A phone with the
 [Home Assistant Companion app](https://companion.home-assistant.io/) has a service
-called `notify.mobile_app_<device>`. That is the usual choice.
+called `notify.mobile_app_<device>`. That is the usual choice, and the only one that
+shows buttons.
 Step by step, and how to reach it away from home: [Your phone, notifications and access
 from away](phone-and-remote-access.md).
 
@@ -105,27 +185,60 @@ from away](phone-and-remote-access.md).
 6. Press **Send test** to check that the phone receives it.
 7. Press **Save**.
 
-Each saved device has a mute switch, **Edit**, **Test** and remove. **Broadcast** sends
-one message to every enabled device.
+Each saved device has an on/off switch, an icon for its kind (phone, tablet, TV, speaker
+or other, guessed from the service name), **Edit**, **Test**, and remove. A device on an
+instance that is switched off is marked **instance disabled**, and receives nothing.
 
-The list shows all `notify.*` services, not only phones. Any of them works as a device.
+- **Test** sends one plain message straight to that service
+  (`POST /api/ha/notify-devices/test`, `ha_instances.send_notification()`). It goes out
+  even while the **Push notifications** switch is off.
+- **Test with buttons** appears only on a `mobile_app_*` device. It sends "FranklinWH
+  test" with **Yes** and **No**, then waits up to 2 minutes for your tap. The row then
+  shows "Round trip works: you tapped Yes", or "No reply within 120 s"
+  (`POST /api/ha/notify-devices/test-buttons`, then
+  `GET /api/ha/notify-devices/test-buttons/{request_id}`). It goes through the same path
+  as every other notification, so it needs the **Push notifications** switch on. A pass
+  proves the whole round trip: the bridge reaches Home Assistant, the phone shows the
+  buttons, and the tap comes back over the WebSocket.
+
+**Broadcast** sends one message to every enabled device.
+
+The list shows all `notify.*` services, not only phones. Any of them works as a device;
+only `mobile_app_*` ones show buttons.
 
 From the API: `GET`/`POST /api/ha/notify-devices`,
-`PATCH`/`DELETE /api/ha/notify-devices/{id}`, `POST /api/ha/notify-devices/test` and
-`POST /api/ha/notify-devices/broadcast`. A new device needs `alias`, `instance_id` and
-`service`.
+`PATCH`/`DELETE /api/ha/notify-devices/{id}`, `POST /api/ha/notify-devices/test`,
+`POST /api/ha/notify-devices/test-buttons` and `POST /api/ha/notify-devices/broadcast`.
+A new device needs `alias`, `instance_id` and `service`.
 
 ---
 
 ## 4. What the bridge notifies you about
 
-There are **two separate channels**, and they behave differently.
+There are **two separate channels**, and they behave differently. One switch, **Push
+notifications** at the top of **Settings → Integrations → Notifications**, covers both.
+
+### The Push notifications switch
+
+The switch is the `ha_notify` setting. **Off — no notifications are sent** means:
+
+- nothing goes to your notification devices: the triggers, schedules, broadcasts, the
+  scheduled-dispatch report, and every notification with buttons. The bridge's one
+  sender checks it before each send and records "notifications are off"
+  (`Notifier._send()` in `franklinwh-ha-notify`, built with
+  `enabled=lambda: bool(settings.ha_notify)` in `actionable.build()`);
+- no Home Assistant persistent notifications (`notify.py`);
+- critical alerts reach only the bridge's own window. Settings then shows **Critical
+  alerts reach only the bridge UI**.
+
+The per-device **Test** button is the one exception: it sends directly, to check a
+device before or after saving it.
 
 ### Push to your notification devices
 
-These go to **every enabled notification device**. Set them under **Settings →
-Integrations → Notifications → Auto-notify triggers** (`notify_engine.py`). Each has a
-switch; the two SoC triggers also have a threshold.
+These go to your notification devices. Set them under **Settings → Integrations →
+Notifications → Auto-notify triggers** (`notify_engine.py`). Each has a switch; the two
+SoC triggers also have a threshold.
 
 | Trigger | Default | Sent when | Message |
 |---|---|---|---|
@@ -137,6 +250,22 @@ switch; the two SoC triggers also have a threshold.
 
 A trigger fires on a **change** between one poll and the next, not on every poll. There
 is no other rate limit.
+
+**Send to.** Each trigger has a **Send to** list (#281):
+
+- **All devices**, the default: every enabled device.
+- **Chosen devices**: tick one or more. The last ticked device can't be unticked. A
+  chosen device that is switched off gets nothing; it stays off for its triggers too
+  (`notify_engine.fire()`).
+
+From the API, a trigger's `target` is `{"type": "all"}` or
+`{"type": "device", "ids": [...]}` (`PUT /api/notify/triggers`). Targeting by user or
+role is not available in this bridge.
+
+**Send test** at the top of the triggers opens a test that goes to all enabled devices
+or to the ones you choose (`POST /api/notify/triggers/test`). It says how many devices
+it reached, and when none, why: "No devices are on", "No device chosen" or "Push
+notifications are off".
 
 Also sent to every enabled device: after a restart that interrupted a **scheduled
 dispatch**, if `dispatch_interrupt_policy` is `notify` (the default is `release`), a message titled
@@ -151,7 +280,8 @@ the last 2,000 are kept).
 These appear in Home Assistant's own notification panel, not on your phone
 (`Notifier` in `notify.py`, posting to `persistent_notification.create`). They go to the
 add-on's own Home Assistant, or, outside the add-on, to the `HA_URL` and `HA_TOKEN`
-settings. They are sent only while `ha_notify` is on (the default). From `poller.py`:
+settings. They do **not** use the HA instances list. They are sent only while the
+**Push notifications** switch (`ha_notify`) is on. From `poller.py`:
 
 | Event | Title | Message |
 |---|---|---|
@@ -162,13 +292,6 @@ settings. They are sent only while `ha_notify` is on (the default). From `poller
 | The aGate is found again at a new address | FranklinWH aGate moved | "<gateway name> re-discovered on the LAN at <address>." Only an aGate with this gateway's own serial is adopted, never one another gateway uses. |
 
 There is no per-event switch for these.
-
-!!! warning "The Push notifications switch does not stop pushes"
-    The **Push notifications** switch at the top of the Notifications card says "Off —
-    no notifications are sent". It sets `ha_notify`, which controls only the persistent
-    notifications above. The pushes to your devices, from the triggers, from the
-    dispatch reconcile and from schedules, do not check it. To stop pushes, switch the
-    triggers off, or mute the devices.
 
 ### Alerts
 
@@ -212,17 +335,29 @@ top bar counts open alerts and opens the list, where warnings are acknowledged. 
 acknowledgement applies for everyone and is recorded as `source:ui`.
 
 **In Home Assistant.** Each critical alert creates a persistent notification with the id
-`fwh_dc_alert_<id>`, whether or not a notification device is set up. It needs a Home
-Assistant connection (step 1) and the **Push notifications** switch (`ha_notify`) on. If
-Home Assistant does not answer, the bridge keeps retrying, waiting longer each time up to
-10 minutes. Acknowledging the alert in the bridge dismisses the notification. **Dismissing
-it in Home Assistant does not acknowledge the alert**: the bridge stays the record. Alerts
-are not sent to notification devices yet.
+`fwh_dc_alert_<id>`, whether or not a notification device is set up. It goes to the same
+Home Assistant as the persistent notifications above (the add-on's own, or `HA_URL` and
+`HA_TOKEN`), and needs the **Push notifications** switch on. If Home Assistant does not
+answer, the bridge keeps retrying, waiting longer each time up to 10 minutes.
+Acknowledging the alert in the bridge dismisses the notification. **Dismissing it in Home
+Assistant does not acknowledge the alert**: the bridge stays the record.
+
+**On your phone.** Once that persistent notification is created, the same alert goes to
+every enabled notification device, with buttons (#374; `notify_buttons.ask_alert()`,
+called from `alerts.py`):
+
+- **Acknowledge** acknowledges the alert, as **OK** in the bridge does, recorded as
+  `source:ha`.
+- **Re-discover**, only on `GATEWAY_UNREACHABLE`, asks that gateway's poller to search the
+  LAN for the aGate again.
+
+The buttons work for an hour. Devices that can't show buttons get the text. If none of
+the enabled devices is a `mobile_app_*` one, the alert is not sent to devices. Warnings
+are not sent to devices.
 
 With the switch **off**, no Home Assistant notification is made, and each one skipped is
 recorded as "skipped: HA channel off". The bridge's alert window still opens; it never
-depends on the switch. While the switch is off, Settings → Notifications shows **Critical
-alerts reach only the bridge UI**.
+depends on the switch.
 
 Each gateway's device in Home Assistant also gets **Bridge problem**, a diagnostic `problem`
 binary sensor that is on while any alert for that gateway, or for the bridge itself, is
@@ -240,6 +375,21 @@ The API is `GET /api/alerts` (filters `open=1`, `kind=event|condition`, `since=<
 `GET /api/status`, whose `alerts` is `{level, open, latest_id, changed_ts}`. `changed_ts`
 moves whenever an alert opens, resolves or is acknowledged. Closed alerts are kept 90
 days; open ones are never removed.
+
+### Release or Keep a running force
+
+When the bridge finds a battery force running that it did not start, it asks whether to
+release it (`notify_buttons.ask_release()`):
+
+- a VPP or force dispatch **active at start-up** (`vpp_monitor.py`), while the **Battery
+  dispatch** trigger is on;
+- a **scheduled dispatch** interrupted by a restart and left running, with
+  `dispatch_interrupt_policy` set to `notify` (`battery_control.py`).
+
+**Release** releases the force on that aGate, as the top-bar Release does. **Keep** leaves
+it running. The buttons work for 15 minutes. The question goes to every enabled device,
+not only the trigger's **Send to** devices. When no device can show buttons, the bridge
+sends the plain message instead.
 
 ---
 
@@ -290,39 +440,116 @@ action:
 A notify step that cannot be sent is skipped, and the schedule's log says why: "device
 no longer exists", "'Phone' is switched off", or "has no HA instance".
 
+### Ask before continuing
+
+A schedule can ask you on your phone before its action runs (#374). In the schedule
+editor, tick **Ask before continuing** (`_ask_step()` in `scheduler.py`):
+
+| Field | What it does |
+|---|---|
+| **Question** | The message. `%sensor.id%` values are filled in when it is sent, as in notify messages, for example `SoC is %battery.soc_pct%%. Charge now?`. The title is the schedule's name and the gateway. |
+| **Buttons** | **Yes** (runs the action) and **No** (skips this run), unless you press **Use my own buttons**. Then give 2 to 4 buttons, each with its own label, and set each to **Runs the action** or **Skips this run**. |
+| **Text reply** | At most one of your buttons can take a text reply: the phone asks for text when it is tapped. What you type becomes the answer. |
+| **Wait for a reply (minutes)** | 1 or more; 10 in a new schedule. |
+| **If no reply** | **Skip this run** (the default) or **Continue**. |
+| **Send to** | **All enabled devices**, or **Chosen devices** (#281). Devices that show buttons are marked **buttons**. |
+
+The question is sent once per run, when the schedule's window opens. While it waits, the
+schedule shows **holding**, and other schedules carry on. Then:
+
+- a tap on a button that **runs the action**: the action runs, and the log says
+  `answered Yes`;
+- a tap on a button that **skips this run**: the run is recorded as skipped;
+- no tap in time: **If no reply** decides.
+
+**If no reply** also decides, at once, when nobody could be asked: no enabled device in
+**Send to** is a `mobile_app_*` one, the send failed, notifications are not running, or
+the **Push notifications** switch is off. The schedule's log says which.
+
+**The answer.** The label of the button tapped, or the text typed for a text reply, is
+the **Ask: answer** sensor (`ask.answer`) for the rest of that run. Use it in exit
+conditions and Home Assistant action guards, and as `%ask.answer%` in notify messages.
+See [Scheduler → Conditions](scheduler/conditions.md).
+
+The API field is `ask` on the schedule:
+
+```json
+"ask": {
+  "question": "SoC is %battery.soc_pct%%. Charge from the grid now?",
+  "timeout_min": 10,
+  "if_no_reply": "skip",
+  "choices": [
+    {"label": "Charge", "then": "run"},
+    {"label": "Not today", "then": "skip"},
+    {"label": "Other", "then": "skip", "reply": true}
+  ],
+  "send_to": {"type": "device", "ids": ["<notify-device-id>"]}
+}
+```
+
+Leave out `choices` for Yes and No, and `send_to` for all enabled devices.
+
+```mermaid
+sequenceDiagram
+    participant S as Scheduler
+    participant N as Bridge notifier
+    participant H as Home Assistant
+    participant P as Phone (Companion app)
+    S->>N: Window opens: ask the question
+    N->>H: POST /api/services/notify/mobile_app_my_phone (with buttons)
+    H->>P: Push notification
+    Note over S: Schedule shows "holding"
+    alt You tap a button
+        P->>H: Tap
+        H-->>N: mobile_app_notification_action (over the bridge's WebSocket)
+        N->>S: The answer
+        S->>S: Runs the action, or skips this run
+    else No tap within the wait
+        N->>S: No reply
+        S->>S: "If no reply": continue or skip
+    end
+```
+
+---
+
+## 6. How buttons work
+
+Every notification with buttons follows the same path (`actionable.py`, and
+`franklinwh-ha-notify`):
+
+- Each send is one question with its own id. The buttons carry that id, so the tap is
+  matched to the question on iOS and on Android.
+- A question has a time limit: 2 minutes for **Test with buttons**, 15 minutes for
+  **Release / Keep**, 1 hour for an alert, and the wait you set for **Ask before
+  continuing**. A tap after that is recorded as expired and does nothing.
+- A question takes one answer. A second tap, on the same phone or another, does nothing.
+- Open questions are kept in memory. **A tap on a question asked before a bridge restart
+  is ignored**, and is recorded as unknown.
+- Each send and each tap is recorded in the bridge's database (the `notify_ledger`
+  table), whether or not it went through.
+- If the WebSocket to Home Assistant drops, the bridge reconnects, waiting 2, 5, 10, 30,
+  then 60 seconds between tries.
+
 ---
 
 ## Not yet available
 
-Checked against the code on `main` (0.5.2). These do not exist today:
+Checked against the code on `main` (0.5.28). These do not exist today:
 
-- **No notification when a scheduled action fails.** The code has a "FranklinWH — action
-  failed" report (`resilience._report()`), but the Scheduler never connects it: it calls
-  `run_action_outcome()` without a notifier. A schedule that fails is recorded in its
-  log only.
 - **No "dispatch ended" notification**, although the trigger is labelled "started /
   ended". `vpp_monitor.py` logs the end and sends nothing. A dispatch that this bridge
   started itself is not notified at its start either.
 - **No push for** the Modbus TCP Server (aGate :502) going down, a firmware change, the
   aGate moving, or rejected cloud credentials. These are persistent notifications only,
   with no switch.
-- **No per-device routing.** Every enabled device gets every triggered event.
+- **No Send to for alerts or Release / Keep.** They go to every enabled device.
+- **No targeting by user or role.** **Send to** is all devices or chosen devices.
 - **No quiet hours, cooldown or rate limit.**
 - **No filter for phones.** The service list shows every `notify.*` service, not only
   `mobile_app_*`.
-- **Buttons on three notifications only** (#374): a force still running at start-up
-  (Release / Keep), bridge alerts (Acknowledge; Re-discover when the aGate is unreachable),
-  and **Test with buttons** on a phone's row. Only `notify.mobile_app_*` targets show
-  buttons. Other notifications are plain.
-- **No setup check for notifications.**
+- **No setup check for notifications.** **Test with buttons** is the check.
+- **No tap listener for an instance added after start-up** until the bridge restarts.
 - **No UI** for the persistent-notification target outside the add-on (`HA_URL`,
   `HA_TOKEN`; set them in the environment), and no button for the persistent-notification
-  test (`POST /api/notify/test`).
-
-### Known defect
-
-**Disable or Enable on an instance under Settings → Integrations → HA Instances** shows
-"Could not change it: …" even when the change worked. `toggleInstance()` in
-`static/js/settings_tab.js` calls `this.loadNotif()`, and the method is named
-`loadNotify()`. Reload the page to see the real state. The **Home Assistant** tab's
-**Instances** list does not have this problem (read from the code, not tested).
+  test (`POST /api/notify/test`). Outside the add-on, without them, critical alerts
+  reach neither Home Assistant nor your phone.
