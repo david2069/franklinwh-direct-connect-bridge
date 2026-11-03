@@ -233,7 +233,7 @@ tools/demo.sh            # build image + start; then open http://localhost:8102
 tools/demo.sh --down     # tear it down
 ```
 
-It starts **two seeded mock aGates** (the `franklinwh-local emulate --seed N` emulator
+It starts **two seeded mock aGates** (the `franklinwh-direct-connect emulate --seed N` emulator, on port 19000
 bundled in the image — each a distinct virtual device with a solar/battery/load curve that
 follows the time of day) plus a bridge pointed at mock-1. Values move between polls, control
 buttons are enabled against the mock, and it is fully isolated from the real deployment

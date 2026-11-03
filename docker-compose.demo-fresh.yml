@@ -3,7 +3,8 @@
 # useless for testing FIRST RUN, which is the case the wizard exists for.
 #
 # This clears the roster so the bridge boots knowing nothing: no gateway, no Home
-# Assistant, no tariffs. The mock aGates still run, so Discover has something to find.
+# Assistant, no tariffs. The mock aGates still run on 19000: add one by name (mock-agate-1:19000);
+# Discover sweeps 9000 only until #416.
 #
 #   rm -rf ./data-demo        # a fresh volume, or the previous run's config persists
 #   docker compose -f docker-compose.demo.yml -f docker-compose.demo-fresh.yml \
@@ -16,7 +17,7 @@ services:
     environment:
       - FWH_HOSTS=
       - FWH_HOST=
-      - FWH_PORT=9000
+      - FWH_PORT=19000
       - MQTT_ENABLED=false
       - METRICS_ENABLED=true
       - ALLOW_WRITES=true

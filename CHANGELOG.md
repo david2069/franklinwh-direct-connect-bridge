@@ -11,6 +11,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+- **Demo mode's mock aGates start again** (#427). `docker-compose.demo.yml` ran them on port
+  9000, which franklinwh-direct-connect-api 0.5.1 and later refuse (9000 is reserved for a
+  real aGate and the official Gateway Emulator), so on a fresh build both restarted in a
+  loop. They now run on 19000, under `franklinwh-direct-connect emulate` instead of the
+  deprecated `franklinwh-local` name, and the demo bridge (`FWH_PORT`) reaches them there.
+  Discover sweeps 9000 only, so it can't find them until #416.
+
 ## [0.5.25] — 2026-11-03
 
 ### Fixed
