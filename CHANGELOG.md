@@ -11,6 +11,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.28] — 2026-11-04
+
 ### Added
 - **Ask before continuing: your own buttons, a text reply, and the answer passed on**
   (#374). Instead of Yes and No, a schedule's question can offer 2 to 4 buttons you name,
