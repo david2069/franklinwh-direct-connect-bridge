@@ -49,6 +49,7 @@ function settingsTab() {
       instMsg: null,                   // the add-instance panel's result (#293)
       targets: null, discovered: [], pickerOpen: false, pickerSearch: '',
       addInst: null,
+      testDlg: null,                   // the Send test target picker (#281)
       bc: null,
       rt: {},                          // device id -> {kind, text}: the test-with-buttons round trip
     },
@@ -1132,12 +1133,37 @@ function settingsTab() {
       const s = (this.triggers.stats || []).find(x => x.event === key);
       return s ? `${s.count}× · last ${this.fmtNotifyTime(s.last_ts)}` : '';
     },
+    // A trigger's target (#281): all devices, or the devices chosen. Roles come later.
+    triggerTargetValue(t) {
+      const tg = t.target || { type: 'all' };
+      return tg.type === 'device' && tg.ids && tg.ids.length === 1 ? tg.ids[0] : 'all';
+    },
+    setTriggerTarget(key, value) {
+      const target = value === 'all' ? { type: 'all' } : { type: 'device', ids: [value] };
+      this._saveTriggers({ triggers: { [key]: { target } } });
+    },
+    // Send test opens a target picker; with no devices it says so and offers + Add device,
+    // never a "sent to 0 devices". The result stays in the dialog (#281, #293).
+    openTestDialog() {
+      if (!this.notif.loaded) this.loadNotify();
+      this.notif.testDlg = { to: 'all', ids: [], sending: false, msg: null };
+    },
+    testDialogAddDevice() { this.notif.testDlg = null; this.openAddDevice(); },
     async testTrigger() {
+      const t = this.notif.testDlg; t.msg = null;
+      if (t.to === 'device' && !t.ids.length) { t.msg = { kind: 'warn', text: 'Choose at least one device' }; return; }
+      t.sending = true;
       try {
-        const d = await (await fetch('api/notify/triggers/test', { method: 'POST' })).json();
-        Alpine.store('app').toast(`Test sent to ${d.sent} device(s)`, d.sent ? 'success' : 'info');
+        const r = await fetch('api/notify/triggers/test', { method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(t.to === 'all' ? {} : { device_ids: t.ids }) });
+        const d = await r.json();
+        if (!r.ok) t.msg = { kind: 'danger', text: 'Test failed: ' + (d.detail || 'HTTP ' + r.status) };
+        else if (d.sent) t.msg = { kind: 'ok', text: `Test sent to ${d.sent} of ${d.total} device(s)` };
+        else t.msg = { kind: 'warn', text: d.detail || `Not delivered to any of ${d.total} device(s)` };
         await this.loadTriggers();
-      } catch (e) { Alpine.store('app').toast('Test failed: ' + e.message, 'error'); }
+      } catch (e) { t.msg = { kind: 'danger', text: 'Test failed: ' + e.message }; }
+      finally { t.sending = false; }
     },
     fmtNotifyTime(ts) {
       if (!ts) return '';
@@ -1210,11 +1236,11 @@ function settingsTab() {
       } catch (e) { say('danger', 'Test failed: ' + e.message); }
     },
     openAddDevice() {
-      this.notif.addDev = { alias: '', instance_id: (this.notif.instances[0] || {}).id || '', service: '' };
+      this.notif.addDev = { alias: '', instance_id: (this.notif.instances[0] || {}).id || '', service: '', kind: 'other' };
       this.notif.discovered = []; this.notif.pickerOpen = false; this.notif.addDevMsg = null;
     },
     editDevice(dev) {   // rename / re-target an existing device
-      this.notif.addDev = { id: dev.id, alias: dev.alias, instance_id: dev.instance_id, service: dev.service };
+      this.notif.addDev = { id: dev.id, alias: dev.alias, instance_id: dev.instance_id, service: dev.service, kind: dev.kind || 'other' };
       this.notif.discovered = []; this.notif.pickerOpen = false; this.notif.addDevMsg = null;
     },
     // Ask the CHOSEN instance, not every instance. A bridge can read several Home
@@ -1239,7 +1265,8 @@ function settingsTab() {
       return this.notif.discovered
         .map(t => ({
           service: t.service,
-          label: t.name || this.friendlyService(t.service),
+          label: t.friendly_name || t.name || this.friendlyService(t.service),
+          kind: t.kind || 'other',
           // Home Assistant re-registers a companion app as `_2` beside the original and
           // gives no hint which is live. Last-seen IS the hint — show it, rather than
           // leaving the user to find it in a 3800-entity browser.
@@ -1264,8 +1291,9 @@ function settingsTab() {
     friendlyService(x) { return x.replace(/^notify\./, '').replace(/mobile_app_/, '').replace(/_/g, ' '); },
     // Take Home Assistant's own friendly name across. Typing "David's iPhone 15 Pro" by
     // hand, next to a list that already says it, is work the picker should have done.
-    chooseService(x, label) {
+    chooseService(x, label, kind) {
       this.notif.addDev.service = x;
+      if (kind) this.notif.addDev.kind = kind;
       if (!this.notif.addDev.alias && label) this.notif.addDev.alias = label;
       this.notif.pickerOpen = false;
     },
@@ -1306,7 +1334,7 @@ function settingsTab() {
       this.notif.addDevMsg = null;
       const editing = !!f.id;
       const url = editing ? 'api/ha/notify-devices/' + f.id : 'api/ha/notify-devices';
-      const body = { alias: f.alias, instance_id: f.instance_id, service: f.service };
+      const body = { alias: f.alias, instance_id: f.instance_id, service: f.service, kind: f.kind || 'other' };
       const r = await fetch(url, { method: editing ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (r.ok) { this.notif.addDev = null; await this.loadNotify(); Alpine.store('app').toast(editing ? 'Device updated' : 'Device added', 'success'); }

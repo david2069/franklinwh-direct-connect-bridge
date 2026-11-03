@@ -45,6 +45,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   and Home Assistant alert notifications say which gateway, by its name rather than its
   id. Recent notifications shows the gateway beside each line.
 ### Added
+- **Notification targets** (#281). Each auto-notify trigger has a "Send to" drop-down:
+  All devices (the default) or one chosen device. **Send test** now opens a dialog to send
+  to all enabled devices or the ones you tick; with no devices it says so and offers
+  **+ Add device**, and the result stays in the dialog. Companion devices have a type
+  (phone, tablet, TV, speaker, other), shown as an icon with an On/Off label; Discover
+  suggests the type and shows each device by its Home Assistant name, and you can change
+  the type in the device dialog, which also asks you to send a test before saving.
 - **Buttons on notifications** (#374). On a phone with the Home Assistant Companion app:
   - a force still running when the bridge starts (one it did not start, or one a restart
     interrupted) comes with **Release** and **Keep**. Release does what the top-bar
