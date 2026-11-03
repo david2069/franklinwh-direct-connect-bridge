@@ -41,6 +41,7 @@ class GatewayState:
     last_summary: dict = field(default_factory=dict) # last-good full /api/summary (poller-cached)
     republish_requested: bool = False   # UI → poller: re-publish HA discovery
     unpublish_requested: bool = False   # UI → poller: clear entities from HA
+    rediscover_requested: bool = False  # Re-discover button → poller: sweep on the next failure
     # FORCE truth from the Modbus M704 WSet state (the aGate 1301 run_status does NOT surface
     # a dispatch — it stays Charging/Discharging). Set by the VPP monitor loop; None until
     # first observed / when Modbus is unavailable. Read by the summary + roster for the badge.

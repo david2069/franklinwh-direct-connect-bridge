@@ -1,0 +1,136 @@
+"""Buttons on the bridge's notifications (#374 P3): Release, Acknowledge, Re-discover,
+and the test round trip.
+
+Each button calls the bridge's own existing command: Release is
+``battery_control.execute("Release")``, as the top-bar Release; Acknowledge is
+``alerts.ack`` with source ``ha``; Re-discover asks the gateway's poller for its own
+re-discovery sweep. The asks ride on the notifications the bridge already sends; the
+callers send the plain one only when the ask went nowhere.
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+
+from franklinwh_ha_notify import NO, YES, Button, Event
+
+from . import actionable
+
+log = logging.getLogger(__name__)
+
+FORCE_RUNNING = "force_running"
+ALERT = "alert"
+TEST = "test_buttons"
+
+RELEASE, ACK, REDISCOVER = "RELEASE", "ACK", "REDISCOVER"
+
+RELEASE_TTL_S = 900
+ALERT_TTL_S = 3600
+TEST_TTL_S = 120
+#: How long a worker thread waits for the send itself (not for a tap).
+SEND_WAIT_S = 30
+
+actionable.templates().register(
+    Event(FORCE_RUNNING, "{title}", "{message}", ("title", "message"),
+          "A battery force is still running: Release or Keep."),
+    Event(ALERT, "{title}", "{message}", ("title", "message"),
+          "A bridge alert: Acknowledge (and Re-discover when the aGate is unreachable)."),
+    Event(TEST, "FranklinWH test", "Tap Yes or No to check buttons reach the bridge.", (),
+          "The test with buttons from Settings."),
+)
+
+
+def _store():
+    from . import db
+    from .config import get_settings
+    return db.get_store(get_settings())
+
+
+def _label_for_host(host: str) -> str | None:
+    from . import battery_control, state
+    hp = battery_control._host_part(host)
+    for gw in state.gateways():
+        if hp in {battery_control._host_part(h) for h in (gw.active_host, gw.configured_host) if h}:
+            return gw.label or gw.id
+    return None
+
+
+def _ask_from_thread(store, event: str, buttons: list[Button], ttl_s: float, *,
+                     gateway: str | None, meta: dict, **values) -> bool:
+    """Send an ask from a worker thread; True when it reached at least one target."""
+    n = actionable.notifier()
+    if n is None:
+        return False
+    fut = actionable.submit(n.ask(event, actionable.targets(store), buttons, ttl_s=ttl_s,
+                                  gateway=gateway, meta=meta, **values))
+    if fut is None:
+        return False
+    try:
+        return fut.result(timeout=SEND_WAIT_S) is not None
+    except Exception as e:  # noqa: BLE001 - the caller falls back to its plain send
+        log.warning("notification with buttons not sent (%s): %s", event, e)
+        return False
+
+
+# ── Release / Keep ───────────────────────────────────────────────────────────────
+def ask_release(store, host: str, title: str, message: str) -> bool:
+    """Ask Release / Keep about a force still running on ``host``."""
+    return _ask_from_thread(store, FORCE_RUNNING, [Button(RELEASE, "Release"), Button(NO, "Keep")],
+                            RELEASE_TTL_S, gateway=_label_for_host(host), meta={"host": host},
+                            title=title, message=message)
+
+
+async def _on_release(request, answer) -> str:
+    if answer.verb != RELEASE:
+        return "kept"
+    from . import battery_control
+    host = request.meta["host"]
+    out = await asyncio.to_thread(battery_control.execute, "Release", host=host)
+    if not out.get("ok"):
+        return f"not released: {out.get('result', '')}"
+    st = _store()
+    if st is not None:      # as the top-bar Release: close the open dispatch rows
+        await asyncio.to_thread(st.end_active_dispatches, host=host, status="ended")
+    return "released"
+
+
+# ── Acknowledge / Re-discover ────────────────────────────────────────────────────
+def ask_alert(store, row: dict) -> bool:
+    """Ask Acknowledge (plus Re-discover for an unreachable aGate) about one alert."""
+    from . import state
+    gid = row.get("gateway_id") or ""
+    gw = state.get_gateway(gid) if gid else None
+    buttons = [Button(ACK, "Acknowledge")]
+    if row.get("code") == "GATEWAY_UNREACHABLE" and gw is not None:
+        buttons.append(Button(REDISCOVER, "Re-discover"))
+    return _ask_from_thread(store, ALERT, buttons, ALERT_TTL_S,
+                            gateway=(gw.label or gw.id) if gw else None,
+                            meta={"alert_id": row["id"], "gateway_id": gid},
+                            title=row.get("title") or "", message=row.get("message") or "")
+
+
+async def _on_alert(request, answer) -> str:
+    if answer.verb == REDISCOVER:
+        from . import state
+        gw = state.get_gateway(request.meta["gateway_id"])
+        if gw is None:
+            return "gateway not found"
+        gw.rediscover_requested = True
+        return "re-discovery requested"
+    from . import alerts
+    row = await asyncio.to_thread(alerts.ack, _store(), request.meta["alert_id"], "ha")
+    return "acknowledged" if row else "alert not found"
+
+
+# ── test round trip ──────────────────────────────────────────────────────────────
+async def _on_test(request, answer) -> str:
+    return "Yes" if answer.verb == YES else "No"
+
+
+def yes_no() -> list[Button]:
+    return [Button(YES, "Yes"), Button(NO, "No")]
+
+
+actionable.on(FORCE_RUNNING, _on_release)
+actionable.on(ALERT, _on_alert)
+actionable.on(TEST, _on_test)
