@@ -11,6 +11,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+- **Send to: all enabled devices or the devices you choose** (#281, N3 by device). A
+  schedule's **Ask before continuing** step has a **Send to** choice: all enabled
+  notification devices (the default) or the ones ticked, listed from the enabled companion
+  devices (Companion apps — mobile_app — are marked as the ones that show the buttons). The
+  server refuses an unknown device or a role. Schedules saved before this still ask every
+  enabled device. Each **Auto-notify trigger** in Settings can now go to several chosen
+  devices, not just one; a trigger already sent to one device keeps it.
+
 ## [0.5.28] — 2026-11-04
 
 ### Added

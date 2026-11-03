@@ -270,16 +270,20 @@ document.addEventListener('alpine:init', () => {
                ask: this._askToForm(null) };
     },
     // "Ask before continuing" (#374 P4): the saved step is {} (none) or
-    // {question, timeout_min, if_no_reply, choices?}; the form adds an on/off box.
+    // {question, timeout_min, if_no_reply, choices?, send_to?}; the form adds an on/off box.
     // No choices means Yes / No; each choice is {label, then: run|skip, reply}.
+    // send_to (#281): absent or {type: all} = every enabled device; {type: device, ids}.
     _askToForm(a) {
       const choices = ((a && a.choices) || []).map(c => ({
         label: c.label || '', then: c.then || 'run', reply: !!c.reply }));
+      const st = a && a.send_to;
+      const send_to = st && st.type === 'device'
+        ? { to: 'device', ids: [...(st.ids || [])] } : { to: 'all', ids: [] };
       return a && a.question
         ? { on: true, question: a.question, timeout_min: a.timeout_min,
-            if_no_reply: a.if_no_reply, choices }
+            if_no_reply: a.if_no_reply, choices, send_to }
         : { on: false, question: 'Run this schedule now?', timeout_min: 10, if_no_reply: 'skip',
-            choices: [] };
+            choices: [], send_to };
     },
     _askFromForm(a) {
       if (!a || !a.on) return {};
@@ -289,6 +293,9 @@ document.addEventListener('alpine:init', () => {
         out.choices = a.choices.map(c => c.reply
           ? { label: c.label, then: c.then, reply: true }
           : { label: c.label, then: c.then });
+      }
+      if (a.send_to && a.send_to.to === 'device') {
+        out.send_to = { type: 'device', ids: [...a.send_to.ids] };
       }
       return out;
     },
