@@ -26,8 +26,12 @@ import re
 import time
 from typing import Any
 
+from franklinwh_ha_notify import NO, YES, Button, Event, Target
+
+from . import actionable
 from . import alerts
 from . import site_time
+from . import state as _state
 from . import ha_instances
 from . import resilience
 
@@ -652,7 +656,7 @@ _PORTABLE_KEYS = ("name", "enabled", "fire_at", "duration_min", "match",
                   "conditions", "exit_conditions",
                   "exit_match", "action", "ha_actions",
                   "days", "months", "day_of_month", "start_date", "end_date", "priority", "conflict",
-                  "trigger_type", "windows", "interval_min", "anchor", "cron")
+                  "trigger_type", "windows", "interval_min", "anchor", "cron", "ask")
 
 
 def portable(entry: dict) -> dict[str, Any]:
@@ -903,6 +907,7 @@ def validate_spec(entry: dict) -> list[str]:
     for label, key in (("condition", "conditions"), ("exit condition", "exit_conditions")):
         errors += _condition_errors(entry.get(key) or [], label)
     errors += _action_errors(entry.get("action") or {})
+    errors += _ask_errors(entry.get("ask") or {})
     for i, ha in enumerate(entry.get("ha_actions") or [], 1):
         errors += [f"HA action {i}: {e}" for e in _ha_action_errors(ha)]
     return errors
@@ -990,6 +995,22 @@ def _action_errors(action: dict) -> list[str]:
         v = _num(action.get(k))
         if action.get(k) not in (None, "") and (v is None or not 0 <= v <= 100):
             out.append(f"{k} must be 0 to 100")
+    return out
+
+
+def _ask_errors(ask: Any) -> list[str]:
+    """The "Ask before continuing" step: empty means the schedule has none."""
+    if not isinstance(ask, dict):
+        return ["ask must be an object"]
+    if not ask:
+        return []
+    out: list[str] = []
+    if not str(ask.get("question") or "").strip():
+        out.append("ask before continuing needs a question")
+    if not _is_int(ask.get("timeout_min"), lo=1):
+        out.append("ask before continuing: the wait must be 1 minute or more")
+    if ask.get("if_no_reply") not in ("continue", "skip"):
+        out.append("ask before continuing: if no reply must be continue or skip")
     return out
 
 
@@ -2321,7 +2342,7 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
         if ok and exit_now:
             ok, reason = False, "exit condition already holds"
         # 'always' fires on the rising edge only, not every tick while its conditions hold.
-        if ok and tt == "always" and was_inside:
+        if ok and tt == "always" and was_inside and not _asking(dkey, wkey):
             ok, reason = False, "already active"
         if not ok:
             mon[entry["id"]] = _monitor_state(entry, reason, snapshot, effective_inside,
@@ -2462,6 +2483,20 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                 mon[entry["id"]] = ("retrying", f"{n} attempt(s); last: "
                                     f"{occ.get('reason') or 'failed'}; next try in {wait:.0f}s")
                 continue                       # backing off; the window is still open
+        if entry.get("ask"):
+            step, detail = _ask_step(entry, store=store, gateway_id=gateway_id, now=now)
+            if step == "wait":
+                mon[entry["id"]] = ("holding", detail)
+                continue
+            if step == "skip":
+                if occ is not None:
+                    store.finish_occurrence(occ["id"], status="skipped", reason=detail)
+                store.mark_schedule_fired(entry["id"], entry.get("_wkey")
+                                          or now.date().isoformat(), detail)
+                mon[entry["id"]] = ("skipped", detail)
+                continue
+        if occ is not None:
+            now_ts = now.timestamp()
             entry["_occ_id"] = occ["id"]
             entry["_occ_attempts"] = int(occ.get("attempts") or 0) + 1
             store.occurrence_attempt(occ["id"], now=now_ts)
@@ -2478,6 +2513,8 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                                     entry.get("id"), e)
         res = _fire_entry(entry, settings=settings, client=client, store=store,
                           snapshot=snapshot, host=host, gateway_id=gateway_id, now=now)
+        if entry.get("ask"):
+            _asks[f"{gateway_id or ''}:{entry['id']}"]["open"] = False
         fired.append(res)
         mon[entry["id"]] = (("running", f"fired: {res.get('result')}") if res.get("ok")
                             else ("retrying", f"attempt {int(entry.get('_occ_attempts') or 1)}"
@@ -2496,6 +2533,8 @@ def _monitor_state(entry: dict, reason: str, snapshot: dict, inside: bool,
     if reason in ("already fired this occurrence", "already active"):
         if str(entry.get("last_result") or "").startswith("deferred"):
             return "skipped", "deferred this occurrence: another rule or dispatch held the target"
+        if "skipped this run" in str(entry.get("last_result") or ""):
+            return "skipped", entry["last_result"]          # Ask before continuing (#374 P4)
         if inside and not exit_now:
             return "running", ("fired; the exit conditions are not met yet"
                                if entry.get("exit_conditions") else "fired; the window is open")
@@ -2822,3 +2861,90 @@ def _fire_entry(entry: dict, *, settings, client, store, snapshot: dict,
             "It is retried while its window is open.")
     return {"id": entry["id"], "name": entry["name"], "result": summary,
             "ok": ok_all}
+
+
+# ── "Ask before continuing" (#374 P4) ─────────────────────────────────────────
+ASK_EVENT = "schedule_ask"
+actionable.templates().register(Event(
+    ASK_EVENT, "{schedule} ({gateway})", "{question}", variables=("schedule", "question"),
+    description="A schedule's Ask before continuing step"))
+
+#: The question asked for each schedule's current run, keyed like the window state
+#: (gateway:schedule). The answer's future runs on the Notifier's event loop; the tick only
+#: checks whether it is done, so a schedule waiting for a reply never holds up the others.
+#: ``open`` stays True until the answer has been acted on.
+_asks: dict[str, dict] = {}
+
+
+def _asking(dkey: str, wkey: str | None) -> bool:
+    held = _asks.get(dkey)
+    return bool(held and held["wkey"] == wkey and held["open"])
+
+
+def _ask_targets(store) -> list[Target]:
+    """The enabled notification devices. Only ``mobile_app_*`` ones can show the buttons."""
+    return [Target(d["instance_id"], d["service"].removeprefix("notify."),
+                   d.get("alias") or d["service"])
+            for d in store.notify_devices() if d.get("enabled")]
+
+
+async def _ask(targets: list[Target], timeout_s: int, gateway: str, **values):
+    started = time.monotonic()
+    answer = await actionable.notifier().ask_and_wait(
+        ASK_EVENT, targets, [Button(YES, "Yes"), Button(NO, "No")],
+        timeout_s=timeout_s, gateway=gateway, **values)
+    return answer, time.monotonic() - started
+
+
+def _ask_step(entry: dict, *, store, gateway_id: str | None,
+              now: dt.datetime) -> tuple[str, str]:
+    """``("wait" | "fire" | "skip", why)`` for a schedule with an Ask before continuing
+    step. Asks once per run; Yes runs the action, No skips this run, and no reply (or
+    nobody could be asked) follows the step's "if no reply" rule."""
+    ask = entry["ask"]
+    dkey = f"{gateway_id or ''}:{entry['id']}"
+    wkey = entry.get("_wkey") or now.date().isoformat()
+    timeout_min = int(ask["timeout_min"])
+    gid = gateway_id or ""
+    held = _asks.get(dkey)
+    if held is None or held["wkey"] != wkey:
+        gw = _state.get_gateway(gateway_id) if gateway_id else None
+        fut = actionable.submit(_ask(
+            _ask_targets(store), timeout_min * 60, getattr(gw, "label", None) or gid,
+            schedule=entry.get("name") or "", question=ask["question"]))
+        held = _asks[dkey] = {"wkey": wkey, "fut": fut, "open": True, "decided": None}
+        if fut is not None:
+            store.log_schedule_event(
+                entry["id"], entry["name"],
+                "asking", f"asked \"{ask['question']}\"; waiting up to {timeout_min} min "
+                f"for a reply", gateway_id=gid)
+    if held["decided"] is not None:
+        return held["decided"]
+    fut = held["fut"]
+    if fut is not None and not fut.done():
+        return "wait", f"asked; waiting up to {timeout_min} min for a reply"
+    answer = None
+    if fut is None:
+        why = "notifications are not running, so nobody could be asked"
+    else:
+        try:
+            answer, waited = fut.result()
+            why = (f"no reply in {timeout_min} min" if waited >= timeout_min * 60 - 1
+                   else "the question could not be delivered to any phone")
+        except Exception as e:  # noqa: BLE001 — recorded as a run nobody answered
+            why = f"the question could not be sent: {e}"
+    if answer is not None and answer.verb == YES:
+        step, detail = "fire", "answered Yes"
+    elif answer is not None and answer.verb == NO:
+        step, detail = "skip", "answered No: skipped this run"
+    elif ask["if_no_reply"] == "continue":
+        step, detail = "fire", f"{why}: continuing (if no reply: continue)"
+    else:
+        step, detail = "skip", f"{why}: skipped this run (if no reply: skip)"
+    held["decided"] = (step, detail)
+    if step == "skip":
+        held["open"] = False
+    store.log_schedule_event(entry["id"], entry["name"],
+                             "continuing" if step == "fire" else "skipped", detail,
+                             gateway_id=gid)
+    return step, detail

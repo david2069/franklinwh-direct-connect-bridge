@@ -695,6 +695,9 @@ class ScheduleReq(BaseModel):
     cron: str = ""
     action: dict = Field(default_factory=dict)
     ha_actions: list[dict] = Field(default_factory=list)
+    # "Ask before continuing" (#374 P4): {question, timeout_min, if_no_reply: continue|skip}.
+    # Empty = the schedule runs without asking.
+    ask: dict = Field(default_factory=dict)
 
 
 class ScheduleImportReq(BaseModel):
@@ -1026,6 +1029,10 @@ def create_app() -> FastAPI:
             # roster there is no id to give these, so none is made up from the host.
             log.error("gateway roster could not be read — no gateway is polled until it can "
                       "be (configured: %s)", ", ".join(h for h, _ in env_entries))
+        # Actionable notifications (#374): one tap listener per HA instance. Before the
+        # pollers and the VPP monitor, so their first pass can already ask (Release).
+        from . import actionable, notify_buttons  # noqa: F401 - registers the buttons
+        await actionable.start(db.get_store(s), s)
         if s.mqtt_enabled or metrics_active(s):
             gws = state.gateways()
             log.info("starting %d poller(s) (mqtt=%s, metrics=%s)",
@@ -2832,6 +2839,39 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=422, detail=f"no HA instance '{instance_id}'")
         return ha_instances.send_notification(
             inst["base_url"], inst.get("token"), service, req.title, req.message)
+
+    @app.post("/api/ha/notify-devices/test-buttons")
+    async def api_notify_device_test_buttons(req: NotifyTestReq):
+        """Send a Yes / No test to one saved device (#374). The answer comes back over
+        Home Assistant's WebSocket; read it with GET …/test-buttons/{request_id}."""
+        from . import actionable, notify_buttons
+        from franklinwh_ha_notify import Target
+        n = actionable.notifier()
+        if n is None:
+            raise HTTPException(503, "notifications with buttons are not running")
+        st = _ha_store()
+        dev = st.notify_device(req.device_id or "")
+        if dev is None:
+            raise HTTPException(404, f"no device '{req.device_id}'")
+        t = Target(dev["instance_id"], dev["service"].removeprefix("notify."), dev["alias"])
+        if not t.buttons:
+            return {"ok": False, "error": "this target cannot show buttons (only mobile_app_* can)"}
+        r = await n.ask(notify_buttons.TEST, [t], notify_buttons.yes_no(),
+                        ttl_s=notify_buttons.TEST_TTL_S)
+        if r is None:
+            return {"ok": False, "error": "not delivered (see the notification record)"}
+        return {"ok": True, "request_id": r.id, "ttl_s": notify_buttons.TEST_TTL_S}
+
+    @app.get("/api/ha/notify-devices/test-buttons/{request_id}")
+    def api_notify_device_test_buttons_answer(request_id: str):
+        """The tapped answer to a test, or none yet; ``expired`` once it can't come."""
+        from . import actionable
+        n = actionable.notifier()
+        r = n.requests.get(request_id) if n else None
+        if r is None:
+            raise HTTPException(404, "no such test")
+        return {"answer": r.answer.verb if r.answer else None,
+                "expired": r.answer is None and time.time() >= r.expires_at}
 
     @app.post("/api/ha/notify-devices/broadcast")
     def api_notify_broadcast(req: NotifyBroadcastReq):

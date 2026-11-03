@@ -8,7 +8,7 @@ def test_controls_are_published_with_command_topics():
     cfgs, state_topic, _ = entities.discovery_configs(
         "abc", {}, "franklinwh-local", "homeassistant")
     ctrl = {t: c for t, c in cfgs if "/select/" in t or "/switch/" in t}
-    assert len(ctrl) == 4, "operating mode + three smart circuits"
+    assert len(ctrl) == 5, "operating mode + three smart circuits + Go Off-Grid"
     for _t, c in ctrl.items():
         assert c["command_topic"].endswith("/set")
         assert c["state_topic"] == state_topic

@@ -1744,11 +1744,16 @@
                 <span x-show="dev.instance_missing" class="chip warn ml-1">instance missing</span>
                 <span x-show="dev.instance_disabled" class="chip warn ml-1">instance disabled</span>
               </div>
+              <div x-show="notif.rt[dev.id]" class="text-xs mt-0.5" data-testid="notify-rt"
+                   :class="{ok:'text-emerald-400', warn:'text-amber-400', danger:'text-red-400', info:'text-slate-400'}[(notif.rt[dev.id]||{}).kind]"
+                   x-text="(notif.rt[dev.id]||{}).text"></div>
             </div>
           </div>
           <div class="flex items-center gap-2 shrink-0">
             <button @click="editDevice(dev)" class="btn btn-secondary btn-sm">Edit</button>
             <button @click="testDevice(dev)" :disabled="notif.busy" class="btn btn-secondary btn-sm">Test</button>
+            <button x-show="dev.service.replace(/^notify\./, '').startsWith('mobile_app_')" @click="testButtons(dev)"
+                    class="btn btn-secondary btn-sm" title="Sends Yes / No buttons and shows which one you tap">Test with buttons</button>
             <button @click="deleteDevice(dev)" class="text-slate-500 hover:text-red-400" title="Remove"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>
           </div>
         </div>

@@ -12,7 +12,8 @@ import pytest
 from franklinwh_direct_connect_bridge import client, config, mockgw
 from franklinwh_direct_connect_bridge.publish import entities
 
-#: Every control's state key is now in the poll (C1 added the 1409 circuit read).
+#: Every control's state key is in the poll (C1 added the 1409 circuit read). Go Off-Grid's
+#: needs franklinwh-direct-connect-api 0.6.0, whose emulator answers 1723 with offgridSet.
 NOT_IN_POLL: set = set()
 
 

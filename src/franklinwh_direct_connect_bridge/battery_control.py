@@ -291,8 +291,13 @@ def reconcile_interrupted(store, host: str, policy: str, *, soc_getter=None,
         except Exception:                                       # noqa: BLE001
             pass
         if notify and policy != "none" and action != "recorded":
+            title = f"FranklinWH — scheduled dispatch {action}"
             try:
-                notify(action, detail, d.get("gateway_id"))
+                # Still forced and left alone: ask Release / Keep (#374), else plain.
+                from . import notify_buttons
+                if not (action == "notified" and forced
+                        and notify_buttons.ask_release(store, host, title, detail)):
+                    notify(action, detail, d.get("gateway_id"))
             except Exception:                                   # noqa: BLE001
                 pass
         results.append({"name": name, "action": action, "detail": detail})

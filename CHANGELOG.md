@@ -19,17 +19,6 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - A device whose Home Assistant instance is switched off is now left out of a send, so
   Recent notifications shows "(no devices)" when it was the only one, instead of a line
   per switched-off device.
-
-### Fixed
-- **The Push notifications switch now stops every notification** (#171). Trigger
-  notifications, VPP dispatch notices, scheduler Notify actions and Broadcast used to go
-  out while it was off. With it off they are recorded as not sent; Broadcast says
-  "Push notifications are off" in its dialog, and a scheduler Notify action records
-  "skipped: notifications are off".
-- **Notifications name the gateway** (#361). aGate offline and online, off-grid, SoC,
-  dispatch and reconcile notices, scheduler Notify actions, the firmware-updated notice
-  and Home Assistant alert notifications say which gateway, by its name rather than its
-  id. Recent notifications shows the gateway beside each line.
 - **Go off-grid and Reconnect keep their dialog open until the aGate answers** (#288). After
   OK, the dialog shows *Sent to the aGate* and then *aGate reports off-grid* (or on-grid)
   with a running timer, and ends with the result: "done in N s", the aGate's refusal, or
@@ -42,7 +31,40 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   catalogue, so a new aGate model is named once the library knows it. Rated amps, circuit
   count and vendor model name are not in the catalogue and stay in the bridge's table, which
   also answers when franklinwh-cloud is not installed. The five known models read the same.
+- **franklinwh-direct-connect-api 0.6.0** (was 0.5.x). Nothing the bridge uses changed. Its
+  mock aGate now answers the off-grid read (1723), so the Go Off-Grid switch has a state
+  on a mock gateway too.
+### Fixed
+- **The Push notifications switch now stops every notification** (#171). Trigger
+  notifications, VPP dispatch notices, scheduler Notify actions and Broadcast used to go
+  out while it was off. With it off they are recorded as not sent; Broadcast says
+  "Push notifications are off" in its dialog, and a scheduler Notify action records
+  "skipped: notifications are off".
+- **Notifications name the gateway** (#361). aGate offline and online, off-grid, SoC,
+  dispatch and reconcile notices, scheduler Notify actions, the firmware-updated notice
+  and Home Assistant alert notifications say which gateway, by its name rather than its
+  id. Recent notifications shows the gateway beside each line.
 ### Added
+- **Buttons on notifications** (#374). On a phone with the Home Assistant Companion app:
+  - a force still running when the bridge starts (one it did not start, or one a restart
+    interrupted) comes with **Release** and **Keep**. Release does what the top-bar
+    Release does, on that aGate.
+  - bridge alerts now also go to your notification devices, with **Acknowledge**. An
+    "aGate unreachable" alert also has **Re-discover**, which looks for the aGate on the
+    network at once instead of waiting for the next scheduled search.
+  - Settings → Companion Devices has **Test with buttons** on each phone. It sends Yes / No
+    and shows on that row which one you tapped, or that no reply came within 2 minutes.
+
+  Where a phone can show buttons, the notification with buttons replaces the plain one, so
+  you get one message, not two. Buttons expire (15 minutes for Release, 1 hour for alerts)
+  and work once; every tap and its result is in the notification record.
+- **Schedules can ask before they run** (#374). Turn on *Ask before continuing* in a
+  schedule and set a question, how long to wait for a reply, and what to do if nobody
+  answers. When the schedule is due, your enabled notification devices get the question
+  with **Yes** and **No** (only phones with the Home Assistant Companion app show the
+  buttons). Yes runs the action, No skips this run, and no reply follows your choice:
+  continue or skip. The schedule's log and run history say which happened and why. Other
+  schedules keep running while one waits for an answer.
 - **Groundwork for notifications with buttons** (#374). The bridge now uses the shared
   franklinwh-ha-notify package. It keeps one connection to each Home Assistant
   instance for button taps, opened when the bridge starts and over Home Assistant's
@@ -58,6 +80,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   Ethernet 0, Ethernet 1, WiFi or 4G, from the network read the bridge already makes
   (`currentNetType`). The aGate switches links on its own, so this is what it's using, not
   a setting.
+- **Home Assistant: Go Off-Grid switch** (#386). On islands the house and Off reconnects it.
+  It's the same 1723 write as Control → Off-grid, with that route's default off-grid floor
+  (5 %), and no confirm step: in HA, the switch is the explicit action (owner, 2026-11-03).
+  The switch shows what was requested (1723 `offgridSet`), so a grid outage islands the
+  house with the switch still off. Grid Status says which it is: SimulatedOffGrid or Outage.
 
 ## [0.5.26] — 2026-11-03
 

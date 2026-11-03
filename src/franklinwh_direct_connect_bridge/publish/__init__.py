@@ -29,6 +29,14 @@ def handle_command(key: str, payload: str, *, settings, client, store=None,
         return (f"circuit {circuit} -> {'on' if on else 'off'}: "
                 f"{'confirmed' if out.get('confirmed') else 'NOT confirmed'}")
 
+    if key == "off_grid":
+        # 1723, the same write as POST /api/offgrid. The off-grid floor is that route's
+        # default; HA has no field for it.
+        on = payload.upper() == "ON"
+        out = client.set_offgrid(settings, on, host=host)
+        return (f"off-grid -> {'go off-grid' if on else 'reconnect'}: "
+                f"{'accepted' if out.get('ok') else out}")
+
     if key.startswith("reserve_soc_"):
         from .. import providers
         mode = key.removeprefix("reserve_soc_")

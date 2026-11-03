@@ -2,7 +2,8 @@
 
 In the HA add-on, the supervisor injects ``SUPERVISOR_TOKEN`` and proxies the core API at
 ``http://supervisor/core/api`` — zero user config. Standalone can set ``ha_url``/``ha_token``.
-No actionable/interactive notifications (kept simple on purpose).
+These have no buttons. Phone pushes, with or without buttons, go through the one
+franklinwh-ha-notify Notifier in ``actionable`` (#374).
 """
 
 from __future__ import annotations
