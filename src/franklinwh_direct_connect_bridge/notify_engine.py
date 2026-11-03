@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from franklinwh_ha_notify import Event
 
@@ -35,8 +36,13 @@ DEFAULT_TRIGGERS: dict = {
 def config(store) -> dict:
     """Merged config: stored overrides on top of DEFAULT_TRIGGERS. Always well-formed."""
     cfg = {"master": True, "triggers": {k: dict(v) for k, v in DEFAULT_TRIGGERS.items()}}
+    for t in cfg["triggers"].values():
+        t["target"] = dict(ALL)
     if store is None:
         return cfg
+    for key, target in store.alert_targets().items():
+        if key in cfg["triggers"]:
+            cfg["triggers"][key]["target"] = target
     try:
         raw = store.get_config(CONFIG_KEY)
         saved = json.loads(raw) if raw else {}
@@ -64,6 +70,12 @@ def set_config(store, cfg: dict) -> dict:
                 merged["triggers"][key]["enabled"] = sv["enabled"]
             if "threshold" in merged["triggers"][key] and isinstance(sv.get("threshold"), (int, float)):
                 merged["triggers"][key]["threshold"] = max(0, min(100, sv["threshold"]))
+    for key, sv in (cfg.get("triggers") or {}).items():
+        if key in merged["triggers"] and isinstance(sv, dict) and "target" in sv:
+            target = valid_target(sv["target"])
+            merged["triggers"][key]["target"] = target
+            if store is not None:
+                store.set_alert_target(key, target)
     if store is not None:
         store.set_config(CONFIG_KEY, json.dumps({
             "master": merged["master"],
@@ -71,6 +83,37 @@ def set_config(store, cfg: dict) -> dict:
                          for k, v in merged["triggers"].items()},
         }))
     return merged
+
+
+#: A trigger's target (#281), as agreed with the Modbus bridge: ``{"type": "all"}``,
+#: ``{"type": "device", "ids": [device id, ...]}`` or ``{"type": "role", "role": ...}``.
+#: This bridge has no users, so it takes device and all only; all is the default.
+ALL = {"type": "all"}
+KINDS = ("phone", "tablet", "tv", "speaker", "other")
+
+
+def valid_target(target) -> dict:
+    """The target as stored, or ValueError for one this bridge can't send to."""
+    if not isinstance(target, dict) or target.get("type") not in ("all", "device"):
+        raise ValueError("a target is {type: all} or {type: device, ids: [...]}")
+    if target["type"] == "all":
+        return dict(ALL)
+    ids = target.get("ids")
+    if not isinstance(ids, list) or not ids or not all(isinstance(i, str) for i in ids):
+        raise ValueError("a device target names at least one device id")
+    return {"type": "device", "ids": ids}
+
+
+def kind_of(service: str, name: str = "") -> str:
+    """A device's kind from its notify service and HA name, for its icon. The user can
+    change it."""
+    words = set(re.split(r"[^a-z0-9]+", f"{service} {name}".lower()))
+    for kind, hints in (("tablet", {"tablet", "ipad", "tab"}),
+                        ("tv", {"tv", "shield", "chromecast", "firestick"}),
+                        ("speaker", {"speaker", "echo", "alexa", "homepod", "sonos", "nest"})):
+        if words & hints:
+            return kind
+    return "phone" if service.removeprefix("notify.").startswith("mobile_app_") else "other"
 
 
 def _enabled(cfg: dict, key: str) -> bool:
@@ -164,6 +207,11 @@ def fire(store, event: str, *, gateway: str | None = None, cfg: dict | None = No
     # device receives it: with no companion devices it was recorded nowhere else.
     _, message = actionable.templates().render(event, gateway=gateway or "", **values)
     (log.info if event == "test" else log.warning)("notify [%s]: %s", event, message)
+    target = (cfg.get("triggers") or {}).get(trigger, {}).get("target") or ALL
+    if device_ids is None and target["type"] == "device":
+        # A switched-off device stays off for its triggers too.
+        on = {d["id"] for d in store.notify_devices() if d.get("enabled")}
+        device_ids = [i for i in target["ids"] if i in on]
     try:
         res = actionable.send(store, event, gateway=gateway, device_ids=device_ids, **values)
     except Exception as e:  # noqa: BLE001 — a notification never breaks its caller

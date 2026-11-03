@@ -882,7 +882,38 @@ class MetricsStore:
                    created_at REAL NOT NULL DEFAULT 0,
                    updated_at REAL NOT NULL DEFAULT 0)"""
         )
+        # #281 device shape: `kind` sets the row's icon; `user_id` is for the users and
+        # roles a later release adds, unused until then.
+        cols = [r[1] for r in self._conn.execute("PRAGMA table_info(notify_devices)")]
+        if "kind" not in cols:
+            self._conn.execute(
+                "ALTER TABLE notify_devices ADD COLUMN kind TEXT NOT NULL DEFAULT 'other'")
+        if "user_id" not in cols:
+            self._conn.execute("ALTER TABLE notify_devices ADD COLUMN user_id TEXT")
+        # Who each trigger (or, later, alert code) notifies (#281):
+        # {"type": "all"} | {"type": "device", "ids": [...]} | {"type": "role", "role": ...}.
+        # No row means all devices.
+        self._conn.execute(
+            """CREATE TABLE IF NOT EXISTS alert_targets(
+                   code TEXT PRIMARY KEY,
+                   target_json TEXT NOT NULL)""")
         self._conn.commit()
+
+    def alert_targets(self) -> dict[str, dict]:
+        with self._lock:
+            rows = self._conn.execute("SELECT code, target_json FROM alert_targets").fetchall()
+        return {code: json.loads(t) for code, t in rows}
+
+    def set_alert_target(self, code: str, target: dict) -> None:
+        with self._lock:
+            if target.get("type") == "all":
+                self._conn.execute("DELETE FROM alert_targets WHERE code=?", (code,))
+            else:
+                self._conn.execute(
+                    "INSERT INTO alert_targets(code, target_json) VALUES (?,?) "
+                    "ON CONFLICT(code) DO UPDATE SET target_json=excluded.target_json",
+                    (code, json.dumps(target)))
+            self._conn.commit()
 
     def notify_devices(self) -> list[dict]:
         with self._lock:
@@ -896,19 +927,19 @@ class MetricsStore:
         return rows[0] if rows else None
 
     def create_notify_device(self, *, dev_id: str, alias: str, instance_id: str,
-                             service: str, enabled: bool = True,
+                             service: str, enabled: bool = True, kind: str = "other",
                              now: float | None = None) -> dict:
         ts = float(now if now is not None else time.time())
         with self._lock:
             self._conn.execute(
-                "INSERT INTO notify_devices(id,alias,instance_id,service,enabled,"
-                "created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
-                (dev_id, alias, instance_id, service, int(enabled), ts, ts))
+                "INSERT INTO notify_devices(id,alias,instance_id,service,enabled,kind,"
+                "created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)",
+                (dev_id, alias, instance_id, service, int(enabled), kind, ts, ts))
             self._conn.commit()
         return self.notify_device(dev_id)
 
     def update_notify_device(self, dev_id: str, **fields) -> dict | None:
-        allowed = {"alias", "instance_id", "service", "enabled"}
+        allowed = {"alias", "instance_id", "service", "enabled", "kind"}
         sets = {k: v for k, v in fields.items() if k in allowed and v is not None}
         if not sets:
             return self.notify_device(dev_id)

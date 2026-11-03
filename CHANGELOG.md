@@ -43,6 +43,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   count and vendor model name are not in the catalogue and stay in the bridge's table, which
   also answers when franklinwh-cloud is not installed. The five known models read the same.
 ### Added
+- **Notification targets** (#281). Each auto-notify trigger has a "Send to" drop-down:
+  All devices (the default) or one chosen device. **Send test** now opens a dialog to send
+  to all enabled devices or the ones you tick; with no devices it says so and offers
+  **+ Add device**, and the result stays in the dialog. Companion devices have a type
+  (phone, tablet, TV, speaker, other), shown as an icon with an On/Off label; Discover
+  suggests the type and shows each device by its Home Assistant name, and you can change
+  the type in the device dialog, which also asks you to send a test before saving.
 - **Groundwork for notifications with buttons** (#374). The bridge now uses the shared
   franklinwh-ha-notify package. It keeps one connection to each Home Assistant
   instance for button taps, opened when the bridge starts and over Home Assistant's

@@ -1599,7 +1599,7 @@
       <div class="flex items-center justify-between">
         <span class="metric-label">Auto-notify triggers <a :href="$store.app.guideUrl('ha-setup-and-notifications/#push-to-your-notification-devices')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
         <div class="flex gap-2">
-          <button class="btn btn-secondary btn-sm" @click="testTrigger()">Send test</button>
+          <button class="btn btn-secondary btn-sm" @click="openTestDialog()">Send test</button>
           <button class="btn btn-secondary btn-sm" @click="loadTriggers()">Refresh</button>
         </div>
       </div>
@@ -1615,6 +1615,15 @@
             </template>
             <span x-show="triggerStat(key)" class="text-[10px] text-slate-500" x-text="triggerStat(key)"></span>
           </span>
+          <!-- Who this trigger notifies (#281): all devices or one chosen device. -->
+          <select class="form-control form-control-sm w-36 ml-auto" data-testid="trigger-target"
+                  :value="triggerTargetValue(t)" @change="setTriggerTarget(key, $event.target.value)"
+                  title="Send to">
+            <option value="all">All devices</option>
+            <template x-for="d in notif.devices" :key="d.id">
+              <option :value="d.id" x-text="d.alias" :selected="triggerTargetValue(t) === d.id"></option>
+            </template>
+          </select>
           <button type="button" role="switch" :aria-checked="t.enabled" @click="toggleTrigger(key)"
                   class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0"
                   :class="t.enabled ? 'bg-emerald-500' : 'bg-slate-600'">
@@ -1737,6 +1746,17 @@
               <span class="inline-block h-4 w-4 rounded-full bg-white transition"
                     :class="dev.enabled ? 'translate-x-4' : 'translate-x-0.5'"></span>
             </button>
+            <span class="text-[11px] w-6 shrink-0" :class="dev.enabled ? 'text-emerald-400' : 'text-slate-500'"
+                  x-text="dev.enabled ? 'On' : 'Off'"></span>
+            <!-- An icon by kind (#281): phone, tablet, TV, speaker, other. -->
+            <svg class="w-5 h-5 shrink-0 text-slate-400" fill="none" stroke="currentColor" stroke-width="1.8"
+                 viewBox="0 0 24 24" :data-kind="dev.kind || 'other'" data-testid="device-kind-icon">
+              <path x-show="(dev.kind || 'other') === 'phone'" d="M8 2h8a1 1 0 011 1v18a1 1 0 01-1 1H8a1 1 0 01-1-1V3a1 1 0 011-1zm3 17h2"/>
+              <path x-show="dev.kind === 'tablet'" d="M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1zm6 15h2"/>
+              <path x-show="dev.kind === 'tv'" d="M3 5h18v11H3zM8 20h8M12 16v4"/>
+              <path x-show="dev.kind === 'speaker'" d="M7 2h10a1 1 0 011 1v18a1 1 0 01-1 1H7a1 1 0 01-1-1V3a1 1 0 011-1zm5 13a3 3 0 100-.01M12 6h.01"/>
+              <path x-show="(dev.kind || 'other') === 'other'" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0a3 3 0 11-6 0"/>
+            </svg>
             <div class="min-w-0">
               <div class="text-sm font-medium truncate" style="color:var(--text-primary)" x-text="dev.alias"></div>
               <div class="text-[11px] font-mono truncate text-slate-500">
@@ -1781,6 +1801,14 @@
               <option :value="inst.id" x-text="inst.name"></option>
             </template>
           </select></label>
+        <label class="text-xs text-slate-500 block">Type
+          <select class="form-control form-control-sm block mt-1 w-full" x-model="notif.addDev.kind" data-testid="device-kind">
+            <option value="phone">Phone</option>
+            <option value="tablet">Tablet</option>
+            <option value="tv">TV</option>
+            <option value="speaker">Speaker</option>
+            <option value="other">Other</option>
+          </select></label>
         <div>
           <div class="flex items-center justify-between">
             <span class="text-xs text-slate-500">Notify service</span>
@@ -1791,7 +1819,7 @@
           <div x-show="notif.pickerOpen" x-cloak class="mt-2 rounded border border-white/10 max-h-52 overflow-auto" style="background:var(--surface-1)">
             <input class="form-control form-control-sm w-full" x-model="notif.pickerSearch" placeholder="filter services…">
             <template x-for="opt in notifyPicker" :key="opt.service">
-              <button @click="chooseService(opt.service, opt.label)"
+              <button @click="chooseService(opt.service, opt.label, opt.kind)"
                       class="w-full text-left px-3 py-1.5 text-xs hover:bg-white/5">
                 <div class="flex justify-between gap-2">
                   <span x-text="opt.label"></span>
@@ -1816,12 +1844,61 @@
              class="text-xs rounded px-3 py-2 border"
              :style="notif.addDevMsg && ('color:var(--' + notif.addDevMsg.kind + ');border-color:var(--' + notif.addDevMsg.kind + ')')"
              x-text="notif.addDevMsg && notif.addDevMsg.text"></div>
+        <div class="text-[11px] text-slate-500" data-testid="test-before-save">Send a test notification to confirm this device receives alerts before saving</div>
         <div class="flex justify-between gap-2 pt-1">
           <button @click="testNewDevice()" :disabled="notif.busy" class="btn btn-secondary btn-sm">Send test</button>
           <div class="flex gap-2">
             <button @click="notif.addDev=null" class="btn btn-secondary btn-sm">Cancel</button>
             <button @click="saveDevice()" class="btn btn-primary btn-sm">Save</button>
           </div>
+        </div>
+      </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Send test: target picker (#281). With no devices it says so and offers + Add device. -->
+  <div x-show="notif.testDlg" x-cloak class="fixed inset-0 z-[110] flex items-center justify-center p-4"
+       @keydown.escape.window="notif.testDlg=null" data-testid="notify-test-dialog">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="notif.testDlg=null"></div>
+    <div class="relative w-full max-w-md rounded-xl border shadow-2xl"
+         style="background:var(--surface-0,#0f172a);border-color:var(--border)">
+      <div class="px-5 py-3 border-b flex items-center justify-between" style="border-color:var(--border)">
+        <div class="text-sm font-semibold" style="color:var(--text-primary)">Send a test notification</div>
+        <button class="text-slate-400 hover:text-slate-200" @click="notif.testDlg=null"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <template x-if="notif.testDlg">
+      <div class="px-5 py-4 space-y-3">
+        <template x-if="!notif.devices.length">
+          <div class="space-y-2" data-testid="notify-test-empty">
+            <div class="text-xs text-slate-500">No companion devices yet, so there is nowhere to send a test.</div>
+            <button @click="testDialogAddDevice()" :disabled="!notif.instances.length"
+                    class="btn btn-secondary btn-sm">+ Add device</button>
+          </div>
+        </template>
+        <template x-if="notif.devices.length">
+          <div class="space-y-2">
+            <label class="flex items-center gap-2 text-xs" style="color:var(--text-secondary)">
+              <input type="radio" value="all" x-model="notif.testDlg.to">
+              All enabled devices (<span x-text="notif.devices.filter(d=>d.enabled).length"></span>)</label>
+            <label class="flex items-center gap-2 text-xs" style="color:var(--text-secondary)">
+              <input type="radio" value="device" x-model="notif.testDlg.to"> Chosen devices</label>
+            <div x-show="notif.testDlg.to === 'device'" class="pl-5 space-y-1">
+              <template x-for="d in notif.devices" :key="d.id">
+                <label class="flex items-center gap-2 text-xs" style="color:var(--text-secondary)">
+                  <input type="checkbox" :value="d.id" x-model="notif.testDlg.ids">
+                  <span x-text="d.alias"></span>
+                  <span x-show="!d.enabled" class="chip muted" style="font-size:.55rem">off</span>
+                </label>
+              </template>
+            </div>
+          </div>
+        </template>
+        {{ dialog_msg('notif.testDlg?.msg') }}
+        <div class="flex justify-end gap-2">
+          <button @click="notif.testDlg=null" class="btn btn-secondary btn-sm">Close</button>
+          <button @click="testTrigger()" :disabled="notif.testDlg.sending || !notif.devices.length"
+                  class="btn btn-primary btn-sm" x-text="notif.testDlg.sending ? 'Sending…' : 'Send test'"></button>
         </div>
       </div>
       </template>

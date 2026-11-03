@@ -9,6 +9,7 @@ import re
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlparse
 
 import datetime as _dt
@@ -260,7 +261,11 @@ class RestoreReq(BaseModel):
 
 class NotifyTriggersBody(BaseModel):
     master: bool | None = None
-    triggers: dict | None = None        # {event: {enabled: bool, threshold?: int}}
+    triggers: dict | None = None        # {event: {enabled: bool, threshold?: int, target?: {}}}
+
+
+class NotifyTriggersTestReq(BaseModel):
+    device_ids: list[str] | None = None  # None: every enabled device
 
 
 class CallReq(BaseModel):
@@ -597,11 +602,15 @@ class HaTestReq(BaseModel):
     ha_id: str | None = None
 
 
+DeviceKind = Literal["phone", "tablet", "tv", "speaker", "other"]
+
+
 class NotifyDeviceCreate(BaseModel):
     alias: str
     instance_id: str
     service: str
     enabled: bool = True
+    kind: DeviceKind | None = None      # None: derived from the service (#281)
 
 
 class NotifyDeviceUpdate(BaseModel):
@@ -609,6 +618,7 @@ class NotifyDeviceUpdate(BaseModel):
     instance_id: str | None = None
     service: str | None = None
     enabled: bool | None = None
+    kind: DeviceKind | None = None
 
 
 class NotifyTestReq(BaseModel):
@@ -2713,6 +2723,9 @@ def create_app() -> FastAPI:
 
     @app.get("/api/ha/notify-targets")
     def api_ha_notify_targets(instance: str | None = Query(None)):
+        from franklinwh_ha_notify import friendly
+
+        from . import notify_engine
         """``notify.*`` services, optionally for ONE instance — these are services, not
         entities, so they never appear in an entity list.
 
@@ -2755,8 +2768,13 @@ def create_app() -> FastAPI:
                 base = re.sub(r"_\d+$", "", target)
                 dup = base if (base != target and base in services) else None
                 bases.setdefault(base, target)
+                # #281: the friendly name HA gives the device behind the service, else
+                # one made from the service id; and its kind, for the icon.
+                friendly_name = m.get("name") or friendly(target.removeprefix("notify."))
                 out.append({"instance_id": inst["id"], "instance": inst["name"],
                             "service": target, "name": m.get("name") or "",
+                            "friendly_name": friendly_name,
+                            "kind": notify_engine.kind_of(target, friendly_name),
                             "last_updated": m.get("last_updated"),
                             "duplicate_of": dup})
         return {"targets": out, "errors": errors}
@@ -2792,9 +2810,11 @@ def create_app() -> FastAPI:
         if st.ha_instance(req.instance_id) is None:
             raise HTTPException(status_code=422,
                                 detail=f"no HA instance '{req.instance_id}'")
+        from . import notify_engine
         return st.create_notify_device(
             dev_id=uuid.uuid4().hex[:12], alias=req.alias,
-            instance_id=req.instance_id, service=req.service, enabled=req.enabled)
+            instance_id=req.instance_id, service=req.service, enabled=req.enabled,
+            kind=req.kind or notify_engine.kind_of(req.service, req.alias))
 
     @app.patch("/api/ha/notify-devices/{dev_id}")
     def api_notify_device_update(dev_id: str, req: NotifyDeviceUpdate):
@@ -2870,7 +2890,10 @@ def create_app() -> FastAPI:
     def api_notify_triggers_put(req: NotifyTriggersBody):
         from . import notify_engine
         st = _ha_store()
-        cfg = notify_engine.set_config(st, req.model_dump(exclude_none=True))
+        try:
+            cfg = notify_engine.set_config(st, req.model_dump(exclude_none=True))
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
         return {"config": cfg}
 
     @app.get("/api/notify/log")
@@ -2879,14 +2902,23 @@ def create_app() -> FastAPI:
         return {"events": (st.notify_log(limit=limit, event=event) if st else [])}
 
     @app.post("/api/notify/triggers/test")
-    def api_notify_triggers_test():
-        """Fire a test notification through the engine (delivered + logged like a real one)."""
-        from . import notify_engine
+    def api_notify_triggers_test(req: NotifyTriggersTestReq | None = None):
+        """Fire a test notification through the engine (delivered + logged like a real one),
+        to the chosen devices or every enabled one (#281). The answer says how many it
+        went to and, when none, why: never a bare "sent to 0"."""
+        from . import actionable, notify_engine
         st = _ha_store()
         if st is None:
             raise HTTPException(status_code=503, detail="metrics store is off")
-        sent = notify_engine.fire(st, "test")
-        return {"ok": True, "sent": sent}
+        ids = req.device_ids if req else None
+        total = len(actionable.device_targets(st, ids))
+        if not total:
+            return {"ok": False, "sent": 0, "total": 0,
+                    "detail": "No device chosen" if ids is not None else "No devices are on"}
+        sent = notify_engine.fire(st, "test", device_ids=ids)
+        if not sent and not actionable.notifier().enabled():
+            return {"ok": False, "sent": 0, "total": total, "detail": "Push notifications are off"}
+        return {"ok": bool(sent), "sent": sent, "total": total}
 
     # ── scheduler ────────────────────────────────────────────────────────────
     # -- first-run setup wizard ----------------------------------------------
