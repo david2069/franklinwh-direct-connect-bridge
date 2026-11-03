@@ -18,6 +18,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   "No confirmation after 2 min" with a pointer to the top bar. Before, it closed on OK and a
   toast said only that the command was sent. Hide closes it early; the result then comes
   as a toast.
+### Added
+- **Home Assistant: Run Status Description** (diagnostic). Run Status is the bare code; this
+  says it in words as the FranklinWH cloud does: Standby, Charging, Discharging, Off-Grid
+  Standby / Charging / Discharging. It reads **VPP Mode** while the aGate runs programme 9,
+  the VPP signal; run_status keeps reporting the battery's direction under VPP. Run Status
+  itself is unchanged, so automations on the code keep working.
+- **Home Assistant: Cloud Connection Via** (diagnostic): the link the aGate is using now,
+  Ethernet 0, Ethernet 1, WiFi or 4G, from the network read the bridge already makes
+  (`currentNetType`). The aGate switches links on its own, so this is what it's using, not
+  a setting.
 
 ## [0.5.26] — 2026-11-03
 

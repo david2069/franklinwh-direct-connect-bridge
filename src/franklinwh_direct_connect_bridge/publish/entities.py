@@ -32,6 +32,9 @@ ENTITIES: list[dict[str, Any]] = [
     {"key": "load_today_kwh", "name": "Home Load Today", "unit": "kWh", "device_class": "energy", "state_class": "total_increasing", "group": "energy"},
     {"key": "ambient_temp_c", "name": "Ambient Temperature", "unit": "°C", "device_class": "temperature", "state_class": "measurement", "group": "diagnostic"},
     {"key": "run_status", "name": "Run Status", "unit": None, "device_class": None, "state_class": None, "group": "diagnostic"},
+    # The run status in words, as the FranklinWH cloud names it, except that VPP comes from the
+    # 1707 programme id (9), never from run_status (docs/RUN_STATUS_AND_MODE.md).
+    {"key": "run_status_desc", "name": "Run Status Description", "unit": None, "device_class": None, "state_class": None, "group": "diagnostic"},
     {"key": "battery_status", "name": "Battery State", "unit": None, "device_class": None, "state_class": None, "group": "power"},
     # aGate network (#134) — read every few minutes, not every poll. Diagnostic card.
     {"key": "net_in_use", "name": "Network In Use", "unit": None, "device_class": None, "state_class": None, "group": "diagnostic"},
@@ -46,6 +49,7 @@ ENTITIES: list[dict[str, Any]] = [
     {"key": "net_if_4g", "name": "4G Link", "unit": None, "device_class": None, "state_class": None, "group": "diagnostic"},
     {"key": "net_cloud", "name": "Cloud Connection", "unit": None, "device_class": None, "state_class": None, "group": "diagnostic"},
     {"key": "net_cloud_endpoint", "name": "Cloud Endpoint", "unit": None, "device_class": None, "state_class": None, "group": "diagnostic"},
+    {"key": "net_cloud_via", "name": "Cloud Connection Via", "unit": None, "device_class": None, "state_class": None, "group": "diagnostic"},
     # From reads every poll already makes (#386 batch 1). Slugs follow the Modbus Bridge
     # where it has the entity, else FWHAI.
     {"key": "status_grid_status", "name": "Grid Status", "unit": None, "device_class": "enum", "state_class": None, "group": "core",
@@ -251,6 +255,7 @@ def build_state(power: dict, health: dict) -> dict[str, Any]:
         "load_today_kwh": power.get("kwh_load"),
         "ambient_temp_c": power.get("t_amb"),
         "run_status": power.get("run_status"),
+        "run_status_desc": "VPP Mode" if power.get("vpp") else power.get("run_status_desc"),
         "battery_status": ("charging" if (power.get("p_fhp") or 0) < 0
                            else "discharging" if (power.get("p_fhp") or 0) > 0 else "standby"),
     }
