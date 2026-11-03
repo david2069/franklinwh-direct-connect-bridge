@@ -35,6 +35,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   mock aGate now answers the off-grid read (1723), so the Go Off-Grid switch has a state
   on a mock gateway too.
 ### Fixed
+- The button listener for Home Assistant started twice when the bridge started, leaving one
+  listener running with nothing tied to it. Found in the release test before 0.5.27 shipped;
+  no release had it.
 - **The Push notifications switch now stops every notification** (#171). Trigger
   notifications, VPP dispatch notices, scheduler Notify actions and Broadcast used to go
   out while it was off. With it off they are recorded as not sent; Broadcast says

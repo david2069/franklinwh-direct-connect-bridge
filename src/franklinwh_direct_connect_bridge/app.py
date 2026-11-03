@@ -1275,9 +1275,6 @@ def create_app() -> FastAPI:
         _sup_worker._task = _sup_task
         log.info("worker supervision active (%d workers registered)",
                  len(_workers.registry.all()))
-        # Actionable notifications (#374): one tap listener per HA instance.
-        from . import actionable
-        await actionable.start(db.get_store(s), s)
         try:
             yield
         finally:
