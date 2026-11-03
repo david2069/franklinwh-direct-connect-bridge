@@ -11,6 +11,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+- **franklinwh-modbus 0.10.1 → 0.13.0** for Battery Control. With 0.13.0, closing the Modbus
+  client after a force, release, status check or ratings read closes the TCP socket. Before,
+  the aGate's single Modbus session stayed held until garbage collection (franklinwh-modbus
+  #138). The bridge sends forces in watts, which 0.11.0 left unchanged; the bridge uses none
+  of the APIs that 0.11.0 and 0.13.0 change (percent forces, enum descriptions,
+  `check_state()`, `read_battery_status()`).
+
 ### Fixed
 - **Demo mode's mock aGates start again** (#427). `docker-compose.demo.yml` ran them on port
   9000, which franklinwh-direct-connect-api 0.5.1 and later refuse (9000 is reserved for a
