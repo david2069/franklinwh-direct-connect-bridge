@@ -11,6 +11,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+- **Schedule conditions: widen the sensor field and resize the sensor list, also with a
+  finger** (owner, 2026-11-04, on an iPad). A **⋮** grip just right of a condition's sensor
+  field drags it wider or narrower; every condition row follows, and a wider field moves
+  the rest of its row to the next line. The sensor list that opens from the field (and the
+  Lookup list) has a **◢** corner that drags it wider and taller, never smaller than its
+  default or past the dialog. This browser remembers both sizes. Applies to Entry
+  conditions and End early when…, including groups. Same as the Modbus Bridge scheduler.
+
 ### Fixed
 - **Logs on a phone**: each line stays on one row and the list swipes left and right, as in
   the other bridges. Before, the message column wrapped a few letters per line. From tablet
