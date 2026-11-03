@@ -362,6 +362,9 @@ def deliver(store, notifier, now: float | None = None) -> int:
         else:
             _next_try.pop(key, None)
             sent += 1
+            if service == "create":         # the same alert on the phones, with buttons (#374)
+                from . import notify_buttons
+                notify_buttons.ask_alert(store, row)
             log.info("alert #%s %s: Home Assistant notification %s", row["id"], row["code"],
                      "created" if service == "create" else "dismissed")
     return sent

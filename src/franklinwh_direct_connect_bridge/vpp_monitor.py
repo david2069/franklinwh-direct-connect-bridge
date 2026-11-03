@@ -116,7 +116,12 @@ def check(host: str, store, *, boot: bool = False, notify: bool = True,
         log.warning(msg)
         _log_event(store, "vpp-at-boot", msg)
         if notify:
-            notify_engine.fire(store, "dispatch", "FranklinWH — VPP dispatch active at startup", msg)
+            from . import notify_buttons
+            title = "FranklinWH — VPP dispatch active at startup"
+            # With Release / Keep buttons when a phone can show them (#374), else plain.
+            if not (notify_engine._enabled(notify_engine.config(store), "dispatch")
+                    and notify_buttons.ask_release(store, host, title, msg)):
+                notify_engine.fire(store, "dispatch", title, msg)
         return {"vpp": vpp, "changed": True, "event": "vpp-at-boot"}
 
     if prev is None:

@@ -543,7 +543,10 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                     # polls in a row AND its known address answers neither ping nor :9000.
                     # Then back off (5 → 10 → … 60 min) while it stays gone.
                     now = time.time()
-                    if fail_streak >= REDISCOVER_AFTER_FAILS and now >= next_sweep:
+                    # The Re-discover button (#374) skips the wait, not the address check.
+                    if ((fail_streak >= REDISCOVER_AFTER_FAILS and now >= next_sweep)
+                            or gw.rediscover_requested):
+                        gw.rediscover_requested = False
                         here = await asyncio.to_thread(client.still_at_address,
                                                      gw.active_host or gw.configured_host)
                         if here:

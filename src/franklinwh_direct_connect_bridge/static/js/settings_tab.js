@@ -50,6 +50,7 @@ function settingsTab() {
       targets: null, discovered: [], pickerOpen: false, pickerSearch: '',
       addInst: null,
       bc: null,
+      rt: {},                          // device id -> {kind, text}: the test-with-buttons round trip
     },
 
     // ── Support info bundle (redacted; for GitHub issues) ────────────────────
@@ -1187,6 +1188,26 @@ function settingsTab() {
         const j = await r.json();
         Alpine.store('app').toast(j.ok ? ('Sent to ' + dev.alias) : ('Failed: ' + (j.error || j.detail || 'error')), j.ok ? 'success' : 'error');
       } finally { this.notif.busy = false; }
+    },
+    // Yes / No test (#374): the tapped answer shows on the device's row and stays there.
+    async testButtons(dev) {
+      const say = (kind, text) => { this.notif.rt = { ...this.notif.rt, [dev.id]: { kind, text } }; };
+      say('info', 'Sending…');
+      try {
+        const r = await fetch('api/ha/notify-devices/test-buttons', { method: 'POST',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_id: dev.id }) });
+        const j = await r.json().catch(() => ({}));
+        if (!j.ok) { say('danger', 'Not sent: ' + (j.error || j.detail || 'HTTP ' + r.status)); return; }
+        say('info', 'Sent — tap Yes or No on ' + dev.alias + '…');
+        const until = Date.now() + (j.ttl_s || 120) * 1000 + 5000;
+        while (Date.now() < until) {
+          await new Promise(res => setTimeout(res, 2000));
+          const a = await (await fetch('api/ha/notify-devices/test-buttons/' + j.request_id)).json().catch(() => ({}));
+          if (a.answer) { say('ok', 'Round trip works: you tapped ' + (a.answer === 'YES' ? 'Yes' : 'No')); return; }
+          if (a.expired) break;
+        }
+        say('warn', 'No reply within ' + (j.ttl_s || 120) + ' s');
+      } catch (e) { say('danger', 'Test failed: ' + e.message); }
     },
     openAddDevice() {
       this.notif.addDev = { alias: '', instance_id: (this.notif.instances[0] || {}).id || '', service: '' };

@@ -7,8 +7,11 @@ switch is off. Taps arrive over each instance's authenticated WebSocket; nothing
 bridge accepts an unauthenticated call.
 
 Events and their handlers are registered by the features that use them
-(``notifier().templates.register(...)`` and ``notifier().on(...)``), at import time,
-before :func:`start` opens the listeners.
+(``templates().register(...)`` and :func:`on`), at import time, before :func:`start`
+opens the listeners.
+
+The Notifier lives on the app's event loop. A worker thread reaches it with
+:func:`submit`.
 """
 from __future__ import annotations
 
@@ -16,18 +19,43 @@ import asyncio
 import logging
 import sqlite3
 
-from franklinwh_ha_notify import HAInstance, Ledger, Notifier, Templates
+from franklinwh_ha_notify import HAInstance, Ledger, Notifier, Target, Templates
 
 log = logging.getLogger(__name__)
 
 _notifier: Notifier | None = None
 _loop: asyncio.AbstractEventLoop | None = None
 _templates = Templates()
+_handlers: dict = {}
 
 
 def templates() -> Templates:
     """The shared template registry. Usable before :func:`start`."""
     return _templates
+
+
+def on(event: str, handler) -> None:
+    """Register the handler for taps on ``event``'s buttons; applied by :func:`build`."""
+    _handlers[event] = handler
+
+
+def submit(coro):
+    """Run ``coro`` on the Notifier's event loop from a worker thread. Returns a
+    ``concurrent.futures.Future``, or None (and the coroutine is closed) when the
+    Notifier is not running."""
+    if _notifier is None or _loop is None or _loop.is_closed():
+        coro.close()
+        return None
+    return asyncio.run_coroutine_threadsafe(coro, _loop)
+
+
+def targets(store) -> list[Target]:
+    """The enabled notify devices in the store, on enabled HA instances, as targets."""
+    live = {r["id"] for r in store.ha_instances() if r.get("enabled", 1)}
+    return [Target(d["instance_id"], d["service"].removeprefix("notify."),
+                   d.get("alias") or d["service"])
+            for d in store.notify_devices()
+            if d.get("enabled") and d["instance_id"] in live]
 
 
 def _instances(store) -> dict[str, HAInstance]:
@@ -45,10 +73,14 @@ def _instances(store) -> dict[str, HAInstance]:
 
 
 def build(store, settings) -> Notifier:
-    """A Notifier over ``store``'s HA instances and ledger. No listeners started."""
+    """A Notifier over ``store``'s HA instances and ledger, with the registered
+    handlers. No listeners started."""
     conn = sqlite3.connect(store.path, check_same_thread=False)
-    return Notifier(_instances(store), Ledger(conn, create=False), _templates,
-                    enabled=lambda: bool(settings.ha_notify))
+    n = Notifier(_instances(store), Ledger(conn, create=False), _templates,
+                 enabled=lambda: bool(settings.ha_notify))
+    for event, handler in _handlers.items():
+        n.on(event, handler)
+    return n
 
 
 def notifier() -> Notifier | None:
@@ -61,9 +93,9 @@ async def start(store, settings) -> Notifier | None:
     global _notifier, _loop
     if store is None:
         return None
-    _loop = asyncio.get_running_loop()
     try:
         _notifier = build(store, settings)
+        _loop = asyncio.get_running_loop()
         _notifier.listen()
         log.info("actionable notifications: listening on %d Home Assistant instance(s)",
                  len(_notifier.instances))
@@ -71,16 +103,6 @@ async def start(store, settings) -> Notifier | None:
         log.error("actionable notifications could not start: %s", e)
         _notifier = None
     return _notifier
-
-
-def submit(coro):
-    """Run ``coro`` on the Notifier's event loop from another thread (the scheduler's
-    tick runs in one). Returns a ``concurrent.futures.Future``, or None (and ``coro`` is
-    closed) when the Notifier isn't running."""
-    if _notifier is None or _loop is None:
-        coro.close()
-        return None
-    return asyncio.run_coroutine_threadsafe(coro, _loop)
 
 
 async def stop() -> None:

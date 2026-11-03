@@ -310,7 +310,10 @@ Checked against the code on `main` (0.5.2). These do not exist today:
 - **No quiet hours, cooldown or rate limit.**
 - **No filter for phones.** The service list shows every `notify.*` service, not only
   `mobile_app_*`.
-- **No actionable notifications** (buttons in the notification). `notify.py` says so.
+- **Buttons on three notifications only** (#374): a force still running at start-up
+  (Release / Keep), bridge alerts (Acknowledge; Re-discover when the aGate is unreachable),
+  and **Test with buttons** on a phone's row. Only `notify.mobile_app_*` targets show
+  buttons. Other notifications are plain.
 - **No setup check for notifications.**
 - **No UI** for the persistent-notification target outside the add-on (`HA_URL`,
   `HA_TOKEN`; set them in the environment), and no button for the persistent-notification

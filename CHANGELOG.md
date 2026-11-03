@@ -25,6 +25,19 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   count and vendor model name are not in the catalogue and stay in the bridge's table, which
   also answers when franklinwh-cloud is not installed. The five known models read the same.
 ### Added
+- **Buttons on notifications** (#374). On a phone with the Home Assistant Companion app:
+  - a force still running when the bridge starts (one it did not start, or one a restart
+    interrupted) comes with **Release** and **Keep**. Release does what the top-bar
+    Release does, on that aGate.
+  - bridge alerts now also go to your notification devices, with **Acknowledge**. An
+    "aGate unreachable" alert also has **Re-discover**, which looks for the aGate on the
+    network at once instead of waiting for the next scheduled search.
+  - Settings → Companion Devices has **Test with buttons** on each phone. It sends Yes / No
+    and shows on that row which one you tapped, or that no reply came within 2 minutes.
+
+  Where a phone can show buttons, the notification with buttons replaces the plain one, so
+  you get one message, not two. Buttons expire (15 minutes for Release, 1 hour for alerts)
+  and work once; every tap and its result is in the notification record.
 - **Schedules can ask before they run** (#374). Turn on *Ask before continuing* in a
   schedule and set a question, how long to wait for a reply, and what to do if nobody
   answers. When the schedule is due, your enabled notification devices get the question
