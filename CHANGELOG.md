@@ -18,6 +18,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   "No confirmation after 2 min" with a pointer to the top bar. Before, it closed on OK and a
   toast said only that the command was sent. Hide closes it early; the result then comes
   as a toast.
+- **franklinwh-cloud 0.6.4 → 0.6.5** (the `cloud` extra, installed in the add-on). 0.6.5
+  ships its device catalogue in the wheel; before, it was only in a source checkout. The
+  aGate model, SKU and country in the System view and support bundle now come from that
+  catalogue, so a new aGate model is named once the library knows it. Rated amps, circuit
+  count and vendor model name are not in the catalogue and stay in the bridge's table, which
+  also answers when franklinwh-cloud is not installed. The five known models read the same.
 ### Added
 - **Home Assistant: Run Status Description** (diagnostic). Run Status is the bare code; this
   says it in words as the FranklinWH cloud does: Standby, Charging, Discharging, Off-Grid
