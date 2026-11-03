@@ -19,7 +19,7 @@ dependencies = [
     # PyPI, so an unpinned dependency served 0.4.0 and adding a mock gateway failed
     # with TypeError (2026-10-15). mockgw degrades rather than failing now, but the
     # pin is what actually makes the feature available.
-    "franklinwh-direct-connect-api>=0.5",
+    "franklinwh-direct-connect-api>=0.6",
     # Pinned (#219): an unpinned >=0.9 put every new library release into users' builds
     # untested (0.9.6 and 0.10.0 in two days). 0.9.6 is the version G2 ran on (0.5.9,
     # reference aGate, 2026-10-18). Move the pin only after G0 + G1 (+ G2 for force paths).
@@ -45,7 +45,7 @@ test = ["pytest>=8.0", "httpx>=0.27"]
 # install silently lost reserve-SoC write.
 # Pinned (#254): an open range put each release into the image untested. 0.6.0 adds the
 # typed login errors, resolve_gateway and Client.aclose() that the bridge now relies on.
-cloud = ["franklinwh-cloud==0.6.4"]
+cloud = ["franklinwh-cloud==0.6.5"]
 
 [project.scripts]
 franklinwh-direct-connect-bridge = "franklinwh_direct_connect_bridge.cli:main"

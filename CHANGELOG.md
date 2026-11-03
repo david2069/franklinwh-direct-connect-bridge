@@ -11,7 +11,32 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+- **Go off-grid and Reconnect keep their dialog open until the aGate answers** (#288). After
+  OK, the dialog shows *Sent to the aGate* and then *aGate reports off-grid* (or on-grid)
+  with a running timer, and ends with the result: "done in N s", the aGate's refusal, or
+  "No confirmation after 2 min" with a pointer to the top bar. Before, it closed on OK and a
+  toast said only that the command was sent. Hide closes it early; the result then comes
+  as a toast.
+- **franklinwh-cloud 0.6.4 → 0.6.5** (the `cloud` extra, installed in the add-on). 0.6.5
+  ships its device catalogue in the wheel; before, it was only in a source checkout. The
+  aGate model, SKU and country in the System view and support bundle now come from that
+  catalogue, so a new aGate model is named once the library knows it. Rated amps, circuit
+  count and vendor model name are not in the catalogue and stay in the bridge's table, which
+  also answers when franklinwh-cloud is not installed. The five known models read the same.
+- **franklinwh-direct-connect-api 0.6.0** (was 0.5.x). Nothing the bridge uses changed. Its
+  mock aGate now answers the off-grid read (1723), so the Go Off-Grid switch has a state
+  on a mock gateway too.
 ### Added
+- **Home Assistant: Run Status Description** (diagnostic). Run Status is the bare code; this
+  says it in words as the FranklinWH cloud does: Standby, Charging, Discharging, Off-Grid
+  Standby / Charging / Discharging. It reads **VPP Mode** while the aGate runs programme 9,
+  the VPP signal; run_status keeps reporting the battery's direction under VPP. Run Status
+  itself is unchanged, so automations on the code keep working.
+- **Home Assistant: Cloud Connection Via** (diagnostic): the link the aGate is using now,
+  Ethernet 0, Ethernet 1, WiFi or 4G, from the network read the bridge already makes
+  (`currentNetType`). The aGate switches links on its own, so this is what it's using, not
+  a setting.
 - **Home Assistant: Go Off-Grid switch** (#386). On islands the house and Off reconnects it.
   It's the same 1723 write as Control → Off-grid, with that route's default off-grid floor
   (5 %), and no confirm step: in HA, the switch is the explicit action (owner, 2026-11-03).
