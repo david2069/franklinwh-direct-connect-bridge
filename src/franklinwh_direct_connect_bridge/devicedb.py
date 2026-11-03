@@ -99,12 +99,37 @@ FLEET_LIMITS: dict[str, dict[str, Any]] = {
 }
 
 
-def gateway(sy_hd_version: Any) -> dict[str, Any] | None:
-    """Look up a gateway model. Unknown ids return ``None`` — never a guess."""
+def _cloud_agate(gid: int) -> dict[str, Any] | None:
+    """The aGate row from franklinwh-cloud's device catalogue (0.6.5+ ships it), or
+    ``None`` when the optional library or the id is missing."""
     try:
-        return GATEWAYS.get(int(sy_hd_version))
+        from franklinwh_cloud.discovery import get_catalog
+        cat = get_catalog()
+    except Exception:  # noqa: BLE001 - optional extra; fall back to GATEWAYS
+        return None
+    row = (cat.get("agate_models") or {}).get(str(gid))
+    if not row:
+        return None
+    country = ((cat.get("countries") or {}).get(str(row.get("country_id"))) or {}).get("code")
+    return {"model": row.get("model"), "sku": row.get("sku"), "country": country}
+
+
+def gateway(sy_hd_version: Any) -> dict[str, Any] | None:
+    """Look up a gateway model. Unknown ids return ``None`` — never a guess.
+
+    Model, SKU and country come from franklinwh-cloud's catalogue when it is installed,
+    so a new aGate model is named as soon as the library knows it. ``amps``,
+    ``circuits`` and ``vendor_model`` are not in the catalogue and stay in GATEWAYS."""
+    try:
+        gid = int(sy_hd_version)
     except (TypeError, ValueError):
         return None
+    local = GATEWAYS.get(gid)
+    cloud = _cloud_agate(gid)
+    if cloud is None:
+        return local
+    return {**{"amps": None, "circuits": None, "vendor_model": None}, **(local or {}),
+            **{k: v for k, v in cloud.items() if v is not None}}
 
 
 def compatible(sy_hd_version: Any, kind: str | None = None) -> list[dict[str, Any]]:
