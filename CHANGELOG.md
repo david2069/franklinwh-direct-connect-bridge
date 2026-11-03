@@ -25,6 +25,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   count and vendor model name are not in the catalogue and stay in the bridge's table, which
   also answers when franklinwh-cloud is not installed. The five known models read the same.
 ### Added
+- **Schedules can ask before they run** (#374). Turn on *Ask before continuing* in a
+  schedule and set a question, how long to wait for a reply, and what to do if nobody
+  answers. When the schedule is due, your enabled notification devices get the question
+  with **Yes** and **No** (only phones with the Home Assistant Companion app show the
+  buttons). Yes runs the action, No skips this run, and no reply follows your choice:
+  continue or skip. The schedule's log and run history say which happened and why. Other
+  schedules keep running while one waits for an answer.
 - **Groundwork for notifications with buttons** (#374). The bridge now uses the shared
   franklinwh-ha-notify package. It keeps one connection to each Home Assistant
   instance for button taps, opened when the bridge starts and over Home Assistant's

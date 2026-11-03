@@ -658,6 +658,34 @@
            x-text="(actions[form.action.kind] || {}).note"></p>
       </div>
 
+      <!-- Ask before continuing (#374 P4): Yes / No on the enabled notification devices -->
+      <div class="rounded-lg border p-3 space-y-2" style="border-color:var(--border)">
+        <label class="flex items-center gap-2 text-xs font-semibold" style="color:var(--text-secondary)">
+          <input type="checkbox" x-model="form.ask.on" data-testid="ask-on">
+          Ask before continuing
+        </label>
+        <div x-show="form.ask.on" class="space-y-2">
+          <p class="text-xs" style="color:var(--text-secondary)">
+            Before the action runs, the enabled notification devices get this question
+            with Yes and No. Yes runs it, No skips this run. Only Home Assistant
+            Companion apps (mobile_app) show the buttons.</p>
+          <label class="block text-xs" style="color:var(--text-secondary)">Question
+            <input class="form-control form-control-sm w-full mt-1" type="text"
+                   x-model="form.ask.question" data-testid="ask-question"></label>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="block text-xs" style="color:var(--text-secondary)">Wait for a reply (minutes)
+              <input class="form-control form-control-sm w-full mt-1" type="number" min="1"
+                     x-model.number="form.ask.timeout_min" data-testid="ask-timeout"></label>
+            <label class="block text-xs" style="color:var(--text-secondary)">If no reply
+              <select class="form-control form-control-sm w-full mt-1" x-model="form.ask.if_no_reply"
+                      data-testid="ask-no-reply">
+                <option value="skip">Skip this run</option>
+                <option value="continue">Continue</option>
+              </select></label>
+          </div>
+        </div>
+      </div>
+
       <!-- entry conditions (nestable ALL/ANY gate + Value|Lookup + Test Verify) -->
       <div class="rounded-lg border p-3 space-y-2" style="border-color:var(--border)">
         <div class="flex items-center justify-between flex-wrap gap-2">
