@@ -20,6 +20,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   enabled device. Each **Auto-notify trigger** in Settings can now go to several chosen
   devices, not just one; a trigger already sent to one device keeps it.
 
+### Fixed
+- **Schedule editor: no blank rows in the sensor list.** Once a condition had a sensor
+  chosen, every group heading in its drop list showed an empty row beneath it, so
+  **Ask before continuing** had a gap above its one sensor and **Automation Constants**
+  looked empty at the bottom of the view (owner, iPad, 2026-11-04). The highlight of the
+  chosen sensor replaced the style that hides the unused part of each row; it now sets
+  only its colour and weight.
+
 ## [0.5.28] — 2026-11-04
 
 ### Added

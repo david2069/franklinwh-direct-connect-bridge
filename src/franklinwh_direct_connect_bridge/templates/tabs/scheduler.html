@@ -803,7 +803,7 @@
                   <div class="max-h-60 overflow-y-auto py-1" data-testid="sensor-list-scroll" :style="condListScrollStyle()">
                     <template x-for="it in pickerItems(q)" :key="it.key"><div>
                       <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
-                      <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
+                      <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? { color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-primary)' }" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
                     </div></template>
                     <div x-show="!pickerItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No match.</div>
                   </div>
@@ -832,7 +832,7 @@
                   <div class="max-h-60 overflow-y-auto py-1" data-testid="sensor-list-scroll" :style="condListScrollStyle()">
                     <template x-for="it in pickerItems(q)" :key="it.key"><div>
                       <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
-                      <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
+                      <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? { color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-primary)' }" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
                     </div></template>
                     <div x-show="!pickerItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No match.</div>
                   </div>
@@ -925,7 +925,7 @@
                   <div class="max-h-60 overflow-y-auto py-1" data-testid="sensor-list-scroll" :style="condListScrollStyle()">
                     <template x-for="it in pickerItems(q)" :key="it.key"><div>
                       <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
-                      <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
+                      <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? { color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-primary)' }" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
                     </div></template>
                     <div x-show="!pickerItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No match.</div>
                   </div>
@@ -954,7 +954,7 @@
                   <div class="max-h-60 overflow-y-auto py-1" data-testid="sensor-list-scroll" :style="condListScrollStyle()">
                     <template x-for="it in pickerItems(q)" :key="it.key"><div>
                       <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
-                      <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
+                      <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? { color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-primary)' }" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
                     </div></template>
                     <div x-show="!pickerItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No match.</div>
                   </div>
@@ -1104,7 +1104,7 @@
                     <div class="max-h-60 overflow-y-auto py-1">
                       <template x-for="it in pickerItems(q)" :key="it.key"><div>
                         <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
-                        <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
+                        <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? { color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-primary)' }" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
                       </div></template>
                       <div x-show="!pickerItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No match.</div>
                     </div>
@@ -1131,7 +1131,7 @@
                     <div class="max-h-60 overflow-y-auto py-1">
                       <template x-for="it in pickerItems(q)" :key="it.key"><div>
                         <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
-                        <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
+                        <button x-show="it.kind==='sensor'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="obj[key]===it.id ? { color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-primary)' }" @click="obj[key]=it.id; open=false; q=''" x-text="it.label"></button>
                       </div></template>
                       <div x-show="!pickerItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No match.</div>
                     </div>
