@@ -1341,7 +1341,7 @@ function settingsTab() {
           headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: b.title, message: b.message }) });
         const j = await r.json();
         if (r.ok && j.sent) { this.notif.bc = null; Alpine.store('app').toast('Broadcast sent to ' + j.sent + ' of ' + j.total + ' device(s)', 'success'); }
-        else if (r.ok) { b.msg = { kind: 'warn', text: 'Sent to 0 of ' + j.total + ' device(s)' }; }
+        else if (r.ok) { b.msg = { kind: 'warn', text: j.detail || ('Sent to 0 of ' + j.total + ' device(s)') }; }
         else { b.msg = { kind: 'danger', text: 'Failed: ' + (j.detail || r.status) }; }
       } finally { if (this.notif.bc) b.sending = false; }
     },

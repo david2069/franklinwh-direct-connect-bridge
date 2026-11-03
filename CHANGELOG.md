@@ -12,6 +12,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Changed
+- **One path for phone notifications** (#374). Trigger notifications, VPP dispatch
+  notices, the restart reconcile notice, scheduler Notify actions and Broadcast now all go
+  through the same sender, and every send is recorded. Recent notifications reads that
+  record and still shows the notifications sent before this change.
+- A device whose Home Assistant instance is switched off is now left out of a send, so
+  Recent notifications shows "(no devices)" when it was the only one, instead of a line
+  per switched-off device.
 - **Go off-grid and Reconnect keep their dialog open until the aGate answers** (#288). After
   OK, the dialog shows *Sent to the aGate* and then *aGate reports off-grid* (or on-grid)
   with a running timer, and ends with the result: "done in N s", the aGate's refusal, or
@@ -27,6 +34,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - **franklinwh-direct-connect-api 0.6.0** (was 0.5.x). Nothing the bridge uses changed. Its
   mock aGate now answers the off-grid read (1723), so the Go Off-Grid switch has a state
   on a mock gateway too.
+### Fixed
+- **The Push notifications switch now stops every notification** (#171). Trigger
+  notifications, VPP dispatch notices, scheduler Notify actions and Broadcast used to go
+  out while it was off. With it off they are recorded as not sent; Broadcast says
+  "Push notifications are off" in its dialog, and a scheduler Notify action records
+  "skipped: notifications are off".
+- **Notifications name the gateway** (#361). aGate offline and online, off-grid, SoC,
+  dispatch and reconcile notices, scheduler Notify actions, the firmware-updated notice
+  and Home Assistant alert notifications say which gateway, by its name rather than its
+  id. Recent notifications shows the gateway beside each line.
 ### Added
 - **Buttons on notifications** (#374). On a phone with the Home Assistant Companion app:
   - a force still running when the bridge starts (one it did not start, or one a restart

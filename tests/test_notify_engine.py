@@ -1,7 +1,7 @@
 """FEAT-NOTIFY — the configurable notification trigger engine + delivery log."""
 from fastapi.testclient import TestClient
 
-from franklinwh_direct_connect_bridge import notify_engine, ha_instances
+from franklinwh_direct_connect_bridge import notify_engine
 from franklinwh_direct_connect_bridge import app as app_module, config, environment, db
 from franklinwh_direct_connect_bridge.db import MetricsStore
 
@@ -13,23 +13,23 @@ def _snap(ok=True, off_grid=False, soc=50):
 # ── evaluate (pure transitions, gated by config) ─────────────────────────────
 def test_evaluate_fires_on_transitions_only():
     cfg = notify_engine.config(None)
-    assert notify_engine.evaluate("GW", _snap(), None, cfg) == []          # first pass: nothing
-    assert notify_engine.evaluate("GW", _snap(ok=True), _snap(ok=True), cfg) == []  # no change
-    offline = notify_engine.evaluate("GW", _snap(ok=False), _snap(ok=True), cfg)
-    assert offline and offline[0][0] == "aGate_offline" and "UNREACHABLE" in offline[0][2]
-    offgrid = notify_engine.evaluate("GW", _snap(off_grid=True), _snap(off_grid=False), cfg)
-    assert offgrid and offgrid[0][0] == "off_grid" and "OFF-GRID" in offgrid[0][2]
+    assert notify_engine.evaluate(_snap(), None, cfg) == []          # first pass: nothing
+    assert notify_engine.evaluate(_snap(ok=True), _snap(ok=True), cfg) == []  # no change
+    assert notify_engine.evaluate(_snap(ok=False), _snap(ok=True), cfg) == [("aGate_offline", {})]
+    assert notify_engine.evaluate(_snap(ok=True), _snap(ok=False), cfg) == [("aGate_online", {})]
+    assert notify_engine.evaluate(_snap(off_grid=True), _snap(off_grid=False), cfg) == [("off_grid", {})]
 
 
 def test_evaluate_soc_thresholds_and_gating():
     cfg = notify_engine.config(None)
     cfg["triggers"]["soc_low"]["enabled"] = True
     cfg["triggers"]["soc_low"]["threshold"] = 20
-    assert notify_engine.evaluate("", _snap(soc=18), _snap(soc=25), cfg)[0][0] == "soc_low"
-    assert notify_engine.evaluate("", _snap(soc=25), _snap(soc=18), cfg) == []   # rising: no fire
+    assert notify_engine.evaluate(_snap(soc=18), _snap(soc=25), cfg) == [
+        ("soc_low", {"threshold": 20, "soc": 18})]
+    assert notify_engine.evaluate(_snap(soc=25), _snap(soc=18), cfg) == []   # rising: no fire
     # master off silences everything
     cfg["master"] = False
-    assert notify_engine.evaluate("", _snap(ok=False), _snap(ok=True), cfg) == []
+    assert notify_engine.evaluate(_snap(ok=False), _snap(ok=True), cfg) == []
 
 
 # ── config persistence ────────────────────────────────────────────────────────
@@ -45,13 +45,13 @@ def test_config_roundtrip_and_threshold_clamp(tmp_path):
 
 
 # ── fire: delivery to devices + log + stats ──────────────────────────────────
-def test_fire_logs_per_device_and_respects_enable(tmp_path, monkeypatch):
+def test_fire_logs_per_device_and_respects_enable(tmp_path, fake_notifier):
     st = MetricsStore(str(tmp_path / "m.db"))
     st.create_ha_instance(ha_id="ha1", name="Home", base_url="http://ha", token="t")
     st.create_notify_device(dev_id="d1", alias="Phone", instance_id="ha1", service="notify.mobile")
-    monkeypatch.setattr(ha_instances, "send_notification", lambda *a, **k: {"ok": True})
+    fake_notifier(st)
 
-    sent = notify_engine.fire(st, "off_grid", "T", "M")
+    sent = notify_engine.fire(st, "off_grid", gateway="GW")
     assert sent == 1
     log = st.notify_log()
     assert log[0]["event"] == "off_grid" and log[0]["device"] == "Phone" and log[0]["ok"] == 1
@@ -60,7 +60,7 @@ def test_fire_logs_per_device_and_respects_enable(tmp_path, monkeypatch):
 
     # a disabled trigger delivers nothing
     notify_engine.set_config(st, {"triggers": {"off_grid": {"enabled": False}}})
-    assert notify_engine.fire(st, "off_grid", "T", "M") == 0
+    assert notify_engine.fire(st, "off_grid", gateway="GW") == 0
 
 
 # ── API ──────────────────────────────────────────────────────────────────────

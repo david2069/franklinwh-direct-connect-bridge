@@ -168,11 +168,11 @@ def test_interrupted_force_still_running_asks_release(monkeypatch):
         def log_schedule_event(self, *a, **k): pass
     monkeypatch.setattr(bc, "status", lambda host: {"vpp_active": True})
     monkeypatch.setattr(notify_buttons, "ask_release", lambda *a: asked.append(a) or True)
-    out = bc.reconcile_interrupted(St(), "h", "notify", notify=lambda t, m: plain.append(t))
+    out = bc.reconcile_interrupted(St(), "h", "notify", notify=lambda a, d, g: plain.append(a))
     assert out[0]["action"] == "notified"
     assert len(asked) == 1 and asked[0][1] == "h" and plain == []
     monkeypatch.setattr(notify_buttons, "ask_release", lambda *a: False)
-    bc.reconcile_interrupted(St(), "h", "notify", notify=lambda t, m: plain.append(t))
+    bc.reconcile_interrupted(St(), "h", "notify", notify=lambda a, d, g: plain.append(a))
     assert len(plain) == 1                                  # nothing went out: plain push
 
 

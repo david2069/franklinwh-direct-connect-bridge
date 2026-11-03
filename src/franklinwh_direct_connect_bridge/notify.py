@@ -2,7 +2,8 @@
 
 In the HA add-on, the supervisor injects ``SUPERVISOR_TOKEN`` and proxies the core API at
 ``http://supervisor/core/api`` — zero user config. Standalone can set ``ha_url``/``ha_token``.
-No actionable/interactive notifications (kept simple on purpose).
+These have no buttons. Phone pushes, with or without buttons, go through the one
+franklinwh-ha-notify Notifier in ``actionable`` (#374).
 """
 
 from __future__ import annotations
@@ -95,17 +96,19 @@ class Notifier:
             return str(e) or type(e).__name__
 
 
-def transitions(prev: dict | None, cur: dict) -> list[tuple[str, str]]:
-    """Notify only on state CHANGES (not every poll). Returns (title, message) pairs."""
+def transitions(prev: dict | None, cur: dict, gateway: str = "") -> list[tuple[str, str]]:
+    """Notify only on state CHANGES (not every poll). Returns (title, message) pairs, each
+    naming ``gateway`` (#361)."""
     if prev is None:
         return []
     out = []
+    tag = f" [{gateway}]" if gateway else ""
     if prev.get("ok") != cur.get("ok"):
         out.append(("FranklinWH aGate",
-                    "aGate is reachable again." if cur.get("ok")
-                    else "aGate is UNREACHABLE (check network / WiFi / power)."))
+                    f"aGate is reachable again{tag}." if cur.get("ok")
+                    else f"aGate is UNREACHABLE{tag} (check network / WiFi / power)."))
     if prev.get("modbus_502") != cur.get("modbus_502"):
         out.append(("FranklinWH Modbus",
-                    "Modbus :502 is back up." if cur.get("modbus_502")
-                    else "Modbus :502 is DOWN."))
+                    f"Modbus :502 is back up{tag}." if cur.get("modbus_502")
+                    else f"Modbus :502 is DOWN{tag}."))
     return out

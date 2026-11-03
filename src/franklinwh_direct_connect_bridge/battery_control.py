@@ -297,7 +297,7 @@ def reconcile_interrupted(store, host: str, policy: str, *, soc_getter=None,
                 from . import notify_buttons
                 if not (action == "notified" and forced
                         and notify_buttons.ask_release(store, host, title, detail)):
-                    notify(title, detail)
+                    notify(action, detail, d.get("gateway_id"))
             except Exception:                                   # noqa: BLE001
                 pass
         results.append({"name": name, "action": action, "detail": detail})

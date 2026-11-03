@@ -1,8 +1,7 @@
 """FEAT-NOTIFY — a configurable notification TRIGGER engine on the companion-push path.
 
-The bridge already had two notify channels: a persistent-notification ``Notifier`` (core HA)
-and per-device companion push (``ha_instances.send_notification``, used by the VPP monitor +
-broadcast). This adds the missing piece the Energipays bridge has: user-configurable TRIGGERS
+Companion push goes through the one ``franklinwh_ha_notify`` Notifier (``actionable``), with a
+template per event; the persistent-notification ``notify.Notifier`` (core HA) is separate. This adds the missing piece the Energipays bridge has: user-configurable TRIGGERS
 that fire automatically on state transitions (aGate offline/online, off-grid start/end, battery
 dispatch, SoC thresholds), delivered to the enabled companion devices, with a delivery LOG +
 per-trigger stats.
@@ -14,6 +13,10 @@ from __future__ import annotations
 
 import json
 import logging
+
+from franklinwh_ha_notify import Event
+
+from . import actionable
 
 log = logging.getLogger(__name__)
 
@@ -74,80 +77,96 @@ def _enabled(cfg: dict, key: str) -> bool:
     return cfg.get("master", True) and bool((cfg.get("triggers") or {}).get(key, {}).get("enabled"))
 
 
-def evaluate(gw_label: str, summ: dict, prev: dict | None, cfg: dict) -> list[tuple]:
-    """Transitions worth notifying, gated by config. Returns [(event, title, message), …].
+#: The event behind each trigger whose transition has two directions. Stats and the
+#: enable flag are per trigger.
+TRIGGER = {"aGate_online": "aGate_offline", "on_grid": "off_grid",
+           "dispatch_start": "dispatch", "dispatch_at_boot": "dispatch"}
+
+#: Every companion-push event and its default text (#374 P2). ``{gateway}`` is the
+#: gateway's label (#361).
+EVENTS = (
+    Event("aGate_offline", "FranklinWH aGate",
+          "aGate is UNREACHABLE [{gateway}] — check network / WiFi / power."),
+    Event("aGate_online", "FranklinWH aGate", "aGate is reachable again [{gateway}]."),
+    Event("off_grid", "FranklinWH off-grid", "Gateway went OFF-GRID [{gateway}] — running on battery."),
+    Event("on_grid", "FranklinWH off-grid", "Gateway is back ON-GRID [{gateway}]."),
+    Event("soc_low", "FranklinWH battery",
+          "Battery SoC dropped below {threshold}% [{gateway}] (now {soc}%).", ("threshold", "soc")),
+    Event("soc_full", "FranklinWH battery",
+          "Battery SoC reached {threshold}% [{gateway}] (now {soc}%).", ("threshold", "soc")),
+    Event("dispatch_at_boot", "FranklinWH — VPP dispatch active at startup",
+          "{gateway}: VPP (force) dispatch active at startup ({metrics}) — started externally "
+          "(a utility VPP programme, the app, the Modbus bridge, or a prior run), not by this "
+          "bridge. This bridge will not auto-release it; use the Release button to override if "
+          "you want to clear it.", ("metrics",)),
+    Event("dispatch_start", "FranklinWH — battery dispatch started (VPP)",
+          "{gateway}: Battery dispatch STARTED — VPP mode active (source: {source}; {metrics}).",
+          ("source", "metrics")),
+    Event("dispatch_reconcile", "FranklinWH — scheduled dispatch {action}",
+          "{gateway}: {detail}", ("action", "detail")),
+    Event("schedule_notify", "{title}", "{message} [{gateway}]", ("title", "message")),
+    Event("broadcast", "{title}", "{message}", ("title", "message")),
+    Event("test", "FranklinWH — test", "This is a test notification from the trigger engine."),
+)
+actionable.templates().register(*EVENTS)
+
+
+def evaluate(summ: dict, prev: dict | None, cfg: dict) -> list[tuple[str, dict]]:
+    """Transitions worth notifying, gated by config. Returns [(event, values), …].
     ``prev``/``summ`` are /api/summary snapshots; ``prev`` None on the first pass = no events."""
     if prev is None or not cfg.get("master", True):
         return []
-    out: list[tuple] = []
+    out: list[tuple[str, dict]] = []
     p, c = prev.get("power") or {}, summ.get("power") or {}
-    tag = f" [{gw_label}]" if gw_label else ""
 
     if _enabled(cfg, "aGate_offline") and bool(prev.get("ok")) != bool(summ.get("ok")):
-        out.append(("aGate_offline", "FranklinWH aGate",
-                    (f"aGate is reachable again{tag}." if summ.get("ok")
-                     else f"aGate is UNREACHABLE{tag} — check network / WiFi / power.")))
+        out.append(("aGate_online" if summ.get("ok") else "aGate_offline", {}))
 
     if _enabled(cfg, "off_grid") and bool(p.get("off_grid")) != bool(c.get("off_grid")):
-        out.append(("off_grid", "FranklinWH off-grid",
-                    (f"Gateway went OFF-GRID{tag} — running on battery."
-                     if c.get("off_grid") else f"Gateway is back ON-GRID{tag}.")))
+        out.append(("off_grid" if c.get("off_grid") else "on_grid", {}))
 
     ps, cs = p.get("soc"), c.get("soc")
     if isinstance(ps, (int, float)) and isinstance(cs, (int, float)):
         if _enabled(cfg, "soc_low"):
             thr = cfg["triggers"]["soc_low"].get("threshold", 20)
             if ps >= thr > cs:
-                out.append(("soc_low", "FranklinWH battery",
-                            f"Battery SoC dropped below {thr}%{tag} (now {round(cs)}%)."))
+                out.append(("soc_low", {"threshold": thr, "soc": round(cs)}))
         if _enabled(cfg, "soc_full"):
             thr = cfg["triggers"]["soc_full"].get("threshold", 100)
             if ps < thr <= cs:
-                out.append(("soc_full", "FranklinWH battery",
-                            f"Battery SoC reached {thr}%{tag} (now {round(cs)}%)."))
+                out.append(("soc_full", {"threshold": thr, "soc": round(cs)}))
     return out
 
 
-def fire(store, event: str, title: str, message: str, *, cfg: dict | None = None) -> int:
-    """Deliver a notification to every ENABLED companion device and record each delivery in
-    the log. Respects the trigger's enable flag (so callers like the VPP monitor honour the
-    user's config too). Returns the number of devices that accepted it."""
-    from . import ha_instances
+def stats_by_trigger(stats: list[dict]) -> list[dict]:
+    """Per-event delivery stats summed per trigger, so both directions count."""
+    out: dict[str, dict] = {}
+    for s in stats:
+        key = TRIGGER.get(s["event"], s["event"])
+        t = out.setdefault(key, {"event": key, "count": 0, "last_ts": None, "delivered": 0})
+        t["count"] += s["count"]
+        t["delivered"] += s["delivered"]
+        t["last_ts"] = max(t["last_ts"] or 0, s["last_ts"] or 0) or None
+    return sorted(out.values(), key=lambda t: -(t["last_ts"] or 0))
+
+
+def fire(store, event: str, *, gateway: str | None = None, cfg: dict | None = None,
+         device_ids: list[str] | None = None, **values) -> int:
+    """Send ``event`` to every ENABLED companion device (or ``device_ids``) through the one
+    Notifier, which honours the Push notifications switch (#171) and records the send.
+    Respects the trigger's enable flag (so callers like the VPP monitor honour the user's
+    config too). Returns the number of devices that accepted it."""
     cfg = cfg or config(store)
-    if event in (cfg.get("triggers") or {}) and not _enabled(cfg, event):
+    trigger = TRIGGER.get(event, event)
+    if trigger in (cfg.get("triggers") or {}) and not _enabled(cfg, trigger):
         return 0
     # Every notification is also a line in the app log (Logs tab), whether or not any
     # device receives it: with no companion devices it was recorded nowhere else.
+    _, message = actionable.templates().render(event, gateway=gateway or "", **values)
     (log.info if event == "test" else log.warning)("notify [%s]: %s", event, message)
-    sent = 0
     try:
-        by_id = {i["id"]: i for i in store.ha_instances()}
-        devices = [d for d in store.notify_devices() if d.get("enabled")]
-    except Exception as e:  # noqa: BLE001
-        log.warning("notify fire: roster read failed: %s", e)
+        res = actionable.send(store, event, gateway=gateway, device_ids=device_ids, **values)
+    except Exception as e:  # noqa: BLE001 — a notification never breaks its caller
+        log.warning("notify [%s] failed: %s", event, e)
         return 0
-    if not devices:                                   # nothing to deliver to — still log once
-        store.log_notify(event, title=title, message=message, device="(no devices)", ok=None)
-        return 0
-    for d in devices:
-        inst = by_id.get(d["instance_id"])
-        if not inst:
-            store.log_notify(event, title=title, message=message,
-                             device=d.get("alias") or d["id"], ok=False)
-            continue
-        # A DISABLED instance suppresses its devices without anyone having to disable each
-        # one — that is the point of being able to turn an instance off instead of deleting
-        # it. Logged as skipped rather than failed: nothing went wrong, it was switched off.
-        if not inst.get("enabled", 1):
-            store.log_notify(event, title=title, message=message,
-                             device=f"{d.get('alias') or d['id']} (instance disabled)",
-                             ok=None)
-            continue
-        r = ha_instances.send_notification(inst["base_url"], inst.get("token"),
-                                           d["service"], title, message)
-        ok = bool(r.get("ok"))
-        store.log_notify(event, title=title, message=message,
-                         device=d.get("alias") or d["id"], ok=ok)
-        if ok:
-            sent += 1
-    return sent
+    return res.delivered if res else 0

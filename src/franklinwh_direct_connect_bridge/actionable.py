@@ -19,7 +19,7 @@ import asyncio
 import logging
 import sqlite3
 
-from franklinwh_ha_notify import HAInstance, Ledger, Notifier, Target, Templates
+from franklinwh_ha_notify import HAInstance, Ledger, Notifier, SendResult, Target, Templates
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +27,9 @@ _notifier: Notifier | None = None
 _loop: asyncio.AbstractEventLoop | None = None
 _templates = Templates()
 _handlers: dict = {}
+
+#: How long a worker thread waits for a send on the Notifier's loop.
+SEND_TIMEOUT_S = 30.0
 
 
 def templates() -> Templates:
@@ -49,13 +52,43 @@ def submit(coro):
     return asyncio.run_coroutine_threadsafe(coro, _loop)
 
 
-def targets(store) -> list[Target]:
-    """The enabled notify devices in the store, on enabled HA instances, as targets."""
+def targets(store, device_ids: list[str] | None = None) -> list[Target]:
+    """The enabled notify devices in the store, on enabled HA instances, as targets; or,
+    with ``device_ids``, exactly those devices (on or off) on enabled instances."""
     live = {r["id"] for r in store.ha_instances() if r.get("enabled", 1)}
     return [Target(d["instance_id"], d["service"].removeprefix("notify."),
                    d.get("alias") or d["service"])
             for d in store.notify_devices()
-            if d.get("enabled") and d["instance_id"] in live]
+            if ((d["id"] in device_ids) if device_ids is not None else d.get("enabled"))
+            and d["instance_id"] in live]
+
+
+def gateway_name(gateway_id: str | None) -> str:
+    """The gateway's label for a message (#361). No id means the default gateway."""
+    from . import state
+    gw = state.get_gateway(gateway_id) if gateway_id else state.default_gateway()
+    if gw is None:
+        return gateway_id or ""
+    return gw.label or gw.id
+
+
+def send(store, event: str, *, gateway: str | None = None,
+         device_ids: list[str] | None = None, **values) -> SendResult | None:
+    """Send ``event`` (no buttons) to :func:`targets` through the one Notifier, from a
+    worker thread, and wait for the result. The Notifier applies the master switch and
+    records the send. None when the Notifier is not running."""
+    n = _notifier
+    if n is None:
+        log.info("notify [%s] not sent: notifications are not running", event)
+        return None
+    # Instances added or switched since start are picked up here rather than at a
+    # restart. The package has no call for this yet (franklinwh-ha-notify#5).
+    n.instances = _instances(store)
+    fut = submit(n.notify(event, targets(store, device_ids), gateway=gateway, **values))
+    if fut is None:
+        log.info("notify [%s] not sent: notifications are not running", event)
+        return None
+    return fut.result(timeout=SEND_TIMEOUT_S)
 
 
 def _instances(store) -> dict[str, HAInstance]:
