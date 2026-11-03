@@ -12,6 +12,7 @@ before :func:`start` opens the listeners.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import sqlite3
 
@@ -20,6 +21,7 @@ from franklinwh_ha_notify import HAInstance, Ledger, Notifier, Templates
 log = logging.getLogger(__name__)
 
 _notifier: Notifier | None = None
+_loop: asyncio.AbstractEventLoop | None = None
 _templates = Templates()
 
 
@@ -56,9 +58,10 @@ def notifier() -> Notifier | None:
 
 async def start(store, settings) -> Notifier | None:
     """Build the Notifier and open one tap listener per HA instance. Never raises."""
-    global _notifier
+    global _notifier, _loop
     if store is None:
         return None
+    _loop = asyncio.get_running_loop()
     try:
         _notifier = build(store, settings)
         _notifier.listen()
@@ -68,6 +71,16 @@ async def start(store, settings) -> Notifier | None:
         log.error("actionable notifications could not start: %s", e)
         _notifier = None
     return _notifier
+
+
+def submit(coro):
+    """Run ``coro`` on the Notifier's event loop from another thread (the scheduler's
+    tick runs in one). Returns a ``concurrent.futures.Future``, or None (and ``coro`` is
+    closed) when the Notifier isn't running."""
+    if _notifier is None or _loop is None:
+        coro.close()
+        return None
+    return asyncio.run_coroutine_threadsafe(coro, _loop)
 
 
 async def stop() -> None:

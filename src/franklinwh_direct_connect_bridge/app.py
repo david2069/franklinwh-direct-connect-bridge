@@ -695,6 +695,9 @@ class ScheduleReq(BaseModel):
     cron: str = ""
     action: dict = Field(default_factory=dict)
     ha_actions: list[dict] = Field(default_factory=list)
+    # "Ask before continuing" (#374 P4): {question, timeout_min, if_no_reply: continue|skip}.
+    # Empty = the schedule runs without asking.
+    ask: dict = Field(default_factory=dict)
 
 
 class ScheduleImportReq(BaseModel):
