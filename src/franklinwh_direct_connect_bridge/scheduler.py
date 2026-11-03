@@ -1031,6 +1031,12 @@ def _ask_errors(ask: Any) -> list[str]:
         out.append("ask before continuing: each choice needs its own label")
     if sum(1 for c in choices if isinstance(c, dict) and c.get("reply")) > 1:
         out.append("ask before continuing: only one choice can take a text reply")
+    if "send_to" in ask:
+        from . import notify_engine
+        try:
+            notify_engine.valid_target(ask["send_to"])
+        except ValueError as e:
+            out.append(f"ask before continuing: send to: {e}")
     return out
 
 
@@ -2941,11 +2947,15 @@ def _ask_choices(ask: dict) -> list[dict]:
             for i, c in enumerate(choices, 1)]
 
 
-def _ask_targets(store) -> list[Target]:
-    """The enabled notification devices. Only ``mobile_app_*`` ones can show the buttons."""
+def _ask_targets(store, send_to: dict | None = None) -> list[Target]:
+    """The enabled notification devices, or with ``send_to`` ``{type: device, ids}`` the
+    enabled ones among those chosen (#281). Only ``mobile_app_*`` ones can show the
+    buttons."""
+    ids = (send_to or {}).get("ids") if (send_to or {}).get("type") == "device" else None
     return [Target(d["instance_id"], d["service"].removeprefix("notify."),
                    d.get("alias") or d["service"])
-            for d in store.notify_devices() if d.get("enabled")]
+            for d in store.notify_devices()
+            if d.get("enabled") and (ids is None or d["id"] in ids)]
 
 
 async def _ask(targets: list[Target], buttons: list[Button], timeout_s: int, gateway: str,
@@ -2975,7 +2985,7 @@ def _ask_step(entry: dict, *, store, gateway_id: str | None,
             **(snapshot or {}), **run_context(entry, gateway_id=gateway_id, now=now,
                                               phase="fire")})
         fut = actionable.submit(_ask(
-            _ask_targets(store), [Button(c["verb"], c["label"], c["reply"]) for c in choices],
+            _ask_targets(store, ask.get("send_to")), [Button(c["verb"], c["label"], c["reply"]) for c in choices],
             timeout_min * 60, getattr(gw, "label", None) or gid,
             schedule=entry.get("name") or "", question=question))
         held = _asks[dkey] = {"wkey": wkey, "fut": fut, "open": True, "decided": None,
