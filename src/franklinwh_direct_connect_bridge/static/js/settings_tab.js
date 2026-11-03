@@ -1104,6 +1104,7 @@ function settingsTab() {
 
     // ── Auto-notify triggers (FEAT-NOTIFY) ─────────────────────────────────
     triggers: { config: { triggers: {} }, stats: [], log: [] },
+    trgPick: {},   // trigger key -> "Chosen devices" picked, before any device is ticked
     async loadTriggers() {
       try {
         const d = await (await fetch('api/notify/triggers')).json();
@@ -1134,13 +1135,21 @@ function settingsTab() {
       return s ? `${s.count}× · last ${this.fmtNotifyTime(s.last_ts)}` : '';
     },
     // A trigger's target (#281): all devices, or the devices chosen. Roles come later.
-    triggerTargetValue(t) {
-      const tg = t.target || { type: 'all' };
-      return tg.type === 'device' && tg.ids && tg.ids.length === 1 ? tg.ids[0] : 'all';
+    triggerTargetValue(key, t) {
+      return (t.target && t.target.type === 'device') || this.trgPick[key] ? 'device' : 'all';
+    },
+    triggerTargetIds(t) {
+      return (t.target && t.target.type === 'device' && t.target.ids) || [];
     },
     setTriggerTarget(key, value) {
-      const target = value === 'all' ? { type: 'all' } : { type: 'device', ids: [value] };
-      this._saveTriggers({ triggers: { [key]: { target } } });
+      this.trgPick[key] = value === 'device';
+      if (value === 'all') this._saveTriggers({ triggers: { [key]: { target: { type: 'all' } } } });
+    },
+    // Ticking a device saves the target; the last one ticked stays (choose All instead).
+    toggleTriggerDevice(key, t, id, on) {
+      const ids = this.triggerTargetIds(t).filter(x => x !== id);
+      if (on) ids.push(id);
+      if (ids.length) this._saveTriggers({ triggers: { [key]: { target: { type: 'device', ids } } } });
     },
     // Send test opens a target picker; with no devices it says so and offers + Add device,
     // never a "sent to 0 devices". The result stays in the dialog (#281, #293).

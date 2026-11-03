@@ -705,7 +705,8 @@ class ScheduleReq(BaseModel):
     cron: str = ""
     action: dict = Field(default_factory=dict)
     ha_actions: list[dict] = Field(default_factory=list)
-    # "Ask before continuing" (#374 P4): {question, timeout_min, if_no_reply: continue|skip}.
+    # "Ask before continuing" (#374 P4): {question, timeout_min, if_no_reply: continue|skip,
+    # send_to?}. send_to (#281) is {type: all} (the default) or {type: device, ids}.
     # Empty = the schedule runs without asking.
     ask: dict = Field(default_factory=dict)
 
@@ -3415,6 +3416,12 @@ def create_app() -> FastAPI:
         # leave it on: the form starts on the active gateway.
         gid = spec.get("gateway_id") or ""
         st = _gw_store()
+        send_to = (spec.get("ask") or {}).get("send_to")
+        if isinstance(send_to, dict) and send_to.get("type") == "device" \
+                and isinstance(send_to.get("ids"), list):
+            known = {d["id"] for d in _ha_store().notify_devices()}
+            errors = [*errors, *(f"ask before continuing: unknown device '{i}'"
+                                 for i in send_to["ids"] if isinstance(i, str) and i not in known)]
         if not gid:
             errors = [*errors, "choose the gateway it runs on"]
         elif state.get_gateway(gid) is None and (st is None or st.gateway(gid) is None):

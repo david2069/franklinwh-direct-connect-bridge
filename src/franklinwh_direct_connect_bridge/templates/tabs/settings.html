@@ -1605,7 +1605,7 @@
       </div>
       <p class="text-[11px] text-slate-500">Fire automatically on these events, delivered to the enabled devices below.</p>
       <template x-for="[key, t] in Object.entries((triggers.config && triggers.config.triggers) || {})" :key="key">
-        <div class="flex items-center justify-between gap-2 py-0.5">
+        <div class="flex items-center justify-between gap-2 py-0.5 flex-wrap">
           <span class="text-xs flex items-center gap-1.5" style="color:var(--text-secondary)">
             <span x-text="t.label"></span>
             <template x-if="'threshold' in t">
@@ -1615,14 +1615,12 @@
             </template>
             <span x-show="triggerStat(key)" class="text-[10px] text-slate-500" x-text="triggerStat(key)"></span>
           </span>
-          <!-- Who this trigger notifies (#281): all devices or one chosen device. -->
+          <!-- Who this trigger notifies (#281): all devices or the devices chosen. -->
           <select class="form-control form-control-sm w-36 ml-auto" data-testid="trigger-target"
-                  :value="triggerTargetValue(t)" @change="setTriggerTarget(key, $event.target.value)"
+                  :value="triggerTargetValue(key, t)" @change="setTriggerTarget(key, $event.target.value)"
                   title="Send to">
-            <option value="all">All devices</option>
-            <template x-for="d in notif.devices" :key="d.id">
-              <option :value="d.id" x-text="d.alias" :selected="triggerTargetValue(t) === d.id"></option>
-            </template>
+            <option value="all" :selected="triggerTargetValue(key, t) === 'all'">All devices</option>
+            <option value="device" :selected="triggerTargetValue(key, t) === 'device'">Chosen devices</option>
           </select>
           <button type="button" role="switch" :aria-checked="t.enabled" @click="toggleTrigger(key)"
                   class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0"
@@ -1630,6 +1628,19 @@
             <span class="inline-block h-5 w-5 rounded-full bg-white transition"
                   :class="t.enabled ? 'translate-x-5' : 'translate-x-0.5'"></span>
           </button>
+          <div x-show="triggerTargetValue(key, t) === 'device'" data-testid="trigger-target-devices"
+               class="w-full flex items-center justify-end gap-x-3 gap-y-1 flex-wrap">
+            <template x-for="d in notif.devices" :key="d.id">
+              <label class="flex items-center gap-1 text-xs" style="color:var(--text-secondary)">
+                <input type="checkbox" :checked="triggerTargetIds(t).includes(d.id)"
+                       :disabled="triggerTargetIds(t).includes(d.id) && triggerTargetIds(t).length === 1"
+                       @change="toggleTriggerDevice(key, t, d.id, $event.target.checked)">
+                <span x-text="d.alias"></span>
+                <span x-show="!d.enabled" class="chip muted" style="font-size:.55rem">off</span>
+              </label>
+            </template>
+            <span x-show="!triggerTargetIds(t).length" class="text-[10px] text-slate-500">Tick at least one device</span>
+          </div>
         </div>
       </template>
     </div>

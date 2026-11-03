@@ -659,7 +659,7 @@
       </div>
 
       <!-- Ask before continuing (#374 P4): Yes / No, or the user's own buttons, on the
-           enabled notification devices -->
+           enabled notification devices, or the ones chosen in Send to (#281) -->
       <div class="rounded-lg border p-3 space-y-2" style="border-color:var(--border)">
         <label class="flex items-center gap-2 text-xs font-semibold" style="color:var(--text-secondary)">
           <input type="checkbox" x-model="form.ask.on" data-testid="ask-on">
@@ -667,7 +667,7 @@
         </label>
         <div x-show="form.ask.on" class="space-y-2">
           <p class="text-xs" style="color:var(--text-secondary)">
-            Before the action runs, the enabled notification devices get this question
+            Before the action runs, the devices in Send to get this question
             with Yes and No, or your own buttons. Yes runs it, No skips this run. Only Home
             Assistant Companion apps (mobile_app) show the buttons.</p>
           <label class="block text-xs" style="color:var(--text-secondary)">Question
@@ -723,6 +723,28 @@
                 <option value="skip">Skip this run</option>
                 <option value="continue">Continue</option>
               </select></label>
+          </div>
+          <div class="space-y-1" data-testid="ask-send-to">
+            <div class="flex items-center gap-x-3 gap-y-1 flex-wrap text-xs" style="color:var(--text-secondary)">
+              <span>Send to</span>
+              <label class="flex items-center gap-1">
+                <input type="radio" value="all" x-model="form.ask.send_to.to"> All enabled devices</label>
+              <label class="flex items-center gap-1">
+                <input type="radio" value="device" x-model="form.ask.send_to.to"> Chosen devices</label>
+            </div>
+            <div x-show="form.ask.send_to.to === 'device'" class="flex items-center gap-x-3 gap-y-1 flex-wrap pl-1">
+              <template x-for="d in devices.filter(x => x.enabled)" :key="d.id">
+                <label class="flex items-center gap-1 text-xs" style="color:var(--text-secondary)">
+                  <input type="checkbox" :value="d.id" x-model="form.ask.send_to.ids"
+                         data-testid="ask-send-to-device">
+                  <span x-text="d.alias"></span>
+                  <span x-show="(d.service || '').replace(/^notify\./, '').startsWith('mobile_app_')"
+                        class="chip muted" style="font-size:.55rem" title="Shows the buttons">buttons</span>
+                </label>
+              </template>
+              <span x-show="!devices.some(x => x.enabled)" class="text-xs" style="color:var(--text-secondary)">
+                No enabled notification devices.</span>
+            </div>
           </div>
         </div>
       </div>
