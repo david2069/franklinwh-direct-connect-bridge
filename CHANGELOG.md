@@ -66,12 +66,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   header) and `/api/live` always get in. A list that leaves out the address saving it is
   refused. `GET /api/security`, `PUT /api/security/trusted-networks`. The Security switch,
   the HTTPS port, sign-in and tokens come in later phases.
-- **Guide: Security (planned, #457).** A new page describing the planned optional security:
-  upgrades keep today's behaviour and new installs start with Security on (it can be turned
-  off); trusted networks; an HTTPS port (8102); HA admins are admins and other HA users are
-  users; the first admin; the roles admin, user, viewer and api; API tokens; the
-  self-signed certificate and how to trust it on a phone. Everything on it except
-  trusted networks is marked as planned.
+- **Guide: Security** (#457). A new page for all of the above: upgrades keep today's
+  behaviour and new installs start with Security on (it can be turned off); trusted
+  networks; the HTTPS port and its certificate, including how to trust it on a phone; Home
+  Assistant users' roles; the first admin; the roles admin, user, viewer and api; API
+  tokens. The REST API guide's Authentication section and Control's read-only section now
+  point to it.
 
 ### Fixed
 - **A pip install has its whole web UI** (#487). The package listed only the top-level files of
