@@ -13,12 +13,14 @@ A test that specifically needs the real defaults can opt out with
 
 import pytest
 
-from franklinwh_direct_connect_bridge import environment, config, db, logbuffer
+from franklinwh_direct_connect_bridge import environment, config, db, logbuffer, security
 
 
 def pytest_configure(config):  # noqa: ARG001 — pytest hook
     config.addinivalue_line("markers",
                             "real_data_dir: run without the tmp DATA_DIR isolation")
+    config.addinivalue_line("markers",
+                            "security_on: keep the Security switch as the store says (#457)")
 
 
 @pytest.fixture(autouse=True)
@@ -86,3 +88,11 @@ def fake_notifier(monkeypatch):
     loop.call_soon_threadsafe(loop.stop)
     thread.join(5)
     loop.close()
+
+
+@pytest.fixture(autouse=True)
+def _security_off(request, monkeypatch):
+    """Every test store is a new install, which turns Security on (#457 phase 3) and would
+    send the test client to sign in. Tests of Security mark themselves ``security_on``."""
+    if not request.node.get_closest_marker("security_on"):
+        monkeypatch.setattr(security, "enabled", lambda store: False)

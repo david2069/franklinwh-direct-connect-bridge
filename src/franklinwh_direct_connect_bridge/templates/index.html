@@ -14,6 +14,20 @@
   <script src="static/js/tailwind-3.4.1.min.js"></script>
   <script>window.FWH_BOOT = { gateway: {{ boot_gateway | tojson }} };</script>
   <script>
+    // #457: with Security on, a request whose session has ended gets 401 on the HTTPS port;
+    // go to the sign-in page and come back here afterwards.
+    (function () {
+      const f = window.fetch;
+      window.fetch = async function (...args) {
+        const r = await f.apply(this, args);
+        if (r.status === 401 && location.protocol === 'https:' && !location.pathname.startsWith('/signin')) {
+          location.href = '/signin?next=' + encodeURIComponent(location.pathname + location.search);
+        }
+        return r;
+      };
+    })();
+  </script>
+  <script>
     tailwind.config = {
       darkMode: 'class',
       theme: {

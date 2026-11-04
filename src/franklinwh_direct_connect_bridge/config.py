@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     #: the add-on a bare file name is looked up in Home Assistant's /ssl folder.
     ssl_certfile: str = ""
     ssl_keyfile: str = ""
+    #: Docker and pip: the first admin account, made on start while no admin exists (#457).
+    admin_username: str = ""
+    admin_password: str = ""
     poll_interval: int = 30
     #: Scheduler cadence (RUNTIME_DESIGN decision 2): fixed and configurable, not derived
     #: from poll_interval. Predictable beats clever — and a schedule window shorter than

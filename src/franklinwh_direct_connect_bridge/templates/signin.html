@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in · FranklinWH Direct Connect Bridge</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%2310b981'/%3E%3Cpath d='M13 3L6 13h4l-1 8 7-10h-4z' fill='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/css/design-system.css?v={{ cache_bust }}">
+  <script src="/static/js/tailwind-3.4.1.min.js"></script>
+</head>
+<!-- #457 phase 3: sign-in on the HTTPS port while Security is on. -->
+<body class="min-h-screen flex items-center justify-center p-4" style="background:var(--bg, #0f172a)">
+  <form id="f" class="card w-full max-w-sm space-y-4" data-testid="signin-form">
+    <div>
+      <div class="text-lg font-semibold" style="color:var(--text-primary)">FranklinWH Direct Connect Bridge</div>
+      <div class="text-xs text-slate-500">Sign in. Home Assistant's sidebar panel doesn't need this.</div>
+    </div>
+    <label class="block text-xs" style="color:var(--text-secondary)">Username
+      <input id="u" name="username" autocomplete="username" autocapitalize="none" required
+             class="form-control w-full mt-1"></label>
+    <label class="block text-xs" style="color:var(--text-secondary)">Password
+      <input id="p" name="password" type="password" autocomplete="current-password" required
+             class="form-control w-full mt-1"></label>
+    <div id="msg" role="alert" aria-live="polite" class="text-xs rounded px-3 py-2 border hidden"
+         style="color:var(--danger);border-color:var(--danger)"></div>
+    <button id="b" type="submit" class="btn btn-primary w-full">Sign in</button>
+    <div class="text-[11px] text-slate-500">Forgotten the password? An admin can reset it, or run
+      <span class="font-mono">franklinwh-direct-connect-bridge reset-password &lt;name&gt;</span> on the bridge.</div>
+  </form>
+  <script>
+    const f = document.getElementById('f'), msg = document.getElementById('msg'), b = document.getElementById('b');
+    // Only a path on this bridge, never another site.
+    const raw = new URLSearchParams(location.search).get('next') || '/';
+    const next = (raw.startsWith('/') && !raw.startsWith('//') && !raw.startsWith('/\\')) ? raw : '/';
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      b.disabled = true; b.textContent = 'Signing in…'; msg.classList.add('hidden');
+      try {
+        const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: document.getElementById('u').value, password: document.getElementById('p').value }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.detail || ('sign-in failed (' + r.status + ')'));
+        location.replace(next);
+      } catch (err) {
+        msg.textContent = err.message; msg.classList.remove('hidden');
+        b.disabled = false; b.textContent = 'Sign in';
+      }
+    });
+  </script>
+</body>
+</html>

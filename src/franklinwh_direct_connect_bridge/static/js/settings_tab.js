@@ -210,16 +210,89 @@ function settingsTab() {
     admin: { storage: {}, busy: false, exportHours: 24 },
     // Trusted networks (#457 phase 1). The result of Save stays in the section (no toast).
     security: { loaded: false, install: '', any: true, text: '', you: '', ingress: false,
-                canSave: true, saving: false, msg: null, https: {} },
+                canSave: true, saving: false, msg: null, https: {},
+                // phase 3: the switch, accounts and sign-in activity
+                enabled: false, hasAdmin: false, onAddon: false, principal: null,
+                switchMsg: null, users: [], events: [], acctMsg: null,
+                add: { username: '', password: '', role: 'user' }, resetFor: null, resetPw: '',
+                myPw: { current: '', new: '', msg: null } },
     async loadSecurity() {
       try {
         const d = await (await fetch('api/security')).json();
         const nets = d.trusted_networks || ['any'];
         Object.assign(this.security, { loaded: true, install: d.install, you: d.your_address || '',
           ingress: !!d.via_ingress, canSave: d.can_save !== false, any: nets.includes('any'),
-          https: d.https || {},
+          https: d.https || {}, enabled: !!d.enabled, hasAdmin: !!d.has_admin,
+          onAddon: !!d.on_addon, principal: d.principal || null,
           text: nets.includes('any') ? (d.private_ranges || []).join('\n') : nets.join('\n') });
       } catch (e) { /* leave last-known */ }
+    },
+    // An admin (or anyone while Security is off) sees the accounts and sign-in activity.
+    securityAdmin() {
+      const p = this.security.principal;
+      return !this.security.enabled || (p && p.role === 'admin');
+    },
+    async loadAccounts() {
+      if (!this.securityAdmin()) return;
+      try {
+        this.security.users = (await (await fetch('api/security/users')).json()).users || [];
+        this.security.events = (await (await fetch('api/security/signins?limit=20')).json()).events || [];
+      } catch (e) { /* leave last-known */ }
+    },
+    async _securityCall(url, method, body, msgKey) {
+      const s = this.security;
+      s[msgKey] = null;
+      try {
+        const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' },
+          body: body === undefined ? undefined : JSON.stringify(body) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.detail || ('failed (' + r.status + ')'));
+        return d;
+      } catch (e) { s[msgKey] = { kind: 'danger', text: 'Not done: ' + e.message }; return null; }
+    },
+    async setSecurity(on) {
+      const d = await this._securityCall('api/security/enabled', 'PUT', { enabled: on }, 'switchMsg');
+      if (d) {
+        this.security.switchMsg = { kind: 'ok', text: d.enabled
+          ? 'Security is on. Port 8101 now sends browsers to the HTTPS port, where they sign in.'
+          : 'Security is off. Both ports answer without signing in.' };
+      }
+      await this.loadSecurity(); await this.loadAccounts();
+    },
+    async addAccount() {
+      const a = this.security.add;
+      const d = await this._securityCall('api/security/users', 'POST',
+        { username: a.username.trim(), password: a.password, role: a.role }, 'acctMsg');
+      if (d) {
+        this.security.acctMsg = { kind: 'ok', text: 'Added ' + d.username + ' (' + d.role + ').' };
+        this.security.add = { username: '', password: '', role: 'user' };
+      }
+      await this.loadSecurity(); await this.loadAccounts();
+    },
+    async editAccount(u, change, done) {
+      const d = await this._securityCall('api/security/users/' + u.id, 'PATCH', change, 'acctMsg');
+      if (d) this.security.acctMsg = { kind: 'ok', text: done || ('Saved ' + d.username + '.') };
+      await this.loadSecurity(); await this.loadAccounts();
+    },
+    async resetAccountPassword(u) {
+      await this.editAccount(u, { password: this.security.resetPw }, 'New password set for ' + u.username + '.');
+      if (this.security.acctMsg && this.security.acctMsg.kind === 'ok') { this.security.resetFor = null; this.security.resetPw = ''; }
+    },
+    async deleteAccount(u) {
+      const d = await this._securityCall('api/security/users/' + u.id, 'DELETE', undefined, 'acctMsg');
+      if (d) this.security.acctMsg = { kind: 'ok', text: 'Deleted ' + u.username + '.' };
+      await this.loadSecurity(); await this.loadAccounts();
+    },
+    async changeMyPassword() {
+      const m = this.security.myPw;
+      const d = await this._securityCall('api/auth/password', 'POST', { current: m.current, new: m.new }, 'acctMsg');
+      m.msg = d ? { kind: 'ok', text: 'Your password is changed.' } : this.security.acctMsg;
+      this.security.acctMsg = null;
+      if (d) { m.current = ''; m.new = ''; }
+    },
+    async signOut() {
+      await fetch('api/auth/logout', { method: 'POST' });
+      location.href = '/signin';
     },
     async saveTrustedNetworks() {
       const s = this.security;

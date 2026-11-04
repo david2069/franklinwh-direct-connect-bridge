@@ -12,6 +12,22 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Accounts, sign-in, roles and the Security switch** (#457 phase 3). **Settings → Admin →
+  Security** has a **Security** switch: on, browsers and API callers sign in on the HTTPS
+  port, port 8101 redirects there (503 with the reason if HTTPS isn't running), and each
+  account's role decides what it can do. admin: everything. user: battery commands (force,
+  release, mode, reserve, off-grid, acknowledging alerts) and schedules; everything else
+  read-only. viewer: read-only. Anything else that changes something is admin only; a
+  refused request gets 403 "Your role (…) can't do this." Off for an upgraded install, on
+  for a new one; it can only be turned on with an admin account and a running HTTPS port.
+  **Accounts** adds, edits (role, expiry, disable), resets and deletes accounts and shows
+  sign-in activity; the last admin can't be removed. Passwords are argon2id hashes; 5
+  failed sign-ins in 15 minutes lock an account for 60 s; sessions last 30 days. The first
+  admin: on Docker and pip from `ADMIN_USERNAME`/`ADMIN_PASSWORD`, else (with Security on)
+  `admin` with a generated password printed to the log once; on the add-on you add it from
+  the sidebar. `franklinwh-direct-connect-bridge reset-password <name>` resets a password.
+  Home Assistant's sidebar panel needs no sign-in and is admin for now. The bridge now
+  depends on `argon2-cffi`.
 - **The HTTPS port** (#457 phase 2). The bridge serves the same web UI and REST API over
   HTTPS on port 8102, next to 8101, on every install; trusted networks apply, and there is
   no sign-in yet. The certificate is your own (`ssl_certfile` / `ssl_keyfile`; on the
