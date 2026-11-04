@@ -52,6 +52,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   `%sensor%` values are filled in as before.
 
 ### Fixed
+- **An HA instance added in Settings listens for button taps at once** (franklinwh-ha-notify#5).
+  Adding, editing (URL, token, on/off) or deleting an instance under **Settings →
+  Integrations → HA Instances** now starts, re-signs-in or closes its tap listener on the
+  running bridge; before, a new instance's buttons did nothing until the bridge restarted,
+  and a deleted one kept listening. The add-on's own instance does the same when a new
+  container brings a new Supervisor token. Needs franklinwh-ha-notify 0.1.3 (pinned).
 - **Questions with buttons survive a bridge restart** (franklinwh-ha-notify#6). Uses
   franklinwh-ha-notify 0.1.2, which keeps open requests in the bridge database
   (new table `notify_requests`, added to existing databases on start). A tap on
