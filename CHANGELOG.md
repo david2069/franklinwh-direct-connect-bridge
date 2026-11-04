@@ -19,8 +19,19 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   server refuses an unknown device or a role. Schedules saved before this still ask every
   enabled device. Each **Auto-notify trigger** in Settings can now go to several chosen
   devices, not just one; a trigger already sent to one device keeps it.
+- **Schedule editor: a {x} button to insert values** (#462). Every schedule text field that
+  takes `%sensor.id%` values has a **{x}** button beside it: the **Ask before continuing**
+  question, the notify title and message (on entry, on exit, or both) and the raw service
+  entity_id and data. It opens a list of the same sensors as the condition picker, in the
+  same groups, with a search box; each row shows the name, the value now and the
+  `%id%` code. Tapping a row puts the code where the cursor was (at the end if the field
+  was never used) and returns to the field. On a phone the list fills the screen.
 
 ### Fixed
+- **Ask before continuing skips phones on a switched-off Home Assistant instance.** A
+  schedule's question still went to the devices of an HA instance that was disabled in
+  Settings; every other notification already skipped them. It now uses the same device
+  lookup as the rest, whether it asks all enabled devices or the ones chosen in **Send to**.
 - **Hidden messages, labels and list rows stay hidden.** 16 elements in the web UI
   coloured themselves with a text style, which Alpine applies by replacing the whole style
   attribute, wiping the `display:none` that hides them: the same cause as the blank rows in

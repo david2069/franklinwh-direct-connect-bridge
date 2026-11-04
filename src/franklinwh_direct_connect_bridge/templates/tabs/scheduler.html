@@ -444,7 +444,7 @@
        windows, HA actions — and a stray click outside threw all of it away with no warning
        and no undo. Cancel and Escape ask first when anything has changed. -->
   <div class="fixed inset-0 z-50 flex items-start justify-center p-2 sm:p-4 overflow-y-auto"
-       style="background:rgba(0,0,0,.6)" @keydown.escape.window="closeForm()">
+       style="background:rgba(0,0,0,.6)" @keydown.escape.window="varPick.open ? closeVarPicker() : closeForm()">
     <div x-data="dialogSize('fwh-dlg-schedule-edit')"
          class="card w-full p-0 my-2 sm:my-8 flex flex-col" style="max-height:90dvh">
       <div class="px-5 pt-4 pb-3 shrink-0 border-b flex items-center justify-between gap-2" style="border-color:var(--border)">
@@ -670,10 +670,15 @@
             Before the action runs, the devices in Send to get this question
             with Yes and No, or your own buttons. Yes runs it, No skips this run. Only Home
             Assistant Companion apps (mobile_app) show the buttons.</p>
-          <label class="block text-xs" style="color:var(--text-secondary)">Question
-            <input class="form-control form-control-sm w-full mt-1" type="text"
-                   placeholder="%sensor.id% ok" x-model="form.ask.question"
-                   data-testid="ask-question"></label>
+          <div class="text-xs" style="color:var(--text-secondary)">Question
+            <div class="flex items-center gap-1 mt-1" data-var-field>
+              <input class="form-control form-control-sm flex-1 min-w-0" type="text" aria-label="Question"
+                     placeholder="%sensor.id% ok" x-model="form.ask.question"
+                     data-testid="ask-question" data-var-target @blur="noteCaret($el)">
+              <button type="button" class="btn btn-secondary btn-sm shrink-0 font-mono" style="padding:2px 7px"
+                    title="Insert a value" aria-label="Insert a value" data-testid="var-picker-btn"
+                    @click="openVarPicker($el)">{x}</button>
+            </div></div>
           <div class="space-y-1">
             <div class="flex items-center justify-between gap-2">
               <span class="text-xs" style="color:var(--text-secondary)">Buttons</span>
@@ -1033,12 +1038,22 @@
             </div>
             <!-- notify fields -->
             <div x-show="ha.ha_kind!=='service'" class="space-y-2">
-              <input class="form-control form-control-sm w-full" placeholder="Title (optional)"
-                     x-model="ha.title">
-              <textarea class="form-control form-control-sm w-full" rows="1" style="resize:vertical"
-                        placeholder="Message — e.g. SoC is %battery.soc_pct%%, mode %mode.name%"
-                        x-model="ha.message"
-                        x-init="$nextTick(() => fitTextarea($el))" @input="fitTextarea($el)"></textarea>
+              <div class="flex items-center gap-1" data-var-field>
+                <input class="form-control form-control-sm flex-1 min-w-0" placeholder="Title (optional)"
+                       x-model="ha.title" data-testid="notify-title" data-var-target @blur="noteCaret($el)">
+                <button type="button" class="btn btn-secondary btn-sm shrink-0 font-mono" style="padding:2px 7px"
+                    title="Insert a value" aria-label="Insert a value" data-testid="var-picker-btn"
+                    @click="openVarPicker($el)">{x}</button>
+              </div>
+              <div class="flex items-start gap-1" data-var-field>
+                <textarea class="form-control form-control-sm flex-1 min-w-0" rows="1" style="resize:vertical"
+                          placeholder="Message — e.g. SoC is %battery.soc_pct%%, mode %mode.name%"
+                          x-model="ha.message" data-testid="notify-message" data-var-target @blur="noteCaret($el)"
+                          x-init="$nextTick(() => fitTextarea($el))" @input="fitTextarea($el)"></textarea>
+                <button type="button" class="btn btn-secondary btn-sm shrink-0 font-mono" style="padding:2px 7px"
+                    title="Insert a value" aria-label="Insert a value" data-testid="var-picker-btn"
+                    @click="openVarPicker($el)">{x}</button>
+              </div>
             </div>
             <!-- service GUIDED: domain-aware control widget -->
             <div x-show="ha.ha_kind==='service' && !ha.raw" class="space-y-2">
@@ -1083,11 +1098,22 @@
                 <input class="form-control form-control-sm flex-1" style="min-width:110px" placeholder="domain — e.g. switch" x-model="ha.domain">
                 <input class="form-control form-control-sm flex-1" style="min-width:110px" placeholder="service — e.g. turn_on" x-model="ha.service">
               </div>
-              <input class="form-control form-control-sm w-full" placeholder="entity_id — e.g. switch.garage (optional; %sensor.id% ok)" x-model="ha.entity_id">
-              <input class="form-control form-control-sm w-full font-mono text-xs"
-                     placeholder='data JSON — e.g. {&quot;brightness&quot;: 180} (optional)'
-                     :value="typeof ha.data === 'object' ? JSON.stringify(ha.data) : (ha.data || '')"
-                     @change="ha.data = $event.target.value">
+              <div class="flex items-center gap-1" data-var-field>
+                <input class="form-control form-control-sm flex-1 min-w-0" placeholder="entity_id — e.g. switch.garage (optional; %sensor.id% ok)" x-model="ha.entity_id"
+                       data-var-target @blur="noteCaret($el)">
+                <button type="button" class="btn btn-secondary btn-sm shrink-0 font-mono" style="padding:2px 7px"
+                    title="Insert a value" aria-label="Insert a value" data-testid="var-picker-btn"
+                    @click="openVarPicker($el)">{x}</button>
+              </div>
+              <div class="flex items-center gap-1" data-var-field>
+                <input class="form-control form-control-sm flex-1 min-w-0 font-mono text-xs"
+                       placeholder='data JSON — e.g. {&quot;brightness&quot;: 180} (optional)'
+                       :value="typeof ha.data === 'object' ? JSON.stringify(ha.data) : (ha.data || '')"
+                       @change="ha.data = $event.target.value" data-var-target @blur="noteCaret($el)">
+                <button type="button" class="btn btn-secondary btn-sm shrink-0 font-mono" style="padding:2px 7px"
+                    title="Insert a value" aria-label="Insert a value" data-testid="var-picker-btn"
+                    @click="openVarPicker($el)">{x}</button>
+              </div>
               <button type="button" class="text-[11px]" style="color:var(--accent)" @click="ha.raw = false">← Back to guided picker</button>
             </div>
             <!-- optional guard: fire this action only if a condition holds right now -->
@@ -1143,7 +1169,7 @@
           </div>
         </template>
         <p class="text-xs" style="color:var(--text-secondary)">
-          Insert live values with <span class="font-mono">%sensor.id%</span> — the same ids the
+          Insert live values with <span class="font-mono">%sensor.id%</span> (or the <span class="font-mono">{x}</span> button) — the same ids the
           conditions use. An unreadable value renders as <span class="font-mono">?</span> rather
           than blocking the message.
         </p>
@@ -1161,6 +1187,45 @@
         </div>
       </div>
     </div>
+
+    <!-- Variable picker (#462): one modal for every {x} button. Rows come from the
+         condition picker's own list, so a new sensor appears in both. Full-screen sheet on
+         a phone, a centred modal on wider screens. -->
+    <div x-show="varPick.open" x-cloak data-testid="var-picker" role="dialog" aria-modal="true"
+         aria-label="Insert a value" @click.self="closeVarPicker()"
+         class="fixed inset-0 flex items-stretch sm:items-center justify-center sm:p-4"
+         style="z-index:60;background:rgba(0,0,0,.6)">
+      <div class="card w-full h-full sm:h-auto sm:max-w-md sm:max-h-[80dvh] p-0 flex flex-col overflow-hidden">
+        <div class="px-4 pt-3 pb-2 shrink-0 border-b space-y-2" style="border-color:var(--border)">
+          <div class="flex items-center justify-between gap-2">
+            <h4 class="text-base font-semibold" style="color:var(--text-primary)">Insert a value</h4>
+            <button type="button" class="btn btn-secondary btn-sm" title="Close" aria-label="Close"
+                    @click="closeVarPicker()">&times;</button>
+          </div>
+          <input x-ref="varQ" type="text" class="form-control form-control-sm w-full" x-model="varPick.q"
+                 placeholder="Search values&#8230;" aria-label="Search values" data-testid="var-picker-q">
+          <p x-show="varPick.liveMsg" class="text-xs" style="color:var(--text-faint)" x-text="varPick.liveMsg"></p>
+        </div>
+        <!-- pb-20 on a phone: the bottom tab bar sits over the foot of the sheet -->
+        <div class="flex-1 overflow-y-auto overflow-x-hidden pt-1 pb-20 sm:pb-1" style="min-height:0">
+          <template x-for="it in pickerItems(varPick.q)" :key="it.key"><div>
+            <div x-show="it.kind==='group'" class="px-4 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
+            <button x-show="it.kind==='sensor'" type="button" data-testid="var-row"
+                    class="w-full text-left px-4 py-2 hover:bg-white/5 flex items-start gap-3"
+                    @click="insertVar(it.id)">
+              <span class="flex-1 min-w-0">
+                <span class="block text-sm truncate" style="color:var(--text-primary)" x-text="it.label"></span>
+                <span class="block font-mono text-[11px] truncate" style="color:var(--text-faint)" x-text="'%' + it.id + '%'"></span>
+              </span>
+              <span x-show="varLive(it.id) !== ''" class="text-xs shrink-0 text-right truncate"
+                    style="color:var(--text-secondary);max-width:40%" x-text="varLive(it.id)"></span>
+            </button>
+          </div></template>
+          <div x-show="!pickerItems(varPick.q).length" class="px-4 py-2 text-xs" style="color:var(--text-faint)">No match.</div>
+        </div>
+      </div>
+    </div>
+    <!-- /var picker -->
   </div>
   </template>
 </div>
