@@ -11,6 +11,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+- **Guide: Home Assistant setup and notifications brought up to date.** No restart after
+  adding an HA instance; Send to on every notification (triggers, critical alerts,
+  Release / Keep, Ask); the 5-minute Ask wait and its window rule; questions surviving a
+  restart; the {x} picker; the eight Ask templates; the Notifications check and its
+  troubleshooting table. Code and API references moved to a developer section at the end.
+
 ## [0.5.29] — 2026-11-04
 
 ### Added
