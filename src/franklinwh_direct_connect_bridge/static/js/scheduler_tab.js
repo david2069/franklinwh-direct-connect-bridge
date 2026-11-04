@@ -7,6 +7,9 @@
  * from the Modbus Bridge will look for them.
  */
 document.addEventListener('alpine:init', () => {
+  // The field the variable picker (#462) inserts into. Kept outside Alpine's reactive
+  // state: a proxied DOM element cannot be focused or have its selection set.
+  let varTarget = null;
   Alpine.data('schedulerTab', () => ({
     schedules: [], actions: {}, unavailable: {}, force_available: false, force_reason: '',
     sensors: [], ops: [], gateways: [],
@@ -42,6 +45,8 @@ document.addEventListener('alpine:init', () => {
     mon: { open: false, lines: [], since: 0, entry: '', paused: false, copied: '',
            max: 500, tick_s: 15, err: '' },
     _monTimer: null,
+    // Variable picker (#462): one modal shared by every {x} button.
+    varPick: { open: false, q: '', live: {}, liveOk: false, liveMsg: '' },
     // Condition rows (owner, 2026-11-04): the sensor column's width and the sensor drop
     // list's size, once dragged; remembered in this browser. Null until then.
     condW: (() => { try { return Number(localStorage.getItem('fwh-sched-cond-w')) || null; } catch { return null; } })(),
@@ -1215,6 +1220,73 @@ document.addEventListener('alpine:init', () => {
       const order = Object.keys(groups).sort((a, b) =>
         (a === 'Gateway' ? -1 : b === 'Gateway' ? 1 : a.localeCompare(b)));
       return order.map(name => ({ name, sensors: groups[name] }));
+    },
+
+    // ── Variable picker (#462) ────────────────────────────────────────────────
+    /** Remember where the caret was when a field loses focus, so the picker inserts there. */
+    noteCaret(el) {
+      el._varCaret = [el.selectionStart, el.selectionEnd];
+    },
+    openVarPicker(btn) {
+      varTarget = btn.closest('[data-var-field]').querySelector('[data-var-target]');
+      this.varPick.q = '';
+      this.varPick.open = true;
+      this.loadVarLive();
+      // On a phone the keyboard would cover the list; focus the search on wider screens.
+      if (window.matchMedia('(min-width: 640px)').matches) {
+        this.$nextTick(() => this.$refs.varQ && this.$refs.varQ.focus());
+      }
+    },
+    closeVarPicker() {
+      this.varPick.open = false;
+      this.varPick.q = '';
+      const el = varTarget;
+      if (el) this.$nextTick(() => el.focus());
+    },
+    /** Insert %id% at the remembered caret (the end if the field was never focused), tell
+     *  x-model, then put focus back with the caret after the inserted text. */
+    insertVar(id) {
+      const el = varTarget;
+      this.varPick.open = false;
+      this.varPick.q = '';
+      if (!el) return;
+      const tok = '%' + id + '%';
+      const v = el.value || '';
+      const [s, e] = el._varCaret || [v.length, v.length];
+      el.value = v.slice(0, s) + tok + v.slice(e);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      const pos = s + tok.length;
+      el._varCaret = [pos, pos];
+      this.$nextTick(() => { el.focus(); el.setSelectionRange(pos, pos); });
+    },
+    /** Live values for the picker rows, from the editor's own Test endpoint: one leaf per
+     *  sensor, read back from the trace. None when there is no gateway to read. */
+    async loadVarLive() {
+      this.varPick.liveMsg = '';
+      try {
+        const conditions = this.sensors.map((x, i) => ({ sensor: x.id, op: '==', value: null, cid: 'var' + i }));
+        const r = await fetch('api/schedules/evaluate' + this.$store.app.gwQuery(), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ match: 'any', conditions }),
+        });
+        const out = await r.json();
+        if (!r.ok) throw new Error(out.detail || r.statusText);
+        const live = {};
+        for (const row of out.per_condition || []) live[row.sensor] = row.live_value;
+        this.varPick.live = live;
+        this.varPick.liveOk = true;
+      } catch (e) {
+        this.varPick.liveOk = false;
+        this.varPick.liveMsg = `Live values unavailable: ${e.message}`;
+      }
+    },
+    varLive(id) {
+      if (!this.varPick.liveOk) return '';
+      const v = this.varPick.live[id];
+      if (v === null || v === undefined) return 'no value';
+      if (typeof v === 'number' && !Number.isInteger(v)) return String(+v.toFixed(3));
+      return String(v);
     },
   }));
 });
