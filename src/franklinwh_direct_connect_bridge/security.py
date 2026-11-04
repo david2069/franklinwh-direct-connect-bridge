@@ -208,3 +208,22 @@ def required(method: str, path: str) -> tuple[str, ...]:
 
 def can(role: str, method: str, path: str) -> bool:
     return role in required(method, path)
+
+
+# ── Home Assistant users (phase 3b) ───────────────────────────────────────────────
+#: HA's user groups (homeassistant/auth/const.py), sent by the Supervisor 2026.10.4 and
+#: later as ``X-Remote-User-Groups``; owners come with ``system-admin`` folded in.
+HA_GROUP_ROLES = (("system-admin", "admin"), ("system-read-only", "viewer"),
+                  ("system-users", "user"))
+
+
+def ingress_principal(headers, security_on: bool) -> dict:
+    """Who a sidebar-panel request is, and their role: from HA's group when the Supervisor
+    sends it; without it, admin while Security is off (as before) and user while it is on."""
+    raw = headers.get("X-Remote-User-Groups")
+    groups = [g.strip() for g in raw.split(",") if g.strip()] if raw else []
+    role = next((r for g, r in HA_GROUP_ROLES if g in groups), None)
+    if role is None:
+        role = "user" if (groups or security_on) else "admin"
+    return {"username": headers.get("X-Remote-User-Name") or "Home Assistant", "role": role,
+            "via": "ingress", "groups_known": bool(groups)}

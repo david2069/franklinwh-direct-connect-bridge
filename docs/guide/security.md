@@ -2,11 +2,9 @@
 
 !!! warning "Partly built (#457)"
     In the bridge from 0.5.31: **trusted networks**, the **HTTPS port**, the **Security
-    switch**, **accounts, sign-in and roles**. Still to come
-    ([#457](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/457)):
-    **API tokens** and the `api` role, and **Home Assistant users who aren't HA
-    administrators getting the `user` role**. Until that last part lands, everyone who
-    opens the sidebar panel is an admin of the bridge.
+    switch**, **accounts, sign-in and roles**, and **roles for Home Assistant users**.
+    Still to come ([#457](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/457)):
+    **API tokens** and the `api` role.
 
 This page describes how the bridge's optional security will work once
 [#457](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/457) is built.
@@ -111,11 +109,21 @@ ingress. Home Assistant has already signed you in, so the bridge doesn't ask aga
 - The bridge trusts ingress only when three checks pass: it is running as an add-on, the
   request comes from the Supervisor's ingress address (`172.30.32.2`), and HA's ingress
   headers are present.
-- **Planned:** an **HA administrator** is an **admin** in the bridge, and every other
-  HA user is a **user**: they can view everything, send battery commands and manage
-  schedules, but not change settings (see [Roles](#roles)). **Today every HA user is an
-  admin.** How the bridge learns whether an HA user is an administrator is still to be
-  checked on a real Home Assistant.
+- Every Home Assistant user can open the panel (the add-on sets `panel_admin: false`),
+  and gets the role of their **Home Assistant group**:
+
+    | Home Assistant group | Bridge role |
+    |---|---|
+    | Administrators (owners too) | **admin** |
+    | Users | **user**: view everything, send battery commands, manage schedules, not change settings |
+    | Read-only | **viewer** |
+
+  This applies whether Security is on or off. See [Roles](#roles).
+- The Supervisor sends the group (`X-Remote-User-Groups`) from **Supervisor 2026.10.4**.
+  An older one sends none. Then the user is an **admin** while Security is off, as
+  before, and a **user** while it is on, and Settings says so: update Home Assistant, or
+  sign in with an admin account on the HTTPS port. (From the Supervisor's source code;
+  the group header is checked on the HAOS test VM at release.)
 - The user is named from HA's `X-Remote-User-*` headers, so logs and the audit trail
   show which HA user did what.
 - **No bridge account is created or stored for HA users.** The name is read on each
@@ -123,6 +131,9 @@ ingress. Home Assistant has already signed you in, so the bridge doesn't ask aga
 
 Who is an admin of the bridge is therefore decided by Home Assistant's own users: make
 someone an HA administrator, or not.
+
+**On the add-on, the first admin account** is made in the sidebar by an HA
+administrator.
 
 ### The first admin
 
@@ -167,7 +178,7 @@ port is running, so that someone can sign in afterwards.
 |---|---|---|---|---|---|
 | **admin** | Full | Yes | Yes | Yes | Password (HTTPS port), or HA ingress |
 | **user** | Full, with Settings read-only | Yes | Battery commands, answering notifications, and schedules | No | Password, or HA ingress (non-admin HA users) |
-| **viewer** | Read-only | Yes | No | No | Password |
+| **viewer** | Read-only | Yes | No | No | Password, or HA ingress (read-only HA users) |
 | **api** | None (REST only) | Yes | Battery commands and answering notifications | No | Token |
 
 Battery commands are force charge or discharge, release, mode, reserve, off-grid and

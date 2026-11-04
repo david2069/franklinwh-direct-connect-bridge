@@ -27,6 +27,9 @@ ports_description:
   8102/tcp: "Web UI + REST API over HTTPS"
 panel_icon: "mdi:home-battery"
 panel_title: "Direct Connect"
+# Every Home Assistant user may open the panel (#457 phase 3b); the bridge gives each the
+# role of their HA group (admin / user / viewer). HA's default would hide it from non-admins.
+panel_admin: false
 
 # Supervisor watchdog — restarts the add-on if the web app stops serving. Points at
 # /api/live (liveness only, no device I/O) so a down aGate never triggers a restart.
