@@ -262,6 +262,7 @@ class RestoreReq(BaseModel):
 class NotifyTriggersBody(BaseModel):
     master: bool | None = None
     triggers: dict | None = None        # {event: {enabled: bool, threshold?: int, target?: {}}}
+    asks: dict | None = None            # {alert|force_running: {target: {}}} (#281)
 
 
 class NotifyTriggersTestReq(BaseModel):

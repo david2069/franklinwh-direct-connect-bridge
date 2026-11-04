@@ -1103,7 +1103,7 @@ function settingsTab() {
     },
 
     // ── Auto-notify triggers (FEAT-NOTIFY) ─────────────────────────────────
-    triggers: { config: { triggers: {} }, stats: [], log: [] },
+    triggers: { config: { triggers: {}, asks: {} }, stats: [], log: [], err: '' },
     trgPick: {},   // trigger key -> "Chosen devices" picked, before any device is ticked
     async loadTriggers() {
       try {
@@ -1113,14 +1113,18 @@ function settingsTab() {
         this.triggers.log = (await (await fetch('api/notify/log?limit=20')).json()).events || [];
       } catch (e) { /* leave last-known */ }
     },
+    // A failed save says so on the page, under the rows (no toast).
     async _saveTriggers(patch) {
       try {
-        const d = await (await fetch('api/notify/triggers', {
+        const r = await fetch('api/notify/triggers', {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(patch),
-        })).json();
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || r.statusText);
         this.triggers.config = d.config || this.triggers.config;
-      } catch (e) { Alpine.store('app').toast('Save failed: ' + e.message, 'error'); }
+        this.triggers.err = '';
+      } catch (e) { this.triggers.err = 'Save failed: ' + e.message; }
     },
     toggleTrigger(key) {
       const t = this.triggers.config.triggers[key];
@@ -1150,6 +1154,16 @@ function settingsTab() {
       const ids = this.triggerTargetIds(t).filter(x => x !== id);
       if (on) ids.push(id);
       if (ids.length) this._saveTriggers({ triggers: { [key]: { target: { type: 'device', ids } } } });
+    },
+    // Critical alerts and Release / Keep: the same Send to, saved under asks (#281).
+    setAskTarget(key, value) {
+      this.trgPick['ask:' + key] = value === 'device';
+      if (value === 'all') this._saveTriggers({ asks: { [key]: { target: { type: 'all' } } } });
+    },
+    toggleAskDevice(key, a, id, on) {
+      const ids = this.triggerTargetIds(a).filter(x => x !== id);
+      if (on) ids.push(id);
+      if (ids.length) this._saveTriggers({ asks: { [key]: { target: { type: 'device', ids } } } });
     },
     // Send test opens a target picker; with no devices it says so and offers + Add device,
     // never a "sent to 0 devices". The result stays in the dialog (#281, #293).

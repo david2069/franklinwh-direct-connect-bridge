@@ -12,6 +12,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Send to for critical alerts and Release / Keep** (refs #281). Settings → Push
+  notifications, under the Auto-notify triggers: two rows, "Critical alerts" (Acknowledge /
+  Re-discover) and "Release / Keep a running force", each with the same Send to picker as
+  the triggers — All devices (the default; nothing changes until you pick) or Chosen
+  devices with ticks. A chosen device that is switched off, or on a switched-off Home
+  Assistant instance, is not sent to. When none of the chosen devices can show buttons,
+  the existing fallback applies: the plain Release push, and for alerts the Home Assistant
+  notification only. Saved with `PUT /api/notify/triggers` (`asks`); roles are refused. A
+  failed save on these rows and the triggers now shows under them instead of as a toast.
 - **Ask templates and two off-grid sensors** (refs #463). New scheduler sensors
   `grid.offgrid_reason` ("user requested", "grid outage" or "unknown"; no value on grid) and
   `grid.offgrid_min` (minutes since this off-grid period began; after a bridge restart while

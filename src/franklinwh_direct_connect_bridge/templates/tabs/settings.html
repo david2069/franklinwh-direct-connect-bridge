@@ -1643,6 +1643,37 @@
           </div>
         </div>
       </template>
+      <!-- Notifications with buttons have no on/off of their own, only Send to (#281):
+           all enabled devices (the default) or the devices chosen. -->
+      <div class="space-y-1.5 pt-1" data-testid="ask-targets">
+        <p class="text-[11px] text-slate-500">Notifications with buttons: who they go to.</p>
+        <template x-for="[key, a] in Object.entries((triggers.config && triggers.config.asks) || {})" :key="key">
+          <div class="flex items-center justify-between gap-2 py-0.5 flex-wrap">
+            <span class="text-xs" style="color:var(--text-secondary)" x-text="a.label"></span>
+            <select class="form-control form-control-sm w-36 ml-auto" data-testid="ask-target"
+                    :value="triggerTargetValue('ask:' + key, a)" @change="setAskTarget(key, $event.target.value)"
+                    title="Send to">
+              <option value="all" :selected="triggerTargetValue('ask:' + key, a) === 'all'">All devices</option>
+              <option value="device" :selected="triggerTargetValue('ask:' + key, a) === 'device'">Chosen devices</option>
+            </select>
+            <div x-show="triggerTargetValue('ask:' + key, a) === 'device'"
+                 class="w-full flex items-center justify-end gap-x-3 gap-y-1 flex-wrap">
+              <template x-for="d in notif.devices" :key="d.id">
+                <label class="flex items-center gap-1 text-xs" style="color:var(--text-secondary)">
+                  <input type="checkbox" :checked="triggerTargetIds(a).includes(d.id)"
+                         :disabled="triggerTargetIds(a).includes(d.id) && triggerTargetIds(a).length === 1"
+                         @change="toggleAskDevice(key, a, d.id, $event.target.checked)">
+                  <span x-text="d.alias"></span>
+                  <span x-show="!d.enabled" class="chip muted" style="font-size:.55rem">off</span>
+                </label>
+              </template>
+              <span x-show="!triggerTargetIds(a).length" class="text-[10px] text-slate-500">Tick at least one device</span>
+            </div>
+          </div>
+        </template>
+      </div>
+      <p x-show="triggers.err" x-cloak class="text-[11px]" style="color:var(--danger, #dc2626)"
+         data-testid="triggers-save-error" x-text="triggers.err"></p>
     </div>
 
     <!-- ── Recent notifications (delivery log) ── -->
