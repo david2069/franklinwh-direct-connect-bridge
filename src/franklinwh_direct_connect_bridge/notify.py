@@ -1,7 +1,8 @@
 """Non-actionable Home Assistant notifications (persistent_notification.create).
 
-In the HA add-on, the supervisor injects ``SUPERVISOR_TOKEN`` and proxies the core API at
-``http://supervisor/core/api`` — zero user config. Standalone can set ``ha_url``/``ha_token``.
+They go to the default enabled HA instance from Settings (#464); on the add-on that is its
+own instance, reached through the Supervisor. Only with no instance set up does the
+environment decide: the Supervisor's ``SUPERVISOR_TOKEN``, else ``ha_url``/``ha_token``.
 These have no buttons. Phone pushes, with or without buttons, go through the one
 franklinwh-ha-notify Notifier in ``actionable`` (#374).
 """
@@ -46,15 +47,46 @@ class Notifier:
         return self._target()[2]
 
     def _target(self) -> tuple[bool, str, str]:
-        """(enabled, token, base) resolved live. Add-on Supervisor token wins; else the
-        standalone ha_url + ha_token."""
+        """(enabled, token, base) resolved live, from :meth:`target_info`."""
+        t = self.target_info()
+        return t["enabled"], t["token"], t["base"]
+
+    def _default_instance(self) -> dict | None:
+        """The default enabled HA instance from Settings (#464); else the first enabled
+        one (the roster lists the default first). None when no instance is enabled."""
+        try:
+            from . import db
+            store = db.get_store(self.settings)
+            rows = [r for r in (store.ha_instances() if store else [])
+                    if r.get("enabled", 1) and r.get("base_url")]
+        except Exception as e:  # noqa: BLE001 — fall back to the environment
+            log.debug("HA instances not readable for notifications: %s", e)
+            return None
+        return next((r for r in rows if r.get("is_default")), rows[0] if rows else None)
+
+    def target_info(self) -> dict:
+        """Where persistent notifications go, resolved live (#464).
+
+        The default enabled HA instance from Settings wins: on the add-on that is its own
+        instance, "Home Assistant (this add-on)". Only when no instance is set up does the
+        environment decide: the add-on's Supervisor token, else ``ha_url`` + ``ha_token``.
+        ``source`` is ``instance`` / ``supervisor`` / ``environment`` / ``none``."""
         s = self.settings
+        enabled = bool(getattr(s, "ha_notify", True))
+        inst = self._default_instance()
+        if inst is not None:
+            return {"enabled": enabled, "source": "instance", "name": inst.get("name") or "",
+                    "instance_id": inst["id"], "token": inst.get("token") or "",
+                    "base": inst["base_url"].rstrip("/") + "/api"}
         supervisor = os.environ.get("SUPERVISOR_TOKEN")
         if supervisor:                                  # HA add-on mode
-            return s.ha_notify, supervisor, "http://supervisor/core/api"
+            return {"enabled": enabled, "source": "supervisor", "name": "", "instance_id": "",
+                    "token": supervisor, "base": "http://supervisor/core/api"}
         if s.ha_url and s.ha_token:                     # standalone
-            return s.ha_notify, s.ha_token, s.ha_url.rstrip("/") + "/api"
-        return s.ha_notify, "", ""
+            return {"enabled": enabled, "source": "environment", "name": "", "instance_id": "",
+                    "token": s.ha_token, "base": s.ha_url.rstrip("/") + "/api"}
+        return {"enabled": enabled, "source": "none", "name": "", "instance_id": "",
+                "token": "", "base": ""}
 
     def notify(self, title: str, message: str) -> None:
         # Resolve once per call into locals — the properties above re-read settings,
