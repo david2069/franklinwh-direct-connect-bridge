@@ -1368,11 +1368,17 @@ def create_app() -> FastAPI:
             return JSONResponse({"detail": "Your network is not trusted by this bridge "
                                            "(Settings → Admin → Security)."}, status_code=403)
         request.state.principal = None
-        if not security.enabled(store) or path in security.ALWAYS_PATHS:
+        if path in security.ALWAYS_PATHS:
             return await call_next(request)
+        on = security.enabled(store)
+        # HA sidebar users get the role of their HA group, Security on or off (phase 3b).
         if security.is_ingress(host, request.headers):
-            request.state.principal = {"username": request.headers.get("X-Remote-User-Name")
-                                       or "Home Assistant", "role": "admin", "via": "ingress"}
+            p = request.state.principal = security.ingress_principal(request.headers, on)
+            if not security.can(p["role"], request.method, path):
+                return JSONResponse({"detail": f"Your role ({p['role']}) can't do this."},
+                                    status_code=403)
+            return await call_next(request)
+        if not on:
             return await call_next(request)
         if request.url.scheme != "https":
             if not tls.running():

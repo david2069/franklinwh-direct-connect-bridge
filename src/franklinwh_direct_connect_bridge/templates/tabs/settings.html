@@ -1453,6 +1453,9 @@
       <span x-text="security.principal ? (security.principal.via === 'ingress' ? 'In Home Assistant as ' : 'Signed in as ') + security.principal.username + ' (' + security.principal.role + ')' : ''"></span>
       <button x-show="security.principal && security.principal.via === 'session'" class="btn btn-secondary btn-sm" @click="signOut()">Sign out</button>
     </div>
+    <p class="text-xs" :style="{ color: 'var(--warn)' }" data-testid="ha-groups-unknown"
+       x-show="security.principal && security.principal.via === 'ingress' && !security.principal.groups_known"
+       x-text="security.enabled ? 'Home Assistant did not say which group you are in (it needs Supervisor 2026.10.4 or later), so you are a user here, not an admin. Update Home Assistant, or sign in with an admin account on the HTTPS port.' : 'Home Assistant did not say which group you are in (it needs Supervisor 2026.10.4 or later). With Security on you would be a user here; update Home Assistant first.'"></p>
     {{ dialog_msg('security.switchMsg') }}
   </div>
 

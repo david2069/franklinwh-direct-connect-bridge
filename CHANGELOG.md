@@ -12,6 +12,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Home Assistant users get the role of their HA group** (#457 phase 3b). Every Home
+  Assistant user can now open the bridge from the sidebar (the add-on sets `panel_admin:
+  false`; HA's default showed it to administrators only). HA administrators and owners are
+  admin, read-only users are viewer, other users are user: they can send battery commands
+  and manage schedules but not change settings. This applies with Security on or off. The
+  group comes from the Supervisor (2026.10.4 or later); with an older one the user stays
+  admin while Security is off and is user while it is on, and Settings says why.
 - **Accounts, sign-in, roles and the Security switch** (#457 phase 3). **Settings → Admin →
   Security** has a **Security** switch: on, browsers and API callers sign in on the HTTPS
   port, port 8101 redirects there (503 with the reason if HTTPS isn't running), and each

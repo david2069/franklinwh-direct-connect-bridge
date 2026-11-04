@@ -239,8 +239,10 @@ def test_ha_ingress_gets_in_without_signing_in(app, store, monkeypatch):
     monkeypatch.setattr(environment, "IS_HA_ADDON", True)
     c = TestClient(app, client=("172.30.32.2", 5000))
     r = c.get("/api/auth/me", headers={"X-Ingress-Path": "/api/hassio_ingress/x",
-                                        "X-Remote-User-Name": "dana"})
-    assert r.json()["principal"] == {"username": "dana", "role": "admin", "via": "ingress"}
+                                        "X-Remote-User-Name": "dana",
+                                        "X-Remote-User-Groups": "system-admin"})
+    assert r.json()["principal"] == {"username": "dana", "role": "admin", "via": "ingress",
+                                     "groups_known": True}
 
 
 def test_the_switch_needs_an_admin_and_https(app, store, monkeypatch):

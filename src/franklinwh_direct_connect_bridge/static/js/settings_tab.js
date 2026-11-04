@@ -227,10 +227,11 @@ function settingsTab() {
           text: nets.includes('any') ? (d.private_ranges || []).join('\n') : nets.join('\n') });
       } catch (e) { /* leave last-known */ }
     },
-    // An admin (or anyone while Security is off) sees the accounts and sign-in activity.
+    // An admin (or, while Security is off, anyone not in HA's sidebar) sees the accounts.
     securityAdmin() {
       const p = this.security.principal;
-      return !this.security.enabled || (p && p.role === 'admin');
+      if (p) return p.role === 'admin';     // HA sidebar users have their HA group's role
+      return !this.security.enabled;
     },
     async loadAccounts() {
       if (!this.securityAdmin()) return;
