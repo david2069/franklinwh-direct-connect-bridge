@@ -63,10 +63,13 @@ def _label_for_host(host: str) -> str | None:
 def _ask_from_thread(store, event: str, buttons: list[Button], ttl_s: float, *,
                      gateway: str | None, meta: dict, **values) -> bool:
     """Send an ask from a worker thread; True when it reached at least one target."""
+    from . import notify_engine
     n = actionable.notifier()
     if n is None:
         return False
-    fut = actionable.submit(n.ask(event, actionable.targets(store), buttons, ttl_s=ttl_s,
+    # Its Send to setting (#281): all enabled devices, or the ones chosen.
+    ids = notify_engine.send_to_ids(store, event)
+    fut = actionable.submit(n.ask(event, actionable.targets(store, ids), buttons, ttl_s=ttl_s,
                                   gateway=gateway, meta=meta, **values))
     if fut is None:
         return False

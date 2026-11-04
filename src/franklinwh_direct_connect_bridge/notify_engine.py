@@ -32,17 +32,26 @@ DEFAULT_TRIGGERS: dict = {
     "soc_full": {"enabled": False, "label": "Battery SoC reaches", "threshold": 100},
 }
 
+#: Notifications with buttons that have only a Send to setting (#281): critical alerts
+#: (Acknowledge / Re-discover) and the Release / Keep question. Keyed by their event.
+ASKS: dict = {
+    "alert": {"label": "Critical alerts"},
+    "force_running": {"label": "Release / Keep a running force"},
+}
+
 
 def config(store) -> dict:
     """Merged config: stored overrides on top of DEFAULT_TRIGGERS. Always well-formed."""
     cfg = {"master": True, "triggers": {k: dict(v) for k, v in DEFAULT_TRIGGERS.items()}}
-    for t in cfg["triggers"].values():
+    cfg["asks"] = {k: dict(v) for k, v in ASKS.items()}
+    for t in (*cfg["triggers"].values(), *cfg["asks"].values()):
         t["target"] = dict(ALL)
     if store is None:
         return cfg
     for key, target in store.alert_targets().items():
-        if key in cfg["triggers"]:
-            cfg["triggers"][key]["target"] = target
+        for section in ("triggers", "asks"):
+            if key in cfg[section]:
+                cfg[section][key]["target"] = target
     try:
         raw = store.get_config(CONFIG_KEY)
         saved = json.loads(raw) if raw else {}
@@ -76,6 +85,12 @@ def set_config(store, cfg: dict) -> dict:
             merged["triggers"][key]["target"] = target
             if store is not None:
                 store.set_alert_target(key, target)
+    for key, sv in (cfg.get("asks") or {}).items():
+        if key in merged["asks"] and isinstance(sv, dict) and "target" in sv:
+            target = valid_target(sv["target"])
+            merged["asks"][key]["target"] = target
+            if store is not None:
+                store.set_alert_target(key, target)
     if store is not None:
         store.set_config(CONFIG_KEY, json.dumps({
             "master": merged["master"],
@@ -102,6 +117,16 @@ def valid_target(target) -> dict:
     if not isinstance(ids, list) or not ids or not all(isinstance(i, str) for i in ids):
         raise ValueError("a device target names at least one device id")
     return {"type": "device", "ids": ids}
+
+
+def send_to_ids(store, key: str) -> list[str] | None:
+    """Who a notification with buttons (:data:`ASKS`) goes to: None for all enabled
+    devices, else the enabled ones among those chosen (a switched-off device stays off)."""
+    target = config(store)["asks"].get(key, {}).get("target") or ALL
+    if target["type"] != "device":
+        return None
+    on = {d["id"] for d in store.notify_devices() if d.get("enabled")}
+    return [i for i in target["ids"] if i in on]
 
 
 def kind_of(service: str, name: str = "") -> str:
