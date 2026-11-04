@@ -11,6 +11,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.31] — 2026-11-05
+
 ### Added
 - **API tokens and the api role** (#457 phase 4). An admin adds an **api** account (no
   password; it can't sign in or use the web UI) and, under **Settings → Admin → Security →
