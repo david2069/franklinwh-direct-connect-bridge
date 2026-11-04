@@ -157,6 +157,29 @@ the stored schedule, so nothing else changes (#157).
   notify start & end, Time-of-Use at peak (only if charged), and four force presets: Peak
   shaving, Battery Bonus export (evening), Solar sponge (charge midday) and Off-peak charge
   (overnight), each with an SoC condition and a target SoC.
+- Eight **Ask** presets watch their conditions all the time (trigger **Always**), ask once
+  each time the conditions become true, wait 5 minutes for a reply, and skip if nobody
+  answers. Each threshold is a condition value; edit it like any other.
+    - **Off-grid (user requested) for 30 min**: asks whether to go back on-grid
+      (**Go back on-grid** reconnects / **Stay off-grid**).
+    - **Off-grid (grid outage) for 30 min**: **Acknowledge** / **Dismiss**; no battery
+      action.
+    - **Cheap wholesale price** (`tariff.spot_price` ≤ 5 c/kWh) and **Cheap tariff import
+      rate** (`tariff.buy_rate` ≤ $0.05/kWh): **Charge** / **Not now**; force charge to 90%.
+    - **High wholesale price** (`tariff.spot_price` ≥ 50 c/kWh) and **High tariff feed-in
+      rate** (`tariff.sell_rate` ≥ $0.50/kWh): only while `battery.soc_pct` is at or above
+      the **min discharge SoC** Automation Constant (`const.min_discharge_soc`, default 20%).
+      **Export** / **Hold**; force discharge to a 20% floor.
+    - **Demand charge window** (`tariff.demand_window_active == 1`): only while SoC is at or
+      above the **demand-charge min SoC** Automation Constant (`const.demand_charge_min_soc`,
+      default 30%). **Self-consume** / **Leave it**; switches to Self-Consumption, and puts
+      back the mode that was active before it when the window ends or SoC falls below the
+      minimum (the schedule's `restore_on_exit`, logged as "restored mode.name -> …").
+    - **Battery export bonus** (`tariff.bonus_window_active == 1`): **Export** / **Hold**;
+      force discharge to a 30% floor.
+
+  The five force presets are marked **Modbus**; the force is released when the conditions
+  stop holding.
   <!-- @b IDX-10 ;; src: scheduler.py:554-623 ;; tested: tests/test_scheduler.py::test_dispatch_presets_present_and_valid ;; write: yes ;; b: Eleven presets; the four force presets need Modbus, carry an SoC gate and a target SoC, and validate as imports ;; test: -->
 - **Export ▾** downloads every schedule, as **This bridge** (`franklinwh-local-schedules`)
   or **Modbus bridge** (`franklinwh-automations`). Through the API,

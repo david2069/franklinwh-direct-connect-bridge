@@ -571,6 +571,18 @@ def due(entry: dict, now: dt.datetime, snapshot: dict,
 EXPORT_TYPE = "franklinwh-local-schedules"
 EXPORT_VERSION = 1
 
+#: The two price sources for the cheap-charge / high-export Ask templates (#463):
+#: (id prefix, name, question label, sensor, threshold, unit). The user's tariff rates are
+#: $/kWh, so their defaults are the wholesale ones (5 and 50 c/kWh) written in $/kWh.
+_ASK_CHEAP = (
+    ("spot", "wholesale price", "Wholesale price", "tariff.spot_price", 5, "c/kWh"),
+    ("tariff", "tariff import rate", "Import rate", "tariff.buy_rate", 0.05, "$/kWh"),
+)
+_ASK_HIGH = (
+    ("spot", "wholesale price", "Wholesale price", "tariff.spot_price", 50, "c/kWh"),
+    ("tariff", "tariff feed-in rate", "Feed-in rate", "tariff.sell_rate", 0.50, "$/kWh"),
+)
+
 #: Built-in schedule templates. Every action here is hardware-verified on the
 #: local channel — no force-charge presets, because the local protocol cannot do
 #: that (see UNAVAILABLE). A preset is loaded into the editor, not fired blind.
@@ -643,6 +655,110 @@ PRESETS: list[dict[str, Any]] = [
               "conditions": [{"sensor": "battery.soc_pct", "op": "<", "value": 50}],
               "action": {"kind": "force", "direction": "charge", "unit": "pct",
                          "power": 100, "target_soc": 90}}},
+
+    # ── Ask templates (#463): watched continuously ('always' fires once as the conditions
+    #    become true), and each asks before acting — 5 min to reply, no reply skips. The
+    #    threshold is the condition's value, edited like any other. ──
+    {"id": "offgrid_user_ask", "name": "Off-grid (user requested) for 30 min — ask",
+     "description": "After 30 minutes of a requested (simulated) off-grid, ask whether to go "
+                    "back on-grid.",
+     "spec": {"trigger_type": "always", "fire_at": "00:00", "duration_min": 0, "match": "all",
+              "conditions": [{"sensor": "grid.offgrid_reason", "op": "==",
+                              "value": "user requested"},
+                             {"sensor": "grid.offgrid_min", "op": ">=", "value": 30}],
+              "action": {"kind": "offgrid", "on": False},
+              "ask": {"question": "Off-grid (%grid.offgrid_reason%) for %grid.offgrid_min% "
+                                  "min, battery %battery.soc_pct%%. Go back on-grid?",
+                      "timeout_min": 5, "if_no_reply": "skip",
+                      "choices": [{"label": "Go back on-grid", "then": "run"},
+                                  {"label": "Stay off-grid", "then": "skip"}]}}},
+    {"id": "offgrid_outage_ask", "name": "Off-grid (grid outage) for 30 min — notify",
+     "description": "After 30 minutes of a grid outage, send a question to acknowledge. "
+                    "No battery action.",
+     "spec": {"trigger_type": "always", "fire_at": "00:00", "duration_min": 0, "match": "all",
+              "conditions": [{"sensor": "grid.offgrid_reason", "op": "==",
+                              "value": "grid outage"},
+                             {"sensor": "grid.offgrid_min", "op": ">=", "value": 30}],
+              "action": {"kind": ""},
+              "ask": {"question": "Grid outage: off-grid for %grid.offgrid_min% min, "
+                                  "battery %battery.soc_pct%%.",
+                      "timeout_min": 5, "if_no_reply": "skip",
+                      "choices": [{"label": "Acknowledge", "then": "run"},
+                                  {"label": "Dismiss", "then": "skip"}]}}},
+    *[{"id": f"{key}_low_charge_ask", "name": f"Cheap {what} — ask to charge",
+       "requires": "modbus",
+       "description": f"When {sensor} is {low} {unit} or less, ask whether to force-charge "
+                      "from the grid to 90%. Released when the price rises.",
+       "spec": {"trigger_type": "always", "fire_at": "00:00", "duration_min": 0,
+                "match": "all",
+                "conditions": [{"sensor": sensor, "op": "<=", "value": low}],
+                "action": {"kind": "force", "direction": "charge", "unit": "pct",
+                           "power": 100, "target_soc": 90},
+                "ask": {"question": f"{label} is %{sensor}% {unit}, battery "
+                                    "%battery.soc_pct%%. Charge from the grid?",
+                        "timeout_min": 5, "if_no_reply": "skip",
+                        "choices": [{"label": "Charge", "then": "run"},
+                                    {"label": "Not now", "then": "skip"}]}}}
+      for key, what, label, sensor, low, unit in _ASK_CHEAP],
+    # High price exports only while SoC is at or above the Automation Constant
+    # const.min_discharge_soc (default 20%), and holds that same 20% as the floor.
+    *[{"id": f"{key}_high_export_ask", "name": f"High {what} — ask to export",
+       "requires": "modbus",
+       "description": f"When {sensor} is {high} {unit} or more and SoC is at or above the "
+                      "minimum discharge SoC (Automation Constants), ask whether to "
+                      "force-discharge to the grid, holding a 20% floor. Released when the "
+                      "price falls.",
+       "spec": {"trigger_type": "always", "fire_at": "00:00", "duration_min": 0,
+                "match": "all",
+                "conditions": [{"sensor": sensor, "op": ">=", "value": high},
+                               {"sensor": "battery.soc_pct", "op": ">=",
+                                "value_kind": "sensor",
+                                "value_sensor": "const.min_discharge_soc"}],
+                "action": {"kind": "force", "direction": "discharge", "unit": "pct",
+                           "power": 100, "target_soc": 20},
+                "ask": {"question": f"{label} is %{sensor}% {unit}, battery "
+                                    "%battery.soc_pct%%. Export from the battery?",
+                        "timeout_min": 5, "if_no_reply": "skip",
+                        "choices": [{"label": "Export", "then": "run"},
+                                    {"label": "Hold", "then": "skip"}]}}}
+      for key, what, label, sensor, high, unit in _ASK_HIGH],
+    # Demand window: Self-Consumption while it lasts, only while SoC is at or above
+    # const.demand_charge_min_soc (default 30%), then the mode that was active before it is
+    # put back (restore_on_exit, BR-50: captured before the write, kept with the run).
+    {"id": "demand_window_ask", "name": "Demand charge window — ask to self-consume",
+     "description": "When the tariff's peak-demand window starts and SoC is at or above the "
+                    "demand-charge minimum SoC (Automation Constants), ask whether to switch "
+                    "to Self-Consumption. The previous mode is put back when the window ends "
+                    "or SoC falls below the minimum.",
+     "spec": {"trigger_type": "always", "fire_at": "00:00", "duration_min": 0, "match": "all",
+              "restore_on_exit": True,
+              "conditions": [{"sensor": "tariff.demand_window_active", "op": "==",
+                              "value": 1},
+                             {"sensor": "battery.soc_pct", "op": ">=",
+                              "value_kind": "sensor",
+                              "value_sensor": "const.demand_charge_min_soc"}],
+              "action": {"kind": "set_mode", "mode": "self"},
+              "ask": {"question": "Demand charge window: home %load.power_w% W, battery "
+                                  "%battery.soc_pct%%. Switch to Self-Consumption for the "
+                                  "window?",
+                      "timeout_min": 5, "if_no_reply": "skip",
+                      "choices": [{"label": "Self-consume", "then": "run"},
+                                  {"label": "Leave it", "then": "skip"}]}}},
+    {"id": "bonus_window_ask", "name": "Battery export bonus — ask to export",
+     "requires": "modbus",
+     "description": "When the tariff's battery-export-bonus window starts, ask whether to "
+                    "force-discharge to the grid, holding a 30% floor. Released when the "
+                    "window ends.",
+     "spec": {"trigger_type": "always", "fire_at": "00:00", "duration_min": 0, "match": "all",
+              "conditions": [{"sensor": "tariff.bonus_window_active", "op": "==",
+                              "value": 1}],
+              "action": {"kind": "force", "direction": "discharge", "unit": "pct",
+                         "power": 100, "target_soc": 30},
+              "ask": {"question": "Battery export bonus window: battery %battery.soc_pct%%. "
+                                  "Export now?",
+                      "timeout_min": 5, "if_no_reply": "skip",
+                      "choices": [{"label": "Export", "then": "run"},
+                                  {"label": "Hold", "then": "skip"}]}}},
 ]
 
 
@@ -1152,7 +1268,36 @@ def timeline_segments(entries: list[dict], now: dt.datetime) -> dict[str, Any]:
     return {"now_min": now.hour * 60 + now.minute, "segments": segments}
 
 
-def snapshot_from_state(state: dict, power: dict | None = None) -> dict[str, Any]:
+#: grid.offgrid_reason text per client._off_grid_kind — the same source as the top-bar chip
+#: and HA's Grid Status (#463).
+OFFGRID_REASON = {"simulated": "user requested", "outage": "grid outage"}
+
+
+def off_grid_since(prev: float | None, off_grid: Any, now_ts: float) -> float | None:
+    """When the current off-grid period began, for ``grid.offgrid_min`` (#463).
+
+    Starts at the first poll that reads off-grid and clears on the first that reads on-grid.
+    A poll with no off-grid reading (None) keeps what was there. The bridge cannot see what
+    happened before it started: after a restart while already off-grid, the period counts
+    from the first poll that saw it, never from a guessed earlier time."""
+    if off_grid is None:
+        return prev
+    if not off_grid:
+        return None
+    return prev if prev is not None else now_ts
+
+
+def offgrid_min(state: dict, now_ts: float) -> int | None:
+    """Whole minutes of the current off-grid period (see off_grid_since); None on grid or
+    with no recorded start."""
+    since = (state or {}).get("off_grid_since")
+    if not (state or {}).get("off_grid") or since is None:
+        return None
+    return int(max(0.0, now_ts - float(since)) // 60)
+
+
+def snapshot_from_state(state: dict, power: dict | None = None,
+                        now_ts: float | None = None) -> dict[str, Any]:
     """Flatten the poller's last state into the ``sensor.id`` namespace that
     conditions and message variables both use — one vocabulary, not two."""
     st = dict(state or {})
@@ -1186,6 +1331,11 @@ def snapshot_from_state(state: dict, power: dict | None = None) -> dict[str, Any
                      ("status.debug", "debug")):
         v = st.get(src)
         snap[key] = None if v is None else int(bool(v))
+    # Why it is off-grid (#463): "user requested" (the aGate's simulated off-grid) or
+    # "grid outage"; "unknown" while off-grid with no reason read; None on grid.
+    snap["grid.offgrid_reason"] = (OFFGRID_REASON.get(st.get("off_grid_kind"), "unknown")
+                                   if og else None)
+    snap["grid.offgrid_min"] = offgrid_min(st, time.time() if now_ts is None else now_ts)
     # state IS the summary power block (poller sets last_state = summary['power']), so the daily
     # solar counter is here — available in the scheduler ENGINE tick too (where power is None).
     snap["solar.today_kwh"] = st.get("kwh_sun")   # actual PV generated today
@@ -1276,6 +1426,10 @@ SENSORS = [
     ("battery.power_w", "Battery power (W)"),
     ("grid.power_w", "Grid power (W)"),
     ("grid.connected", "Grid connected"),
+    ("grid.offgrid_reason", "Off-grid reason (text: \"user requested\", \"grid outage\", "
+                            "\"unknown\")"),
+    ("grid.offgrid_min", "Off-grid for (minutes; counted from the first poll that saw it "
+                         "after a bridge restart)"),
     ("solar.power_w", "Solar power (W)"),
     ("load.power_w", "Home load (W)"),
     ("generator.power_w", "Generator power (W)"),
@@ -2263,6 +2417,7 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
     if now is None:
         now, _ = site_time.now_site(settings, host)
     snapshot = snapshot_from_state(state)
+    snapshot["grid.offgrid_min"] = offgrid_min(state, now.timestamp())   # on the tick's clock
     snapshot.update(ha_snapshot(store))     # exposed HA entities are conditions too
     snapshot.update(solar_snapshot(settings))   # weather + solar-forecast sensors
     snapshot.update(nem_snapshot(settings))     # tariff.spot_price (AEMO NEM built-in)

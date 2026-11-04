@@ -12,6 +12,19 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Ask templates and two off-grid sensors** (refs #463). New scheduler sensors
+  `grid.offgrid_reason` ("user requested", "grid outage" or "unknown"; no value on grid) and
+  `grid.offgrid_min` (minutes since this off-grid period began; after a bridge restart while
+  off-grid it counts from the first reading). Eight new templates, each watching its
+  conditions continuously and asking once when they become true (5-minute wait, no reply
+  skips): Off-grid (user requested) for 30 min → asks to go back on-grid; Off-grid (grid
+  outage) for 30 min → Acknowledge, no battery action; Cheap price → charge, from the
+  wholesale price (≤ 5 c/kWh) or the tariff import rate (≤ $0.05/kWh); High price →
+  export, from the wholesale price (≥ 50 c/kWh) or the tariff feed-in rate (≥ $0.50/kWh),
+  only at or above the min discharge SoC constant; Demand charge window → Self-Consumption
+  for the window, then the previous mode put back (restore on exit), only at or above the
+  demand-charge min SoC constant; Battery export bonus → export. The five force templates
+  need Modbus.
 - **Send to: all enabled devices or the devices you choose** (#281, N3 by device). A
   schedule's **Ask before continuing** step has a **Send to** choice: all enabled
   notification devices (the default) or the ones ticked, listed from the enabled companion
