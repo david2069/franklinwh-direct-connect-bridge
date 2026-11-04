@@ -1,16 +1,14 @@
 # Security: logins, trusted networks and API tokens
 
-!!! warning "Partly built (#457)"
-    In the bridge from 0.5.31: **trusted networks**, the **HTTPS port**, the **Security
-    switch**, **accounts, sign-in and roles**, and **roles for Home Assistant users**.
-    Still to come ([#457](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/457)):
-    **API tokens** and the `api` role.
+!!! note "From 0.5.31 (#457)"
+    Everything on this page is in the bridge from 0.5.31
+    ([#457](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/457)).
+    Client certificates and other ways to sign in are [later](#later-not-in-457).
 
-This page describes how the bridge's optional security will work once
-[#457](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/457) is built.
-It follows the Modbus Bridge's users and roles, and adds an HTTPS-only port, trusted
-networks and long-lived API tokens. The owner's decisions of 2026-11-04 are written in;
-nothing on this page is built yet.
+This page describes the bridge's optional security
+([#457](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/457)). It
+follows the Modbus Bridge's users and roles, and adds an HTTPS port, trusted networks and
+long-lived API tokens.
 
 ## In short
 
@@ -201,9 +199,12 @@ Passwords are stored as argon2id hashes, never in plain text.
 **No API account is created automatically.** To let a script or another system call the
 REST API:
 
-1. An admin creates a user with the role **api**.
-2. The admin creates a long-lived token for that user. The token is shown **once**; copy it
-   then. The bridge keeps only a hash.
+1. An admin adds an account with the role **api** (**Settings → Admin → Security →
+   Accounts**, no password: it can't sign in or use the web UI).
+2. Under **API tokens**, the admin picks the account, names the token after what will use
+   it, picks 30, 90 or 365 days, and presses **+ New token**. The token (it starts
+   `fwhdc_`) is shown **once**; copy it then. The bridge keeps only a hash and the last four
+   characters, to tell tokens apart.
 3. The caller sends it on every request, **on the HTTPS port only**:
 
 ```http
@@ -211,8 +212,22 @@ GET /api/summary HTTP/1.1
 Authorization: Bearer <token>
 ```
 
-A token carries its user's role. Each token has an expiry and a last-used time, and an
-admin can revoke it at any time. A token sent to port 8101 is ignored.
+A token carries its account's role: an **api** account can read everything and send
+battery commands (force, release, mode, reserve, off-grid, acknowledging an alert), not
+change settings or schedules, and gets no web pages. A token for another account has that
+account's role. Each token has an expiry and a last-used time, and an admin can revoke it
+at any time. Disabling or deleting the account stops its tokens too. A wrong, expired or
+revoked token gets **401** "Invalid or expired API token.", even with a signed-in browser
+session. Port 8101 ignores tokens: with Security on it redirects to the HTTPS port, and
+with Security off it needs none.
+
+```sh
+curl --cacert franklinwh-bridge.crt -H "Authorization: Bearer fwhdc_…" \
+     https://<bridge>:8102/api/summary
+```
+
+`--cacert` trusts the bridge's own certificate (**Download certificate** in the same
+section), so curl checks it rather than skipping the check with `-k`.
 
 ## Docker and Python (pip) installs
 

@@ -595,6 +595,12 @@ class SecurityEnabledBody(BaseModel):
     enabled: bool
 
 
+class TokenBody(BaseModel):
+    user_id: int
+    name: str
+    days: int = 365
+
+
 class MqttGroupsBody(BaseModel):
     groups: list[str] = []
 
@@ -1388,7 +1394,17 @@ def create_app() -> FastAPI:
                                      + (f": {err}" if err else ".")}, status_code=503)
             return RedirectResponse(str(request.url.replace(scheme="https", port=tls.status["port"])),
                                     status_code=307)
-        user = auth.session_user(store, request.cookies.get(auth.COOKIE))
+        authz = request.headers.get("Authorization", "")
+        if authz[:7].lower() == "bearer ":
+            # An API token (phase 4): its account's role, no cookie. A bad one is refused
+            # outright rather than falling back to a session.
+            user = auth.token_user(store, authz[7:].strip())
+            if user is None:
+                return JSONResponse({"detail": "Invalid or expired API token."}, status_code=401)
+            via = "token"
+        else:
+            user = auth.session_user(store, request.cookies.get(auth.COOKIE))
+            via = "session"
         if user is None:
             if path in security.OPEN_PATHS or path.startswith("/static/"):
                 return await call_next(request)
@@ -1397,7 +1413,7 @@ def create_app() -> FastAPI:
             nxt = path + (f"?{request.url.query}" if request.url.query else "")
             return RedirectResponse("/signin?next=" + quote(nxt, safe="/"), status_code=303)
         request.state.principal = {"username": user["username"], "role": user["role"],
-                                   "via": "session"}
+                                   "via": via}
         if not security.can(user["role"], request.method, path):
             return JSONResponse({"detail": f"Your role ({user['role']}) can't do this."},
                                 status_code=403)
@@ -1683,6 +1699,27 @@ def create_app() -> FastAPI:
     @app.get("/api/security/signins")
     def api_security_signins(limit: int = 50):
         return {"events": auth.activity(_auth_store(), limit)}
+
+    @app.get("/api/security/tokens")
+    def api_security_tokens():
+        return {"tokens": auth.tokens(_auth_store()), "days": list(auth.TOKEN_DAYS)}
+
+    @app.post("/api/security/tokens")
+    def api_security_tokens_add(body: TokenBody):
+        """A new API token for an account. The token is in this answer only."""
+        try:
+            token, info = auth.create_token(_auth_store(), body.user_id, body.name, body.days)
+        except auth.AuthError as e:
+            raise HTTPException(422, str(e)) from None
+        return {"token": token, **info}
+
+    @app.delete("/api/security/tokens/{token_id}")
+    def api_security_tokens_revoke(token_id: int):
+        try:
+            auth.revoke_token(_auth_store(), token_id)
+        except auth.AuthError as e:
+            raise HTTPException(422, str(e)) from None
+        return {"ok": True}
 
     @app.put("/api/security/enabled")
     def api_security_enabled(body: SecurityEnabledBody):

@@ -12,6 +12,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **API tokens and the api role** (#457 phase 4). An admin adds an **api** account (no
+  password; it can't sign in or use the web UI) and, under **Settings → Admin → Security →
+  API tokens**, makes a token for it: named, valid 30, 90 or 365 days, shown once (it starts
+  `fwhdc_`), kept as a hash. Callers send `Authorization: Bearer <token>` to the HTTPS port and
+  get the account's role: an api account reads everything and sends battery commands, not
+  settings or schedules. The list shows each token's account, last four characters, expiry
+  and last use, with **Revoke**; disabling or deleting the account stops its tokens. A bad
+  token gets 401. Port 8101 ignores tokens. `GET`/`POST /api/security/tokens`,
+  `DELETE /api/security/tokens/{id}`.
 - **Home Assistant users get the role of their HA group** (#457 phase 3b). Every Home
   Assistant user can now open the bridge from the sidebar (the add-on sets `panel_admin:
   false`; HA's default showed it to administrators only). HA administrators and owners are

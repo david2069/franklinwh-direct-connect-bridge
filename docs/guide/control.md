@@ -198,9 +198,13 @@ that block can stop export or discharge.
 ![Settings → Automation → Control: the Allow writes switch, which no longer blocks writes](../images/control/02-allow-writes.png)
 
 The **Allow writes** switch suggests a read-only mode. As of 0.5.2 there is none: the
-switch does nothing (see [the first gate](#1-allow_writes-no-longer-blocks-writes)). Anyone who
-can open the UI or reach the HTTP API can change the gateway, within the `confirm` and
-provider gates above. Keep the bridge on a trusted network.
+switch does nothing (see [the first gate](#1-allow_writes-no-longer-blocks-writes)).
+
+What decides who can change the gateway is **Security** (from 0.5.31): with it on, each
+account's role does, and a **viewer** account, or a read-only Home Assistant user, can only
+look. With it off (an upgraded install keeps it off), anyone who can open the UI or reach
+the HTTP API from a trusted network can change the gateway, within the `confirm` and
+provider gates above. See [Security](security.md).
 
 If you are setting the bridge up for the first time, or pointing it at a system you do
 not own, leave the Modbus client (this bridge) off and do not enter cloud credentials.
