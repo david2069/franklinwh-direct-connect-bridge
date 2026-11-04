@@ -18,12 +18,17 @@ PKG = Path(sch.__file__).parent
 @pytest.fixture
 def st(tmp_path):
     s = MetricsStore(str(tmp_path / "t.db"))
+    s.create_ha_instance(ha_id="home", name="Home", base_url="http://ha.test:8123", token="t")
+    s.create_ha_instance(ha_id="off", name="Off", base_url="http://off.test:8123", token="t",
+                         enabled=False)
     s.create_notify_device(dev_id="d1", alias="Phone", instance_id="home",
                            service="notify.mobile_app_phone")
     s.create_notify_device(dev_id="d2", alias="Tablet", instance_id="home",
                            service="notify.mobile_app_tab")
     s.create_notify_device(dev_id="d3", alias="Old", instance_id="home",
                            service="notify.mobile_app_old", enabled=False)
+    s.create_notify_device(dev_id="d4", alias="Away", instance_id="off",
+                           service="notify.mobile_app_away")
     return s
 
 
@@ -45,6 +50,16 @@ def test_targets_follow_send_to(st):
     assert names({"type": "device", "ids": ["d2"]}) == ["Tablet"]
     # a chosen device that is switched off stays off
     assert names({"type": "device", "ids": ["d2", "d3"]}) == ["Tablet"]
+
+
+def test_a_device_on_a_switched_off_instance_is_not_asked(st):
+    """The Ask step skips devices whose HA instance is switched off, as every other send
+    does (actionable.targets), whether all devices or chosen ones are asked."""
+    def names(send_to=None):
+        return [t.label for t in sch._ask_targets(st, send_to)]
+    assert "Away" not in names()
+    assert names({"type": "device", "ids": ["d4"]}) == []
+    assert names({"type": "device", "ids": ["d1", "d4"]}) == ["Phone"]
 
 
 def test_the_question_goes_to_the_chosen_devices(st, notifier):  # noqa: F811
@@ -77,7 +92,8 @@ def c(monkeypatch):
 
 def test_the_api_saves_send_to_and_refuses_unknown_devices_and_roles(c):
     dev = "p1"
-    body = {"name": "asked", "enabled": False, "fire_at": "10:00", "gateway_id": "g1"}
+    body = {"name": "asked", "enabled": False, "fire_at": "10:00", "duration_min": 30,
+            "gateway_id": "g1"}
     ok = {**ASK, "send_to": {"type": "device", "ids": [dev]}}
     r = c.post("/api/schedules", json={**body, "ask": ok})
     assert r.status_code == 201 and r.json()["ask"] == ok

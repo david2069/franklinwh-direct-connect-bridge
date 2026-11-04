@@ -318,6 +318,14 @@ def _ha_message(row: dict) -> str:
     return msg + tail + "\nAcknowledge it in the bridge; dismissing it here does not."
 
 
+def _ask_phones(store, row: dict) -> None:
+    try:
+        from . import notify_buttons
+        notify_buttons.ask_alert(store, row)
+    except Exception as e:  # noqa: BLE001 — the phones never stop the outbox
+        log.warning("alert #%s %s: not sent to devices: %s", row["id"], row["code"], e)
+
+
 def deliver(store, notifier, now: float | None = None) -> int:
     """Send what the outbox owes, honouring each row's back-off. Returns deliveries
     made. Facts about Home Assistant's reachability come from these attempts."""
@@ -349,6 +357,11 @@ def deliver(store, notifier, now: float | None = None) -> int:
         else:
             continue
         err = notifier.call_service("persistent_notification", service, data)
+        if service == "create" and int(d["attempts"]) == 0:
+            # The same alert on the phones, with buttons (#374) — on its first try, whether
+            # or not the persistent notification was made (#464): a failed or missing HA
+            # notification must not keep the alert off the devices. Retries do not re-send.
+            _ask_phones(store, row)
         if err.startswith("skipped:"):
             store.record_delivery(row["id"], d["channel"], ok=False, attempted=False,
                                   error=err, now=ts)
@@ -365,9 +378,6 @@ def deliver(store, notifier, now: float | None = None) -> int:
         else:
             _next_try.pop(key, None)
             sent += 1
-            if service == "create":         # the same alert on the phones, with buttons (#374)
-                from . import notify_buttons
-                notify_buttons.ask_alert(store, row)
             log.info("alert #%s %s: Home Assistant notification %s", row["id"], row["code"],
                      "created" if service == "create" else "dismissed")
     return sent

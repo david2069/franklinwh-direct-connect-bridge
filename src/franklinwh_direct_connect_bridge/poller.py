@@ -232,6 +232,7 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
     inserts = 0
     fail_streak = 0   # consecutive failed polls (DEF-POLLER-STALL fix 1)
     starting_since: float | None = None   # first all-zero start-up frame of a run (#309)
+    off_grid_since: float | None = None   # start of this off-grid period, as first seen (#463)
     alerts_sig: tuple | None = None   # last alert summary published to MQTT (#271)
     alerts_pub_ts = 0.0
     try:
@@ -364,6 +365,11 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                     except Exception as e:  # noqa: BLE001 — a network read never breaks the poll
                         log.debug("[%s] network read failed: %s", gw.id, e)
                 st.update(net_state)
+                # grid.offgrid_min (#463): when this off-grid period began, as this bridge
+                # first saw it. A restart while off-grid starts counting from that poll.
+                from .scheduler import off_grid_since as _ogs
+                off_grid_since = _ogs(off_grid_since, st.get("off_grid"), time.time())
+                st["off_grid_since"] = off_grid_since
                 gw.last_state = st
                 # Only a poll that READ the gateway makes the snapshot fresh (#284). A
                 # failed poll stored an empty snapshot as new, so the scheduler kept

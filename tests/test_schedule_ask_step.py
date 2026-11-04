@@ -8,10 +8,12 @@ The Notifier here is a fake: no Home Assistant is contacted.
 import asyncio
 import datetime as dt
 import threading
+import time
 
 import pytest
 from fastapi.testclient import TestClient
-from franklinwh_ha_notify import NO, REPLY, YES, Answer
+from franklinwh_ha_notify import NO, REPLY, YES, Answer, Request
+from franklinwh_ha_notify.actions import new_id
 
 from franklinwh_direct_connect_bridge import actionable, state
 from franklinwh_direct_connect_bridge import app as app_module
@@ -23,18 +25,21 @@ ASK = {"question": "Charge now?", "timeout_min": 5, "if_no_reply": "skip"}
 
 
 class FakeNotifier:
-    """ask_and_wait blocks until the test answers, like a phone that hasn't been tapped."""
+    """wait blocks until the test answers, like a phone that hasn't been tapped."""
 
     def __init__(self, loop):
         self.loop = loop
         self.calls = []
         self._answer: asyncio.Future | None = None
 
-    async def ask_and_wait(self, event, targets, buttons, *, timeout_s, gateway=None, **values):
+    async def ask(self, event, targets, buttons, *, ttl_s, gateway=None, meta=None, **values):
         self.calls.append({"event": event, "targets": targets, "verbs": [b.verb for b in buttons],
                            "buttons": [(b.title, b.reply) for b in buttons],
-                           "timeout_s": timeout_s, "gateway": gateway, **values})
+                           "timeout_s": ttl_s, "gateway": gateway, **values})
         self._answer = self.loop.create_future()
+        return Request(new_id(), event, gateway, tuple(buttons), time.time() + ttl_s)
+
+    async def wait(self, request, timeout_s):
         return await self._answer
 
     def answer(self, ans: Answer):
@@ -97,7 +102,7 @@ def _occ(st, sid="s1"):
 def test_yes_runs_the_action_after_the_reply(st, notifier):
     _schedule(st)
     assert _tick(st) == [], "the action waits for the answer"
-    assert notifier.calls[0]["question"] == "Charge now?"
+    assert notifier.calls[0]["question"] == "Charge now? (reply within 5 min)"
     assert notifier.calls[0]["verbs"] == [YES, NO] and notifier.calls[0]["timeout_s"] == 300
     assert _tick(st) == [] and len(notifier.calls) == 1, "asked once per run"
     notifier.answer(Answer(YES))
@@ -166,6 +171,7 @@ def test_an_always_rule_runs_on_a_later_tick_after_yes(st, notifier):
 
 
 def test_targets_are_the_enabled_devices_without_the_notify_prefix(st):
+    st.create_ha_instance(ha_id="home", name="Home", base_url="http://ha.test:8123", token="t")
     st.create_notify_device(dev_id="d1", alias="Phone", instance_id="home",
                             service="notify.mobile_app_phone")
     st.create_notify_device(dev_id="d2", alias="Old", instance_id="home",
@@ -185,7 +191,7 @@ def test_the_question_takes_sensor_values(st, notifier, monkeypatch):
     monkeypatch.setattr(sch, "snapshot_from_state", lambda state: {"battery.soc_pct": 41})
     _schedule(st, ask={**ASK, "question": "SoC is %battery.soc_pct% for %schedule.name%. Charge?"})
     _tick(st)
-    assert notifier.calls[0]["question"] == "SoC is 41 for Rule s1. Charge?"
+    assert notifier.calls[0]["question"] == "SoC is 41 for Rule s1. Charge? (reply within 5 min)"
     assert any('asked "SoC is 41 for Rule s1. Charge?"' in r for _, r in _log(st))
 
 
@@ -326,7 +332,8 @@ def c(monkeypatch):
 
 
 def test_the_api_saves_and_refuses_the_step(c):
-    body = {"name": "asked", "enabled": False, "fire_at": "10:00", "gateway_id": "g1", "ask": ASK}
+    body = {"name": "asked", "enabled": False, "fire_at": "10:00", "duration_min": 30,
+            "gateway_id": "g1", "ask": ASK}
     r = c.post("/api/schedules", json=body)
     assert r.status_code == 201 and r.json()["ask"] == ASK
     sid = r.json()["id"]

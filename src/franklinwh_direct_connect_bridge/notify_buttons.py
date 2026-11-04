@@ -6,6 +6,11 @@ Each button calls the bridge's own existing command: Release is
 ``alerts.ack`` with source ``ha``; Re-discover asks the gateway's poller for its own
 re-discovery sweep. The asks ride on the notifications the bridge already sends; the
 callers send the plain one only when the ask went nowhere.
+
+Requests survive a restart (franklinwh-ha-notify#6), so a tap can arrive long after the
+state it was asked about has changed. Each handler is therefore idempotent: releasing a
+force that is no longer running, or acknowledging an alert already acknowledged, does
+nothing and says so.
 """
 from __future__ import annotations
 
@@ -21,12 +26,17 @@ log = logging.getLogger(__name__)
 FORCE_RUNNING = "force_running"
 ALERT = "alert"
 TEST = "test_buttons"
+#: The Test critical alert from Settings (#464): the alert's path, with no alert record.
+TEST_ALERT = "test_alert"
+#: Its Home Assistant persistent notification.
+TEST_ALERT_NID = "fwh_dc_alert_test"
 
 RELEASE, ACK, REDISCOVER = "RELEASE", "ACK", "REDISCOVER"
 
 RELEASE_TTL_S = 900
 ALERT_TTL_S = 3600
 TEST_TTL_S = 120
+TEST_ALERT_TTL_S = 300
 #: How long a worker thread waits for the send itself (not for a tap).
 SEND_WAIT_S = 30
 
@@ -37,6 +47,8 @@ actionable.templates().register(
           "A bridge alert: Acknowledge (and Re-discover when the aGate is unreachable)."),
     Event(TEST, "FranklinWH test", "Tap Yes or No to check buttons reach the bridge.", (),
           "The test with buttons from Settings."),
+    Event(TEST_ALERT, "{title}", "{message}", ("title", "message"),
+          "The Test critical alert from Settings: Acknowledge, as a real alert."),
 )
 
 
@@ -58,10 +70,13 @@ def _label_for_host(host: str) -> str | None:
 def _ask_from_thread(store, event: str, buttons: list[Button], ttl_s: float, *,
                      gateway: str | None, meta: dict, **values) -> bool:
     """Send an ask from a worker thread; True when it reached at least one target."""
+    from . import notify_engine
     n = actionable.notifier()
     if n is None:
         return False
-    fut = actionable.submit(n.ask(event, actionable.targets(store), buttons, ttl_s=ttl_s,
+    # Its Send to setting (#281): all enabled devices, or the ones chosen.
+    ids = notify_engine.send_to_ids(store, event)
+    fut = actionable.submit(n.ask(event, actionable.targets(store, ids), buttons, ttl_s=ttl_s,
                                   gateway=gateway, meta=meta, **values))
     if fut is None:
         return False
@@ -85,6 +100,10 @@ async def _on_release(request, answer) -> str:
         return "kept"
     from . import battery_control
     host = request.meta["host"]
+    now = await asyncio.to_thread(battery_control.status, host)
+    if now.get("available") and not now.get("vpp_active"):
+        log.info("Release tapped for %s: no force is running there; nothing to do", host)
+        return "already released"
     out = await asyncio.to_thread(battery_control.execute, "Release", host=host)
     if not out.get("ok"):
         return f"not released: {out.get('result', '')}"
@@ -118,13 +137,34 @@ async def _on_alert(request, answer) -> str:
         gw.rediscover_requested = True
         return "re-discovery requested"
     from . import alerts
-    row = await asyncio.to_thread(alerts.ack, _store(), request.meta["alert_id"], "ha")
+    st = _store()
+    aid = request.meta["alert_id"]
+    before = await asyncio.to_thread(st.alert, aid)
+    if before is not None and before.get("acked_ts") is not None:
+        log.info("Acknowledge tapped for alert #%s: already acknowledged by %s; nothing to do",
+                 aid, before.get("acked_by"))
+        return "already acknowledged"
+    row = await asyncio.to_thread(alerts.ack, st, aid, "ha")
     return "acknowledged" if row else "alert not found"
 
 
 # ── test round trip ──────────────────────────────────────────────────────────────
 async def _on_test(request, answer) -> str:
-    return "Yes" if answer.verb == YES else "No"
+    said = "Yes" if answer.verb == YES else "No"
+    from . import notify_checks          # the last result, for the Notifications check (#464)
+    await asyncio.to_thread(notify_checks.test_tapped, _store(), request.id, said)
+    return said
+
+
+async def _on_test_alert(request, answer) -> str:
+    """Acknowledge on the test alert: dismiss its Home Assistant notification, as a real
+    acknowledgement does. There is no alert record to acknowledge."""
+    from .config import get_settings
+    from .notify import Notifier
+    err = await asyncio.to_thread(Notifier(get_settings()).call_service,
+                                  "persistent_notification", "dismiss",
+                                  {"notification_id": TEST_ALERT_NID})
+    return "acknowledged" if not err else f"acknowledged (dismiss: {err})"
 
 
 def yes_no() -> list[Button]:
@@ -134,3 +174,4 @@ def yes_no() -> list[Button]:
 actionable.on(FORCE_RUNNING, _on_release)
 actionable.on(ALERT, _on_alert)
 actionable.on(TEST, _on_test)
+actionable.on(TEST_ALERT, _on_test_alert)

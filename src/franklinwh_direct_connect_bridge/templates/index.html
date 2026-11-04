@@ -270,7 +270,7 @@
           </template>
         </ul>
         <div x-show="$store.app.cmdProgress.done" class="px-5 pb-4 text-sm" data-role="result"
-             :style="'color:' + ($store.app.cmdProgress.level === 'ok' ? 'var(--success, #34d399)' : $store.app.cmdProgress.level === 'warn' ? 'var(--warning, #fbbf24)' : 'var(--danger, #f87171)')"
+             :style="{ color: $store.app.cmdProgress.level === 'ok' ? 'var(--success, #34d399)' : $store.app.cmdProgress.level === 'warn' ? 'var(--warning, #fbbf24)' : 'var(--danger, #f87171)' }"
              x-text="$store.app.cmdProgress.result"></div>
         <div class="px-5 py-3 border-t flex justify-end" style="border-color:var(--border)">
           <button class="btn btn-secondary btn-sm" @click="$store.app.closeCmdProgress()"

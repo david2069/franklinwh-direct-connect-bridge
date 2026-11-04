@@ -262,6 +262,7 @@ class RestoreReq(BaseModel):
 class NotifyTriggersBody(BaseModel):
     master: bool | None = None
     triggers: dict | None = None        # {event: {enabled: bool, threshold?: int, target?: {}}}
+    asks: dict | None = None            # {alert|force_running: {target: {}}} (#281)
 
 
 class NotifyTriggersTestReq(BaseModel):
@@ -893,6 +894,8 @@ def _seed_self_ha_instance(settings) -> bool:
                 if r.get("base_url") == me["base_url"] and r.get("token") != me["token"]:
                     store.update_ha_instance(r["id"], token=me["token"])
                     log.info("refreshed this add-on's Home Assistant token (new container)")
+                    from . import actionable
+                    actionable.sync_instances(store)
             return False
         import uuid
         store.create_ha_instance(ha_id=uuid.uuid4().hex[:12], name=me["name"],
@@ -2669,6 +2672,8 @@ def create_app() -> FastAPI:
         row = st.create_ha_instance(
             ha_id=uuid.uuid4().hex[:12], name=req.name, base_url=req.base_url,
             token=req.token, is_default=req.is_default, enabled=req.enabled)
+        from . import actionable
+        actionable.sync_instances(st)          # its tap listener starts now, not at a restart
         return ha_instances.redact(row)
 
     @app.patch("/api/ha/instances/{ha_id}")
@@ -2678,13 +2683,18 @@ def create_app() -> FastAPI:
         if st.ha_instance(ha_id) is None:
             raise HTTPException(status_code=404, detail=f"no HA instance '{ha_id}'")
         row = st.update_ha_instance(ha_id, **req.model_dump(exclude_unset=True))
+        from . import actionable
+        actionable.sync_instances(st)          # new URL/token signs in again; off stops listening
         return ha_instances.redact(row)
 
     @app.delete("/api/ha/instances/{ha_id}")
     def api_ha_instance_delete(ha_id: str):
         _guard_writes()
-        if not _ha_store().delete_ha_instance(ha_id):
+        st = _ha_store()
+        if not st.delete_ha_instance(ha_id):
             raise HTTPException(status_code=404, detail=f"no HA instance '{ha_id}'")
+        from . import actionable
+        actionable.sync_instances(st)          # its tap listener closes
         return {"deleted": ha_id}
 
     @app.post("/api/ha/test")
@@ -2871,13 +2881,20 @@ def create_app() -> FastAPI:
         dev = st.notify_device(req.device_id or "")
         if dev is None:
             raise HTTPException(404, f"no device '{req.device_id}'")
+        from . import notify_checks
         t = Target(dev["instance_id"], dev["service"].removeprefix("notify."), dev["alias"])
         if not t.buttons:
             return {"ok": False, "error": "this target cannot show buttons (only mobile_app_* can)"}
         r = await n.ask(notify_buttons.TEST, [t], notify_buttons.yes_no(),
                         ttl_s=notify_buttons.TEST_TTL_S)
         if r is None:
+            # Kept for the Notifications check (#464), as is each outcome below.
+            await asyncio.to_thread(notify_checks.record_test, st, ok=False,
+                                    result="not sent", device=dev["alias"])
             return {"ok": False, "error": "not delivered (see the notification record)"}
+        await asyncio.to_thread(notify_checks.record_test, st, ok=None,
+                                result="sent, waiting for a tap", device=dev["alias"],
+                                request_id=r.id)
         return {"ok": True, "request_id": r.id, "ttl_s": notify_buttons.TEST_TTL_S}
 
     @app.get("/api/ha/notify-devices/test-buttons/{request_id}")
@@ -2887,6 +2904,88 @@ def create_app() -> FastAPI:
         n = actionable.notifier()
         r = n.requests.get(request_id) if n else None
         if r is None:
+            raise HTTPException(404, "no such test")
+        expired = r.answer is None and time.time() >= r.expires_at
+        if expired:
+            from . import notify_checks
+            notify_checks.test_expired(_ha_store(), request_id)
+        return {"answer": r.answer.verb if r.answer else None, "expired": expired}
+
+    # ── Notifications check and Test critical alert (#464) ─────────────────────
+    @app.get("/api/notify/checks")
+    def api_notify_checks():
+        """Can a critical alert reach Home Assistant and the phones? One line per check:
+        pass / fail / unset (not set up), with its fix. Never returns a token."""
+        from . import notify_checks
+        return notify_checks.checks(_ha_store(), get_settings())
+
+    @app.post("/api/notify/test-alert")
+    async def api_notify_test_alert():
+        """Run a critical alert's path without an alert record: the Home Assistant
+        persistent notification, then Acknowledge to the devices that Critical alerts
+        Send to. The tap is read with GET /api/notify/test-alert/{request_id}. Each step's
+        result is returned; nothing is raised in the alerts table, so no alert window."""
+        from . import actionable, notify_buttons, notify_engine
+        st = _ha_store()
+        title = "FranklinWH test alert"
+        message = ("Test critical alert from Settings → Notifications. Nothing is wrong. "
+                   "Tap Acknowledge to finish the test.")
+        notifier = Notifier(get_settings())
+        tgt = notifier.target_info()
+        err = await asyncio.to_thread(
+            notifier.call_service, "persistent_notification", "create",
+            {"notification_id": notify_buttons.TEST_ALERT_NID, "title": title,
+             "message": message})
+        where = {"instance": tgt["name"], "supervisor": "this add-on's Home Assistant",
+                 "environment": "HA_URL"}.get(tgt["source"], "")
+        steps = [{"id": "ha", "label": "Home Assistant notification created",
+                  "status": ("unset" if err.startswith("skipped:") else "fail") if err else "pass",
+                  "detail": err.removeprefix("skipped: ") if err else f"in {where}"}]
+        n = actionable.notifier()
+        ids = notify_engine.send_to_ids(st, "alert")
+        targets = actionable.targets(st, ids)
+        phones = [t for t in targets if t.buttons]
+        req = None
+        if n is None:
+            steps.append({"id": "devices", "label": "Sent to devices", "status": "fail",
+                          "detail": "notifications with buttons are not running"})
+        elif not phones:
+            steps.append({"id": "devices", "label": "Sent to devices", "status": "unset",
+                          "detail": (f"none of the {len(targets)} device(s) can show buttons "
+                                     "(only mobile_app_* phones)") if targets
+                          else "no enabled device"})
+        else:
+            started = time.time() - 1
+            req = await n.ask(notify_buttons.TEST_ALERT, targets,
+                              [notify_buttons.Button(notify_buttons.ACK, "Acknowledge")],
+                              ttl_s=notify_buttons.TEST_ALERT_TTL_S, title=title, message=message)
+            row = next((r for r in await asyncio.to_thread(n.ledger.recent, 20)
+                        if r.get("event") == notify_buttons.TEST_ALERT and r["ts"] >= started), {})
+            errs = [d.get("error") for d in (row.get("detail") or [])
+                    if isinstance(d, dict) and d.get("error")]
+            if not n.enabled():
+                detail = "Push notifications are off"
+            elif row.get("total") is not None:
+                detail = (f"to {row.get('delivered') or 0} of {row['total']} device(s)"
+                          + (f"; {errs[0]}" if errs else ""))
+            else:
+                detail = "sent" if req is not None else "not delivered (see Recent notifications)"
+            steps.append({"id": "devices", "label": "Sent to devices",
+                          "status": "pass" if req is not None else "fail", "detail": detail})
+        steps.append({"id": "ack", "label": "Acknowledge tapped",
+                      "status": "waiting" if req is not None else "skipped",
+                      "detail": "tap Acknowledge on a phone" if req is not None
+                      else "nothing was sent to tap"})
+        return {"steps": steps, "request_id": req.id if req is not None else None,
+                "ttl_s": notify_buttons.TEST_ALERT_TTL_S}
+
+    @app.get("/api/notify/test-alert/{request_id}")
+    def api_notify_test_alert_answer(request_id: str):
+        """Whether Acknowledge was tapped on the test alert; ``expired`` once it can't be."""
+        from . import actionable, notify_buttons
+        n = actionable.notifier()
+        r = n.requests.get(request_id) if n else None
+        if r is None or r.event != notify_buttons.TEST_ALERT:
             raise HTTPException(404, "no such test")
         return {"answer": r.answer.verb if r.answer else None,
                 "expired": r.answer is None and time.time() >= r.expires_at}
@@ -3409,9 +3508,11 @@ def create_app() -> FastAPI:
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
 
-    def _valid_spec(spec: dict) -> None:
-        """Refuse a schedule that cannot run as written (#198) — never quietly fix it."""
-        errors = scheduler.validate_spec(spec)
+    def _valid_spec(spec: dict, saved_as: tuple[str, ...] = ()) -> None:
+        """Refuse a schedule that cannot run as written (#198) — never quietly fix it.
+        ``saved_as``: errors the saved schedule already had under a newer rule; an edit
+        that leaves them as they were (the enable toggle) is not refused for them."""
+        errors = [e for e in scheduler.validate_spec(spec) if e not in saved_as]
         # Every schedule names its gateway (#379). There is no "default gateway" to
         # leave it on: the form starts on the active gateway.
         gid = spec.get("gateway_id") or ""
@@ -3466,7 +3567,10 @@ def create_app() -> FastAPI:
         sent = req.model_dump(exclude_unset=True, exclude={"name", "enabled"})
         spec = {**req.model_dump(exclude={"name", "enabled"}), **prior_spec, **sent}
         spec["action"] = _normalized_action(spec.get("action"))
-        _valid_spec(spec)
+        # A schedule saved before the Ask wait had to fit its window stays editable as
+        # long as the edit leaves that wait and window as they were.
+        _valid_spec(spec, saved_as=tuple(scheduler._ask_window_errors(
+            {**req.model_dump(exclude={"name", "enabled"}), **prior_spec})))
         # `enabled` merges like every other field (#168): left out, the schedule keeps its
         # state. Its model default (True) used to apply and turned a disabled one back on.
         enabled = req.enabled if "enabled" in req.model_fields_set else bool(prior.get("enabled"))
@@ -5733,8 +5837,8 @@ def create_app() -> FastAPI:
         notifier = Notifier(get_settings())
         if not (notifier.enabled and notifier.token and notifier.base):
             return {"ok": False,
-                    "detail": "No notification target configured (HA add-on Supervisor "
-                              "token, or ha_url + ha_token for standalone)."}
+                    "detail": "No notification target configured (an HA instance under "
+                              "Settings → Integrations, or ha_url + ha_token)."}
         try:
             notifier.notify("FranklinWH Direct Connect Bridge",
                             "Test notification from the bridge.")
@@ -6075,8 +6179,15 @@ def create_app() -> FastAPI:
             "forecast_configured": bool(settings.pv_latitude is not None
                                         and settings.pv_longitude is not None),
         }
+        # The Notifications check (#464), redacted: statuses and kinds, no names or URLs.
+        try:
+            from . import notify_checks
+            notifications = notify_checks.for_support(notify_checks.checks(store, settings))
+        except Exception as e:  # noqa: BLE001
+            notifications = [{"check": "error", "status": "fail", "detail": type(e).__name__}]
         return {"meta": meta, "gateways": gateways, "solar": solar, "system_setup": system,
-                "integration": integration, "billing": billing}
+                "integration": integration, "billing": billing,
+                "notifications": notifications}
 
     @app.get("/api/disclaimer")
     def api_disclaimer(client_id: str | None = Query(None)):

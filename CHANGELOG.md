@@ -11,7 +11,50 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+- **Guide: Home Assistant setup and notifications brought up to date.** No restart after
+  adding an HA instance; Send to on every notification (triggers, critical alerts,
+  Release / Keep, Ask); the 5-minute Ask wait and its window rule; questions surviving a
+  restart; the {x} picker; the eight Ask templates; the Notifications check and its
+  troubleshooting table. Code and API references moved to a developer section at the end.
+
+## [0.5.29] — 2026-11-04
+
 ### Added
+- **Notifications check and Test critical alert** (refs #464). Settings → Integrations →
+  Notifications has a **Notifications check**: the Push notifications switch, the default
+  HA instance (reachable, token accepted, and where persistent notifications go: the
+  instance, the add-on's Supervisor or `HA_URL`), the button taps listener for each enabled
+  instance, at least one enabled `mobile_app_*` phone, the last **Test with buttons** result
+  and its time (now kept in the database), and where critical alerts go. Each line shows
+  Pass, Fail or Not set up, with its fix. `GET /api/notify/checks`. **Test critical alert**
+  runs the path (Home Assistant notification created, sent to devices with Acknowledge,
+  Acknowledge tapped) and shows each step in its window; no alert is recorded, so no alert
+  window opens (`POST /api/notify/test-alert`, `GET /api/notify/test-alert/{id}`). Support
+  info includes the check lines, without names, URLs, addresses or tokens. The guide has a
+  troubleshooting table.
+- **Send to for critical alerts and Release / Keep** (refs #281). Settings → Push
+  notifications, under the Auto-notify triggers: two rows, "Critical alerts" (Acknowledge /
+  Re-discover) and "Release / Keep a running force", each with the same Send to picker as
+  the triggers — All devices (the default; nothing changes until you pick) or Chosen
+  devices with ticks. A chosen device that is switched off, or on a switched-off Home
+  Assistant instance, is not sent to. When none of the chosen devices can show buttons,
+  the existing fallback applies: the plain Release push, and for alerts the Home Assistant
+  notification only. Saved with `PUT /api/notify/triggers` (`asks`); roles are refused. A
+  failed save on these rows and the triggers now shows under them instead of as a toast.
+- **Ask templates and two off-grid sensors** (refs #463). New scheduler sensors
+  `grid.offgrid_reason` ("user requested", "grid outage" or "unknown"; no value on grid) and
+  `grid.offgrid_min` (minutes since this off-grid period began; after a bridge restart while
+  off-grid it counts from the first reading). Eight new templates, each watching its
+  conditions continuously and asking once when they become true (5-minute wait, no reply
+  skips): Off-grid (user requested) for 30 min → asks to go back on-grid; Off-grid (grid
+  outage) for 30 min → Acknowledge, no battery action; Cheap price → charge, from the
+  wholesale price (≤ 5 c/kWh) or the tariff import rate (≤ $0.05/kWh); High price →
+  export, from the wholesale price (≥ 50 c/kWh) or the tariff feed-in rate (≥ $0.50/kWh),
+  only at or above the min discharge SoC constant; Demand charge window → Self-Consumption
+  for the window, then the previous mode put back (restore on exit), only at or above the
+  demand-charge min SoC constant; Battery export bonus → export. The five force templates
+  need Modbus.
 - **Send to: all enabled devices or the devices you choose** (#281, N3 by device). A
   schedule's **Ask before continuing** step has a **Send to** choice: all enabled
   notification devices (the default) or the ones ticked, listed from the enabled companion
@@ -19,8 +62,66 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   server refuses an unknown device or a role. Schedules saved before this still ask every
   enabled device. Each **Auto-notify trigger** in Settings can now go to several chosen
   devices, not just one; a trigger already sent to one device keeps it.
+- **Schedule editor: a {x} button to insert values** (#462). Every schedule text field that
+  takes `%sensor.id%` values has a **{x}** button beside it: the **Ask before continuing**
+  question, the notify title and message (on entry, on exit, or both) and the raw service
+  entity_id and data. It opens a list of the same sensors as the condition picker, in the
+  same groups, with a search box; each row shows the name, the value now and the
+  `%id%` code. Tapping a row puts the code where the cursor was (at the end if the field
+  was never used) and returns to the field. On a phone the list fills the screen.
+
+### Changed
+- **Ask before continuing: 5-minute wait, must fit the window, deadline in the question.**
+  A new schedule waits 5 minutes for a reply (was 10). Saving a wait longer than the
+  schedule's window is refused with "the wait (N min) is longer than the schedule's window
+  (M min)", since a reply after the window closes cannot run the action. The window is the
+  duration (0 = the start minute only, so 1 minute), or the shortest window of a Recurring
+  windows schedule; Always has no window and takes any wait. Schedules already saved keep
+  loading and running, and an edit that leaves their wait and window alone (the on/off
+  switch) is still accepted. The question sent ends with " (reply within N min)";
+  `%sensor%` values are filled in as before.
 
 ### Fixed
+- **Critical alerts reach Home Assistant and phones on Docker and pip** (refs #464). Home
+  Assistant persistent notifications (alerts, and the aGate / Modbus TCP Server (aGate
+  :502) / firmware / moved / cloud-credential events) now go to the default enabled HA
+  instance under Settings → Integrations → HA Instances (else the first enabled one). On
+  the add-on that is its own instance, "Home Assistant (this add-on)", so nothing changes
+  there. `HA_URL` / `HA_TOKEN` (and, on the add-on, the Supervisor token) are used only
+  when no instance is set up, so existing setups keep working. Before, outside the
+  add-on, they were the only target, so a user who had set up an instance and phones got
+  no critical alert in Home Assistant or on a phone. A critical alert is now also sent to
+  the notification devices when the persistent notification fails or has nowhere to go;
+  before, a failed create kept it off the phones. Retries of the persistent notification
+  do not send to the phones again.
+- **An HA instance added in Settings listens for button taps at once** (franklinwh-ha-notify#5).
+  Adding, editing (URL, token, on/off) or deleting an instance under **Settings →
+  Integrations → HA Instances** now starts, re-signs-in or closes its tap listener on the
+  running bridge; before, a new instance's buttons did nothing until the bridge restarted,
+  and a deleted one kept listening. The add-on's own instance does the same when a new
+  container brings a new Supervisor token. Needs franklinwh-ha-notify 0.1.3 (pinned).
+- **Questions with buttons survive a bridge restart** (franklinwh-ha-notify#6). Uses
+  franklinwh-ha-notify 0.1.2, which keeps open requests in the bridge database
+  (new table `notify_requests`, added to existing databases on start). A tap on
+  **Release** / **Keep**, **Acknowledge** or **Re-discover** inside its time limit after a
+  restart now runs as it would have before it; it used to be ignored. Releasing a force
+  that is no longer running, or acknowledging an alert someone already acknowledged, does
+  nothing and logs it. A schedule waiting on **Ask before continuing** finds its question
+  again after a restart and waits only for the time left; a reply given while the bridge
+  was down is used, and a question that expired meanwhile follows **If no reply** once. The
+  question and the decision are kept on the run, so it is never asked or decided twice,
+  and `%ask.answer%` still reads the answer.
+- **Ask before continuing skips phones on a switched-off Home Assistant instance.** A
+  schedule's question still went to the devices of an HA instance that was disabled in
+  Settings; every other notification already skipped them. It now uses the same device
+  lookup as the rest, whether it asks all enabled devices or the ones chosen in **Send to**.
+- **Hidden messages, labels and list rows stay hidden.** 16 elements in the web UI
+  coloured themselves with a text style, which Alpine applies by replacing the whole style
+  attribute, wiping the `display:none` that hides them: the same cause as the blank rows in
+  the sensor list. Among them: the HA price-entity pickers in Settings → Tariff showed
+  blank rows under each heading, an active tariff could show "· active", and empty
+  message boxes could appear in dialogs. They now set colours property by property, and a
+  test fails if any element that can be hidden binds a text style again.
 - **Schedule editor: no blank rows in the sensor list.** Once a condition had a sensor
   chosen, every group heading in its drop list showed an empty row beneath it, so
   **Ask before continuing** had a gap above its one sensor and **Automation Constants**
