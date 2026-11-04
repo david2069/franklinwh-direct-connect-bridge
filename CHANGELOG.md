@@ -11,6 +11,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.29] — 2026-11-04
+
 ### Added
 - **Notifications check and Test critical alert** (refs #464). Settings → Integrations →
   Notifications has a **Notifications check**: the Push notifications switch, the default
