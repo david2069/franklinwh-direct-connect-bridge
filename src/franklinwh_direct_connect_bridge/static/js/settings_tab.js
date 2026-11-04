@@ -210,13 +210,14 @@ function settingsTab() {
     admin: { storage: {}, busy: false, exportHours: 24 },
     // Trusted networks (#457 phase 1). The result of Save stays in the section (no toast).
     security: { loaded: false, install: '', any: true, text: '', you: '', ingress: false,
-                canSave: true, saving: false, msg: null },
+                canSave: true, saving: false, msg: null, https: {} },
     async loadSecurity() {
       try {
         const d = await (await fetch('api/security')).json();
         const nets = d.trusted_networks || ['any'];
         Object.assign(this.security, { loaded: true, install: d.install, you: d.your_address || '',
           ingress: !!d.via_ingress, canSave: d.can_save !== false, any: nets.includes('any'),
+          https: d.https || {},
           text: nets.includes('any') ? (d.private_ranges || []).join('\n') : nets.join('\n') });
       } catch (e) { /* leave last-known */ }
     },

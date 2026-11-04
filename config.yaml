@@ -21,8 +21,10 @@ ingress: true
 ingress_port: 8101
 ports:
   8101/tcp: 8101
+  8102/tcp: 8102
 ports_description:
   8101/tcp: "Web UI + REST API"
+  8102/tcp: "Web UI + REST API over HTTPS"
 panel_icon: "mdi:home-battery"
 panel_title: "Direct Connect"
 
@@ -39,6 +41,8 @@ homeassistant_api: true
 
 map:
   - data:rw
+  # Your own HTTPS certificate (ssl_certfile / ssl_keyfile), e.g. fullchain.pem (#457).
+  - ssl:ro
 
 options:
   fwh_host: ""
@@ -76,3 +80,5 @@ schema:
   modbus_bridge_password: password?
   fwhai_url: str?
   modbus_host: str?
+  ssl_certfile: str?
+  ssl_keyfile: str?
