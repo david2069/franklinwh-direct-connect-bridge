@@ -180,7 +180,7 @@ SCHEDULES = ("/api/schedules",)
 #: Any signed-in account: their own session and password, and the disclaimer.
 SELF = ("/api/auth/", "/api/disclaimer/ack")
 #: Reads only an admin may make.
-ADMIN_READS = ("/api/security/users", "/api/security/signins")
+ADMIN_READS = ("/api/security/users", "/api/security/signins", "/api/security/tokens")
 READ_METHODS = ("GET", "HEAD", "OPTIONS")
 
 

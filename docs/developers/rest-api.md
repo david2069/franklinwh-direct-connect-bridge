@@ -69,11 +69,23 @@ ingress**.
 
 ## Authentication
 
-**There is none.** `app.py` adds no authentication middleware and no `Depends()`
-security on any route. The User Guide says the same
-([Control → There is no read-only mode today](../guide/control.md#there-is-no-read-only-mode-today)).
-Anything that can reach port 8101 can call every endpoint, including the writes. Keep
-the bridge on a trusted network.
+From 0.5.31 (#457) one middleware in `app.py` (`_security`) decides every request; see
+the User Guide's [Security](../guide/security.md) page.
+
+- **Trusted networks** apply always: another address gets **403**.
+- **Security off** (an upgraded install keeps it off): no sign-in, on 8101 or the HTTPS
+  port, as before.
+- **Security on** (a new install): 8101 answers `/api/live` and Home Assistant ingress,
+  and redirects everything else (**307**) to the HTTPS port (8102). There, send
+  `Authorization: Bearer <token>` (an API token, **Settings → Admin → Security → API
+  tokens**) or a session cookie from `POST /api/auth/login`. No credentials: **401**. A
+  role that may not make the call: **403** "Your role (viewer) can't do this."
+- Roles per route are in `security.required()`: reads for every role (no web pages for
+  `api`); battery commands (`/api/battery/command`, `/api/dispatch`, `/api/mode`,
+  `/api/offgrid`, `/api/cloud/reserve`, `/api/cloud/set-mode`, `/api/cloud/hold/clear`,
+  `/api/alerts/…`) for admin, user and api; schedules for admin and user; everything else
+  admin only.
+- Home Assistant ingress requests get the role of the HA user's group, Security on or off.
 
 Tokens and passwords the bridge holds are **write-only** over the API. Home Assistant
 instance tokens are removed by `ha_instances.redact()` and replaced by `has_token`.

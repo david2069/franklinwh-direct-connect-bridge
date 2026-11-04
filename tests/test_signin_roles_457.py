@@ -57,7 +57,8 @@ def test_passwords_are_argon2id_and_checked(store):
     with pytest.raises(auth.AuthError, match="already exists"):
         auth.create_user(store, "ANN", PW, "user")
     with pytest.raises(auth.AuthError, match="role"):
-        auth.create_user(store, "cat", PW, "api")                # tokens, phase 4
+        auth.create_user(store, "cat", PW, "owner")
+    assert auth.create_user(store, "cat", PW, "api")["has_password"] is False   # tokens only
 
 
 def test_five_failures_in_15_minutes_lock_for_60_seconds(store):

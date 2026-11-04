@@ -1,9 +1,13 @@
-"""Accounts, sign-in and sessions (#457 phase 3).
+"""Accounts, sign-in and sessions (#457 phase 3), and API tokens (phase 4).
 
 Bridge accounts sign in on the HTTPS port. Passwords are argon2id hashes; sessions are
 random tokens kept as SHA-256 hashes. 5 failed sign-ins within 15 minutes lock the account
 for 60 seconds. The last enabled admin can't be deleted, disabled, demoted or left to
 expire. Home Assistant sidebar users have no account here.
+
+An API token belongs to an account and carries its role; it is shown once and kept as a
+SHA-256 hash, has an expiry and a last-used time, and can be revoked. ``api`` accounts
+have no password: they only call the REST API, with a token.
 """
 
 from __future__ import annotations
@@ -20,8 +24,11 @@ from argon2.exceptions import InvalidHashError, VerificationError
 log = logging.getLogger(__name__)
 
 ROLES = ("admin", "user", "viewer", "api")
-#: The roles that sign in with a password (``api`` uses tokens, phase 4).
+#: The roles that sign in with a password; ``api`` uses tokens only.
 PASSWORD_ROLES = ("admin", "user", "viewer")
+TOKEN_PREFIX = "fwhdc_"
+TOKEN_DAYS = (30, 90, 365)
+_USED_EVERY_S = 60
 SESSION_S = 30 * 86400
 COOKIE = "fwh_session"
 LOCK_AFTER = 5
@@ -59,6 +66,15 @@ def ensure_tables(store) -> None:
                 expires_at REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS auth_log(
                 ts REAL NOT NULL, username TEXT NOT NULL, event TEXT NOT NULL, ip TEXT);
+            CREATE TABLE IF NOT EXISTS auth_tokens(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                hint TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                expires_at REAL NOT NULL,
+                last_used REAL);
         """)
         store._conn.commit()
 
@@ -118,13 +134,13 @@ def create_user(store, username: str, password: str, role: str,
     now = time.time() if now is None else now
     if not isinstance(username, str) or not _NAME.match(username):
         raise AuthError("a username is 1–64 letters, digits or . _ @ -")
-    if role not in PASSWORD_ROLES:
-        raise AuthError(f"the role must be one of {', '.join(PASSWORD_ROLES)}")
+    if role not in ROLES:
+        raise AuthError(f"the role must be one of {', '.join(ROLES)}")
     if _rows(store, "SELECT id FROM auth_users WHERE username=?", (username,)):
         raise AuthError(f"'{username}' already exists")
+    pw_hash = "" if role == "api" else _ph.hash(_check_password(password))
     uid = _exec(store, "INSERT INTO auth_users(username, role, pw_hash, expires_at, created_at) "
-                       "VALUES (?,?,?,?,?)",
-                (username, role, _ph.hash(_check_password(password)), expires_at, now))
+                       "VALUES (?,?,?,?,?)", (username, role, pw_hash, expires_at, now))
     record(store, username, f"created ({role})")
     return _public(_get(store, uid), now)
 
@@ -136,14 +152,19 @@ def update_user(store, user_id: int, *, role=None, enabled=None, password=None,
     u = _get(store, user_id)
     new = dict(u)
     if role is not None:
-        if role not in PASSWORD_ROLES:
-            raise AuthError(f"the role must be one of {', '.join(PASSWORD_ROLES)}")
+        if role not in ROLES:
+            raise AuthError(f"the role must be one of {', '.join(ROLES)}")
+        if (role == "api") != (u["role"] == "api"):
+            raise AuthError("an api account can't become a password account, or the other "
+                            "way round; add a new account")
         new["role"] = role
     if enabled is not None:
         new["enabled"] = 1 if enabled else 0
     if expires_at is not ...:
         new["expires_at"] = expires_at
     if password is not None:
+        if new["role"] == "api":
+            raise AuthError("an api account has no password; it uses tokens")
         new["pw_hash"] = _ph.hash(_check_password(password))
         new["fail_count"], new["locked_until"] = 0, 0
     if _active_admin(u, now) and not _active_admin(new, now):
@@ -173,6 +194,7 @@ def delete_user(store, user_id: int, now: float | None = None) -> None:
             for x in _rows(store, "SELECT * FROM auth_users WHERE id<>?", (user_id,))):
         raise AuthError("this is the last admin; add another admin first")
     _exec(store, "DELETE FROM auth_sessions WHERE user_id=?", (user_id,))
+    _exec(store, "DELETE FROM auth_tokens WHERE user_id=?", (user_id,))
     _exec(store, "DELETE FROM auth_users WHERE id=?", (user_id,))
     record(store, u["username"], "deleted")
 
@@ -297,3 +319,63 @@ def reset_password(store, username: str) -> str:
         create_user(store, username, pw, "admin")
     record(store, username, "password reset from the command line")
     return pw
+
+
+# ── API tokens (phase 4) ──────────────────────────────────────────────────────────
+def _token_public(r: dict, now: float) -> dict:
+    return {"id": r["id"], "user_id": r["user_id"], "username": r.get("username"),
+            "role": r.get("role"), "name": r["name"], "hint": r["hint"],
+            "created_at": r["created_at"], "expires_at": r["expires_at"],
+            "expired": r["expires_at"] <= now, "last_used": r["last_used"]}
+
+
+def tokens(store, now: float | None = None) -> list[dict]:
+    now = time.time() if now is None else now
+    return [_token_public(r, now) for r in _rows(
+        store, "SELECT t.*, u.username, u.role FROM auth_tokens t "
+               "JOIN auth_users u ON u.id=t.user_id ORDER BY t.created_at DESC")]
+
+
+def create_token(store, user_id: int, name: str, days: int,
+                 now: float | None = None) -> tuple[str, dict]:
+    """A new token for an account: ``(token, its listing)``. The token is shown once."""
+    now = time.time() if now is None else now
+    u = _get(store, user_id)
+    name = (name or "").strip()
+    if not name or len(name) > 64:
+        raise AuthError("give the token a name (1–64 characters), e.g. what will use it")
+    if days not in TOKEN_DAYS:
+        raise AuthError(f"a token lasts {', '.join(map(str, TOKEN_DAYS))} days")
+    token = TOKEN_PREFIX + secrets.token_urlsafe(32)
+    tid = _exec(store, "INSERT INTO auth_tokens(user_id, name, token_hash, hint, created_at, "
+                       "expires_at) VALUES (?,?,?,?,?,?)",
+                (user_id, name, _h(token), token[-4:], now, now + days * 86400))
+    record(store, u["username"], f"token '{name}' created ({days} days)")
+    r = _rows(store, "SELECT t.*, u.username, u.role FROM auth_tokens t "
+                     "JOIN auth_users u ON u.id=t.user_id WHERE t.id=?", (tid,))[0]
+    return token, _token_public(r, now)
+
+
+def revoke_token(store, token_id: int) -> None:
+    r = _rows(store, "SELECT t.name, u.username FROM auth_tokens t JOIN auth_users u "
+                     "ON u.id=t.user_id WHERE t.id=?", (token_id,))
+    if not r:
+        raise AuthError("no such token")
+    _exec(store, "DELETE FROM auth_tokens WHERE id=?", (token_id,))
+    record(store, r[0]["username"], f"token '{r[0]['name']}' revoked")
+
+
+def token_user(store, token: str | None, now: float | None = None) -> dict | None:
+    """The account a Bearer token belongs to, or None (unknown, expired, revoked, or the
+    account disabled or expired)."""
+    if not token or not token.startswith(TOKEN_PREFIX):
+        return None
+    now = time.time() if now is None else now
+    r = _rows(store, "SELECT t.id AS tid, t.last_used AS t_used, u.* FROM auth_tokens t "
+                     "JOIN auth_users u ON u.id=t.user_id "
+                     "WHERE t.token_hash=? AND t.expires_at>?", (_h(token), now))
+    if not r or not r[0]["enabled"] or (r[0]["expires_at"] and r[0]["expires_at"] <= now):
+        return None
+    if not r[0]["t_used"] or now - r[0]["t_used"] >= _USED_EVERY_S:
+        _exec(store, "UPDATE auth_tokens SET last_used=? WHERE id=?", (now, r[0]["tid"]))
+    return _public(r[0], now)

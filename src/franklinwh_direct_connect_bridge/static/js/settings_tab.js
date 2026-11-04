@@ -215,7 +215,10 @@ function settingsTab() {
                 enabled: false, hasAdmin: false, onAddon: false, principal: null,
                 switchMsg: null, users: [], events: [], acctMsg: null,
                 add: { username: '', password: '', role: 'user' }, resetFor: null, resetPw: '',
-                myPw: { current: '', new: '', msg: null } },
+                myPw: { current: '', new: '', msg: null },
+                // phase 4: API tokens; a new token is shown once, in newToken
+                tokens: [], tokenDays: [30, 90, 365], tok: { user_id: '', name: '', days: 365 },
+                newToken: '', tokMsg: null },
     async loadSecurity() {
       try {
         const d = await (await fetch('api/security')).json();
@@ -238,6 +241,8 @@ function settingsTab() {
       try {
         this.security.users = (await (await fetch('api/security/users')).json()).users || [];
         this.security.events = (await (await fetch('api/security/signins?limit=20')).json()).events || [];
+        const tk = await (await fetch('api/security/tokens')).json();
+        this.security.tokens = tk.tokens || []; this.security.tokenDays = tk.days || [30, 90, 365];
       } catch (e) { /* leave last-known */ }
     },
     async _securityCall(url, method, body, msgKey) {
@@ -263,7 +268,7 @@ function settingsTab() {
     async addAccount() {
       const a = this.security.add;
       const d = await this._securityCall('api/security/users', 'POST',
-        { username: a.username.trim(), password: a.password, role: a.role }, 'acctMsg');
+        { username: a.username.trim(), password: a.role === 'api' ? null : a.password, role: a.role }, 'acctMsg');
       if (d) {
         this.security.acctMsg = { kind: 'ok', text: 'Added ' + d.username + ' (' + d.role + ').' };
         this.security.add = { username: '', password: '', role: 'user' };
@@ -283,6 +288,25 @@ function settingsTab() {
       const d = await this._securityCall('api/security/users/' + u.id, 'DELETE', undefined, 'acctMsg');
       if (d) this.security.acctMsg = { kind: 'ok', text: 'Deleted ' + u.username + '.' };
       await this.loadSecurity(); await this.loadAccounts();
+    },
+    async createToken() {
+      const k = this.security.tok;
+      this.security.newToken = '';
+      const d = await this._securityCall('api/security/tokens', 'POST',
+        { user_id: Number(k.user_id), name: k.name.trim(), days: Number(k.days) }, 'tokMsg');
+      if (d) {
+        this.security.newToken = d.token;
+        this.security.tokMsg = { kind: 'ok', text: 'Token "' + d.name + '" for ' + d.username
+          + ' made. Copy it now: it is not shown again.' };
+        k.name = '';
+      }
+      await this.loadAccounts();
+    },
+    async revokeToken(t) {
+      const d = await this._securityCall('api/security/tokens/' + t.id, 'DELETE', undefined, 'tokMsg');
+      if (d) this.security.tokMsg = { kind: 'ok', text: 'Revoked "' + t.name + '".' };
+      this.security.newToken = '';
+      await this.loadAccounts();
     },
     async changeMyPassword() {
       const m = this.security.myPw;

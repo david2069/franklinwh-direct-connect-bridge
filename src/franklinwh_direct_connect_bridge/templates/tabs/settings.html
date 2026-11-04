@@ -1463,14 +1463,15 @@
   <div class="card space-y-3" data-testid="accounts-section" x-show="security.loaded && securityAdmin()" x-cloak>
     <div>
       <div class="text-sm" style="color:var(--text-primary)">Accounts</div>
-      <div class="text-xs text-slate-500">For signing in on the HTTPS port. admin: everything. user: battery commands and schedules; everything else read-only. viewer: read-only.
+      <div class="text-xs text-slate-500">For signing in on the HTTPS port. admin: everything. user: battery commands and schedules; everything else read-only. viewer: read-only. api: no sign-in or web UI; reads and battery commands with a token.
         <span x-show="security.onAddon">Home Assistant users don't need one.</span></div>
     </div>
     <template x-for="u in security.users" :key="u.id">
       <div class="rounded-lg border p-2 space-y-2" :style="{ borderColor: 'var(--border)' }" data-testid="account-row">
         <div class="flex items-center gap-2 flex-wrap text-xs" style="color:var(--text-secondary)">
           <span class="font-medium text-sm" style="color:var(--text-primary)" x-text="u.username"></span>
-          <select class="form-control form-control-sm w-24" :value="u.role" @change="editAccount(u, { role: $event.target.value })">
+          <span x-show="u.role === 'api'" class="chip muted">api · tokens only</span>
+          <select x-show="u.role !== 'api'" class="form-control form-control-sm w-24" :value="u.role" @change="editAccount(u, { role: $event.target.value })">
             <option value="admin" :selected="u.role === 'admin'">admin</option>
             <option value="user" :selected="u.role === 'user'">user</option>
             <option value="viewer" :selected="u.role === 'viewer'">viewer</option>
@@ -1485,7 +1486,7 @@
                    :value="u.expires_at ? new Date(u.expires_at * 1000).toISOString().slice(0, 10) : ''"
                    @change="editAccount(u, { expires_at: $event.target.value ? Date.parse($event.target.value + 'T23:59:59') / 1000 : null })"></label>
           <button class="btn btn-secondary btn-sm" @click="editAccount(u, { enabled: !u.enabled })" x-text="u.enabled ? 'Disable' : 'Enable'"></button>
-          <button class="btn btn-secondary btn-sm" @click="security.resetFor = (security.resetFor === u.id ? null : u.id); security.resetPw = ''">Reset password</button>
+          <button x-show="u.role !== 'api'" class="btn btn-secondary btn-sm" @click="security.resetFor = (security.resetFor === u.id ? null : u.id); security.resetPw = ''">Reset password</button>
           <button class="btn btn-secondary btn-sm" @click="deleteAccount(u)" title="Delete">✕</button>
         </div>
         <div x-show="security.resetFor === u.id" class="flex items-center gap-2 flex-wrap">
@@ -1498,11 +1499,11 @@
     <p x-show="!security.users.length" class="text-xs text-slate-500">No accounts yet.</p>
     <div class="flex items-center gap-2 flex-wrap" data-testid="account-add">
       <input class="form-control form-control-sm w-36" placeholder="Username" autocapitalize="none" x-model="security.add.username">
-      <input type="password" autocomplete="new-password" class="form-control form-control-sm w-44" placeholder="Password (8+ characters)" x-model="security.add.password">
+      <input x-show="security.add.role !== 'api'" type="password" autocomplete="new-password" class="form-control form-control-sm w-44" placeholder="Password (8+ characters)" x-model="security.add.password">
       <select class="form-control form-control-sm w-24" x-model="security.add.role">
-        <option value="admin">admin</option><option value="user">user</option><option value="viewer">viewer</option>
+        <option value="admin">admin</option><option value="user">user</option><option value="viewer">viewer</option><option value="api">api</option>
       </select>
-      <button class="btn btn-primary btn-sm" @click="addAccount()" :disabled="!security.add.username || !security.add.password">+ Add account</button>
+      <button class="btn btn-primary btn-sm" @click="addAccount()" :disabled="!security.add.username || (security.add.role !== 'api' && !security.add.password)">+ Add account</button>
     </div>
     {{ dialog_msg('security.acctMsg') }}
     <div x-show="security.events.length" class="pt-1">
@@ -1513,6 +1514,44 @@
         </template>
       </div>
     </div>
+  </div>
+
+  <!-- API tokens (#457 phase 4) -->
+  <div class="card space-y-3" data-testid="tokens-section" x-show="security.loaded && securityAdmin()" x-cloak>
+    <div>
+      <div class="text-sm" style="color:var(--text-primary)">API tokens</div>
+      <div class="text-xs text-slate-500">For scripts and other systems: send <span class="font-mono">Authorization: Bearer &lt;token&gt;</span> to the HTTPS port. A token has its account's role; use an <b>api</b> account for most uses. Port 8101 ignores tokens.</div>
+    </div>
+    <template x-for="t in security.tokens" :key="t.id">
+      <div class="flex items-center gap-2 flex-wrap text-xs rounded-lg border p-2" :style="{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }">
+        <span class="font-medium" style="color:var(--text-primary)" x-text="t.name"></span>
+        <span x-text="t.username + ' (' + t.role + ')'"></span>
+        <span class="font-mono text-slate-500" x-text="'…' + t.hint"></span>
+        <span x-show="t.expired" class="chip warn">expired</span>
+        <span class="text-[11px] text-slate-500" x-text="'until ' + new Date(t.expires_at * 1000).toLocaleDateString() + ' · ' + (t.last_used ? 'last used ' + new Date(t.last_used * 1000).toLocaleString() : 'never used')"></span>
+        <span class="flex-1"></span>
+        <button class="btn btn-secondary btn-sm" @click="revokeToken(t)">Revoke</button>
+      </div>
+    </template>
+    <p x-show="!security.tokens.length" class="text-xs text-slate-500">No tokens.</p>
+    <div class="flex items-center gap-2 flex-wrap">
+      <select class="form-control form-control-sm w-40" x-model="security.tok.user_id">
+        <option value="">Account…</option>
+        <template x-for="u in security.users" :key="u.id">
+          <option :value="u.id" x-text="u.username + ' (' + u.role + ')'"></option>
+        </template>
+      </select>
+      <input class="form-control form-control-sm w-44" placeholder="Name, e.g. HA REST sensor" x-model="security.tok.name">
+      <select class="form-control form-control-sm w-28" x-model="security.tok.days">
+        <template x-for="d in security.tokenDays" :key="d"><option :value="d" x-text="d + ' days'" :selected="d == security.tok.days"></option></template>
+      </select>
+      <button class="btn btn-primary btn-sm" @click="createToken()" :disabled="!security.tok.user_id || !security.tok.name.trim()">+ New token</button>
+    </div>
+    <div x-show="security.newToken" class="space-y-1" data-testid="new-token">
+      <input readonly class="form-control form-control-sm w-full font-mono text-xs" :value="security.newToken" @focus="$event.target.select()">
+      <button class="btn btn-secondary btn-sm" @click="navigator.clipboard && navigator.clipboard.writeText(security.newToken)">Copy</button>
+    </div>
+    {{ dialog_msg('security.tokMsg') }}
   </div>
 
   <!-- Your own password (signed in with an account) -->
