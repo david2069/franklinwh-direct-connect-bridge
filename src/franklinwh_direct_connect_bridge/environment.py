@@ -1,7 +1,8 @@
 """Detect which runtime environment the bridge is running in.
 
 - ``ha_addon`` — running as a Home Assistant Supervisor add-on (/data/options.json exists).
-- ``docker``   — plain container (has /.dockerenv but no add-on options).
+- ``docker``   — plain container: /.dockerenv (Docker) or /run/.containerenv (Podman, #491),
+  and no add-on options.
 - ``dev``      — running from a checkout on the host.
 
 ``DATA_DIR`` is where the bridge persists state (metrics DB, options env). The add-on
@@ -16,7 +17,9 @@ from pathlib import Path
 def _detect() -> str:
     if Path("/data/options.json").exists():
         return "ha_addon"
-    if Path("/.dockerenv").exists():
+    # Podman makes /run/.containerenv instead of /.dockerenv (#491); missing it put a Podman
+    # user's data in /app/data, outside the /data volume, lost when the container was recreated.
+    if Path("/.dockerenv").exists() or Path("/run/.containerenv").exists():
         return "docker"
     return "dev"
 

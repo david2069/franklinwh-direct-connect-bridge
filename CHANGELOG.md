@@ -11,6 +11,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+- **Under Podman the bridge keeps its data on the /data volume** (#491). It looked only for
+  Docker's `/.dockerenv` to know it runs in a container; Podman makes `/run/.containerenv`
+  instead, so the bridge wrote its database, settings, gateways and (from 0.5.31) accounts to
+  `/app/data` inside the container, and lost them whenever the container was recreated (an
+  image update). Docker and the Home Assistant add-on were not affected. A Podman install that
+  has been running already has its data in the container's `/app/data`. Before updating,
+  copy it to the folder mapped to `/data` (`./data` with `docker-compose.yml`):
+  `podman cp <container>:/app/data/. ./data/`. Otherwise set things up again after the update.
+
 ### Added
 - **API tokens and the api role** (#457 phase 4). An admin adds an **api** account (no
   password; it can't sign in or use the web UI) and, under **Settings → Admin → Security →
