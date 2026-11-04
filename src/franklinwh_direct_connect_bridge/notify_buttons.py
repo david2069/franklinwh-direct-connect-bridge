@@ -26,12 +26,17 @@ log = logging.getLogger(__name__)
 FORCE_RUNNING = "force_running"
 ALERT = "alert"
 TEST = "test_buttons"
+#: The Test critical alert from Settings (#464): the alert's path, with no alert record.
+TEST_ALERT = "test_alert"
+#: Its Home Assistant persistent notification.
+TEST_ALERT_NID = "fwh_dc_alert_test"
 
 RELEASE, ACK, REDISCOVER = "RELEASE", "ACK", "REDISCOVER"
 
 RELEASE_TTL_S = 900
 ALERT_TTL_S = 3600
 TEST_TTL_S = 120
+TEST_ALERT_TTL_S = 300
 #: How long a worker thread waits for the send itself (not for a tap).
 SEND_WAIT_S = 30
 
@@ -42,6 +47,8 @@ actionable.templates().register(
           "A bridge alert: Acknowledge (and Re-discover when the aGate is unreachable)."),
     Event(TEST, "FranklinWH test", "Tap Yes or No to check buttons reach the bridge.", (),
           "The test with buttons from Settings."),
+    Event(TEST_ALERT, "{title}", "{message}", ("title", "message"),
+          "The Test critical alert from Settings: Acknowledge, as a real alert."),
 )
 
 
@@ -143,7 +150,21 @@ async def _on_alert(request, answer) -> str:
 
 # ── test round trip ──────────────────────────────────────────────────────────────
 async def _on_test(request, answer) -> str:
-    return "Yes" if answer.verb == YES else "No"
+    said = "Yes" if answer.verb == YES else "No"
+    from . import notify_checks          # the last result, for the Notifications check (#464)
+    await asyncio.to_thread(notify_checks.test_tapped, _store(), request.id, said)
+    return said
+
+
+async def _on_test_alert(request, answer) -> str:
+    """Acknowledge on the test alert: dismiss its Home Assistant notification, as a real
+    acknowledgement does. There is no alert record to acknowledge."""
+    from .config import get_settings
+    from .notify import Notifier
+    err = await asyncio.to_thread(Notifier(get_settings()).call_service,
+                                  "persistent_notification", "dismiss",
+                                  {"notification_id": TEST_ALERT_NID})
+    return "acknowledged" if not err else f"acknowledged (dismiss: {err})"
 
 
 def yes_no() -> list[Button]:
@@ -153,3 +174,4 @@ def yes_no() -> list[Button]:
 actionable.on(FORCE_RUNNING, _on_release)
 actionable.on(ALERT, _on_alert)
 actionable.on(TEST, _on_test)
+actionable.on(TEST_ALERT, _on_test_alert)

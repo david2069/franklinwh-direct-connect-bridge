@@ -52,6 +52,8 @@ function settingsTab() {
       testDlg: null,                   // the Send test target picker (#281)
       bc: null,
       rt: {},                          // device id -> {kind, text}: the test-with-buttons round trip
+      checks: null, checksBusy: false, checksErr: '',   // the Notifications check (#464)
+      ta: null,                        // the Test critical alert dialog: {steps, running, msg, run}
     },
 
     // ── Support info bundle (redacted; for GitHub issues) ────────────────────
@@ -104,6 +106,10 @@ function settingsTab() {
       const ss = d.system_setup||{}; if (Object.keys(ss).length) L.push('system setup: ' + Object.entries(ss).map(([k,v])=>k+'='+v).join(' '));
       const it = d.integration||{}; L.push('integration: ' + Object.entries(it).map(([k,v])=>k+'='+v).join(' '));
       const b = d.billing||{}; L.push('billing: ' + Object.entries(b).map(([k,v])=>k+'='+v).join(' '));
+      if ((d.notifications||[]).length) {
+        L.push('notifications check:');
+        d.notifications.forEach(c => L.push(`  ${c.check}: ${c.status}${c.source?' · '+c.source:''}${c.detail?' · '+c.detail:''}`));
+      }
       L.push('');
       L.push(m.note||'');
       return L.join('\n');
@@ -1193,6 +1199,43 @@ function settingsTab() {
       try { return this.$store.app._fmtHostTime(ts, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; }
     },
 
+    // ── Notifications check and Test critical alert (#464) ─────────────────
+    async loadChecks() {
+      this.notif.checksBusy = true; this.notif.checksErr = '';
+      try {
+        const r = await fetch('api/notify/checks');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        this.notif.checks = (await r.json()).checks || [];
+      } catch (e) { this.notif.checksErr = 'Could not run the check: ' + e.message; }
+      finally { this.notif.checksBusy = false; }
+    },
+    openTestAlert() { this.notif.ta = { steps: [], running: false, msg: null, run: 0 }; },
+    closeTestAlert() { if (this.notif.ta) this.notif.ta.run++; this.notif.ta = null; this.loadChecks(); },
+    async runTestAlert() {
+      const ta = this.notif.ta; if (!ta) return;
+      const run = ++ta.run;
+      ta.running = true; ta.msg = null; ta.steps = [];
+      const live = () => this.notif.ta === ta && ta.run === run;
+      try {
+        const r = await fetch('api/notify/test-alert', { method: 'POST' });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { ta.msg = { kind: 'danger', text: 'Test failed: ' + (d.detail || 'HTTP ' + r.status) }; return; }
+        ta.steps = d.steps || []; ta.running = false;
+        if (!d.request_id) return;
+        const ack = ta.steps.find(s => s.id === 'ack');
+        const until = Date.now() + (d.ttl_s || 300) * 1000 + 5000;
+        while (Date.now() < until && live()) {
+          await new Promise(res => setTimeout(res, 2000));
+          if (!live()) return;
+          const a = await (await fetch('api/notify/test-alert/' + d.request_id)).json().catch(() => ({}));
+          if (a.answer) { ack.status = 'pass'; ack.detail = 'Acknowledged on a phone: the full path works'; return; }
+          if (a.expired) break;
+        }
+        if (live()) { ack.status = 'fail'; ack.detail = 'No tap within ' + Math.round((d.ttl_s || 300) / 60) + ' min. Check the Button taps listener line.'; }
+      } catch (e) { ta.msg = { kind: 'danger', text: 'Test failed: ' + e.message }; }
+      finally { if (this.notif.ta === ta) ta.running = false; }
+    },
+
     // ── Notifications center ───────────────────────────────────────────────
     async loadNotify() {
       try {
@@ -1246,16 +1289,16 @@ function settingsTab() {
         const r = await fetch('api/ha/notify-devices/test-buttons', { method: 'POST',
           headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_id: dev.id }) });
         const j = await r.json().catch(() => ({}));
-        if (!j.ok) { say('danger', 'Not sent: ' + (j.error || j.detail || 'HTTP ' + r.status)); return; }
+        if (!j.ok) { say('danger', 'Not sent: ' + (j.error || j.detail || 'HTTP ' + r.status)); this.loadChecks(); return; }
         say('info', 'Sent — tap Yes or No on ' + dev.alias + '…');
         const until = Date.now() + (j.ttl_s || 120) * 1000 + 5000;
         while (Date.now() < until) {
           await new Promise(res => setTimeout(res, 2000));
           const a = await (await fetch('api/ha/notify-devices/test-buttons/' + j.request_id)).json().catch(() => ({}));
-          if (a.answer) { say('ok', 'Round trip works: you tapped ' + (a.answer === 'YES' ? 'Yes' : 'No')); return; }
+          if (a.answer) { say('ok', 'Round trip works: you tapped ' + (a.answer === 'YES' ? 'Yes' : 'No')); this.loadChecks(); return; }
           if (a.expired) break;
         }
-        say('warn', 'No reply within ' + (j.ttl_s || 120) + ' s');
+        say('warn', 'No reply within ' + (j.ttl_s || 120) + ' s'); this.loadChecks();
       } catch (e) { say('danger', 'Test failed: ' + e.message); }
     },
     openAddDevice() {

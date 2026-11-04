@@ -12,6 +12,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Notifications check and Test critical alert** (refs #464). Settings → Integrations →
+  Notifications has a **Notifications check**: the Push notifications switch, the default
+  HA instance (reachable, token accepted, and where persistent notifications go: the
+  instance, the add-on's Supervisor or `HA_URL`), the button taps listener for each enabled
+  instance, at least one enabled `mobile_app_*` phone, the last **Test with buttons** result
+  and its time (now kept in the database), and where critical alerts go. Each line shows
+  Pass, Fail or Not set up, with its fix. `GET /api/notify/checks`. **Test critical alert**
+  runs the path (Home Assistant notification created, sent to devices with Acknowledge,
+  Acknowledge tapped) and shows each step in its window; no alert is recorded, so no alert
+  window opens (`POST /api/notify/test-alert`, `GET /api/notify/test-alert/{id}`). Support
+  info includes the check lines, without names, URLs, addresses or tokens. The guide has a
+  troubleshooting table.
 - **Send to for critical alerts and Release / Keep** (refs #281). Settings → Push
   notifications, under the Auto-notify triggers: two rows, "Critical alerts" (Acknowledge /
   Re-discover) and "Release / Keep a running force", each with the same Send to picker as
