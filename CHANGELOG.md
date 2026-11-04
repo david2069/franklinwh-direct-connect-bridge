@@ -41,6 +41,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   was never used) and returns to the field. On a phone the list fills the screen.
 
 ### Fixed
+- **Questions with buttons survive a bridge restart** (franklinwh-ha-notify#6). Uses
+  franklinwh-ha-notify 0.1.2, which keeps open requests in the bridge database
+  (new table `notify_requests`, added to existing databases on start). A tap on
+  **Release** / **Keep**, **Acknowledge** or **Re-discover** inside its time limit after a
+  restart now runs as it would have before it; it used to be ignored. Releasing a force
+  that is no longer running, or acknowledging an alert someone already acknowledged, does
+  nothing and logs it. A schedule waiting on **Ask before continuing** finds its question
+  again after a restart and waits only for the time left; a reply given while the bridge
+  was down is used, and a question that expired meanwhile follows **If no reply** once. The
+  question and the decision are kept on the run, so it is never asked or decided twice,
+  and `%ask.answer%` still reads the answer.
 - **Ask before continuing skips phones on a switched-off Home Assistant instance.** A
   schedule's question still went to the devices of an HA instance that was disabled in
   Settings; every other notification already skipped them. It now uses the same device

@@ -2,7 +2,8 @@
 
 One :class:`~franklinwh_ha_notify.Notifier` per bridge process. It covers every enabled
 Home Assistant instance in the store, records sends and taps in the ``notify_ledger``
-table (created by the store's migration), and is off whenever the ``ha_notify`` master
+table and keeps open requests in ``notify_requests`` (both created by the store's
+migration), and is off whenever the ``ha_notify`` master
 switch is off. Taps arrive over each instance's authenticated WebSocket; nothing on the
 bridge accepts an unauthenticated call.
 
@@ -19,7 +20,8 @@ import asyncio
 import logging
 import sqlite3
 
-from franklinwh_ha_notify import HAInstance, Ledger, Notifier, SendResult, Target, Templates
+from franklinwh_ha_notify import (HAInstance, Ledger, Notifier, Requests, SendResult, Target,
+                                  Templates)
 
 log = logging.getLogger(__name__)
 
@@ -107,10 +109,15 @@ def _instances(store) -> dict[str, HAInstance]:
 
 def build(store, settings) -> Notifier:
     """A Notifier over ``store``'s HA instances and ledger, with the registered
-    handlers. No listeners started."""
+    handlers. No listeners started.
+
+    Its requests are kept in the bridge database (``notify_requests``, created by the
+    store's migration) as well as in memory, so a tap inside a request's TTL after a
+    restart still resolves and runs its handler (franklinwh-ha-notify#6)."""
     conn = sqlite3.connect(store.path, check_same_thread=False)
     n = Notifier(_instances(store), Ledger(conn, create=False), _templates,
-                 enabled=lambda: bool(settings.ha_notify))
+                 enabled=lambda: bool(settings.ha_notify),
+                 requests=Requests.persistent(conn, create=False))
     for event, handler in _handlers.items():
         n.on(event, handler)
     return n

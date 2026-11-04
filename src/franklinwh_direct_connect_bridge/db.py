@@ -1979,8 +1979,11 @@ class MetricsStore:
 
     # ── scheduled battery dispatches (for interruption reconcile) ──────────────
     def _migrate_notify_ledger(self) -> None:
-        """franklinwh-ha-notify's send/tap record (#374). The package leaves the table to
-        the bridge (``Ledger(create=False)``); its SCHEMA is idempotent."""
+        """franklinwh-ha-notify's send/tap record and its open requests (#374). The
+        package leaves its tables to the bridge (``Ledger(create=False)``,
+        ``Requests.persistent(create=False)``). Its SCHEMA only adds (``IF NOT EXISTS``),
+        so applying it on every start migrates any earlier version: SCHEMA_VERSION 1 -> 2
+        adds ``notify_requests``."""
         from franklinwh_ha_notify import SCHEMA
         with self._lock:
             self._conn.executescript(SCHEMA)
@@ -2034,7 +2037,40 @@ class MetricsStore:
         cols = [r[1] for r in self._conn.execute("PRAGMA table_info(occurrences)")]
         if "prior_state" not in cols:
             self._conn.execute("ALTER TABLE occurrences ADD COLUMN prior_state TEXT")
+        # Ask before continuing (#374 P4): the question this run is waiting on, and what
+        # was decided, so a restart finds the question again instead of asking twice,
+        # and never decides a run twice.
+        if "ask_request_id" not in cols:
+            self._conn.execute("ALTER TABLE occurrences ADD COLUMN ask_request_id TEXT")
+        if "ask_decision" not in cols:
+            self._conn.execute("ALTER TABLE occurrences ADD COLUMN ask_decision TEXT")
         self._conn.commit()
+
+    def set_occurrence_ask(self, occ_id: int, *, request_id: str | None = None,
+                           decision: dict | None = None) -> None:
+        """Record the run's question, or what was decided. Each is written once."""
+        with self._lock:
+            self._conn.execute(
+                "UPDATE occurrences SET ask_request_id=COALESCE(ask_request_id,?), "
+                "ask_decision=COALESCE(ask_decision,?) WHERE id=?",
+                (request_id, json.dumps(decision) if decision is not None else None,
+                 int(occ_id)))
+            self._conn.commit()
+
+    def occurrence_ask(self, *, schedule_id: str, gateway_id: str,
+                       occurrence_key: str) -> tuple[str | None, dict | None]:
+        """(request id, decision) recorded for one run's question."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT ask_request_id, ask_decision FROM occurrences WHERE schedule_id=? "
+                "AND gateway_id=? AND occurrence_key=?",
+                (schedule_id, gateway_id or "", occurrence_key)).fetchone()
+        if not row:
+            return None, None
+        try:
+            return row[0], (json.loads(row[1]) if row[1] else None)
+        except (ValueError, TypeError):
+            return row[0], None
 
     def set_prior_state(self, occ_id: int, prior: dict) -> None:
         """Record what to put back. Written once, at the moment of override."""

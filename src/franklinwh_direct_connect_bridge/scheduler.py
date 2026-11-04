@@ -19,6 +19,7 @@ unavailable actions are listed with the reason instead of being hidden or faked.
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import logging
 import fnmatch
@@ -26,7 +27,7 @@ import re
 import time
 from typing import Any
 
-from franklinwh_ha_notify import NO, REPLY, YES, Button, Event, Target
+from franklinwh_ha_notify import NO, REPLY, YES, Answer, Button, Event, Target
 
 from . import actionable
 from . import alerts
@@ -2480,6 +2481,8 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
         else:
             time_inside = bool(entry.get("enabled") and cal_ok and state == "inside")
         entry["_wkey"], entry["_wend"] = wkey, wend
+        if entry.get("ask") and time_inside:
+            _restore_ask(entry, store=store, gateway_id=gateway_id, wkey=wkey)
         exit_conds = entry.get("exit_conditions") or []
         exit_now = bool(exit_conds) and time_inside and evaluate(
             exit_conds, {**snapshot, **_ask_answer(entry, gateway_id)},
@@ -2674,7 +2677,7 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                 continue                       # backing off; the window is still open
         if entry.get("ask"):
             step, detail = _ask_step(entry, store=store, gateway_id=gateway_id, now=now,
-                                     snapshot=snapshot)
+                                     snapshot=snapshot, occ=occ)
             if step == "wait":
                 mon[entry["id"]] = ("holding", detail)
                 continue
@@ -3068,6 +3071,11 @@ ASK_MAX_CHOICES = 4
 #: checks whether it is done, so a schedule waiting for a reply never holds up the others.
 #: ``open`` stays True until the answer has been acted on; ``answer`` is what
 #: ``ask.answer`` reads for the rest of the run.
+#:
+#: The question's request id and the decision are also kept on the run (the occurrence
+#: row), and the Notifier keeps its requests in the database, so after a restart a run
+#: still holding finds its question again (:func:`_reattach`) and a decided run is never
+#: decided twice (:func:`_restore_ask`).
 _asks: dict[str, dict] = {}
 
 
@@ -3114,26 +3122,89 @@ def _ask_targets(store, send_to: dict | None = None) -> list[Target]:
 
 
 async def _ask(targets: list[Target], buttons: list[Button], timeout_s: int, gateway: str,
-               **values):
-    started = time.monotonic()
-    answer = await actionable.notifier().ask_and_wait(
-        ASK_EVENT, targets, buttons, timeout_s=timeout_s, gateway=gateway, **values)
-    return answer, time.monotonic() - started
+               *, remember=None, **values):
+    """Ask, record the request on the run (``remember(request_id)``), then wait.
+    Returns ``(answer, delivered)``."""
+    n = actionable.notifier()
+    req = await n.ask(ASK_EVENT, targets, buttons, ttl_s=timeout_s, gateway=gateway, **values)
+    if req is None:
+        return Answer(None, timed_out=True), False
+    if remember is not None:
+        try:
+            await asyncio.to_thread(remember, req.id)
+        except Exception as e:  # noqa: BLE001 — the wait goes on; only a restart loses it
+            log.warning("could not record the question on the run: %s", e)
+    return await n.wait(req, timeout_s), True
+
+
+async def _rewait(request, timeout_s: int):
+    """The waiting half again, after a restart: what is left of the request's time.
+    A request answered while the bridge was down returns its answer at once; one that
+    expired unanswered times out at once."""
+    return await actionable.notifier().wait(request, timeout_s), True
+
+
+def _restore_ask(entry: dict, *, store, gateway_id: str | None, wkey: str | None) -> None:
+    """After a restart, put back what this run decided, so the decision is not taken
+    twice and ``ask.answer`` still reads the answer. Nothing to do when it is held."""
+    dkey = f"{gateway_id or ''}:{entry['id']}"
+    held = _asks.get(dkey)
+    if not wkey or (held is not None and held["wkey"] == wkey):
+        return
+    try:
+        _, decided = store.occurrence_ask(schedule_id=entry["id"], gateway_id=gateway_id or "",
+                                          occurrence_key=wkey)
+    except Exception:  # noqa: BLE001 — a store without the columns: nothing to restore
+        return
+    if decided:
+        _asks[dkey] = {"wkey": wkey, "fut": None, "open": decided["step"] != "skip",
+                       "decided": (decided["step"], decided["detail"]),
+                       "answer": decided.get("answer")}
+
+
+def _reattach(request_id: str | None):
+    """The question a run asked before a restart: still open or answered (``pending``),
+    or expired while the bridge was down (so ``wait`` records it as no reply). None when
+    it is gone, or nothing is running to find it with."""
+    n = actionable.notifier()
+    if not request_id or n is None:
+        return None
+    return (next((r for r in n.pending(ASK_EVENT) if r.id == request_id), None)
+            or n.requests.get(request_id))
 
 
 def _ask_step(entry: dict, *, store, gateway_id: str | None,
-              now: dt.datetime, snapshot: dict | None = None) -> tuple[str, str]:
+              now: dt.datetime, snapshot: dict | None = None,
+              occ: dict | None = None) -> tuple[str, str]:
     """``("wait" | "fire" | "skip", why)`` for a schedule with an Ask before continuing
     step. Asks once per run; each button runs the action or skips this run as the step
     maps it (Yes and No by default), and no reply (or nobody could be asked) follows the
-    step's "if no reply" rule. The question takes ``%sensor.id%`` values."""
+    step's "if no reply" rule. The question takes ``%sensor.id%`` values.
+
+    ``occ`` is this run's row: the question and the decision are recorded on it, so a
+    restart waits for the same question for the time it has left, applies "if no reply"
+    once if it expired meanwhile, and never decides the run twice."""
     ask = entry["ask"]
     dkey = f"{gateway_id or ''}:{entry['id']}"
     wkey = entry.get("_wkey") or now.date().isoformat()
     timeout_min = int(ask["timeout_min"])
     gid = gateway_id or ""
     choices = _ask_choices(ask)
+    occ_id = (occ or {}).get("id")
     held = _asks.get(dkey)
+    asked = (occ or {}).get("ask_request_id")
+    if (held is None or held["wkey"] != wkey) and asked:
+        # Asked before a restart: wait for that question rather than asking again.
+        req = _reattach(asked)
+        fut = actionable.submit(_rewait(req, timeout_min * 60)) if req is not None else None
+        held = _asks[dkey] = {"wkey": wkey, "fut": fut, "open": True, "decided": None,
+                              "answer": None, "lost": fut is None}
+        if fut is not None and req.answer is None and req.expires_at > time.time():
+            left = int((req.expires_at - time.time()) // 60)
+            store.log_schedule_event(
+                entry["id"], entry["name"], "asking",
+                f"still waiting for the reply after a restart ({left} min left)",
+                gateway_id=gid)
     if held is None or held["wkey"] != wkey:
         gw = _state.get_gateway(gateway_id) if gateway_id else None
         question = substitute(ask["question"], {
@@ -3142,6 +3213,8 @@ def _ask_step(entry: dict, *, store, gateway_id: str | None,
         fut = actionable.submit(_ask(
             _ask_targets(store, ask.get("send_to")), [Button(c["verb"], c["label"], c["reply"]) for c in choices],
             timeout_min * 60, getattr(gw, "label", None) or gid,
+            remember=(None if occ_id is None else
+                      lambda rid: store.set_occurrence_ask(occ_id, request_id=rid)),
             schedule=entry.get("name") or "", question=question))
         held = _asks[dkey] = {"wkey": wkey, "fut": fut, "open": True, "decided": None,
                               "answer": None}
@@ -3157,11 +3230,12 @@ def _ask_step(entry: dict, *, store, gateway_id: str | None,
         return "wait", f"asked; waiting up to {timeout_min} min for a reply"
     answer = None
     if fut is None:
-        why = "notifications are not running, so nobody could be asked"
+        why = ("the question was lost in a restart" if held.get("lost")
+               else "notifications are not running, so nobody could be asked")
     else:
         try:
-            answer, waited = fut.result()
-            why = (f"no reply in {timeout_min} min" if waited >= timeout_min * 60 - 1
+            answer, delivered = fut.result()
+            why = (f"no reply in {timeout_min} min" if delivered
                    else "the question could not be delivered to any phone")
         except Exception as e:  # noqa: BLE001 — recorded as a run nobody answered
             why = f"the question could not be sent: {e}"
@@ -3185,6 +3259,12 @@ def _ask_step(entry: dict, *, store, gateway_id: str | None,
     held["decided"] = (step, detail)
     if step == "skip":
         held["open"] = False
+    if occ_id is not None:
+        try:
+            store.set_occurrence_ask(occ_id, decision={"step": step, "detail": detail,
+                                                       "answer": held["answer"]})
+        except Exception as e:  # noqa: BLE001
+            log.warning("could not record the answer on the run: %s", e)
     store.log_schedule_event(entry["id"], entry["name"],
                              "continuing" if step == "fire" else "skipped", detail,
                              gateway_id=gid)
