@@ -11,7 +11,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
-## [0.5.31] — 2026-11-05
+## [0.5.32] — 2026-11-05
+
+0.5.31 was built but never released: a defect found by its release gates (#491) went in,
+and published image tags are not rebuilt.
 
 ### Added
 - **API tokens and the api role** (#457 phase 4). An admin adds an **api** account (no
@@ -81,7 +84,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   install from the source tree). Found by the new standalone release gate.
 - **Under Podman the bridge keeps its data on the /data volume** (#491). It looked only for
   Docker's `/.dockerenv` to know it runs in a container; Podman makes `/run/.containerenv`
-  instead, so the bridge wrote its database, settings, gateways and (from 0.5.31) accounts to
+  instead, so the bridge wrote its database, settings, gateways and (from 0.5.32) accounts to
   `/app/data` inside the container, and lost them whenever the container was recreated (an
   image update). Docker and the Home Assistant add-on were not affected. A Podman install that
   has been running already has its data in the container's `/app/data`. Before updating,

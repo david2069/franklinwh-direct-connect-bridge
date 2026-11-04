@@ -1,7 +1,7 @@
 # Security: logins, trusted networks and API tokens
 
-!!! note "From 0.5.31 (#457)"
-    Everything on this page is in the bridge from 0.5.31
+!!! note "From 0.5.32 (#457)"
+    Everything on this page is in the bridge from 0.5.32
     ([#457](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/457)).
     Client certificates and other ways to sign in are [later](#later-not-in-457).
 

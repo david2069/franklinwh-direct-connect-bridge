@@ -69,7 +69,7 @@ ingress**.
 
 ## Authentication
 
-From 0.5.31 (#457) one middleware in `app.py` (`_security`) decides every request; see
+From 0.5.32 (#457) one middleware in `app.py` (`_security`) decides every request; see
 the User Guide's [Security](../guide/security.md) page.
 
 - **Trusted networks** apply always: another address gets **403**.

@@ -200,7 +200,7 @@ that block can stop export or discharge.
 The **Allow writes** switch suggests a read-only mode. As of 0.5.2 there is none: the
 switch does nothing (see [the first gate](#1-allow_writes-no-longer-blocks-writes)).
 
-What decides who can change the gateway is **Security** (from 0.5.31): with it on, each
+What decides who can change the gateway is **Security** (from 0.5.32): with it on, each
 account's role does, and a **viewer** account, or a read-only Home Assistant user, can only
 look. With it off (an upgraded install keeps it off), anyone who can open the UI or reach
 the HTTP API from a trusted network can change the gateway, within the `confirm` and
