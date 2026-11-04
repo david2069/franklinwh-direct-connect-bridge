@@ -90,9 +90,21 @@ def fake_notifier(monkeypatch):
     loop.close()
 
 
-@pytest.fixture(autouse=True)
-def _security_off(request, monkeypatch):
+_REAL_SECURITY_ENABLED = security.enabled
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _security_off():
     """Every test store is a new install, which turns Security on (#457 phase 3) and would
-    send the test client to sign in. Tests of Security mark themselves ``security_on``."""
-    if not request.node.get_closest_marker("security_on"):
-        monkeypatch.setattr(security, "enabled", lambda store: False)
+    send the test client to sign in. Session-wide, so module-scoped app fixtures get it
+    too. Tests of Security mark themselves ``security_on``."""
+    mp = pytest.MonkeyPatch()
+    mp.setattr(security, "enabled", lambda store: False)
+    yield
+    mp.undo()
+
+
+@pytest.fixture(autouse=True)
+def _security_on_when_marked(request, monkeypatch):
+    if request.node.get_closest_marker("security_on"):
+        monkeypatch.setattr(security, "enabled", _REAL_SECURITY_ENABLED)
