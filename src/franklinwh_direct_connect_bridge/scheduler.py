@@ -2949,13 +2949,13 @@ def _ask_choices(ask: dict) -> list[dict]:
 
 def _ask_targets(store, send_to: dict | None = None) -> list[Target]:
     """The enabled notification devices, or with ``send_to`` ``{type: device, ids}`` the
-    enabled ones among those chosen (#281). Only ``mobile_app_*`` ones can show the
-    buttons."""
+    enabled ones among those chosen (#281), on enabled HA instances (actionable.targets).
+    Only ``mobile_app_*`` ones can show the buttons."""
     ids = (send_to or {}).get("ids") if (send_to or {}).get("type") == "device" else None
-    return [Target(d["instance_id"], d["service"].removeprefix("notify."),
-                   d.get("alias") or d["service"])
-            for d in store.notify_devices()
-            if d.get("enabled") and (ids is None or d["id"] in ids)]
+    if ids is None:
+        return actionable.targets(store)
+    on = {d["id"] for d in store.notify_devices() if d.get("enabled")}
+    return actionable.targets(store, [i for i in ids if i in on])
 
 
 async def _ask(targets: list[Target], buttons: list[Button], timeout_s: int, gateway: str,
