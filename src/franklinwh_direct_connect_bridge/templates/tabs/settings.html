@@ -552,7 +552,7 @@
                       <button type="button" class="w-full text-left px-3 py-1.5 text-xs" style="color:var(--text-faint)" @click="tariffEdit.pricing.dynamic.buy_entity=''; open=false; q=''">&#8212; Clear &#8212;</button>
                       <template x-for="it in haPriceItems(q)" :key="'b'+it.key"><div>
                         <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
-                        <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="tariffEdit.pricing.dynamic.buy_entity===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="tariffEdit.pricing.dynamic.buy_entity=it.id; open=false; q=''" x-text="it.label"></button>
+                        <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="tariffEdit.pricing.dynamic.buy_entity===it.id ? { color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-primary)' }" @click="tariffEdit.pricing.dynamic.buy_entity=it.id; open=false; q=''" x-text="it.label"></button>
                       </div></template>
                       <div x-show="!haPriceItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No exposed price entities. Expose them under HA &#8594; Browse entities.</div>
                     </div>
@@ -575,7 +575,7 @@
                       <button type="button" class="w-full text-left px-3 py-1.5 text-xs" style="color:var(--text-faint)" @click="tariffEdit.pricing.dynamic.feedin_entity=''; open=false; q=''">&#8212; None (use buy) &#8212;</button>
                       <template x-for="it in haPriceItems(q)" :key="'f'+it.key"><div>
                         <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
-                        <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="tariffEdit.pricing.dynamic.feedin_entity===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="tariffEdit.pricing.dynamic.feedin_entity=it.id; open=false; q=''" x-text="it.label"></button>
+                        <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="tariffEdit.pricing.dynamic.feedin_entity===it.id ? { color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-primary)' }" @click="tariffEdit.pricing.dynamic.feedin_entity=it.id; open=false; q=''" x-text="it.label"></button>
                       </div></template>
                     </div>
                   </div>
@@ -973,7 +973,7 @@
                 <div class="text-[11px] mt-0.5" style="color:var(--text-faint)">
                   <span x-show="t.pricing && t.pricing.default_rate && t.pricing.default_rate.buy != null" x-text="'buy ' + (t.pricing?.default_rate?.buy) + '/kWh · '"></span><span x-show="(t.pricing?.seasons || []).length" x-text="(t.pricing?.seasons || []).length + '-season TOU · '"></span>day <span x-text="t.billing_cycle_day"></span>
                   <span x-show="tariffDateLabel(t)" x-text="' · ' + tariffDateLabel(t)"></span>
-                  <span x-show="tariffStatus(t) !== 'active'" class="uppercase font-semibold" :style="tariffStatus(t) === 'past' ? 'color:var(--danger)' : 'color:var(--warn)'" x-text="' · ' + tariffStatus(t)"></span>
+                  <span x-show="tariffStatus(t) !== 'active'" class="uppercase font-semibold" :style="{ color: tariffStatus(t) === 'past' ? 'var(--danger)' : 'var(--warn)' }" x-text="' · ' + tariffStatus(t)"></span>
                 </div>
               </div>
               <div class="flex items-center gap-1.5 shrink-0">
@@ -1863,7 +1863,7 @@
              looking at, until their next action — never a toast behind it that fades. -->
         <div x-show="notif.addDevMsg" x-cloak role="alert" aria-live="polite"
              class="text-xs rounded px-3 py-2 border"
-             :style="notif.addDevMsg && ('color:var(--' + notif.addDevMsg.kind + ');border-color:var(--' + notif.addDevMsg.kind + ')')"
+             :style="notif.addDevMsg ? { color: 'var(--' + notif.addDevMsg.kind + ')', borderColor: 'var(--' + notif.addDevMsg.kind + ')' } : {}"
              x-text="notif.addDevMsg && notif.addDevMsg.text"></div>
         <div class="text-[11px] text-slate-500" data-testid="test-before-save">Send a test notification to confirm this device receives alerts before saving</div>
         <div class="flex justify-between gap-2 pt-1">
@@ -2039,7 +2039,7 @@
       </p>
       <span class="text-[11px] px-2 py-0.5 rounded-full shrink-0"
             x-show="nemSpot && nemSpot.active && nemSpot.active.source"
-            :style="'background:var(--surface-2);color:var(--text-secondary)'"
+            style="background:var(--surface-2);color:var(--text-secondary)"
             x-text="nemSpot && nemSpot.active ? ('source: ' + (nemSpot.active.source==='ha-entity' ? 'HA entity' : 'AusNEM')) : ''"></span>
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2055,7 +2055,7 @@
               <button type="button" class="w-full text-left px-3 py-1.5 text-xs" style="color:var(--text-faint)" @click="form.tariff_price_entity=''; saveOne({tariff_price_entity:''}); loadNemSpot(); open=false; q=''">&#8212; Off (use AusNEM if set) &#8212;</button>
               <template x-for="it in haPriceItems(q)" :key="'gb'+it.key"><div>
                 <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
-                <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="form.tariff_price_entity===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="form.tariff_price_entity=it.id; saveOne({tariff_price_entity:it.id}); loadNemSpot(); open=false; q=''" x-text="it.label"></button>
+                <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="form.tariff_price_entity===it.id ? { color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-primary)' }" @click="form.tariff_price_entity=it.id; saveOne({tariff_price_entity:it.id}); loadNemSpot(); open=false; q=''" x-text="it.label"></button>
               </div></template>
               <div x-show="!haPriceItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No exposed price entities (HA &#8594; Browse entities).</div>
             </div>
@@ -2074,7 +2074,7 @@
               <button type="button" class="w-full text-left px-3 py-1.5 text-xs" style="color:var(--text-faint)" @click="form.tariff_feedin_entity=''; saveOne({tariff_feedin_entity:''}); loadNemSpot(); open=false; q=''">&#8212; None &#8212;</button>
               <template x-for="it in haPriceItems(q)" :key="'gf'+it.key"><div>
                 <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
-                <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="form.tariff_feedin_entity===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="form.tariff_feedin_entity=it.id; saveOne({tariff_feedin_entity:it.id}); loadNemSpot(); open=false; q=''" x-text="it.label"></button>
+                <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="form.tariff_feedin_entity===it.id ? { color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-primary)' }" @click="form.tariff_feedin_entity=it.id; saveOne({tariff_feedin_entity:it.id}); loadNemSpot(); open=false; q=''" x-text="it.label"></button>
               </div></template>
             </div>
           </div>

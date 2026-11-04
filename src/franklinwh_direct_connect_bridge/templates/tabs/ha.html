@@ -257,8 +257,8 @@
         <label class="flex items-center gap-2"><input type="checkbox" x-model="form.enabled"> Enabled</label>
       </div>
       <div x-show="testResult" x-cloak class="rounded px-3 py-2 text-xs"
-           :style="testResult && testResult.ok ? 'background:rgba(52,211,153,.12);color:#34d399'
-                                               : 'background:rgba(239,68,68,.12);color:#fca5a5'"
+           :style="testResult && testResult.ok ? { background: 'rgba(52,211,153,.12)', color: '#34d399' }
+                                               : { background: 'rgba(239,68,68,.12)', color: '#fca5a5' }"
            x-text="testResult && (testResult.ok ? ('Connected — ' + testResult.message) : testResult.error)"></div>
       {{ dialog_msg('formMsg') }}
       <div class="flex justify-between gap-2">
