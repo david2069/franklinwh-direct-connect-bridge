@@ -150,8 +150,11 @@ the last 2,000 are kept).
 
 These appear in Home Assistant's own notification panel, not on your phone
 (`Notifier` in `notify.py`, posting to `persistent_notification.create`). They go to the
-add-on's own Home Assistant, or, outside the add-on, to the `HA_URL` and `HA_TOKEN`
-settings. They are sent only while `ha_notify` is on (the default). From `poller.py`:
+default enabled instance under **Settings → Integrations → HA Instances** (else the first
+enabled one); on the add-on that is its own instance, "Home Assistant (this add-on)". Only
+when no instance is set up do they go to the add-on's Supervisor or, outside the add-on, to
+the `HA_URL` and `HA_TOKEN` settings (#464). They are sent only while `ha_notify` is on
+(the default). From `poller.py`:
 
 | Event | Title | Message |
 |---|---|---|
@@ -216,8 +219,12 @@ acknowledgement applies for everyone and is recorded as `source:ui`.
 Assistant connection (step 1) and the **Push notifications** switch (`ha_notify`) on. If
 Home Assistant does not answer, the bridge keeps retrying, waiting longer each time up to
 10 minutes. Acknowledging the alert in the bridge dismisses the notification. **Dismissing
-it in Home Assistant does not acknowledge the alert**: the bridge stays the record. Alerts
-are not sent to notification devices yet.
+it in Home Assistant does not acknowledge the alert**: the bridge stays the record.
+
+**On your devices.** The alert is also sent, with **Acknowledge**, to the notification
+devices chosen under Send to (all enabled devices by default). It is sent once, on the
+first try of the persistent notification, whether that worked or not: a Home Assistant
+notification that fails, or has nowhere to go, does not keep the alert off the devices.
 
 With the switch **off**, no Home Assistant notification is made, and each one skipped is
 recorded as "skipped: HA channel off". The bridge's alert window still opens; it never
@@ -315,9 +322,7 @@ Checked against the code on `main` (0.5.2). These do not exist today:
   and **Test with buttons** on a phone's row. Only `notify.mobile_app_*` targets show
   buttons. Other notifications are plain.
 - **No setup check for notifications.**
-- **No UI** for the persistent-notification target outside the add-on (`HA_URL`,
-  `HA_TOKEN`; set them in the environment), and no button for the persistent-notification
-  test (`POST /api/notify/test`).
+- **No button** for the persistent-notification test (`POST /api/notify/test`).
 
 ### Known defect
 

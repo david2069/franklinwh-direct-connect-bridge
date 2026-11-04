@@ -61,6 +61,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   `%sensor%` values are filled in as before.
 
 ### Fixed
+- **Critical alerts reach Home Assistant and phones on Docker and pip** (refs #464). Home
+  Assistant persistent notifications (alerts, and the aGate / Modbus TCP Server (aGate
+  :502) / firmware / moved / cloud-credential events) now go to the default enabled HA
+  instance under Settings → Integrations → HA Instances (else the first enabled one). On
+  the add-on that is its own instance, "Home Assistant (this add-on)", so nothing changes
+  there. `HA_URL` / `HA_TOKEN` (and, on the add-on, the Supervisor token) are used only
+  when no instance is set up, so existing setups keep working. Before, outside the
+  add-on, they were the only target, so a user who had set up an instance and phones got
+  no critical alert in Home Assistant or on a phone. A critical alert is now also sent to
+  the notification devices when the persistent notification fails or has nowhere to go;
+  before, a failed create kept it off the phones. Retries of the persistent notification
+  do not send to the phones again.
 - **An HA instance added in Settings listens for button taps at once** (franklinwh-ha-notify#5).
   Adding, editing (URL, token, on/off) or deleting an instance under **Settings →
   Integrations → HA Instances** now starts, re-signs-in or closes its tap listener on the

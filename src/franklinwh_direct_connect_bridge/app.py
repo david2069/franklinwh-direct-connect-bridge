@@ -5748,8 +5748,8 @@ def create_app() -> FastAPI:
         notifier = Notifier(get_settings())
         if not (notifier.enabled and notifier.token and notifier.base):
             return {"ok": False,
-                    "detail": "No notification target configured (HA add-on Supervisor "
-                              "token, or ha_url + ha_token for standalone)."}
+                    "detail": "No notification target configured (an HA instance under "
+                              "Settings → Integrations, or ha_url + ha_token)."}
         try:
             notifier.notify("FranklinWH Direct Connect Bridge",
                             "Test notification from the bridge.")
