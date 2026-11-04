@@ -21,6 +21,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   devices, not just one; a trigger already sent to one device keeps it.
 
 ### Fixed
+- **Hidden messages, labels and list rows stay hidden.** 16 elements in the web UI
+  coloured themselves with a text style, which Alpine applies by replacing the whole style
+  attribute, wiping the `display:none` that hides them: the same cause as the blank rows in
+  the sensor list. Among them: the HA price-entity pickers in Settings → Tariff showed
+  blank rows under each heading, an active tariff could show "· active", and empty
+  message boxes could appear in dialogs. They now set colours property by property, and a
+  test fails if any element that can be hidden binds a text style again.
 - **Schedule editor: no blank rows in the sensor list.** Once a condition had a sensor
   chosen, every group heading in its drop list showed an empty row beneath it, so
   **Ask before continuing** had a gap above its one sensor and **Automation Constants**

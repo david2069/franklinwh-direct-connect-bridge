@@ -100,7 +100,7 @@
                                              : 'background:var(--surface-2);color:var(--text-secondary)'"
                   x-text="conResult.is_write ? 'write' : 'read'"></span>
             <span class="ml-auto" x-show="conCopied" x-cloak x-text="conCopied"
-                  :style="conCopied === 'Copied' ? 'color:#34d399' : 'color:#fbbf24'"></span>
+                  :style="{ color: conCopied === 'Copied' ? '#34d399' : '#fbbf24' }"></span>
             <button class="btn btn-secondary btn-sm" :class="conCopied ? '' : 'ml-auto'" @click="conCopy()">Copy both</button>
           </div>
           <div class="grid gap-2" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
