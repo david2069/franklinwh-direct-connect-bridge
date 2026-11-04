@@ -24,6 +24,7 @@ NOT_DEVICE_BOUND = {
     "api/battery/record/stop",     # process-level: stops the running recorder
     "api/battery/record/status",   # process-level: progress of the running recorder
     "api/gateways",                # the gateway list itself
+    "api/security",                # bridge-wide trusted networks (#457), no gateway
     "api/sites",                   # site roster — global config, not per-gateway
     "api/meters",                  # meter roster — global config, not per-gateway
     "api/utilities",               # utility roster — global config, not per-gateway

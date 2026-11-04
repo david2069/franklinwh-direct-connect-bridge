@@ -1428,6 +1428,36 @@
 
   </div>
   <div x-show="sub==='admin'" x-cloak class="space-y-6">
+  <!-- ══ Security (#457 phase 1: trusted networks) ══ -->
+  <div class="flex items-center gap-3" x-init="loadSecurity()">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Security <a :href="$store.app.guideUrl('security/')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+  </div>
+  <div class="card space-y-3" data-testid="security-section">
+    <div>
+      <div class="text-sm" style="color:var(--text-primary)">Trusted networks</div>
+      <div class="text-xs text-slate-500">Only browsers and API callers on these networks can reach the bridge; others get "not trusted" (403).
+        Home Assistant's sidebar panel and the health check always get in.</div>
+    </div>
+    <div class="text-xs text-slate-500" x-show="security.loaded" x-cloak>
+      <span x-text="security.install === 'new' ? 'New install: started with the private ranges and loopback.' : 'Upgraded install: started with every network trusted, as before.'"></span>
+      Your address: <span class="font-mono" style="color:var(--text-secondary)" x-text="security.you || 'unknown'"></span><span x-show="security.ingress"> (through Home Assistant)</span>
+    </div>
+    <label class="flex items-center gap-2 text-xs" style="color:var(--text-secondary)">
+      <input type="checkbox" x-model="security.any" data-testid="trusted-any"> Any network (no restriction)</label>
+    <div x-show="!security.any">
+      <textarea x-model="security.text" rows="5" data-testid="trusted-networks"
+                class="form-control form-control-sm w-full font-mono text-xs"
+                placeholder="192.168.1.0/24&#10;10.0.0.0/8"></textarea>
+      <div class="text-[11px] text-slate-500 mt-1">One network (192.168.1.0/24) or address (10.0.0.5) per line. The list must include your address.</div>
+    </div>
+    {{ dialog_msg('security.msg') }}
+    <div class="flex justify-end">
+      <button class="btn btn-primary btn-sm" @click="saveTrustedNetworks()" :disabled="security.saving || !security.canSave"
+              x-text="security.saving ? 'Saving…' : 'Save'"></button>
+    </div>
+  </div>
+
   <!-- ══ Storage & Admin ══ -->
   <div class="flex items-center gap-3" x-init="loadAdmin()">
     <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Storage &amp; Admin <a :href="$store.app.guideUrl('energy-and-costs/#storage-and-backups')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>

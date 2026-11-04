@@ -12,12 +12,21 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Trusted networks** (#457 phase 1). **Settings → Admin → Security** lists the networks
+  allowed to reach the bridge; a request from anywhere else gets 403 "Your network is not
+  trusted by this bridge", pages and API alike, and one log line per address every 10
+  minutes. An upgraded install starts with **Any network**, so nothing changes. A new install
+  (no install date yet on its first start) starts with the private ranges and loopback, IPv4
+  and IPv6. Home Assistant's sidebar panel (the add-on's ingress proxy with HA's ingress
+  header) and `/api/live` always get in. A list that leaves out the address saving it is
+  refused. `GET /api/security`, `PUT /api/security/trusted-networks`. The Security switch,
+  the HTTPS port, sign-in and tokens come in later phases.
 - **Guide: Security (planned, #457).** A new page describing the planned optional security:
   upgrades keep today's behaviour and new installs start with Security on (it can be turned
   off); trusted networks; an HTTPS port (8102); HA admins are admins and other HA users are
   users; the first admin; the roles admin, user, viewer and api; API tokens; the
-  self-signed certificate and how to trust it on a phone. Marked "Planned — not in a
-  release yet"; nothing on it is built.
+  self-signed certificate and how to trust it on a phone. Everything on it except
+  trusted networks is marked as planned.
 
 ## [0.5.30] — 2026-11-04
 

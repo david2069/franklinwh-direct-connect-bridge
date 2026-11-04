@@ -208,6 +208,34 @@ function settingsTab() {
 
     // ── Storage & Admin (OPS-ADMIN) ─────────────────────────────────────────
     admin: { storage: {}, busy: false, exportHours: 24 },
+    // Trusted networks (#457 phase 1). The result of Save stays in the section (no toast).
+    security: { loaded: false, install: '', any: true, text: '', you: '', ingress: false,
+                canSave: true, saving: false, msg: null },
+    async loadSecurity() {
+      try {
+        const d = await (await fetch('api/security')).json();
+        const nets = d.trusted_networks || ['any'];
+        Object.assign(this.security, { loaded: true, install: d.install, you: d.your_address || '',
+          ingress: !!d.via_ingress, canSave: d.can_save !== false, any: nets.includes('any'),
+          text: nets.includes('any') ? (d.private_ranges || []).join('\n') : nets.join('\n') });
+      } catch (e) { /* leave last-known */ }
+    },
+    async saveTrustedNetworks() {
+      const s = this.security;
+      s.saving = true; s.msg = null;
+      try {
+        const networks = s.any ? ['any'] : s.text.split(/[\s,]+/).filter(Boolean);
+        const r = await fetch('api/security/trusted-networks', { method: 'PUT',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ networks }) });
+        const d = await r.json(); if (!r.ok) throw new Error(d.detail || 'save failed');
+        const saved = d.trusted_networks || [];
+        s.any = saved.includes('any');
+        if (!s.any) s.text = saved.join('\n');
+        s.msg = { kind: 'ok', text: s.any ? 'Saved: every network is trusted.'
+                                          : 'Saved: ' + saved.length + ' trusted network(s).' };
+      } catch (e) { s.msg = { kind: 'danger', text: 'Not saved: ' + e.message }; }
+      finally { s.saving = false; }
+    },
     async loadAdmin() {
       try { this.admin.storage = await (await fetch('api/admin/storage')).json() || {}; }
       catch (e) { /* leave last-known */ }
