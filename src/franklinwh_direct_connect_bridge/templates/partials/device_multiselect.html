@@ -1,0 +1,24 @@
+{#- Send to → Chosen devices as one multi-select drop-down (owner, 2026-11-04). `summary` is
+    an Alpine expression for the ticked devices' names; the caller's block is the device
+    rows (checkboxes), rendered in the list. On a phone the list opens in place under the
+    field (a floating list sits under the bottom nav there). Escape closes the list only,
+    never the dialog behind it. -#}
+{% macro device_multiselect(summary, cls='w-full') -%}
+<div x-data="{ msOpen: false }" class="relative {{ cls }}" data-testid="device-multiselect"
+     @click.outside="msOpen = false" @keydown.escape.stop="msOpen = false">
+  <button type="button" class="form-control form-control-sm w-full flex items-center justify-between gap-2 text-left"
+          @click="msOpen = !msOpen; msOpen && $nextTick(() => $refs.msList.scrollIntoView({ block: 'nearest' }))" :aria-expanded="msOpen" aria-haspopup="listbox">
+    <span class="truncate" x-text="({{ summary }}) || 'Choose devices'"></span>
+    <span aria-hidden="true" class="shrink-0">▾</span>
+  </button>
+  <div x-show="msOpen" x-cloak x-ref="msList" role="listbox" aria-multiselectable="true"
+       class="absolute left-0 right-0 z-40 mt-1 rounded-lg border p-2 space-y-1.5 max-h-64 overflow-auto shadow-lg
+              max-sm:static max-sm:shadow-none"
+       :style="{ background: 'var(--surface-0)', borderColor: 'var(--border)' }">
+    {{ caller() }}
+    <div class="flex justify-end pt-1">
+      <button type="button" class="btn btn-secondary btn-sm" @click="msOpen = false">Done</button>
+    </div>
+  </div>
+</div>
+{%- endmacro %}
