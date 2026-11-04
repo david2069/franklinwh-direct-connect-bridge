@@ -1594,6 +1594,38 @@
       Critical alerts reach only the bridge UI <a :href="$store.app.guideUrl('ha-setup-and-notifications/#alerts')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a>
     </div>
 
+    <!-- ── Notifications check (#464): can a critical alert reach HA and the phones? ── -->
+    <div class="space-y-2 pt-1 border-t border-white/[0.06]" x-init="loadChecks()" data-testid="notify-checks">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <span class="metric-label">Notifications check <a :href="$store.app.guideUrl('ha-setup-and-notifications/#troubleshooting-notifications')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
+        <div class="flex flex-wrap gap-2">
+          <button @click="loadChecks()" :disabled="notif.checksBusy" class="btn btn-secondary btn-sm"
+                  x-text="notif.checksBusy ? 'Checking…' : 'Check again'"></button>
+          <button @click="openTestAlert()" class="btn btn-secondary btn-sm" data-testid="test-alert-open">Test critical alert</button>
+        </div>
+      </div>
+      <div x-show="notif.checksErr" x-cloak class="text-xs" style="color:var(--danger)" x-text="notif.checksErr"></div>
+      <ul class="space-y-1.5" x-show="notif.checks">
+        <template x-for="c in (notif.checks || [])" :key="c.id">
+          <li class="text-xs rounded px-2 py-1.5" style="background:var(--surface-1)" :data-check="c.id" :data-status="c.status">
+            <div class="flex items-start gap-2">
+              <span class="chip shrink-0" style="font-size:.6rem;min-width:4.6rem;justify-content:center"
+                    :class="{pass:'ok', fail:'error', unset:'muted'}[c.status]"
+                    x-text="{pass:'Pass', fail:'Fail', unset:'Not set up'}[c.status]"></span>
+              <div class="min-w-0 flex-1">
+                <div class="font-semibold" style="color:var(--text-primary)" x-text="c.label"></div>
+                <div class="break-words" style="color:var(--text-secondary)">
+                  <span x-text="c.detail"></span><span x-show="c.ts" x-text="' · ' + fmtNotifyTime(c.ts)"></span>
+                </div>
+                <div x-show="c.fix" class="break-words mt-0.5" style="color:var(--text-muted)">
+                  <span class="font-semibold">Fix:</span> <span x-text="c.fix"></span></div>
+              </div>
+            </div>
+          </li>
+        </template>
+      </ul>
+    </div>
+
     <!-- ── Auto-notify triggers ── -->
     <div class="space-y-1.5 pt-1 border-t border-white/[0.06]" x-init="loadTriggers()">
       <div class="flex items-center justify-between">
@@ -1951,6 +1983,46 @@
           <button @click="notif.testDlg=null" class="btn btn-secondary btn-sm">Close</button>
           <button @click="testTrigger()" :disabled="notif.testDlg.sending || !notif.devices.length"
                   class="btn btn-primary btn-sm" x-text="notif.testDlg.sending ? 'Sending…' : 'Send test'"></button>
+        </div>
+      </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Test critical alert (#464): each step's result stays in the dialog; no toasts. -->
+  <div x-show="notif.ta" x-cloak class="fixed inset-0 z-[110] flex items-center justify-center p-4"
+       @keydown.escape.window="closeTestAlert()" data-testid="test-alert-dialog">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="closeTestAlert()"></div>
+    <div class="relative w-full max-w-md rounded-xl border shadow-2xl max-h-[90vh] overflow-auto"
+         style="background:var(--surface-0,#0f172a);border-color:var(--border)">
+      <div class="px-5 py-3 border-b flex items-center justify-between" style="border-color:var(--border)">
+        <div class="text-sm font-semibold" style="color:var(--text-primary)">Test critical alert</div>
+        <button class="text-slate-400 hover:text-slate-200" @click="closeTestAlert()"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <template x-if="notif.ta">
+      <div class="px-5 py-4 space-y-3">
+        <div class="text-xs text-slate-500">Runs a critical alert's path: the Home Assistant
+          notification, then Acknowledge on the devices chosen for Critical alerts. No alert is
+          recorded in the bridge.</div>
+        <ul class="space-y-1.5" x-show="notif.ta.steps.length">
+          <template x-for="st in notif.ta.steps" :key="st.id">
+            <li class="flex items-start gap-2 text-xs" :data-step="st.id" :data-status="st.status">
+              <span class="chip shrink-0" style="font-size:.6rem;min-width:4.6rem;justify-content:center"
+                    :class="{pass:'ok', fail:'error', unset:'muted', skipped:'muted', waiting:'warn'}[st.status]"
+                    x-text="{pass:'Pass', fail:'Fail', unset:'Not set up', skipped:'Skipped', waiting:'Waiting'}[st.status]"></span>
+              <div class="min-w-0 flex-1">
+                <div class="font-semibold" style="color:var(--text-primary)" x-text="st.label"></div>
+                <div class="break-words" style="color:var(--text-secondary)" x-text="st.detail"></div>
+              </div>
+            </li>
+          </template>
+        </ul>
+        {{ dialog_msg('notif.ta?.msg') }}
+        <div class="flex justify-end gap-2">
+          <button @click="closeTestAlert()" class="btn btn-secondary btn-sm">Close</button>
+          <button @click="runTestAlert()" :disabled="notif.ta.running" class="btn btn-primary btn-sm"
+                  data-testid="test-alert-run"
+                  x-text="notif.ta.running ? 'Running…' : (notif.ta.steps.length ? 'Run again' : 'Run test')"></button>
         </div>
       </div>
       </template>

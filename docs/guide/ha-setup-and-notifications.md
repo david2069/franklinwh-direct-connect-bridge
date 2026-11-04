@@ -299,6 +299,44 @@ no longer exists", "'Phone' is switched off", or "has no HA instance".
 
 ---
 
+## Troubleshooting notifications
+
+**Settings → Integrations → Notifications check** answers "would a critical alert reach
+me?" (#464). Each line shows **Pass**, **Fail** or **Not set up**, and its fix. **Check
+again** runs it again; the same lines are in `GET /api/notify/checks`.
+
+| Line | Passes when |
+|---|---|
+| Push notifications switch | The switch is on (`ha_notify`). |
+| Default HA instance | The instance persistent notifications go to answers `/api/` and accepts its token. It names where they go: the default instance, the add-on's Supervisor, or `HA_URL` / `HA_TOKEN` when no instance is set up. |
+| Button taps listener: *name* | That enabled instance's WebSocket is connected, so taps on buttons reach the bridge (`listener_status()` in franklinwh-ha-notify). One line per instance. |
+| Phones (mobile_app_*) | At least one enabled `notify.mobile_app_*` device is on an enabled instance. Only these show buttons. |
+| Last Test with buttons | The last **Test with buttons** was tapped. It shows the result and when; it is kept across restarts. |
+| Where critical alerts go | Push notifications is on and at least one phone among Critical alerts' Send to devices can show Acknowledge. It names the Home Assistant target too. |
+
+**Test critical alert** runs a critical alert's path and shows each step in its window:
+the Home Assistant notification created (`fwh_dc_alert_test`), sent to the devices
+(Critical alerts' Send to, with **Acknowledge**), and Acknowledge tapped (it waits 5
+minutes). Tapping Acknowledge dismisses the test notification in Home Assistant. No alert
+is recorded in the bridge, so no alert window opens.
+
+| Symptom | Check line | Fix |
+|---|---|---|
+| Nothing anywhere | Push notifications switch: Fail | Switch on Push notifications. |
+| No notification in Home Assistant | Default HA instance: Not set up | Add an instance (step 1) and make it the default. |
+| No notification in Home Assistant | Default HA instance: Fail, "token rejected" | Create a new long-lived token and Edit the instance. |
+| No notification in Home Assistant | Default HA instance: Fail, a connection error | Check the Base URL from the bridge's network and that Home Assistant runs. |
+| The phone gets nothing | Phones: Not set up or Fail | Install the Companion app, then **+ Add device** and pick its `notify.mobile_app_*` service. |
+| The phone gets nothing | Where critical alerts go: Fail, "no phone" | Under Send to for Critical alerts, choose a phone that is on, or All devices. |
+| Tapping Acknowledge does nothing | Button taps listener: Fail | Check that instance's URL and token (Edit → Test); the error shown is the WebSocket's. |
+| Unsure whether buttons work | Last Test with buttons: Not set up or Fail | Press **Test with buttons** on a phone's row and tap Yes or No. |
+
+**Support info** (Settings → Admin) includes these lines, redacted: each line's status
+and, where it helps, its detail, with no instance or device names, URLs, addresses or
+tokens.
+
+---
+
 ## Not yet available
 
 Checked against the code on `main` (0.5.2). These do not exist today:
@@ -321,7 +359,6 @@ Checked against the code on `main` (0.5.2). These do not exist today:
   (Release / Keep), bridge alerts (Acknowledge; Re-discover when the aGate is unreachable),
   and **Test with buttons** on a phone's row. Only `notify.mobile_app_*` targets show
   buttons. Other notifications are plain.
-- **No setup check for notifications.**
 - **No button** for the persistent-notification test (`POST /api/notify/test`).
 
 ### Known defect
