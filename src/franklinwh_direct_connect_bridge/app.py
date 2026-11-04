@@ -893,6 +893,8 @@ def _seed_self_ha_instance(settings) -> bool:
                 if r.get("base_url") == me["base_url"] and r.get("token") != me["token"]:
                     store.update_ha_instance(r["id"], token=me["token"])
                     log.info("refreshed this add-on's Home Assistant token (new container)")
+                    from . import actionable
+                    actionable.sync_instances(store)
             return False
         import uuid
         store.create_ha_instance(ha_id=uuid.uuid4().hex[:12], name=me["name"],
@@ -2669,6 +2671,8 @@ def create_app() -> FastAPI:
         row = st.create_ha_instance(
             ha_id=uuid.uuid4().hex[:12], name=req.name, base_url=req.base_url,
             token=req.token, is_default=req.is_default, enabled=req.enabled)
+        from . import actionable
+        actionable.sync_instances(st)          # its tap listener starts now, not at a restart
         return ha_instances.redact(row)
 
     @app.patch("/api/ha/instances/{ha_id}")
@@ -2678,13 +2682,18 @@ def create_app() -> FastAPI:
         if st.ha_instance(ha_id) is None:
             raise HTTPException(status_code=404, detail=f"no HA instance '{ha_id}'")
         row = st.update_ha_instance(ha_id, **req.model_dump(exclude_unset=True))
+        from . import actionable
+        actionable.sync_instances(st)          # new URL/token signs in again; off stops listening
         return ha_instances.redact(row)
 
     @app.delete("/api/ha/instances/{ha_id}")
     def api_ha_instance_delete(ha_id: str):
         _guard_writes()
-        if not _ha_store().delete_ha_instance(ha_id):
+        st = _ha_store()
+        if not st.delete_ha_instance(ha_id):
             raise HTTPException(status_code=404, detail=f"no HA instance '{ha_id}'")
+        from . import actionable
+        actionable.sync_instances(st)          # its tap listener closes
         return {"deleted": ha_id}
 
     @app.post("/api/ha/test")

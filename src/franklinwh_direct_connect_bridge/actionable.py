@@ -83,14 +83,28 @@ def send(store, event: str, *, gateway: str | None = None,
     if n is None:
         log.info("notify [%s] not sent: notifications are not running", event)
         return None
-    # Instances added or switched since start are picked up here rather than at a
-    # restart. The package has no call for this yet (franklinwh-ha-notify#5).
-    n.instances = _instances(store)
     fut = submit(n.notify(event, targets(store, device_ids), gateway=gateway, **values))
     if fut is None:
         log.info("notify [%s] not sent: notifications are not running", event)
         return None
     return fut.result(timeout=SEND_TIMEOUT_S)
+
+
+def sync_instances(store) -> None:
+    """Tell the running Notifier that the store's HA instances changed, from a worker
+    thread: an added or re-enabled instance gets its tap listener, a changed URL or token
+    signs in again, and a disabled or deleted one stops listening. No restart needed
+    (franklinwh-ha-notify#5). Does nothing when the Notifier is not running; never raises."""
+    n = _notifier
+    if n is None or store is None:
+        return
+    fut = submit(n.set_instances(_instances(store)))
+    if fut is None:
+        return
+    try:
+        fut.result(timeout=SEND_TIMEOUT_S)
+    except Exception as e:  # noqa: BLE001 - the store change itself already succeeded
+        log.warning("HA instances changed, but the tap listeners could not follow: %s", e)
 
 
 def _instances(store) -> dict[str, HAInstance]:
