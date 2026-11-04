@@ -8,10 +8,12 @@ The Notifier here is a fake: no Home Assistant is contacted.
 import asyncio
 import datetime as dt
 import threading
+import time
 
 import pytest
 from fastapi.testclient import TestClient
-from franklinwh_ha_notify import NO, REPLY, YES, Answer
+from franklinwh_ha_notify import NO, REPLY, YES, Answer, Request
+from franklinwh_ha_notify.actions import new_id
 
 from franklinwh_direct_connect_bridge import actionable, state
 from franklinwh_direct_connect_bridge import app as app_module
@@ -23,18 +25,21 @@ ASK = {"question": "Charge now?", "timeout_min": 5, "if_no_reply": "skip"}
 
 
 class FakeNotifier:
-    """ask_and_wait blocks until the test answers, like a phone that hasn't been tapped."""
+    """wait blocks until the test answers, like a phone that hasn't been tapped."""
 
     def __init__(self, loop):
         self.loop = loop
         self.calls = []
         self._answer: asyncio.Future | None = None
 
-    async def ask_and_wait(self, event, targets, buttons, *, timeout_s, gateway=None, **values):
+    async def ask(self, event, targets, buttons, *, ttl_s, gateway=None, meta=None, **values):
         self.calls.append({"event": event, "targets": targets, "verbs": [b.verb for b in buttons],
                            "buttons": [(b.title, b.reply) for b in buttons],
-                           "timeout_s": timeout_s, "gateway": gateway, **values})
+                           "timeout_s": ttl_s, "gateway": gateway, **values})
         self._answer = self.loop.create_future()
+        return Request(new_id(), event, gateway, tuple(buttons), time.time() + ttl_s)
+
+    async def wait(self, request, timeout_s):
         return await self._answer
 
     def answer(self, ans: Answer):

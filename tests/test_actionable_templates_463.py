@@ -161,7 +161,7 @@ def test_offgrid_user_template_asks_once_per_period(tmp_path, monkeypatch):
     from franklinwh_direct_connect_bridge.db import MetricsStore
     asked = []
 
-    def fake_step(entry, *, store, gateway_id, now, snapshot=None):
+    def fake_step(entry, *, store, gateway_id, now, snapshot=None, occ=None):
         asked.append((now, snapshot.get("grid.offgrid_min")))
         return "skip", "test: Stay off-grid"
 
@@ -202,7 +202,7 @@ def test_demand_template_self_consumes_then_puts_the_previous_mode_back(tmp_path
             self.modes.append(mode)
             return {"ok": True}
 
-    def answered(entry, *, store, gateway_id, now, snapshot=None):
+    def answered(entry, *, store, gateway_id, now, snapshot=None, occ=None):
         # As the real step leaves it once "Self-consume" is tapped.
         sch._asks[f"{gateway_id}:{entry['id']}"] = {
             "wkey": entry.get("_wkey"), "fut": None, "open": True,

@@ -6,6 +6,11 @@ Each button calls the bridge's own existing command: Release is
 ``alerts.ack`` with source ``ha``; Re-discover asks the gateway's poller for its own
 re-discovery sweep. The asks ride on the notifications the bridge already sends; the
 callers send the plain one only when the ask went nowhere.
+
+Requests survive a restart (franklinwh-ha-notify#6), so a tap can arrive long after the
+state it was asked about has changed. Each handler is therefore idempotent: releasing a
+force that is no longer running, or acknowledging an alert already acknowledged, does
+nothing and says so.
 """
 from __future__ import annotations
 
@@ -85,6 +90,10 @@ async def _on_release(request, answer) -> str:
         return "kept"
     from . import battery_control
     host = request.meta["host"]
+    now = await asyncio.to_thread(battery_control.status, host)
+    if now.get("available") and not now.get("vpp_active"):
+        log.info("Release tapped for %s: no force is running there; nothing to do", host)
+        return "already released"
     out = await asyncio.to_thread(battery_control.execute, "Release", host=host)
     if not out.get("ok"):
         return f"not released: {out.get('result', '')}"
@@ -118,7 +127,14 @@ async def _on_alert(request, answer) -> str:
         gw.rediscover_requested = True
         return "re-discovery requested"
     from . import alerts
-    row = await asyncio.to_thread(alerts.ack, _store(), request.meta["alert_id"], "ha")
+    st = _store()
+    aid = request.meta["alert_id"]
+    before = await asyncio.to_thread(st.alert, aid)
+    if before is not None and before.get("acked_ts") is not None:
+        log.info("Acknowledge tapped for alert #%s: already acknowledged by %s; nothing to do",
+                 aid, before.get("acked_by"))
+        return "already acknowledged"
+    row = await asyncio.to_thread(alerts.ack, st, aid, "ha")
     return "acknowledged" if row else "alert not found"
 
 
