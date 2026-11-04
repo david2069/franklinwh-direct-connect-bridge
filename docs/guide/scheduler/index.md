@@ -172,13 +172,13 @@ the stored schedule, so nothing else changes (#157).
       **Export** / **Hold**; force discharge to a 20% floor.
     - **Demand charge window** (`tariff.demand_window_active == 1`): only while SoC is at or
       above the **demand-charge min SoC** Automation Constant (`const.demand_charge_min_soc`,
-      default 30%). **No grid charging** / **Leave it**; a force **standby**, so the battery
-      neither charges from the grid nor discharges. Below the minimum it does nothing, and
-      the standby is released, so charging is allowed.
+      default 30%). **Self-consume** / **Leave it**; switches to Self-Consumption, and puts
+      back the mode that was active before it when the window ends or SoC falls below the
+      minimum (the schedule's `restore_on_exit`, logged as "restored mode.name -> …").
     - **Battery export bonus** (`tariff.bonus_window_active == 1`): **Export** / **Hold**;
       force discharge to a 30% floor.
 
-  The six force presets are marked **Modbus**; the force is released when the conditions
+  The five force presets are marked **Modbus**; the force is released when the conditions
   stop holding.
   <!-- @b IDX-10 ;; src: scheduler.py:554-623 ;; tested: tests/test_scheduler.py::test_dispatch_presets_present_and_valid ;; write: yes ;; b: Eleven presets; the four force presets need Modbus, carry an SoC gate and a target SoC, and validate as imports ;; test: -->
 - **Export ▾** downloads every schedule, as **This bridge** (`franklinwh-local-schedules`)

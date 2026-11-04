@@ -21,9 +21,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   outage) for 30 min → Acknowledge, no battery action; Cheap price → charge, from the
   wholesale price (≤ 5 c/kWh) or the tariff import rate (≤ $0.05/kWh); High price →
   export, from the wholesale price (≥ 50 c/kWh) or the tariff feed-in rate (≥ $0.50/kWh),
-  only at or above the min discharge SoC constant; Demand charge window → no grid charging
-  (force standby), only at or above the demand-charge min SoC constant; Battery export
-  bonus → export. The six force templates need Modbus.
+  only at or above the min discharge SoC constant; Demand charge window → Self-Consumption
+  for the window, then the previous mode put back (restore on exit), only at or above the
+  demand-charge min SoC constant; Battery export bonus → export. The five force templates
+  need Modbus.
 - **Send to: all enabled devices or the devices you choose** (#281, N3 by device). A
   schedule's **Ask before continuing** step has a **Send to** choice: all enabled
   notification devices (the default) or the ones ticked, listed from the enabled companion

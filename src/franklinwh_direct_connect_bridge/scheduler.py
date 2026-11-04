@@ -722,27 +722,27 @@ PRESETS: list[dict[str, Any]] = [
                         "choices": [{"label": "Export", "then": "run"},
                                     {"label": "Hold", "then": "skip"}]}}}
       for key, what, label, sensor, high, unit in _ASK_HIGH],
-    # Demand window: stop grid charging with a force standby (the battery neither charges
-    # nor discharges) while SoC is at or above const.demand_charge_min_soc (default 30%).
-    # Below that the condition fails, the standby is released, and charging is allowed.
-    {"id": "demand_window_ask", "name": "Demand charge window — ask to stop grid charging",
-     "requires": "modbus",
+    # Demand window: Self-Consumption while it lasts, only while SoC is at or above
+    # const.demand_charge_min_soc (default 30%), then the mode that was active before it is
+    # put back (restore_on_exit, BR-50: captured before the write, kept with the run).
+    {"id": "demand_window_ask", "name": "Demand charge window — ask to self-consume",
      "description": "When the tariff's peak-demand window starts and SoC is at or above the "
-                    "demand-charge minimum SoC (Automation Constants), ask whether to stop "
-                    "grid charging (force standby). Released when the window ends or SoC "
-                    "falls below the minimum.",
+                    "demand-charge minimum SoC (Automation Constants), ask whether to switch "
+                    "to Self-Consumption. The previous mode is put back when the window ends "
+                    "or SoC falls below the minimum.",
      "spec": {"trigger_type": "always", "fire_at": "00:00", "duration_min": 0, "match": "all",
+              "restore_on_exit": True,
               "conditions": [{"sensor": "tariff.demand_window_active", "op": "==",
                               "value": 1},
                              {"sensor": "battery.soc_pct", "op": ">=",
                               "value_kind": "sensor",
                               "value_sensor": "const.demand_charge_min_soc"}],
-              "action": {"kind": "force", "direction": "standby", "unit": "pct",
-                         "power": 0, "target_soc": 0},
+              "action": {"kind": "set_mode", "mode": "self"},
               "ask": {"question": "Demand charge window: home %load.power_w% W, battery "
-                                  "%battery.soc_pct%%. Stop charging from the grid?",
+                                  "%battery.soc_pct%%. Switch to Self-Consumption for the "
+                                  "window?",
                       "timeout_min": 5, "if_no_reply": "skip",
-                      "choices": [{"label": "No grid charging", "then": "run"},
+                      "choices": [{"label": "Self-consume", "then": "run"},
                                   {"label": "Leave it", "then": "skip"}]}}},
     {"id": "bonus_window_ask", "name": "Battery export bonus — ask to export",
      "requires": "modbus",

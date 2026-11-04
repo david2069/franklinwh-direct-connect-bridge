@@ -80,8 +80,8 @@ ASK_TEMPLATES = {
                                  "const.min_discharge_soc": 20},
                                 {"tariff.sell_rate": 0.49, "battery.soc_pct": 60,
                                  "const.min_discharge_soc": 20})),
-    # Demand window stops grid charging only at or above the demand-charge min SoC.
-    "demand_window_ask": (("force", "standby"), "modbus", ["No grid charging", "Leave it"],
+    # Demand window self-consumes only at or above the demand-charge min SoC.
+    "demand_window_ask": (("set_mode", None), None, ["Self-consume", "Leave it"],
                           ({"tariff.demand_window_active": 1, "battery.soc_pct": 30,
                             "const.demand_charge_min_soc": 30},
                            {"tariff.demand_window_active": 1, "battery.soc_pct": 29,
@@ -187,3 +187,54 @@ def test_offgrid_user_template_asks_once_per_period(tmp_path, monkeypatch):
     assert [a[1] for a in asked] == [30]
     tick(50, off_grid=False)
     assert len(asked) == 1
+
+
+def test_demand_template_self_consumes_then_puts_the_previous_mode_back(tmp_path, monkeypatch):
+    """Owner 2026-11-04: Self-Consumption for the window, then back to the mode that was
+    active before it — through the real tick and the existing restore_on_exit (BR-50)."""
+    from franklinwh_direct_connect_bridge.db import MetricsStore
+
+    class FakeClient:
+        def __init__(self):
+            self.modes = []
+
+        def set_mode(self, settings, mode, host=None):
+            self.modes.append(mode)
+            return {"ok": True}
+
+    def answered(entry, *, store, gateway_id, now, snapshot=None):
+        # As the real step leaves it once "Self-consume" is tapped.
+        sch._asks[f"{gateway_id}:{entry['id']}"] = {
+            "wkey": entry.get("_wkey"), "fut": None, "open": True,
+            "decided": ("fire", "answered Self-consume"), "answer": "Self-consume"}
+        return "fire", "answered Self-consume"
+
+    monkeypatch.setattr(sch, "_ask_step", answered)
+    monkeypatch.setattr(sch, "ha_snapshot", lambda store: {})
+    p = sch.preset("demand_window_ask")
+    assert p["spec"]["action"] == {"kind": "set_mode", "mode": "self"}
+    assert p["spec"]["restore_on_exit"] is True
+    st = MetricsStore(str(tmp_path / "m.db"))
+    st.create_schedule(sid="dw", name=p["name"],
+                       spec={**p["spec"], "gateway_id": "gw-d", "enabled": True})
+    sch._window_inside.clear(); sch._window_key.clear(); sch._dwell_since.clear()
+    cl = FakeClient()
+    start = dt.datetime(2026, 11, 4, 16, 0)
+
+    def tick(minute, active, mode):
+        monkeypatch.setattr(sch, "billing_snapshot",
+                            lambda store, gid, now: {"tariff.demand_window_active": active})
+        sch.tick(settings=None, client=cl, store=st, state={"soc": 80, "mode": mode},
+                 host="", gateway_id="gw-d", now=start + dt.timedelta(minutes=minute),
+                 modbus_host="")
+
+    tick(0, 0, "tou")
+    assert cl.modes == []
+    tick(1, 1, "tou")                       # window opens -> Self-Consumption
+    assert cl.modes == ["self"]
+    tick(2, 1, "self")                      # still open: not again
+    assert cl.modes == ["self"]
+    tick(3, 0, "self")                      # window ends -> the previous mode back
+    assert cl.modes == ["self", "tou"]
+    assert any("restored mode.name -> tou" in (e.get("result") or "")
+               for e in st.schedule_log(schedule_id="dw"))
