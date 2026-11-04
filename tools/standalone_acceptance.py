@@ -7,7 +7,7 @@ image and a fresh pip install of the release, each as a new user gets it.
 
 container: pulls ghcr.io/david2069/<arch>-franklinwh-direct-connect-bridge:<version> and runs it
 the way docker-compose.yml does (``docker`` or ``podman``, whichever is installed), with a
-fresh data directory. pip: a fresh venv, ``pip install "<repo>@<ref>[cloud]"``, then
+fresh named volume as /data (removed afterwards). pip: a fresh venv, ``pip install "<repo>@<ref>[cloud]"``, then
 ``franklinwh-direct-connect-bridge run`` in a fresh directory. CI's install-smoke covers the
 ``docker compose`` file itself, on every pull request.
 
@@ -54,12 +54,23 @@ def start_container(version: str, data: pathlib.Path, env: dict) -> tuple[list[s
     arch = "aarch64" if platform.machine() in ("arm64", "aarch64") else "amd64"
     image = IMAGE.format(arch=arch, version=version)
     subprocess.run([eng, "rm", "-f", NAME], capture_output=True)
+    subprocess.run([eng, "volume", "rm", "-f", NAME], capture_output=True)
     subprocess.run([eng, "pull", image], check=True)
+    # A fresh named volume, not a folder on this machine: on macOS the Docker Desktop or
+    # Podman VM may share no host folders at all. The certificate is copied out instead.
     cmd = [eng, "run", "-d", "--name", NAME, "-p", f"{HTTP_PORT}:8101", "-p", f"{HTTPS_PORT}:8102",
-           "-v", f"{data}:/data"]
+           "-v", f"{NAME}:/data"]
     for k, v in env.items():
         cmd += ["-e", f"{k}={v}"]
     subprocess.run(cmd + [image], check=True)
+    for _ in range(90):                  # the certificate is made at start-up
+        if any(subprocess.run([eng, "cp", f"{NAME}:{d}/tls/bridge.crt", str(data / "bridge.crt")],
+                              capture_output=True).returncode == 0 for d in ("/data", "/app/data")):
+            break
+        time.sleep(2)
+    (data / "tls").mkdir(exist_ok=True)
+    if (data / "bridge.crt").exists():
+        (data / "bridge.crt").replace(data / "tls/bridge.crt")
     return [eng, "logs", NAME], image
 
 
@@ -151,6 +162,12 @@ def main(argv=None) -> int:
             proc = start_pip(a.ref, work, env, run / "bridge.log")
             what = f"{REPO}@{a.ref}"
             log_args = ["--log", str(run / "bridge.log")]
+        if a.install == "container":
+            # docker-compose.yml keeps the bridge's data on the /data volume; a container
+            # that writes it anywhere else loses it when the container is recreated.
+            r = subprocess.run([engine(), "exec", NAME, "ls", "/data/metrics.db"], capture_output=True, text=True)
+            check("the data is kept on the /data volume", r.returncode == 0,
+                  "" if r.returncode == 0 else "no /data/metrics.db: the bridge wrote its data elsewhere")
         smoke = install_smoke.main([
             "--base", f"http://127.0.0.1:{HTTP_PORT}", "--version", a.version, "--out", str(run / "smoke"),
             "--https", f"https://127.0.0.1:{HTTPS_PORT}", "--cacert", str(data / "tls/bridge.crt"),
@@ -163,6 +180,7 @@ def main(argv=None) -> int:
         if not a.keep:
             if a.install == "container":
                 subprocess.run([engine(), "rm", "-f", NAME], capture_output=True)
+                subprocess.run([engine(), "volume", "rm", "-f", NAME], capture_output=True)
             elif proc is not None:
                 proc.terminate()
                 proc.wait(15)
