@@ -62,6 +62,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   self-signed certificate and how to trust it on a phone. Everything on it except
   trusted networks is marked as planned.
 
+### Fixed
+- **A pip install has its whole web UI** (#487). The package listed only the top-level files of
+  `static/` and `templates/`, so `pip install` (INSTALL.md, "Without Docker") left out the
+  `css/`, `js/`, `tabs/` and `partials/` folders: the page's styles and scripts answered 404
+  and the main page failed. Docker and the Home Assistant add-on were not affected (they
+  install from the source tree). Found by the new standalone release gate.
+
 ## [0.5.30] — 2026-11-04
 
 ### Changed

@@ -57,7 +57,9 @@ franklinwh-direct-connect-bridge = "franklinwh_direct_connect_bridge.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-franklinwh_direct_connect_bridge = ["static/*", "templates/*"]
+# The whole web UI, subfolders included (#487): "static/*" took only top-level files, so a
+# pip install had no css/, js/, tabs/ or partials/ and its main page failed.
+franklinwh_direct_connect_bridge = ["static/**/*", "templates/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
