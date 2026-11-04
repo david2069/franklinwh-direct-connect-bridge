@@ -166,6 +166,7 @@ def test_an_always_rule_runs_on_a_later_tick_after_yes(st, notifier):
 
 
 def test_targets_are_the_enabled_devices_without_the_notify_prefix(st):
+    st.create_ha_instance(ha_id="home", name="Home", base_url="http://ha.test:8123", token="t")
     st.create_notify_device(dev_id="d1", alias="Phone", instance_id="home",
                             service="notify.mobile_app_phone")
     st.create_notify_device(dev_id="d2", alias="Old", instance_id="home",
