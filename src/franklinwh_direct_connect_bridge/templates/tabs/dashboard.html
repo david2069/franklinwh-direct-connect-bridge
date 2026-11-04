@@ -558,7 +558,7 @@
               <div class="mt-1 h-1.5 rounded-full overflow-hidden" style="background:var(--surface-2)">
                 <div class="h-full rounded-full" :style="'width:'+Math.min(100, actualPct||0)+'%;background:#fbbf24'"></div>
               </div>
-              <div class="text-[10px] mt-0.5" x-show="vsExpected" :style="vsExpected && vsExpected.ahead ? 'color:#34d399' : 'color:#f59e0b'" x-text="vsExpected ? ('vs forecast to now: ' + vsExpected.label) : ''"></div>
+              <div class="text-[10px] mt-0.5" x-show="vsExpected" :style="{ color: vsExpected && vsExpected.ahead ? '#34d399' : '#f59e0b' }" x-text="vsExpected ? ('vs forecast to now: ' + vsExpected.label) : ''"></div>
               <div class="text-[10px] mt-1 flex flex-wrap gap-x-2 gap-y-0.5" style="color:var(--text-secondary)" x-show="solarSplit || (($store.app.summary.power||{}).soc != null)">
                 <template x-if="solarSplit">
                   <span class="flex gap-x-2 flex-wrap">

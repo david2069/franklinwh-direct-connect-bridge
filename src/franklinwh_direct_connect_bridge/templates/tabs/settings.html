@@ -1,4 +1,5 @@
 {% from "partials/dialog_msg.html" import dialog_msg %}
+{% from "partials/device_multiselect.html" import device_multiselect %}
 <!-- ── Settings Tab (read-only) ───────────────────────────── -->
 <div class="space-y-6 max-w-5xl" x-data="settingsTab()" x-init="init()">
 
@@ -552,7 +553,7 @@
                       <button type="button" class="w-full text-left px-3 py-1.5 text-xs" style="color:var(--text-faint)" @click="tariffEdit.pricing.dynamic.buy_entity=''; open=false; q=''">&#8212; Clear &#8212;</button>
                       <template x-for="it in haPriceItems(q)" :key="'b'+it.key"><div>
                         <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
-                        <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="tariffEdit.pricing.dynamic.buy_entity===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="tariffEdit.pricing.dynamic.buy_entity=it.id; open=false; q=''" x-text="it.label"></button>
+                        <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="tariffEdit.pricing.dynamic.buy_entity===it.id ? { color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-primary)' }" @click="tariffEdit.pricing.dynamic.buy_entity=it.id; open=false; q=''" x-text="it.label"></button>
                       </div></template>
                       <div x-show="!haPriceItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No exposed price entities. Expose them under HA &#8594; Browse entities.</div>
                     </div>
@@ -575,7 +576,7 @@
                       <button type="button" class="w-full text-left px-3 py-1.5 text-xs" style="color:var(--text-faint)" @click="tariffEdit.pricing.dynamic.feedin_entity=''; open=false; q=''">&#8212; None (use buy) &#8212;</button>
                       <template x-for="it in haPriceItems(q)" :key="'f'+it.key"><div>
                         <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
-                        <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="tariffEdit.pricing.dynamic.feedin_entity===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="tariffEdit.pricing.dynamic.feedin_entity=it.id; open=false; q=''" x-text="it.label"></button>
+                        <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="tariffEdit.pricing.dynamic.feedin_entity===it.id ? { color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-primary)' }" @click="tariffEdit.pricing.dynamic.feedin_entity=it.id; open=false; q=''" x-text="it.label"></button>
                       </div></template>
                     </div>
                   </div>
@@ -973,7 +974,7 @@
                 <div class="text-[11px] mt-0.5" style="color:var(--text-faint)">
                   <span x-show="t.pricing && t.pricing.default_rate && t.pricing.default_rate.buy != null" x-text="'buy ' + (t.pricing?.default_rate?.buy) + '/kWh · '"></span><span x-show="(t.pricing?.seasons || []).length" x-text="(t.pricing?.seasons || []).length + '-season TOU · '"></span>day <span x-text="t.billing_cycle_day"></span>
                   <span x-show="tariffDateLabel(t)" x-text="' · ' + tariffDateLabel(t)"></span>
-                  <span x-show="tariffStatus(t) !== 'active'" class="uppercase font-semibold" :style="tariffStatus(t) === 'past' ? 'color:var(--danger)' : 'color:var(--warn)'" x-text="' · ' + tariffStatus(t)"></span>
+                  <span x-show="tariffStatus(t) !== 'active'" class="uppercase font-semibold" :style="{ color: tariffStatus(t) === 'past' ? 'var(--danger)' : 'var(--warn)' }" x-text="' · ' + tariffStatus(t)"></span>
                 </div>
               </div>
               <div class="flex items-center gap-1.5 shrink-0">
@@ -1594,6 +1595,38 @@
       Critical alerts reach only the bridge UI <a :href="$store.app.guideUrl('ha-setup-and-notifications/#alerts')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a>
     </div>
 
+    <!-- ── Notifications check (#464): can a critical alert reach HA and the phones? ── -->
+    <div class="space-y-2 pt-1 border-t border-white/[0.06]" x-init="loadChecks()" data-testid="notify-checks">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <span class="metric-label">Notifications check <a :href="$store.app.guideUrl('ha-setup-and-notifications/#troubleshooting-notifications')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
+        <div class="flex flex-wrap gap-2">
+          <button @click="loadChecks()" :disabled="notif.checksBusy" class="btn btn-secondary btn-sm"
+                  x-text="notif.checksBusy ? 'Checking…' : 'Check again'"></button>
+          <button @click="openTestAlert()" class="btn btn-secondary btn-sm" data-testid="test-alert-open">Test critical alert</button>
+        </div>
+      </div>
+      <div x-show="notif.checksErr" x-cloak class="text-xs" style="color:var(--danger)" x-text="notif.checksErr"></div>
+      <ul class="space-y-1.5" x-show="notif.checks">
+        <template x-for="c in (notif.checks || [])" :key="c.id">
+          <li class="text-xs rounded px-2 py-1.5" style="background:var(--surface-1)" :data-check="c.id" :data-status="c.status">
+            <div class="flex items-start gap-2">
+              <span class="chip shrink-0" style="font-size:.6rem;min-width:4.6rem;justify-content:center"
+                    :class="{pass:'ok', fail:'error', unset:'muted'}[c.status]"
+                    x-text="{pass:'Pass', fail:'Fail', unset:'Not set up'}[c.status]"></span>
+              <div class="min-w-0 flex-1">
+                <div class="font-semibold" style="color:var(--text-primary)" x-text="c.label"></div>
+                <div class="break-words" style="color:var(--text-secondary)">
+                  <span x-text="c.detail"></span><span x-show="c.ts" x-text="' · ' + fmtNotifyTime(c.ts)"></span>
+                </div>
+                <div x-show="c.fix" class="break-words mt-0.5" style="color:var(--text-muted)">
+                  <span class="font-semibold">Fix:</span> <span x-text="c.fix"></span></div>
+              </div>
+            </div>
+          </li>
+        </template>
+      </ul>
+    </div>
+
     <!-- ── Auto-notify triggers ── -->
     <div class="space-y-1.5 pt-1 border-t border-white/[0.06]" x-init="loadTriggers()">
       <div class="flex items-center justify-between">
@@ -1630,8 +1663,9 @@
           </button>
           <div x-show="triggerTargetValue(key, t) === 'device'" data-testid="trigger-target-devices"
                class="w-full flex items-center justify-end gap-x-3 gap-y-1 flex-wrap">
+            {% call device_multiselect("notif.devices.filter(x => triggerTargetIds(t).includes(x.id)).map(x => x.alias).join(', ')", 'w-full sm:w-64') %}
             <template x-for="d in notif.devices" :key="d.id">
-              <label class="flex items-center gap-1 text-xs" style="color:var(--text-secondary)">
+              <label class="flex items-center gap-2 text-xs py-0.5" style="color:var(--text-secondary)">
                 <input type="checkbox" :checked="triggerTargetIds(t).includes(d.id)"
                        :disabled="triggerTargetIds(t).includes(d.id) && triggerTargetIds(t).length === 1"
                        @change="toggleTriggerDevice(key, t, d.id, $event.target.checked)">
@@ -1640,9 +1674,43 @@
               </label>
             </template>
             <span x-show="!triggerTargetIds(t).length" class="text-[10px] text-slate-500">Tick at least one device</span>
+            {% endcall %}
           </div>
         </div>
       </template>
+      <!-- Notifications with buttons have no on/off of their own, only Send to (#281):
+           all enabled devices (the default) or the devices chosen. -->
+      <div class="space-y-1.5 pt-1" data-testid="ask-targets">
+        <p class="text-[11px] text-slate-500">Notifications with buttons: who they go to.</p>
+        <template x-for="[key, a] in Object.entries((triggers.config && triggers.config.asks) || {})" :key="key">
+          <div class="flex items-center justify-between gap-2 py-0.5 flex-wrap">
+            <span class="text-xs" style="color:var(--text-secondary)" x-text="a.label"></span>
+            <select class="form-control form-control-sm w-36 ml-auto" data-testid="ask-target"
+                    :value="triggerTargetValue('ask:' + key, a)" @change="setAskTarget(key, $event.target.value)"
+                    title="Send to">
+              <option value="all" :selected="triggerTargetValue('ask:' + key, a) === 'all'">All devices</option>
+              <option value="device" :selected="triggerTargetValue('ask:' + key, a) === 'device'">Chosen devices</option>
+            </select>
+            <div x-show="triggerTargetValue('ask:' + key, a) === 'device'"
+                 class="w-full flex items-center justify-end gap-x-3 gap-y-1 flex-wrap">
+              {% call device_multiselect("notif.devices.filter(x => triggerTargetIds(a).includes(x.id)).map(x => x.alias).join(', ')", 'w-full sm:w-64') %}
+              <template x-for="d in notif.devices" :key="d.id">
+                <label class="flex items-center gap-2 text-xs py-0.5" style="color:var(--text-secondary)">
+                  <input type="checkbox" :checked="triggerTargetIds(a).includes(d.id)"
+                         :disabled="triggerTargetIds(a).includes(d.id) && triggerTargetIds(a).length === 1"
+                         @change="toggleAskDevice(key, a, d.id, $event.target.checked)">
+                  <span x-text="d.alias"></span>
+                  <span x-show="!d.enabled" class="chip muted" style="font-size:.55rem">off</span>
+                </label>
+              </template>
+              <span x-show="!triggerTargetIds(a).length" class="text-[10px] text-slate-500">Tick at least one device</span>
+              {% endcall %}
+            </div>
+          </div>
+        </template>
+      </div>
+      <p x-show="triggers.err" x-cloak class="text-[11px]" style="color:var(--danger, #dc2626)"
+         data-testid="triggers-save-error" x-text="triggers.err"></p>
     </div>
 
     <!-- ── Recent notifications (delivery log) ── -->
@@ -1863,7 +1931,7 @@
              looking at, until their next action — never a toast behind it that fades. -->
         <div x-show="notif.addDevMsg" x-cloak role="alert" aria-live="polite"
              class="text-xs rounded px-3 py-2 border"
-             :style="notif.addDevMsg && ('color:var(--' + notif.addDevMsg.kind + ');border-color:var(--' + notif.addDevMsg.kind + ')')"
+             :style="notif.addDevMsg ? { color: 'var(--' + notif.addDevMsg.kind + ')', borderColor: 'var(--' + notif.addDevMsg.kind + ')' } : {}"
              x-text="notif.addDevMsg && notif.addDevMsg.text"></div>
         <div class="text-[11px] text-slate-500" data-testid="test-before-save">Send a test notification to confirm this device receives alerts before saving</div>
         <div class="flex justify-between gap-2 pt-1">
@@ -1904,7 +1972,8 @@
               All enabled devices (<span x-text="notif.devices.filter(d=>d.enabled).length"></span>)</label>
             <label class="flex items-center gap-2 text-xs" style="color:var(--text-secondary)">
               <input type="radio" value="device" x-model="notif.testDlg.to"> Chosen devices</label>
-            <div x-show="notif.testDlg.to === 'device'" class="pl-5 space-y-1">
+            <div x-show="notif.testDlg.to === 'device'" class="pl-5">
+              {% call device_multiselect("notif.devices.filter(x => notif.testDlg.ids.includes(x.id)).map(x => x.alias).join(', ')") %}
               <template x-for="d in notif.devices" :key="d.id">
                 <label class="flex items-center gap-2 text-xs" style="color:var(--text-secondary)">
                   <input type="checkbox" :value="d.id" x-model="notif.testDlg.ids">
@@ -1912,6 +1981,7 @@
                   <span x-show="!d.enabled" class="chip muted" style="font-size:.55rem">off</span>
                 </label>
               </template>
+              {% endcall %}
             </div>
           </div>
         </template>
@@ -1920,6 +1990,46 @@
           <button @click="notif.testDlg=null" class="btn btn-secondary btn-sm">Close</button>
           <button @click="testTrigger()" :disabled="notif.testDlg.sending || !notif.devices.length"
                   class="btn btn-primary btn-sm" x-text="notif.testDlg.sending ? 'Sending…' : 'Send test'"></button>
+        </div>
+      </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Test critical alert (#464): each step's result stays in the dialog; no toasts. -->
+  <div x-show="notif.ta" x-cloak class="fixed inset-0 z-[110] flex items-center justify-center p-4"
+       @keydown.escape.window="closeTestAlert()" data-testid="test-alert-dialog">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="closeTestAlert()"></div>
+    <div class="relative w-full max-w-md rounded-xl border shadow-2xl max-h-[90vh] overflow-auto"
+         style="background:var(--surface-0,#0f172a);border-color:var(--border)">
+      <div class="px-5 py-3 border-b flex items-center justify-between" style="border-color:var(--border)">
+        <div class="text-sm font-semibold" style="color:var(--text-primary)">Test critical alert</div>
+        <button class="text-slate-400 hover:text-slate-200" @click="closeTestAlert()"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <template x-if="notif.ta">
+      <div class="px-5 py-4 space-y-3">
+        <div class="text-xs text-slate-500">Runs a critical alert's path: the Home Assistant
+          notification, then Acknowledge on the devices chosen for Critical alerts. No alert is
+          recorded in the bridge.</div>
+        <ul class="space-y-1.5" x-show="notif.ta.steps.length">
+          <template x-for="st in notif.ta.steps" :key="st.id">
+            <li class="flex items-start gap-2 text-xs" :data-step="st.id" :data-status="st.status">
+              <span class="chip shrink-0" style="font-size:.6rem;min-width:4.6rem;justify-content:center"
+                    :class="{pass:'ok', fail:'error', unset:'muted', skipped:'muted', waiting:'warn'}[st.status]"
+                    x-text="{pass:'Pass', fail:'Fail', unset:'Not set up', skipped:'Skipped', waiting:'Waiting'}[st.status]"></span>
+              <div class="min-w-0 flex-1">
+                <div class="font-semibold" style="color:var(--text-primary)" x-text="st.label"></div>
+                <div class="break-words" style="color:var(--text-secondary)" x-text="st.detail"></div>
+              </div>
+            </li>
+          </template>
+        </ul>
+        {{ dialog_msg('notif.ta?.msg') }}
+        <div class="flex justify-end gap-2">
+          <button @click="closeTestAlert()" class="btn btn-secondary btn-sm">Close</button>
+          <button @click="runTestAlert()" :disabled="notif.ta.running" class="btn btn-primary btn-sm"
+                  data-testid="test-alert-run"
+                  x-text="notif.ta.running ? 'Running…' : (notif.ta.steps.length ? 'Run again' : 'Run test')"></button>
         </div>
       </div>
       </template>
@@ -2039,7 +2149,7 @@
       </p>
       <span class="text-[11px] px-2 py-0.5 rounded-full shrink-0"
             x-show="nemSpot && nemSpot.active && nemSpot.active.source"
-            :style="'background:var(--surface-2);color:var(--text-secondary)'"
+            style="background:var(--surface-2);color:var(--text-secondary)"
             x-text="nemSpot && nemSpot.active ? ('source: ' + (nemSpot.active.source==='ha-entity' ? 'HA entity' : 'AusNEM')) : ''"></span>
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2055,7 +2165,7 @@
               <button type="button" class="w-full text-left px-3 py-1.5 text-xs" style="color:var(--text-faint)" @click="form.tariff_price_entity=''; saveOne({tariff_price_entity:''}); loadNemSpot(); open=false; q=''">&#8212; Off (use AusNEM if set) &#8212;</button>
               <template x-for="it in haPriceItems(q)" :key="'gb'+it.key"><div>
                 <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
-                <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="form.tariff_price_entity===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="form.tariff_price_entity=it.id; saveOne({tariff_price_entity:it.id}); loadNemSpot(); open=false; q=''" x-text="it.label"></button>
+                <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="form.tariff_price_entity===it.id ? { color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-primary)' }" @click="form.tariff_price_entity=it.id; saveOne({tariff_price_entity:it.id}); loadNemSpot(); open=false; q=''" x-text="it.label"></button>
               </div></template>
               <div x-show="!haPriceItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No exposed price entities (HA &#8594; Browse entities).</div>
             </div>
@@ -2074,7 +2184,7 @@
               <button type="button" class="w-full text-left px-3 py-1.5 text-xs" style="color:var(--text-faint)" @click="form.tariff_feedin_entity=''; saveOne({tariff_feedin_entity:''}); loadNemSpot(); open=false; q=''">&#8212; None &#8212;</button>
               <template x-for="it in haPriceItems(q)" :key="'gf'+it.key"><div>
                 <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
-                <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="form.tariff_feedin_entity===it.id ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="form.tariff_feedin_entity=it.id; saveOne({tariff_feedin_entity:it.id}); loadNemSpot(); open=false; q=''" x-text="it.label"></button>
+                <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="form.tariff_feedin_entity===it.id ? { color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-primary)' }" @click="form.tariff_feedin_entity=it.id; saveOne({tariff_feedin_entity:it.id}); loadNemSpot(); open=false; q=''" x-text="it.label"></button>
               </div></template>
             </div>
           </div>

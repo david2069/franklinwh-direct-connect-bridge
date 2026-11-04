@@ -19,6 +19,7 @@ unavailable actions are listed with the reason instead of being hidden or faked.
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import logging
 import fnmatch
@@ -26,7 +27,7 @@ import re
 import time
 from typing import Any
 
-from franklinwh_ha_notify import NO, REPLY, YES, Button, Event, Target
+from franklinwh_ha_notify import NO, REPLY, YES, Answer, Button, Event, Target
 
 from . import actionable
 from . import alerts
@@ -571,6 +572,18 @@ def due(entry: dict, now: dt.datetime, snapshot: dict,
 EXPORT_TYPE = "franklinwh-local-schedules"
 EXPORT_VERSION = 1
 
+#: The two price sources for the cheap-charge / high-export Ask templates (#463):
+#: (id prefix, name, question label, sensor, threshold, unit). The user's tariff rates are
+#: $/kWh, so their defaults are the wholesale ones (5 and 50 c/kWh) written in $/kWh.
+_ASK_CHEAP = (
+    ("spot", "wholesale price", "Wholesale price", "tariff.spot_price", 5, "c/kWh"),
+    ("tariff", "tariff import rate", "Import rate", "tariff.buy_rate", 0.05, "$/kWh"),
+)
+_ASK_HIGH = (
+    ("spot", "wholesale price", "Wholesale price", "tariff.spot_price", 50, "c/kWh"),
+    ("tariff", "tariff feed-in rate", "Feed-in rate", "tariff.sell_rate", 0.50, "$/kWh"),
+)
+
 #: Built-in schedule templates. Every action here is hardware-verified on the
 #: local channel — no force-charge presets, because the local protocol cannot do
 #: that (see UNAVAILABLE). A preset is loaded into the editor, not fired blind.
@@ -643,6 +656,110 @@ PRESETS: list[dict[str, Any]] = [
               "conditions": [{"sensor": "battery.soc_pct", "op": "<", "value": 50}],
               "action": {"kind": "force", "direction": "charge", "unit": "pct",
                          "power": 100, "target_soc": 90}}},
+
+    # ── Ask templates (#463): watched continuously ('always' fires once as the conditions
+    #    become true), and each asks before acting — 5 min to reply, no reply skips. The
+    #    threshold is the condition's value, edited like any other. ──
+    {"id": "offgrid_user_ask", "name": "Off-grid (user requested) for 30 min — ask",
+     "description": "After 30 minutes of a requested (simulated) off-grid, ask whether to go "
+                    "back on-grid.",
+     "spec": {"trigger_type": "always", "fire_at": "00:00", "duration_min": 0, "match": "all",
+              "conditions": [{"sensor": "grid.offgrid_reason", "op": "==",
+                              "value": "user requested"},
+                             {"sensor": "grid.offgrid_min", "op": ">=", "value": 30}],
+              "action": {"kind": "offgrid", "on": False},
+              "ask": {"question": "Off-grid (%grid.offgrid_reason%) for %grid.offgrid_min% "
+                                  "min, battery %battery.soc_pct%%. Go back on-grid?",
+                      "timeout_min": 5, "if_no_reply": "skip",
+                      "choices": [{"label": "Go back on-grid", "then": "run"},
+                                  {"label": "Stay off-grid", "then": "skip"}]}}},
+    {"id": "offgrid_outage_ask", "name": "Off-grid (grid outage) for 30 min — notify",
+     "description": "After 30 minutes of a grid outage, send a question to acknowledge. "
+                    "No battery action.",
+     "spec": {"trigger_type": "always", "fire_at": "00:00", "duration_min": 0, "match": "all",
+              "conditions": [{"sensor": "grid.offgrid_reason", "op": "==",
+                              "value": "grid outage"},
+                             {"sensor": "grid.offgrid_min", "op": ">=", "value": 30}],
+              "action": {"kind": ""},
+              "ask": {"question": "Grid outage: off-grid for %grid.offgrid_min% min, "
+                                  "battery %battery.soc_pct%%.",
+                      "timeout_min": 5, "if_no_reply": "skip",
+                      "choices": [{"label": "Acknowledge", "then": "run"},
+                                  {"label": "Dismiss", "then": "skip"}]}}},
+    *[{"id": f"{key}_low_charge_ask", "name": f"Cheap {what} — ask to charge",
+       "requires": "modbus",
+       "description": f"When {sensor} is {low} {unit} or less, ask whether to force-charge "
+                      "from the grid to 90%. Released when the price rises.",
+       "spec": {"trigger_type": "always", "fire_at": "00:00", "duration_min": 0,
+                "match": "all",
+                "conditions": [{"sensor": sensor, "op": "<=", "value": low}],
+                "action": {"kind": "force", "direction": "charge", "unit": "pct",
+                           "power": 100, "target_soc": 90},
+                "ask": {"question": f"{label} is %{sensor}% {unit}, battery "
+                                    "%battery.soc_pct%%. Charge from the grid?",
+                        "timeout_min": 5, "if_no_reply": "skip",
+                        "choices": [{"label": "Charge", "then": "run"},
+                                    {"label": "Not now", "then": "skip"}]}}}
+      for key, what, label, sensor, low, unit in _ASK_CHEAP],
+    # High price exports only while SoC is at or above the Automation Constant
+    # const.min_discharge_soc (default 20%), and holds that same 20% as the floor.
+    *[{"id": f"{key}_high_export_ask", "name": f"High {what} — ask to export",
+       "requires": "modbus",
+       "description": f"When {sensor} is {high} {unit} or more and SoC is at or above the "
+                      "minimum discharge SoC (Automation Constants), ask whether to "
+                      "force-discharge to the grid, holding a 20% floor. Released when the "
+                      "price falls.",
+       "spec": {"trigger_type": "always", "fire_at": "00:00", "duration_min": 0,
+                "match": "all",
+                "conditions": [{"sensor": sensor, "op": ">=", "value": high},
+                               {"sensor": "battery.soc_pct", "op": ">=",
+                                "value_kind": "sensor",
+                                "value_sensor": "const.min_discharge_soc"}],
+                "action": {"kind": "force", "direction": "discharge", "unit": "pct",
+                           "power": 100, "target_soc": 20},
+                "ask": {"question": f"{label} is %{sensor}% {unit}, battery "
+                                    "%battery.soc_pct%%. Export from the battery?",
+                        "timeout_min": 5, "if_no_reply": "skip",
+                        "choices": [{"label": "Export", "then": "run"},
+                                    {"label": "Hold", "then": "skip"}]}}}
+      for key, what, label, sensor, high, unit in _ASK_HIGH],
+    # Demand window: Self-Consumption while it lasts, only while SoC is at or above
+    # const.demand_charge_min_soc (default 30%), then the mode that was active before it is
+    # put back (restore_on_exit, BR-50: captured before the write, kept with the run).
+    {"id": "demand_window_ask", "name": "Demand charge window — ask to self-consume",
+     "description": "When the tariff's peak-demand window starts and SoC is at or above the "
+                    "demand-charge minimum SoC (Automation Constants), ask whether to switch "
+                    "to Self-Consumption. The previous mode is put back when the window ends "
+                    "or SoC falls below the minimum.",
+     "spec": {"trigger_type": "always", "fire_at": "00:00", "duration_min": 0, "match": "all",
+              "restore_on_exit": True,
+              "conditions": [{"sensor": "tariff.demand_window_active", "op": "==",
+                              "value": 1},
+                             {"sensor": "battery.soc_pct", "op": ">=",
+                              "value_kind": "sensor",
+                              "value_sensor": "const.demand_charge_min_soc"}],
+              "action": {"kind": "set_mode", "mode": "self"},
+              "ask": {"question": "Demand charge window: home %load.power_w% W, battery "
+                                  "%battery.soc_pct%%. Switch to Self-Consumption for the "
+                                  "window?",
+                      "timeout_min": 5, "if_no_reply": "skip",
+                      "choices": [{"label": "Self-consume", "then": "run"},
+                                  {"label": "Leave it", "then": "skip"}]}}},
+    {"id": "bonus_window_ask", "name": "Battery export bonus — ask to export",
+     "requires": "modbus",
+     "description": "When the tariff's battery-export-bonus window starts, ask whether to "
+                    "force-discharge to the grid, holding a 30% floor. Released when the "
+                    "window ends.",
+     "spec": {"trigger_type": "always", "fire_at": "00:00", "duration_min": 0, "match": "all",
+              "conditions": [{"sensor": "tariff.bonus_window_active", "op": "==",
+                              "value": 1}],
+              "action": {"kind": "force", "direction": "discharge", "unit": "pct",
+                         "power": 100, "target_soc": 30},
+              "ask": {"question": "Battery export bonus window: battery %battery.soc_pct%%. "
+                                  "Export now?",
+                      "timeout_min": 5, "if_no_reply": "skip",
+                      "choices": [{"label": "Export", "then": "run"},
+                                  {"label": "Hold", "then": "skip"}]}}},
 ]
 
 
@@ -908,6 +1025,7 @@ def validate_spec(entry: dict) -> list[str]:
         errors += _condition_errors(entry.get(key) or [], label)
     errors += _action_errors(entry.get("action") or {})
     errors += _ask_errors(entry.get("ask") or {})
+    errors += _ask_window_errors(entry)
     for i, ha in enumerate(entry.get("ha_actions") or [], 1):
         errors += [f"HA action {i}: {e}" for e in _ha_action_errors(ha)]
     return errors
@@ -996,6 +1114,33 @@ def _action_errors(action: dict) -> list[str]:
         if action.get(k) not in (None, "") and (v is None or not 0 <= v <= 100):
             out.append(f"{k} must be 0 to 100")
     return out
+
+
+def _run_window_min(entry: dict) -> int | None:
+    """How long one run of ``entry`` stays open, in minutes; None when it has no time
+    window ('always': its conditions are the window). A duration of 0 runs only in its
+    start minute, so it counts as 1; a 'window' schedule is bounded by its shortest window."""
+    tt = entry.get("trigger_type") or "daily"
+    if tt == "always":
+        return None
+    if tt == "window":
+        lens = [dur for _s, dur in _windows_for(entry)]
+        return min(lens) if lens else None
+    dur = entry.get("duration_min") or 0
+    return dur if _is_int(dur, lo=1) else 1
+
+
+def _ask_window_errors(entry: dict) -> list[str]:
+    """The Ask's wait must fit the schedule's window: a reply after the window closes
+    never runs the action. Checked on save only, so saved schedules keep running."""
+    ask = entry.get("ask")
+    if not isinstance(ask, dict) or not ask or not _is_int(ask.get("timeout_min"), lo=1):
+        return []
+    win = _run_window_min(entry)
+    if win is None or ask["timeout_min"] <= win:
+        return []
+    return [f"ask before continuing: the wait ({ask['timeout_min']} min) is longer than the "
+            f"schedule's window ({win} min); a reply after the window closes cannot run it"]
 
 
 def _ask_errors(ask: Any) -> list[str]:
@@ -1152,7 +1297,36 @@ def timeline_segments(entries: list[dict], now: dt.datetime) -> dict[str, Any]:
     return {"now_min": now.hour * 60 + now.minute, "segments": segments}
 
 
-def snapshot_from_state(state: dict, power: dict | None = None) -> dict[str, Any]:
+#: grid.offgrid_reason text per client._off_grid_kind — the same source as the top-bar chip
+#: and HA's Grid Status (#463).
+OFFGRID_REASON = {"simulated": "user requested", "outage": "grid outage"}
+
+
+def off_grid_since(prev: float | None, off_grid: Any, now_ts: float) -> float | None:
+    """When the current off-grid period began, for ``grid.offgrid_min`` (#463).
+
+    Starts at the first poll that reads off-grid and clears on the first that reads on-grid.
+    A poll with no off-grid reading (None) keeps what was there. The bridge cannot see what
+    happened before it started: after a restart while already off-grid, the period counts
+    from the first poll that saw it, never from a guessed earlier time."""
+    if off_grid is None:
+        return prev
+    if not off_grid:
+        return None
+    return prev if prev is not None else now_ts
+
+
+def offgrid_min(state: dict, now_ts: float) -> int | None:
+    """Whole minutes of the current off-grid period (see off_grid_since); None on grid or
+    with no recorded start."""
+    since = (state or {}).get("off_grid_since")
+    if not (state or {}).get("off_grid") or since is None:
+        return None
+    return int(max(0.0, now_ts - float(since)) // 60)
+
+
+def snapshot_from_state(state: dict, power: dict | None = None,
+                        now_ts: float | None = None) -> dict[str, Any]:
     """Flatten the poller's last state into the ``sensor.id`` namespace that
     conditions and message variables both use — one vocabulary, not two."""
     st = dict(state or {})
@@ -1186,6 +1360,11 @@ def snapshot_from_state(state: dict, power: dict | None = None) -> dict[str, Any
                      ("status.debug", "debug")):
         v = st.get(src)
         snap[key] = None if v is None else int(bool(v))
+    # Why it is off-grid (#463): "user requested" (the aGate's simulated off-grid) or
+    # "grid outage"; "unknown" while off-grid with no reason read; None on grid.
+    snap["grid.offgrid_reason"] = (OFFGRID_REASON.get(st.get("off_grid_kind"), "unknown")
+                                   if og else None)
+    snap["grid.offgrid_min"] = offgrid_min(st, time.time() if now_ts is None else now_ts)
     # state IS the summary power block (poller sets last_state = summary['power']), so the daily
     # solar counter is here — available in the scheduler ENGINE tick too (where power is None).
     snap["solar.today_kwh"] = st.get("kwh_sun")   # actual PV generated today
@@ -1276,6 +1455,10 @@ SENSORS = [
     ("battery.power_w", "Battery power (W)"),
     ("grid.power_w", "Grid power (W)"),
     ("grid.connected", "Grid connected"),
+    ("grid.offgrid_reason", "Off-grid reason (text: \"user requested\", \"grid outage\", "
+                            "\"unknown\")"),
+    ("grid.offgrid_min", "Off-grid for (minutes; counted from the first poll that saw it "
+                         "after a bridge restart)"),
     ("solar.power_w", "Solar power (W)"),
     ("load.power_w", "Home load (W)"),
     ("generator.power_w", "Generator power (W)"),
@@ -2263,6 +2446,7 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
     if now is None:
         now, _ = site_time.now_site(settings, host)
     snapshot = snapshot_from_state(state)
+    snapshot["grid.offgrid_min"] = offgrid_min(state, now.timestamp())   # on the tick's clock
     snapshot.update(ha_snapshot(store))     # exposed HA entities are conditions too
     snapshot.update(solar_snapshot(settings))   # weather + solar-forecast sensors
     snapshot.update(nem_snapshot(settings))     # tariff.spot_price (AEMO NEM built-in)
@@ -2325,6 +2509,8 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
         else:
             time_inside = bool(entry.get("enabled") and cal_ok and state == "inside")
         entry["_wkey"], entry["_wend"] = wkey, wend
+        if entry.get("ask") and time_inside:
+            _restore_ask(entry, store=store, gateway_id=gateway_id, wkey=wkey)
         exit_conds = entry.get("exit_conditions") or []
         exit_now = bool(exit_conds) and time_inside and evaluate(
             exit_conds, {**snapshot, **_ask_answer(entry, gateway_id)},
@@ -2519,7 +2705,7 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                 continue                       # backing off; the window is still open
         if entry.get("ask"):
             step, detail = _ask_step(entry, store=store, gateway_id=gateway_id, now=now,
-                                     snapshot=snapshot)
+                                     snapshot=snapshot, occ=occ)
             if step == "wait":
                 mon[entry["id"]] = ("holding", detail)
                 continue
@@ -2913,6 +3099,11 @@ ASK_MAX_CHOICES = 4
 #: checks whether it is done, so a schedule waiting for a reply never holds up the others.
 #: ``open`` stays True until the answer has been acted on; ``answer`` is what
 #: ``ask.answer`` reads for the rest of the run.
+#:
+#: The question's request id and the decision are also kept on the run (the occurrence
+#: row), and the Notifier keeps its requests in the database, so after a restart a run
+#: still holding finds its question again (:func:`_reattach`) and a decided run is never
+#: decided twice (:func:`_restore_ask`).
 _asks: dict[str, dict] = {}
 
 
@@ -2949,36 +3140,99 @@ def _ask_choices(ask: dict) -> list[dict]:
 
 def _ask_targets(store, send_to: dict | None = None) -> list[Target]:
     """The enabled notification devices, or with ``send_to`` ``{type: device, ids}`` the
-    enabled ones among those chosen (#281). Only ``mobile_app_*`` ones can show the
-    buttons."""
+    enabled ones among those chosen (#281), on enabled HA instances (actionable.targets).
+    Only ``mobile_app_*`` ones can show the buttons."""
     ids = (send_to or {}).get("ids") if (send_to or {}).get("type") == "device" else None
-    return [Target(d["instance_id"], d["service"].removeprefix("notify."),
-                   d.get("alias") or d["service"])
-            for d in store.notify_devices()
-            if d.get("enabled") and (ids is None or d["id"] in ids)]
+    if ids is None:
+        return actionable.targets(store)
+    on = {d["id"] for d in store.notify_devices() if d.get("enabled")}
+    return actionable.targets(store, [i for i in ids if i in on])
 
 
 async def _ask(targets: list[Target], buttons: list[Button], timeout_s: int, gateway: str,
-               **values):
-    started = time.monotonic()
-    answer = await actionable.notifier().ask_and_wait(
-        ASK_EVENT, targets, buttons, timeout_s=timeout_s, gateway=gateway, **values)
-    return answer, time.monotonic() - started
+               *, remember=None, **values):
+    """Ask, record the request on the run (``remember(request_id)``), then wait.
+    Returns ``(answer, delivered)``."""
+    n = actionable.notifier()
+    req = await n.ask(ASK_EVENT, targets, buttons, ttl_s=timeout_s, gateway=gateway, **values)
+    if req is None:
+        return Answer(None, timed_out=True), False
+    if remember is not None:
+        try:
+            await asyncio.to_thread(remember, req.id)
+        except Exception as e:  # noqa: BLE001 — the wait goes on; only a restart loses it
+            log.warning("could not record the question on the run: %s", e)
+    return await n.wait(req, timeout_s), True
+
+
+async def _rewait(request, timeout_s: int):
+    """The waiting half again, after a restart: what is left of the request's time.
+    A request answered while the bridge was down returns its answer at once; one that
+    expired unanswered times out at once."""
+    return await actionable.notifier().wait(request, timeout_s), True
+
+
+def _restore_ask(entry: dict, *, store, gateway_id: str | None, wkey: str | None) -> None:
+    """After a restart, put back what this run decided, so the decision is not taken
+    twice and ``ask.answer`` still reads the answer. Nothing to do when it is held."""
+    dkey = f"{gateway_id or ''}:{entry['id']}"
+    held = _asks.get(dkey)
+    if not wkey or (held is not None and held["wkey"] == wkey):
+        return
+    try:
+        _, decided = store.occurrence_ask(schedule_id=entry["id"], gateway_id=gateway_id or "",
+                                          occurrence_key=wkey)
+    except Exception:  # noqa: BLE001 — a store without the columns: nothing to restore
+        return
+    if decided:
+        _asks[dkey] = {"wkey": wkey, "fut": None, "open": decided["step"] != "skip",
+                       "decided": (decided["step"], decided["detail"]),
+                       "answer": decided.get("answer")}
+
+
+def _reattach(request_id: str | None):
+    """The question a run asked before a restart: still open or answered (``pending``),
+    or expired while the bridge was down (so ``wait`` records it as no reply). None when
+    it is gone, or nothing is running to find it with."""
+    n = actionable.notifier()
+    if not request_id or n is None:
+        return None
+    return (next((r for r in n.pending(ASK_EVENT) if r.id == request_id), None)
+            or n.requests.get(request_id))
 
 
 def _ask_step(entry: dict, *, store, gateway_id: str | None,
-              now: dt.datetime, snapshot: dict | None = None) -> tuple[str, str]:
+              now: dt.datetime, snapshot: dict | None = None,
+              occ: dict | None = None) -> tuple[str, str]:
     """``("wait" | "fire" | "skip", why)`` for a schedule with an Ask before continuing
     step. Asks once per run; each button runs the action or skips this run as the step
     maps it (Yes and No by default), and no reply (or nobody could be asked) follows the
-    step's "if no reply" rule. The question takes ``%sensor.id%`` values."""
+    step's "if no reply" rule. The question takes ``%sensor.id%`` values.
+
+    ``occ`` is this run's row: the question and the decision are recorded on it, so a
+    restart waits for the same question for the time it has left, applies "if no reply"
+    once if it expired meanwhile, and never decides the run twice."""
     ask = entry["ask"]
     dkey = f"{gateway_id or ''}:{entry['id']}"
     wkey = entry.get("_wkey") or now.date().isoformat()
     timeout_min = int(ask["timeout_min"])
     gid = gateway_id or ""
     choices = _ask_choices(ask)
+    occ_id = (occ or {}).get("id")
     held = _asks.get(dkey)
+    asked = (occ or {}).get("ask_request_id")
+    if (held is None or held["wkey"] != wkey) and asked:
+        # Asked before a restart: wait for that question rather than asking again.
+        req = _reattach(asked)
+        fut = actionable.submit(_rewait(req, timeout_min * 60)) if req is not None else None
+        held = _asks[dkey] = {"wkey": wkey, "fut": fut, "open": True, "decided": None,
+                              "answer": None, "lost": fut is None}
+        if fut is not None and req.answer is None and req.expires_at > time.time():
+            left = int((req.expires_at - time.time()) // 60)
+            store.log_schedule_event(
+                entry["id"], entry["name"], "asking",
+                f"still waiting for the reply after a restart ({left} min left)",
+                gateway_id=gid)
     if held is None or held["wkey"] != wkey:
         gw = _state.get_gateway(gateway_id) if gateway_id else None
         question = substitute(ask["question"], {
@@ -2987,7 +3241,10 @@ def _ask_step(entry: dict, *, store, gateway_id: str | None,
         fut = actionable.submit(_ask(
             _ask_targets(store, ask.get("send_to")), [Button(c["verb"], c["label"], c["reply"]) for c in choices],
             timeout_min * 60, getattr(gw, "label", None) or gid,
-            schedule=entry.get("name") or "", question=question))
+            remember=(None if occ_id is None else
+                      lambda rid: store.set_occurrence_ask(occ_id, request_id=rid)),
+            schedule=entry.get("name") or "",
+            question=f"{question} (reply within {timeout_min} min)"))
         held = _asks[dkey] = {"wkey": wkey, "fut": fut, "open": True, "decided": None,
                               "answer": None}
         if fut is not None:
@@ -3002,11 +3259,12 @@ def _ask_step(entry: dict, *, store, gateway_id: str | None,
         return "wait", f"asked; waiting up to {timeout_min} min for a reply"
     answer = None
     if fut is None:
-        why = "notifications are not running, so nobody could be asked"
+        why = ("the question was lost in a restart" if held.get("lost")
+               else "notifications are not running, so nobody could be asked")
     else:
         try:
-            answer, waited = fut.result()
-            why = (f"no reply in {timeout_min} min" if waited >= timeout_min * 60 - 1
+            answer, delivered = fut.result()
+            why = (f"no reply in {timeout_min} min" if delivered
                    else "the question could not be delivered to any phone")
         except Exception as e:  # noqa: BLE001 — recorded as a run nobody answered
             why = f"the question could not be sent: {e}"
@@ -3030,6 +3288,12 @@ def _ask_step(entry: dict, *, store, gateway_id: str | None,
     held["decided"] = (step, detail)
     if step == "skip":
         held["open"] = False
+    if occ_id is not None:
+        try:
+            store.set_occurrence_ask(occ_id, decision={"step": step, "detail": detail,
+                                                       "answer": held["answer"]})
+        except Exception as e:  # noqa: BLE001
+            log.warning("could not record the answer on the run: %s", e)
     store.log_schedule_event(entry["id"], entry["name"],
                              "continuing" if step == "fire" else "skipped", detail,
                              gateway_id=gid)

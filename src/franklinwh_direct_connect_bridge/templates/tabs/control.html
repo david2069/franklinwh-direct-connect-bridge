@@ -361,7 +361,7 @@
                 </div>
               </div>
               <div class="text-[11px] text-right" x-show="msg[row.alias]"
-                   :style="status[row.alias]==='error' ? 'color:var(--danger)' : 'color:var(--ok)'"
+                   :style="{ color: status[row.alias]==='error' ? 'var(--danger)' : 'var(--ok)' }"
                    x-text="msg[row.alias]"></div>
             </div>
           </template>

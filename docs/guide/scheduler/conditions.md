@@ -325,6 +325,15 @@ and the solar tracker percentages (Derived Battery). There is no `pv.is_generati
 `grid.power_w` and `grid.connected` (Gateway). `grid.connected` is **derived from grid power
 being non-zero**: it reads `0` whenever the grid power is exactly 0 W, on grid or not. Use
 `status.off_grid` to test for an outage.
+
+`grid.offgrid_reason` (Gateway, text) says why the system is off-grid: `user requested` (the
+aGate's simulated off-grid), `grid outage`, or `unknown` while off-grid with no reason read.
+It has no value on grid. Same source as the top-bar chip. Compare with `==`, case-insensitive:
+`grid.offgrid_reason == user requested`.
+
+`grid.offgrid_min` (Gateway) is the minutes since this off-grid period began, with no value on
+grid. If the bridge restarts while the system is off-grid, it counts from the first reading
+after the restart; it does not guess an earlier start.
 <!-- @b SEN-04 ;; src: scheduler.py:911-913 ;; tested: tests/test_scheduler.py::test_snapshot_marks_derived_values ;; write: yes ;; b: grid.connected is int(grid_w != 0), None without a grid reading (differs from the Modbus Bridge, which uses the connection state) ;; test: — -->
 
 ### Load
@@ -470,7 +479,7 @@ grouped by `GET /api/schedules`. *Needs* and *without it* are per group.
 | Ask before continuing (`ask.answer`) | the schedule's Ask before continuing step, answered in this run; read by exit conditions and HA action guards | None |
 | an HA instance | the instance enabled and the entity exposed | None (also while the entity is `unavailable` or `unknown`, since 0.5.4, #167) |
 
-??? example "All sensor ids (82 + your Home Assistant entities)"
+??? example "All sensor ids (84 + your Home Assistant entities)"
 
     **Gateway**
 
@@ -480,6 +489,8 @@ grouped by `GET /api/schedules`. *Needs* and *without it* are per group.
     | Battery power (W) | `battery.power_w` |
     | Grid power (W) | `grid.power_w` |
     | Grid connected | `grid.connected` |
+    | Off-grid reason (text: "user requested", "grid outage", "unknown") | `grid.offgrid_reason` |
+    | Off-grid for (minutes; counted from the first poll that saw it after a bridge restart) | `grid.offgrid_min` |
     | Solar power (W) | `solar.power_w` |
     | Home load (W) | `load.power_w` |
     | Generator power (W) | `generator.power_w` |

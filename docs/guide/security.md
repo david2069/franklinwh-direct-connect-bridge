@@ -9,8 +9,8 @@
 This page describes how the bridge's optional security will work once
 [#457](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/457) is built.
 It follows the Modbus Bridge's users and roles, and adds an HTTPS-only port, trusted
-networks and long-lived API tokens. Where #457 does not decide something yet, this page
-says **to be decided**.
+networks and long-lived API tokens. The owner's decisions of 2026-11-04 are written in;
+nothing on this page is built yet.
 
 ## In short
 
@@ -29,8 +29,8 @@ directory means an upgrade.
 | | Upgrading install | New install |
 |---|---|---|
 | **Security** | Off | On |
-| **Port 8101** | Unchanged: web UI and REST API, no login | HA ingress only, plus the Supervisor watchdog's `/api/live` |
-| **HTTPS port** (number to be decided) | Available, but you don't have to use it | The only way in from outside Home Assistant: web UI with a login, REST API with a token |
+| **Port 8101** | Unchanged: web UI and REST API, no login | HA ingress and the Supervisor watchdog's `/api/live`; everything else is redirected to the HTTPS port |
+| **HTTPS port** (8102) | Available, but you don't have to use it | The only way in from outside Home Assistant: web UI with a login, REST API with a token |
 | **Trusted networks** | Any | Private ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) plus loopback |
 | **HA ingress** (sidebar panel, **Open Web UI**) | Always allowed | Always allowed |
 | **`/api/live`** (watchdog) | Always allowed | Always allowed |
@@ -41,14 +41,15 @@ A request from a network that isn't trusted gets **403**, and the bridge writes 
 
 ### Turning Security on (upgrading install)
 
-To be decided: where the switch lives (for example **Settings → Admin → Security**). The
-steps will be:
+The switch is under **Settings → Admin → Security**, with the users, roles, API tokens,
+trusted networks and the certificate. Only an admin sees it. The steps:
 
 1. Create an admin account for the HTTPS port (see [The first admin](#the-first-admin)).
 2. Check **Trusted networks**. Narrow *any* to the networks your browsers and API callers
    actually use.
 3. Open the bridge on the HTTPS port and sign in, so you know the login works.
-4. Turn **Security** on. From now on port 8101 answers HA ingress and `/api/live` only.
+4. Turn **Security** on. From now on port 8101 answers HA ingress and `/api/live`, and redirects everything
+   else to the HTTPS port.
 5. Move any API callers (scripts, Home Assistant REST sensors, other tools) to the HTTPS
    port with a [token](#api-access-tokens).
 
@@ -68,26 +69,31 @@ ingress. Home Assistant has already signed you in, so the bridge doesn't ask aga
 - The bridge trusts ingress only when three checks pass: it is running as an add-on, the
   request comes from the Supervisor's ingress address (`172.30.32.2`), and HA's ingress
   headers are present.
-- An ingress request is treated as **admin**.
-- It is named from HA's `X-Remote-User-*` headers, so logs and the audit trail show which
-  HA user did what.
+- An **HA administrator** is an **admin** in the bridge. Every other HA user is a
+  **user**: they can view everything, send battery commands and manage schedules, but not
+  change settings (see [Roles](#roles)). The bridge reads the user from HA's
+  `X-Remote-User-Id` header and asks the Supervisor whether that user is in HA's
+  administrators group (checked against the Supervisor API documentation, not yet
+  tested).
+- The user is named from HA's `X-Remote-User-*` headers, so logs and the audit trail
+  show which HA user did what.
 - **No bridge account is created or stored for HA users.** The name is read on each
   request and used only for display and logging.
 
-Everyone who can open the add-on panel in Home Assistant is therefore an admin of the
-bridge. Control who that is with Home Assistant's own users.
+Who is an admin of the bridge is therefore decided by Home Assistant's own users: make
+someone an HA administrator, or not.
 
 ### The first admin
 
-The HTTPS port needs a bridge account. On a new install the bridge creates one admin on
-first start, as the Modbus Bridge does:
+The HTTPS port needs a bridge account.
 
-- from a username and password you set before the first start (add-on option or
-  environment variable; names to be decided), or
-- if you set none, with a generated password printed to the log **once**.
-
-To be decided for the HA add-on: whether the first admin is created this way, or from the
-sidebar panel (ingress is already admin) when you first open the HTTPS port.
+- **Home Assistant add-on:** you are already an admin in the sidebar panel. Create the
+  admin's username and password there, under **Settings → Admin → Security**, before you
+  use the HTTPS port. No password goes into the add-on options or the log.
+- **Docker and pip:** set `ADMIN_USERNAME` and `ADMIN_PASSWORD` before the first start.
+  They are read only while no admin exists; change the password in the bridge after
+  that. If you set none, the bridge creates an admin named `admin` with a generated
+  password, printed to the log **once**.
 
 The last enabled admin can't be deleted, disabled or demoted. If you lose the password,
 a command-line reset sets a new one.
@@ -97,13 +103,13 @@ a command-line reset sets a new one.
 | Role | Web UI | Reads | Writes (battery, mode, schedules, settings) | Manages users and tokens | Signs in with |
 |---|---|---|---|---|---|
 | **admin** | Full | Yes | Yes | Yes | Password (HTTPS port), or HA ingress |
-| **user** | To be decided | Yes | Only routes marked for it | No | Password |
+| **user** | Full, with Settings read-only | Yes | Battery commands, answering notifications, and schedules | No | Password, or HA ingress (non-admin HA users) |
 | **viewer** | Read-only | Yes | No | No | Password |
-| **api** | None (REST only) | Yes | Only routes marked for it | No | Token |
+| **api** | None (REST only) | Yes | Battery commands and answering notifications | No | Token |
 
-Writes need **admin** unless a route says otherwise. In the Modbus Bridge, `user` and
-`api` may also send battery commands; which of this bridge's routes allow them is to be
-decided.
+Battery commands are force charge or discharge, release, mode, reserve and off-grid.
+Everything else that changes something (settings, users, tokens, HA instances,
+notification devices) needs **admin**.
 
 Accounts also have:
 
@@ -138,9 +144,10 @@ There is no Home Assistant ingress outside the add-on, so:
 
 - **Security off** (an upgrade, or turned off): nothing changes. Port 8101 serves the web
   UI and REST API to trusted networks without a login.
-- **Security on:** port 8101 serves `/api/live` only (for a health check). The web UI
-  and REST API are on the HTTPS port, with a login or a token. Publish that port in
-  `docker-compose.yml` (or pass the option to the Python command; name to be decided).
+- **Security on:** port 8101 serves `/api/live` (for a health check) and redirects
+  every other request to the HTTPS port, so old bookmarks still land in the right place.
+  The web UI and REST API are on the HTTPS port, 8102 by default, with a login or a
+  token. Publish it in `docker-compose.yml`; set another number with `HTTPS_PORT`.
 
 The new-install default (Security on) applies here too; a data directory that already
 exists keeps Security off.
@@ -151,9 +158,25 @@ The HTTPS port serves HTTPS only.
 
 - **Home Assistant add-on:** it can use the `certfile` and `keyfile` from HA's `/ssl`
   folder, the same certificate HA uses.
+- **Your own certificate:** point the bridge at a certificate and key you already
+  have, for example from Let's Encrypt.
 - **Otherwise:** the bridge generates a self-signed certificate in its data directory.
-  **Settings** shows its fingerprint, so you can check that the certificate your browser
-  warns about is the bridge's own.
+  **Settings → Admin → Security** shows its fingerprint, so you can check that the
+  certificate your browser warns about is the bridge's own.
+
+### Trusting the self-signed certificate on a phone
+
+So a phone stops warning, install the bridge's certificate and trust it. Download it
+from **Settings → Admin → Security → Download certificate** on the phone, then:
+
+- **iPhone and iPad:** open the downloaded profile in **Settings → General → VPN &
+  Device Management** and install it. Then turn it on under **Settings → General → About
+  → Certificate Trust Settings**.
+- **Android:** **Settings → Security → Encryption & credentials → Install a certificate →
+  CA certificate**, and pick the file. Menu names vary by maker.
+
+Check the fingerprint shown on the phone against the one in Settings before you trust
+it. Remove it the same way if you replace the certificate.
 
 ## How a request is decided
 
@@ -165,10 +188,10 @@ flowchart TD
     C -- No --> X1["403 untrusted network"]
     D -- No --> X1
     C -- Yes --> E{"HA ingress or /api/live?"}
-    E -- Yes --> OK1[Allowed - ingress is admin]
+    E -- Yes --> OK1["Allowed - HA admin is admin, other HA users are user"]
     E -- No --> F{Security on?}
     F -- No --> OK2[Allowed - no login, as today]
-    F -- Yes --> X2["403 use the HTTPS port"]
+    F -- Yes --> X2["Redirect to the HTTPS port"]
     D -- Yes --> G{Security on?}
     G -- No --> OK2
     G -- Yes --> H{"Session or Bearer token?"}
@@ -187,9 +210,12 @@ expired account counts as no login (401).
 flowchart TD
     A[First start, empty data directory] --> B[Security on]
     B --> C[Trusted networks: private ranges and loopback]
-    C --> D{"Admin password set in options?"}
-    D -- Yes --> E[Admin created from options]
-    D -- No --> F[Admin created, password printed to the log once]
+    C --> D{"Add-on?"}
+    D -- Yes --> E["Admin created later, in the sidebar panel"]
+    D -- No --> D2{"ADMIN_USERNAME and ADMIN_PASSWORD set?"}
+    D2 -- Yes --> E2[Admin created from them]
+    D2 -- No --> F[Admin created, password printed to the log once]
+    E2 --> G
     E --> G[HTTPS certificate: HA ssl folder or self-signed]
     F --> G
     G --> H[Sidebar panel works through HA ingress]
