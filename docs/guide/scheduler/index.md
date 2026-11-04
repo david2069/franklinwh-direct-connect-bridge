@@ -157,6 +157,13 @@ the stored schedule, so nothing else changes (#157).
   notify start & end, Time-of-Use at peak (only if charged), and four force presets: Peak
   shaving, Battery Bonus export (evening), Solar sponge (charge midday) and Off-peak charge
   (overnight), each with an SoC condition and a target SoC.
+- **Ask before continuing**: **Wait for a reply** is 5 minutes in a new schedule. The
+  wait must fit the schedule's window: a reply after the window closes cannot run the
+  action, so a longer wait is refused on save. The window is the duration (a duration of 0
+  runs only in its start minute, so 1 minute), or the shortest window of a **Recurring
+  windows** schedule; **Always** has no window and takes any wait. Schedules saved before
+  this rule keep running, and can still be switched on and off. The question sent to the
+  phone ends with the deadline, for example "Charge now? (reply within 5 min)".
 - Eight **Ask** presets watch their conditions all the time (trigger **Always**), ask once
   each time the conditions become true, wait 5 minutes for a reply, and skip if nobody
   answers. Each threshold is a condition value; edit it like any other.
