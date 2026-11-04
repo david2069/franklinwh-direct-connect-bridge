@@ -1,14 +1,12 @@
 # Security: logins, trusted networks and API tokens
 
-!!! warning "Mostly planned (#457)"
-    **Trusted networks** and the **HTTPS port** are in the bridge from 0.5.31; see
-    [Trusted networks: available now](#trusted-networks-available-now) and
-    [The HTTPS port: available now](#the-https-port-available-now). The rest of this page
-    (the Security switch, sign-in, roles and API tokens) is planned and not built yet
-    ([#457](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/457)).
-    Until it is, anything on a trusted network can call every endpoint, on port 8101 or
-    the HTTPS port, without signing in. See
-    [There is no read-only mode today](control.md#there-is-no-read-only-mode-today).
+!!! warning "Partly built (#457)"
+    In the bridge from 0.5.31: **trusted networks**, the **HTTPS port**, the **Security
+    switch**, **accounts, sign-in and roles**. Still to come
+    ([#457](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/457)):
+    **API tokens** and the `api` role, and **Home Assistant users who aren't HA
+    administrators getting the `user` role**. Until that last part lands, everyone who
+    opens the sidebar panel is an admin of the bridge.
 
 This page describes how the bridge's optional security will work once
 [#457](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/457) is built.
@@ -113,12 +111,11 @@ ingress. Home Assistant has already signed you in, so the bridge doesn't ask aga
 - The bridge trusts ingress only when three checks pass: it is running as an add-on, the
   request comes from the Supervisor's ingress address (`172.30.32.2`), and HA's ingress
   headers are present.
-- An **HA administrator** is an **admin** in the bridge. Every other HA user is a
-  **user**: they can view everything, send battery commands and manage schedules, but not
-  change settings (see [Roles](#roles)). The bridge reads the user from HA's
-  `X-Remote-User-Id` header and asks the Supervisor whether that user is in HA's
-  administrators group (checked against the Supervisor API documentation, not yet
-  tested).
+- **Planned:** an **HA administrator** is an **admin** in the bridge, and every other
+  HA user is a **user**: they can view everything, send battery commands and manage
+  schedules, but not change settings (see [Roles](#roles)). **Today every HA user is an
+  admin.** How the bridge learns whether an HA user is an administrator is still to be
+  checked on a real Home Assistant.
 - The user is named from HA's `X-Remote-User-*` headers, so logs and the audit trail
   show which HA user did what.
 - **No bridge account is created or stored for HA users.** The name is read on each
@@ -139,8 +136,30 @@ The HTTPS port needs a bridge account.
   that. If you set none, the bridge creates an admin named `admin` with a generated
   password, printed to the log **once**.
 
-The last enabled admin can't be deleted, disabled or demoted. If you lose the password,
-a command-line reset sets a new one.
+Accounts are managed under **Settings → Admin → Security → Accounts**: add, change the
+role, set an expiry date, disable, reset the password, delete. Signed in, you can change
+your own password there.
+
+The last enabled admin can't be deleted, disabled, demoted or given a past expiry date.
+If you lose the password, run this where the bridge runs (in the add-on's or container's
+shell):
+
+```
+franklinwh-direct-connect-bridge reset-password <name>
+```
+
+It prints a new password once, and unlocks and enables the account. A name that doesn't
+exist yet is created as an admin.
+
+### Signing in
+
+With Security on, the HTTPS port shows a sign-in page. A session lasts 30 days, or until
+you sign out (**Settings → Admin → Security → Sign out**). Changing a password, or
+disabling an account, ends its sessions. Requests to port 8101 are redirected to the
+HTTPS port; if the HTTPS port isn't running, 8101 answers 503 and says why.
+
+The Security switch can only be turned on when an admin account exists and the HTTPS
+port is running, so that someone can sign in afterwards.
 
 ### Roles
 
@@ -151,9 +170,11 @@ a command-line reset sets a new one.
 | **viewer** | Read-only | Yes | No | No | Password |
 | **api** | None (REST only) | Yes | Battery commands and answering notifications | No | Token |
 
-Battery commands are force charge or discharge, release, mode, reserve and off-grid.
-Everything else that changes something (settings, users, tokens, HA instances,
-notification devices) needs **admin**.
+Battery commands are force charge or discharge, release, mode, reserve, off-grid and
+acknowledging an alert. Everything else that changes something (settings, users,
+tokens, HA instances, notification devices, smart circuits, the generator) needs
+**admin**. A request a role can't make gets 403 "Your role (viewer) can't do this." The
+web UI doesn't grey those controls out yet; it shows that message.
 
 Accounts also have:
 

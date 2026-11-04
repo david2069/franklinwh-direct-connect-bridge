@@ -36,6 +36,7 @@ dependencies = [
     "paho-mqtt>=2.0",
     "croniter>=2.0",          # cron trigger type (lazy import; gated on availability)
     "cryptography>=42",       # the HTTPS port's self-signed certificate (#457)
+    "argon2-cffi>=23.1",      # account passwords, argon2id (#457)
 ]
 
 [project.optional-dependencies]

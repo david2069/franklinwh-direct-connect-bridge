@@ -1429,10 +1429,100 @@
   </div>
   <div x-show="sub==='admin'" x-cloak class="space-y-6">
   <!-- ══ Security (#457 phase 1: trusted networks) ══ -->
-  <div class="flex items-center gap-3" x-init="loadSecurity()">
+  <div class="flex items-center gap-3" x-init="loadSecurity().then(() => loadAccounts())">
     <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Security <a :href="$store.app.guideUrl('security/')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
     <div class="flex-1 border-t border-white/[0.08]"></div>
   </div>
+  <!-- The Security switch (#457 phase 3) -->
+  <div class="card space-y-3" data-testid="security-switch" x-show="security.loaded" x-cloak>
+    <div class="flex items-center justify-between gap-2">
+      <div>
+        <div class="text-sm" style="color:var(--text-primary)">Security</div>
+        <div class="text-xs text-slate-500">On: browsers and API callers sign in on the HTTPS port, each account's role decides what it can do, and port 8101 sends them there. Home Assistant's sidebar panel works without signing in.</div>
+      </div>
+      <button type="button" role="switch" :aria-checked="security.enabled" data-testid="security-toggle"
+              @click="setSecurity(!security.enabled)" :disabled="!securityAdmin()"
+              class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0"
+              :class="security.enabled ? 'bg-emerald-500' : 'bg-slate-600'">
+        <span class="inline-block h-5 w-5 rounded-full bg-white transition"
+              :class="security.enabled ? 'translate-x-5' : 'translate-x-0.5'"></span>
+      </button>
+    </div>
+    <p class="text-xs text-slate-500" x-show="!security.enabled && !security.hasAdmin">Before you turn it on, add an admin account below.</p>
+    <div class="text-xs flex items-center gap-2 flex-wrap" x-show="security.principal" style="color:var(--text-secondary)">
+      <span x-text="security.principal ? (security.principal.via === 'ingress' ? 'In Home Assistant as ' : 'Signed in as ') + security.principal.username + ' (' + security.principal.role + ')' : ''"></span>
+      <button x-show="security.principal && security.principal.via === 'session'" class="btn btn-secondary btn-sm" @click="signOut()">Sign out</button>
+    </div>
+    {{ dialog_msg('security.switchMsg') }}
+  </div>
+
+  <!-- Accounts (#457 phase 3): admins only while Security is on. -->
+  <div class="card space-y-3" data-testid="accounts-section" x-show="security.loaded && securityAdmin()" x-cloak>
+    <div>
+      <div class="text-sm" style="color:var(--text-primary)">Accounts</div>
+      <div class="text-xs text-slate-500">For signing in on the HTTPS port. admin: everything. user: battery commands and schedules; everything else read-only. viewer: read-only.
+        <span x-show="security.onAddon">Home Assistant users don't need one.</span></div>
+    </div>
+    <template x-for="u in security.users" :key="u.id">
+      <div class="rounded-lg border p-2 space-y-2" :style="{ borderColor: 'var(--border)' }" data-testid="account-row">
+        <div class="flex items-center gap-2 flex-wrap text-xs" style="color:var(--text-secondary)">
+          <span class="font-medium text-sm" style="color:var(--text-primary)" x-text="u.username"></span>
+          <select class="form-control form-control-sm w-24" :value="u.role" @change="editAccount(u, { role: $event.target.value })">
+            <option value="admin" :selected="u.role === 'admin'">admin</option>
+            <option value="user" :selected="u.role === 'user'">user</option>
+            <option value="viewer" :selected="u.role === 'viewer'">viewer</option>
+          </select>
+          <span x-show="!u.enabled" class="chip muted">disabled</span>
+          <span x-show="u.expired" class="chip warn">expired</span>
+          <span x-show="u.locked" class="chip warn">locked</span>
+          <span class="text-[11px] text-slate-500" x-text="u.last_login ? 'last sign-in ' + new Date(u.last_login * 1000).toLocaleString() : 'never signed in'"></span>
+          <span class="flex-1"></span>
+          <label class="flex items-center gap-1">Expires
+            <input type="date" class="form-control form-control-sm w-36"
+                   :value="u.expires_at ? new Date(u.expires_at * 1000).toISOString().slice(0, 10) : ''"
+                   @change="editAccount(u, { expires_at: $event.target.value ? Date.parse($event.target.value + 'T23:59:59') / 1000 : null })"></label>
+          <button class="btn btn-secondary btn-sm" @click="editAccount(u, { enabled: !u.enabled })" x-text="u.enabled ? 'Disable' : 'Enable'"></button>
+          <button class="btn btn-secondary btn-sm" @click="security.resetFor = (security.resetFor === u.id ? null : u.id); security.resetPw = ''">Reset password</button>
+          <button class="btn btn-secondary btn-sm" @click="deleteAccount(u)" title="Delete">✕</button>
+        </div>
+        <div x-show="security.resetFor === u.id" class="flex items-center gap-2 flex-wrap">
+          <input type="password" autocomplete="new-password" class="form-control form-control-sm flex-1 min-w-[10rem]"
+                 placeholder="New password (8+ characters)" x-model="security.resetPw">
+          <button class="btn btn-primary btn-sm" @click="resetAccountPassword(u)">Set</button>
+        </div>
+      </div>
+    </template>
+    <p x-show="!security.users.length" class="text-xs text-slate-500">No accounts yet.</p>
+    <div class="flex items-center gap-2 flex-wrap" data-testid="account-add">
+      <input class="form-control form-control-sm w-36" placeholder="Username" autocapitalize="none" x-model="security.add.username">
+      <input type="password" autocomplete="new-password" class="form-control form-control-sm w-44" placeholder="Password (8+ characters)" x-model="security.add.password">
+      <select class="form-control form-control-sm w-24" x-model="security.add.role">
+        <option value="admin">admin</option><option value="user">user</option><option value="viewer">viewer</option>
+      </select>
+      <button class="btn btn-primary btn-sm" @click="addAccount()" :disabled="!security.add.username || !security.add.password">+ Add account</button>
+    </div>
+    {{ dialog_msg('security.acctMsg') }}
+    <div x-show="security.events.length" class="pt-1">
+      <div class="text-xs font-medium" style="color:var(--text-secondary)">Sign-in activity</div>
+      <div class="text-[11px] font-mono text-slate-500 max-h-40 overflow-auto" data-testid="signin-activity">
+        <template x-for="e in security.events" :key="e.ts + e.event">
+          <div x-text="new Date(e.ts * 1000).toLocaleString() + '  ' + e.username + '  ' + e.event + (e.ip ? '  ' + e.ip : '')"></div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <!-- Your own password (signed in with an account) -->
+  <div class="card space-y-2" data-testid="my-password" x-show="security.principal && security.principal.via === 'session'" x-cloak>
+    <div class="text-sm" style="color:var(--text-primary)">Your password</div>
+    <div class="flex items-center gap-2 flex-wrap">
+      <input type="password" autocomplete="current-password" class="form-control form-control-sm w-44" placeholder="Current password" x-model="security.myPw.current">
+      <input type="password" autocomplete="new-password" class="form-control form-control-sm w-44" placeholder="New password (8+ characters)" x-model="security.myPw.new">
+      <button class="btn btn-primary btn-sm" @click="changeMyPassword()" :disabled="!security.myPw.current || !security.myPw.new">Change</button>
+    </div>
+    {{ dialog_msg('security.myPw.msg') }}
+  </div>
+
   <div class="card space-y-3" data-testid="security-section">
     <div>
       <div class="text-sm" style="color:var(--text-primary)">Trusted networks</div>

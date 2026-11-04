@@ -17,11 +17,14 @@ log = logging.getLogger(__name__)
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="franklinwh-direct-connect-bridge")
-    p.add_argument("command", nargs="?", default="run", choices=["run", "ping"])
-    p.add_argument("host", nargs="?", help="ping: the aGate's address (default: FWH_HOST)")
+    p.add_argument("command", nargs="?", default="run", choices=["run", "ping", "reset-password"])
+    p.add_argument("host", nargs="?", help="ping: the aGate's address (default: FWH_HOST); "
+                                           "reset-password: the account's username")
     a = p.parse_args(argv)
     if a.command == "ping":
         return _ping(a.host or get_settings().fwh_host)
+    if a.command == "reset-password":
+        return _reset_password(a.host)
 
     s = get_settings()
     logging.basicConfig(
@@ -98,6 +101,27 @@ TRANSPORT_LOGGERS = ("httpx", "httpcore", "hpack")
 def quiet_transport_loggers() -> None:
     for name in TRANSPORT_LOGGERS:
         logging.getLogger(name).setLevel(logging.WARNING)
+
+
+def _reset_password(username: str | None) -> int:
+    """`franklinwh-direct-connect-bridge reset-password NAME` (#457): a new random password,
+    printed once; the account is unlocked and enabled. A new name becomes an admin."""
+    from . import auth, db
+    if not username:
+        print("no username: reset-password <name>")
+        return 2
+    store = db.get_store(get_settings())
+    if store is None:
+        print("no settings store (metrics are off), so there are no accounts")
+        return 1
+    auth.ensure_tables(store)
+    try:
+        pw = auth.reset_password(store, username)
+    except auth.AuthError as e:
+        print(f"not reset: {e}")
+        return 1
+    print(f"{username}: new password {pw}\n(shown once; sign in and change it)")
+    return 0
 
 
 def _ping(host: str) -> int:

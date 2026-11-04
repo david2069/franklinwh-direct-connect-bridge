@@ -10,13 +10,13 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import datetime as _dt
 import json as _json
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, StreamingResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, RedirectResponse, StreamingResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, ConfigDict
@@ -26,6 +26,7 @@ from franklinwh_direct_connect_api.transport import TransportError
 
 from . import __version__, client, db
 from . import environment
+from . import auth
 from . import security
 from . import tls
 from . import ha_instances
@@ -566,6 +567,34 @@ class TrustedNetworksBody(BaseModel):
     networks: list[str]
 
 
+class LoginBody(BaseModel):
+    username: str
+    password: str
+
+
+class PasswordBody(BaseModel):
+    current: str
+    new: str
+
+
+class UserBody(BaseModel):
+    username: str
+    password: str | None = None
+    role: str = "user"
+    expires_at: float | None = None
+
+
+class UserPatchBody(BaseModel):
+    role: str | None = None
+    enabled: bool | None = None
+    password: str | None = None
+    expires_at: float | None = None
+
+
+class SecurityEnabledBody(BaseModel):
+    enabled: bool
+
+
 class MqttGroupsBody(BaseModel):
     groups: list[str] = []
 
@@ -973,6 +1002,10 @@ def create_app() -> FastAPI:
         _cfg_store = db.get_store(get_settings())
         # Upgrade or new install (#457), decided before install_date is first set.
         security.decide_install(_cfg_store)
+        if _cfg_store is not None:
+            auth.ensure_tables(_cfg_store)
+            auth.ensure_first_admin(_cfg_store, get_settings(), on_addon=environment.IS_HA_ADDON,
+                                    security_on=security.enabled(_cfg_store))
         if _cfg_store is not None and not _cfg_store.get_config("install_date"):
             import datetime as _idt
             _cfg_store.set_config("install_date",
@@ -1322,15 +1355,46 @@ def create_app() -> FastAPI:
         lifespan=lifespan)
 
     # Trusted networks (#457 phase 1): every request, pages and static files included.
-    # HA ingress and /api/live are always allowed (security.allowed).
+    # HA ingress and /api/live are always allowed (security.allowed). With Security on
+    # (phase 3): HA ingress gets in as admin; 8101 redirects to the HTTPS port; there, a
+    # session cookie is needed and its account's role must allow the request.
     @app.middleware("http")
-    async def _trusted_networks(request: Request, call_next):
+    async def _security(request: Request, call_next):
         host = request.client.host if request.client else None
-        nets = security.trusted_networks(db.get_store(get_settings()))
-        if not security.allowed(host, request.url.path, request.headers, nets):
-            security.log_refused(host, request.url.path)
+        store = db.get_store(get_settings())
+        path = request.url.path
+        if not security.allowed(host, path, request.headers, security.trusted_networks(store)):
+            security.log_refused(host, path)
             return JSONResponse({"detail": "Your network is not trusted by this bridge "
                                            "(Settings → Admin → Security)."}, status_code=403)
+        request.state.principal = None
+        if not security.enabled(store) or path in security.ALWAYS_PATHS:
+            return await call_next(request)
+        if security.is_ingress(host, request.headers):
+            request.state.principal = {"username": request.headers.get("X-Remote-User-Name")
+                                       or "Home Assistant", "role": "admin", "via": "ingress"}
+            return await call_next(request)
+        if request.url.scheme != "https":
+            if not tls.running():
+                err = tls.status["error"]
+                return JSONResponse({"detail": "Security is on, so the bridge answers on its "
+                                     "HTTPS port only, and the HTTPS port is not running"
+                                     + (f": {err}" if err else ".")}, status_code=503)
+            return RedirectResponse(str(request.url.replace(scheme="https", port=tls.status["port"])),
+                                    status_code=307)
+        user = auth.session_user(store, request.cookies.get(auth.COOKIE))
+        if user is None:
+            if path in security.OPEN_PATHS or path.startswith("/static/"):
+                return await call_next(request)
+            if path.startswith("/api/"):
+                return JSONResponse({"detail": "Sign in first."}, status_code=401)
+            nxt = path + (f"?{request.url.query}" if request.url.query else "")
+            return RedirectResponse("/signin?next=" + quote(nxt, safe="/"), status_code=303)
+        request.state.principal = {"username": user["username"], "role": user["role"],
+                                   "via": "session"}
+        if not security.can(user["role"], request.method, path):
+            return JSONResponse({"detail": f"Your role ({user['role']}) can't do this."},
+                                status_code=403)
         return await call_next(request)
 
     # The System view overlay's page files (#428), from the shared package.
@@ -1494,7 +1558,11 @@ def create_app() -> FastAPI:
                 "your_address": host,
                 "via_ingress": security.is_ingress(host, request.headers),
                 "can_save": store is not None,
-                "https": _https_status()}
+                "https": _https_status(),
+                "enabled": security.enabled(store),
+                "has_admin": store is not None and auth.has_admin(store),
+                "on_addon": environment.IS_HA_ADDON,
+                "principal": getattr(request.state, "principal", None)}
 
     def _https_status() -> dict:
         st = {"port": tls.status["port"], "running": tls.running(), "error": tls.status["error"],
@@ -1512,6 +1580,118 @@ def create_app() -> FastAPI:
         return Response(Path(cf).read_bytes(), media_type="application/x-x509-ca-cert",
                         headers={"Content-Disposition":
                                  'attachment; filename="franklinwh-bridge.crt"'})
+
+    # ── accounts and sign-in (#457 phase 3) ─────────────────────────────────────────
+    def _auth_store():
+        store = db.get_store(get_settings())
+        if store is None:
+            raise HTTPException(503, "No settings store, so accounts can't be used.")
+        return store
+
+    @app.get("/signin", response_class=HTMLResponse)
+    def signin_page(request: Request):
+        resp = _TEMPLATES.TemplateResponse(request, "signin.html", {"version": __version__,
+                                                                     "cache_bust": _asset_version()})
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+
+    @app.post("/api/auth/login")
+    def api_auth_login(request: Request, body: LoginBody):
+        """Sign in on the HTTPS port: sets the session cookie."""
+        if request.url.scheme != "https":
+            raise HTTPException(400, "Sign in on the HTTPS port.")
+        store = _auth_store()
+        host = request.client.host if request.client else None
+        try:
+            user = auth.authenticate(store, body.username, body.password, ip=host)
+        except auth.AuthError as e:
+            raise HTTPException(401, str(e)) from None
+        resp = JSONResponse({"user": user})
+        resp.set_cookie(auth.COOKIE, auth.new_session(store, user["id"]), max_age=auth.SESSION_S,
+                        secure=True, httponly=True, samesite="lax", path="/")
+        return resp
+
+    @app.post("/api/auth/logout")
+    def api_auth_logout(request: Request):
+        store = _auth_store()
+        p = getattr(request.state, "principal", None)
+        auth.end_session(store, request.cookies.get(auth.COOKIE))
+        if p and p.get("via") == "session":
+            auth.record(store, p["username"], "signed out")
+        resp = JSONResponse({"ok": True})
+        resp.delete_cookie(auth.COOKIE, path="/")
+        return resp
+
+    @app.get("/api/auth/me")
+    def api_auth_me(request: Request):
+        store = db.get_store(get_settings())
+        return {"security_enabled": security.enabled(store),
+                "principal": getattr(request.state, "principal", None)}
+
+    @app.post("/api/auth/password")
+    def api_auth_password(request: Request, body: PasswordBody):
+        """Change your own password (a signed-in account)."""
+        store = _auth_store()
+        p = getattr(request.state, "principal", None)
+        if not p or p.get("via") != "session":
+            raise HTTPException(400, "Sign in with an account on the HTTPS port first.")
+        host = request.client.host if request.client else None
+        try:
+            user = auth.authenticate(store, p["username"], body.current, ip=host)
+            auth.update_user(store, user["id"], password=body.new)
+        except auth.AuthError as e:
+            raise HTTPException(422, str(e)) from None
+        resp = JSONResponse({"ok": True})
+        resp.set_cookie(auth.COOKIE, auth.new_session(store, user["id"]), max_age=auth.SESSION_S,
+                        secure=True, httponly=True, samesite="lax", path="/")
+        return resp
+
+    @app.get("/api/security/users")
+    def api_security_users():
+        return {"users": auth.users(_auth_store())}
+
+    @app.post("/api/security/users")
+    def api_security_users_add(body: UserBody):
+        try:
+            return auth.create_user(_auth_store(), body.username, body.password or "", body.role,
+                                    expires_at=body.expires_at)
+        except auth.AuthError as e:
+            raise HTTPException(422, str(e)) from None
+
+    @app.patch("/api/security/users/{user_id}")
+    def api_security_users_edit(user_id: int, body: UserPatchBody):
+        kw = body.model_dump(exclude_unset=True)
+        try:
+            return auth.update_user(_auth_store(), user_id, **kw)
+        except auth.AuthError as e:
+            raise HTTPException(422, str(e)) from None
+
+    @app.delete("/api/security/users/{user_id}")
+    def api_security_users_delete(user_id: int):
+        try:
+            auth.delete_user(_auth_store(), user_id)
+        except auth.AuthError as e:
+            raise HTTPException(422, str(e)) from None
+        return {"ok": True}
+
+    @app.get("/api/security/signins")
+    def api_security_signins(limit: int = 50):
+        return {"events": auth.activity(_auth_store(), limit)}
+
+    @app.put("/api/security/enabled")
+    def api_security_enabled(body: SecurityEnabledBody):
+        """The Security switch. On needs an admin account and a running HTTPS port, so
+        that someone can sign in afterwards."""
+        store = _auth_store()
+        if body.enabled:
+            if not auth.has_admin(store):
+                raise HTTPException(422, "Add an admin account first, so you can sign in.")
+            if not tls.running():
+                err = tls.status["error"]
+                raise HTTPException(422, "The HTTPS port isn't running" + (f": {err}" if err else ".")
+                                    + " Security needs it.")
+        security.set_enabled(store, body.enabled)
+        return {"enabled": security.enabled(store)}
 
     @app.put("/api/security/trusted-networks")
     def api_security_trusted_networks(request: Request, body: TrustedNetworksBody):

@@ -1,4 +1,4 @@
-"""Trusted networks (#457 phase 1).
+"""Trusted networks (#457 phase 1), the Security switch and roles (phase 3).
 
 A request from an address outside the trusted networks gets 403. An upgraded install
 trusts any network, so nothing changes for it; a new install trusts the private ranges
@@ -30,9 +30,12 @@ PRIVATE = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8",
 INGRESS_IP = "172.30.32.2"
 #: Always allowed, whatever the list: the Supervisor watchdog's health check.
 ALWAYS_PATHS = ("/api/live",)
+#: With Security on, open on the HTTPS port without signing in (plus /static/).
+OPEN_PATHS = ("/signin", "/api/auth/login", "/api/auth/me")
 
 _KIND_KEY = "security_install"
 _NETS_KEY = "security_trusted_networks"
+_ON_KEY = "security_enabled"
 _LOG_EVERY_S = 600.0
 _last_logged: dict[str, float] = {}
 
@@ -48,6 +51,7 @@ def decide_install(store) -> str:
     kind = "upgrade" if store.get_config("install_date") else "new"
     store.set_config(_KIND_KEY, kind)
     store.set_config(_NETS_KEY, json.dumps([ANY] if kind == "upgrade" else PRIVATE))
+    store.set_config(_ON_KEY, "0" if kind == "upgrade" else "1")
     log.info("Security: %s install; trusted networks: %s", kind,
              "any" if kind == "upgrade" else ", ".join(PRIVATE))
     return kind
@@ -149,3 +153,58 @@ def save(store, nets: list[str], client_host, headers) -> list[str]:
     store.set_config(_NETS_KEY, json.dumps(nets))
     log.info("Security: trusted networks set to %s", ", ".join(nets))
     return nets
+
+
+# ── the Security switch (phase 3) ─────────────────────────────────────────────────
+def enabled(store) -> bool:
+    """On: sign-in on the HTTPS port, roles, and 8101 redirecting there. Off for an
+    upgrade and on for a new install until changed."""
+    if store is None:
+        return False
+    v = store.get_config(_ON_KEY)
+    return v == "1" if v in ("0", "1") else install_kind(store) == "new"
+
+
+def set_enabled(store, on: bool) -> None:
+    store.set_config(_ON_KEY, "1" if on else "0")
+    log.info("Security switched %s", "on" if on else "off")
+
+
+# ── roles (phase 3): who may do what ──────────────────────────────────────────────
+#: Battery commands: force, release, mode, reserve, off-grid, and acknowledging an alert.
+BATTERY = ("/api/battery/command", "/api/dispatch", "/api/mode", "/api/offgrid",
+           "/api/cloud/reserve", "/api/cloud/set-mode", "/api/cloud/hold/clear",
+           "/api/alerts/")
+#: Schedules: add, edit, switch, run, stop, import.
+SCHEDULES = ("/api/schedules",)
+#: Any signed-in account: their own session and password, and the disclaimer.
+SELF = ("/api/auth/", "/api/disclaimer/ack")
+#: Reads only an admin may make.
+ADMIN_READS = ("/api/security/users", "/api/security/signins")
+READ_METHODS = ("GET", "HEAD", "OPTIONS")
+
+
+def _under(path: str, prefixes) -> bool:
+    """``path`` is one of ``prefixes`` or below one (``/api/mode``, ``/api/alerts/7/ack``)."""
+    return any(path == p.rstrip("/") or path.startswith(p.rstrip("/") + "/") for p in prefixes)
+
+
+def required(method: str, path: str) -> tuple[str, ...]:
+    """The roles allowed to make this request. Anything not listed is admin only."""
+    if _under(path, SELF):
+        return ("admin", "user", "viewer", "api")
+    if method.upper() in READ_METHODS:
+        if _under(path, ADMIN_READS):
+            return ("admin",)
+        if not path.startswith("/api/"):
+            return ("admin", "user", "viewer")      # pages: api accounts have no web UI
+        return ("admin", "user", "viewer", "api")
+    if _under(path, BATTERY):
+        return ("admin", "user", "api")
+    if _under(path, SCHEDULES):
+        return ("admin", "user")
+    return ("admin",)
+
+
+def can(role: str, method: str, path: str) -> bool:
+    return role in required(method, path)
