@@ -11,6 +11,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.30] — 2026-11-04
+
 ### Changed
 - **Send to → Chosen devices is a drop-down** (owner, iPad, 2026-11-04). Instead of a row of
   checkboxes, one field names the ticked devices ("DSH iPhone, ipad", or "Choose devices")
