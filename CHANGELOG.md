@@ -12,6 +12,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Changed
+- **Send to → Chosen devices is a drop-down** (owner, iPad, 2026-11-04). Instead of a row of
+  checkboxes, one field names the ticked devices ("DSH iPhone, ipad", or "Choose devices")
+  and opens the list of devices with their checkboxes and badges. Used everywhere Send to
+  appears: the schedule's **Ask before continuing**, each Auto-notify trigger, **Critical
+  alerts**, **Release / Keep a running force** and the **Send test** dialog. Tapping outside,
+  **Done** or Escape closes it; Escape no longer reaches the dialog behind it. On a phone the
+  list opens in place under the field.
+
+### Changed
 - **Guide: Home Assistant setup and notifications brought up to date.** No restart after
   adding an HA instance; Send to on every notification (triggers, critical alerts,
   Release / Keep, Ask); the 5-minute Ask wait and its window rule; questions surviving a

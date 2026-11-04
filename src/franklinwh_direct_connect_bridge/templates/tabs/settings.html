@@ -1,4 +1,5 @@
 {% from "partials/dialog_msg.html" import dialog_msg %}
+{% from "partials/device_multiselect.html" import device_multiselect %}
 <!-- ── Settings Tab (read-only) ───────────────────────────── -->
 <div class="space-y-6 max-w-5xl" x-data="settingsTab()" x-init="init()">
 
@@ -1662,8 +1663,9 @@
           </button>
           <div x-show="triggerTargetValue(key, t) === 'device'" data-testid="trigger-target-devices"
                class="w-full flex items-center justify-end gap-x-3 gap-y-1 flex-wrap">
+            {% call device_multiselect("notif.devices.filter(x => triggerTargetIds(t).includes(x.id)).map(x => x.alias).join(', ')", 'w-full sm:w-64') %}
             <template x-for="d in notif.devices" :key="d.id">
-              <label class="flex items-center gap-1 text-xs" style="color:var(--text-secondary)">
+              <label class="flex items-center gap-2 text-xs py-0.5" style="color:var(--text-secondary)">
                 <input type="checkbox" :checked="triggerTargetIds(t).includes(d.id)"
                        :disabled="triggerTargetIds(t).includes(d.id) && triggerTargetIds(t).length === 1"
                        @change="toggleTriggerDevice(key, t, d.id, $event.target.checked)">
@@ -1672,6 +1674,7 @@
               </label>
             </template>
             <span x-show="!triggerTargetIds(t).length" class="text-[10px] text-slate-500">Tick at least one device</span>
+            {% endcall %}
           </div>
         </div>
       </template>
@@ -1690,8 +1693,9 @@
             </select>
             <div x-show="triggerTargetValue('ask:' + key, a) === 'device'"
                  class="w-full flex items-center justify-end gap-x-3 gap-y-1 flex-wrap">
+              {% call device_multiselect("notif.devices.filter(x => triggerTargetIds(a).includes(x.id)).map(x => x.alias).join(', ')", 'w-full sm:w-64') %}
               <template x-for="d in notif.devices" :key="d.id">
-                <label class="flex items-center gap-1 text-xs" style="color:var(--text-secondary)">
+                <label class="flex items-center gap-2 text-xs py-0.5" style="color:var(--text-secondary)">
                   <input type="checkbox" :checked="triggerTargetIds(a).includes(d.id)"
                          :disabled="triggerTargetIds(a).includes(d.id) && triggerTargetIds(a).length === 1"
                          @change="toggleAskDevice(key, a, d.id, $event.target.checked)">
@@ -1700,6 +1704,7 @@
                 </label>
               </template>
               <span x-show="!triggerTargetIds(a).length" class="text-[10px] text-slate-500">Tick at least one device</span>
+              {% endcall %}
             </div>
           </div>
         </template>
@@ -1967,7 +1972,8 @@
               All enabled devices (<span x-text="notif.devices.filter(d=>d.enabled).length"></span>)</label>
             <label class="flex items-center gap-2 text-xs" style="color:var(--text-secondary)">
               <input type="radio" value="device" x-model="notif.testDlg.to"> Chosen devices</label>
-            <div x-show="notif.testDlg.to === 'device'" class="pl-5 space-y-1">
+            <div x-show="notif.testDlg.to === 'device'" class="pl-5">
+              {% call device_multiselect("notif.devices.filter(x => notif.testDlg.ids.includes(x.id)).map(x => x.alias).join(', ')") %}
               <template x-for="d in notif.devices" :key="d.id">
                 <label class="flex items-center gap-2 text-xs" style="color:var(--text-secondary)">
                   <input type="checkbox" :value="d.id" x-model="notif.testDlg.ids">
@@ -1975,6 +1981,7 @@
                   <span x-show="!d.enabled" class="chip muted" style="font-size:.55rem">off</span>
                 </label>
               </template>
+              {% endcall %}
             </div>
           </div>
         </template>
