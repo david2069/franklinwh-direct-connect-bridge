@@ -11,6 +11,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+- **Guide: Security (planned, #457).** A new page describing the planned optional security:
+  upgrades keep today's behaviour and new installs start with Security on (it can be turned
+  off); trusted networks; an HTTPS port (8102); HA admins are admins and other HA users are
+  users; the first admin; the roles admin, user, viewer and api; API tokens; the
+  self-signed certificate and how to trust it on a phone. Marked "Planned — not in a
+  release yet"; nothing on it is built.
+
 ## [0.5.30] — 2026-11-04
 
 ### Changed
