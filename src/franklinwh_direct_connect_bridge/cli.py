@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+import contextlib
 import logging
 
 import uvicorn
 
+from . import tls
 from .config import get_settings
+
+log = logging.getLogger(__name__)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -24,9 +29,63 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
     )
     quiet_transport_loggers()
-    uvicorn.run("franklinwh_direct_connect_bridge.app:create_app", factory=True,
-                host=s.http_host, port=s.http_port, log_level=s.log_level)
+    asyncio.run(serve(s))
     return 0
+
+
+async def serve(s) -> None:
+    """Port 8101 (HTTP) and the HTTPS port, one app. HTTP runs the app's start-up and owns
+    Ctrl-C/SIGTERM; HTTPS shares the running app. If HTTPS can't start (a bad certificate,
+    the port taken), HTTP carries on and Settings → Admin → Security says why."""
+    from .app import create_app
+    app = create_app()
+    http = uvicorn.Server(uvicorn.Config(app, host=s.http_host, port=s.http_port,
+                                         log_level=s.log_level))
+    https = https_server(app, s)
+    task = asyncio.create_task(run_https(https)) if https is not None else None
+    try:
+        await http.serve()
+    finally:
+        if task is not None:
+            https.should_exit = True
+            with contextlib.suppress(BaseException):
+                await task
+
+
+class _SharedSignals(uvicorn.Server):
+    """The HTTPS server: leaves the signals to the HTTP server, which stops it."""
+
+    @contextlib.contextmanager
+    def capture_signals(self):
+        yield
+
+
+def https_server(app, s):
+    """The HTTPS server, or None when it is off or its certificate can't be had."""
+    tls.status.update(port=s.https_port, running=False, error="", source="", certfile="")
+    tls.server = None
+    if not s.https_port:
+        return None
+    try:
+        cert, key, source = tls.ensure_cert(s)
+    except Exception as e:  # noqa: BLE001 — HTTPS failing must never stop HTTP
+        tls.status["error"] = str(e)
+        log.error("HTTPS port %s not started: %s", s.https_port, e)
+        return None
+    tls.status.update(source=source, certfile=cert)
+    tls.server = _SharedSignals(uvicorn.Config(
+        app, host=s.http_host, port=s.https_port, log_level=s.log_level, lifespan="off",
+        ssl_certfile=cert, ssl_keyfile=key))
+    return tls.server
+
+
+async def run_https(server) -> None:
+    try:
+        await server.serve()
+    except BaseException as e:  # noqa: BLE001 — uvicorn exits on a failed bind
+        tls.status["error"] = (f"could not listen on port {server.config.port}"
+                               if isinstance(e, SystemExit) else str(e))
+        log.error("HTTPS port %s stopped: %s", server.config.port, tls.status["error"])
 
 
 #: The HTTP client's own loggers. At DEBUG, hpack and httpcore print every request header

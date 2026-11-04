@@ -1,11 +1,13 @@
 # Security: logins, trusted networks and API tokens
 
 !!! warning "Mostly planned (#457)"
-    **Trusted networks** are in the bridge from 0.5.31; see
-    [Trusted networks: available now](#trusted-networks-available-now). The rest of this
-    page (the Security switch, the HTTPS port, sign-in, roles and API tokens) is planned
-    and not built yet ([#457](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/457)).
-    Until it is, anything on a trusted network can call every endpoint on port 8101. See
+    **Trusted networks** and the **HTTPS port** are in the bridge from 0.5.31; see
+    [Trusted networks: available now](#trusted-networks-available-now) and
+    [The HTTPS port: available now](#the-https-port-available-now). The rest of this page
+    (the Security switch, sign-in, roles and API tokens) is planned and not built yet
+    ([#457](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/457)).
+    Until it is, anything on a trusted network can call every endpoint, on port 8101 or
+    the HTTPS port, without signing in. See
     [There is no read-only mode today](control.md#there-is-no-read-only-mode-today).
 
 This page describes how the bridge's optional security will work once
@@ -45,6 +47,23 @@ unless you are in Home Assistant's sidebar panel, which always gets in.
 
 If you shut a browser out anyway, open the bridge from Home Assistant's sidebar, or from
 a machine on a trusted network, and add its network.
+
+## The HTTPS port: available now
+
+The bridge serves the same web UI and REST API over HTTPS on port **8102**, next to
+8101, on every install. Trusted networks apply to it the same way. There is no sign-in
+yet, so for now it adds encryption, not access control.
+
+- **Home Assistant add-on:** the add-on publishes 8102. Change the host port, or turn
+  it off, in the add-on's **Configuration → Network** section.
+- **Docker:** publish it with `- "8102:8102"` in `docker-compose.yml`. `HTTPS_PORT`
+  sets another number inside the container; `HTTPS_PORT=0` turns it off.
+- **pip:** `HTTPS_PORT` as above.
+
+**Settings → Admin → Security → HTTPS port** shows whether it is running, the
+certificate in use, its SHA-256 fingerprint and when it runs out, and has **Download
+certificate**. If the port can't start (a certificate that can't be read, or the port
+already taken), the reason shows there and port 8101 carries on.
 
 ## Upgrading install vs new install
 
@@ -181,11 +200,17 @@ exists keeps Security off.
 
 The HTTPS port serves HTTPS only.
 
-- **Home Assistant add-on:** it can use the `certfile` and `keyfile` from HA's `/ssl`
-  folder, the same certificate HA uses.
-- **Your own certificate:** point the bridge at a certificate and key you already
-  have, for example from Let's Encrypt.
-- **Otherwise:** the bridge generates a self-signed certificate in its data directory.
+- **Your own certificate:** set `ssl_certfile` and `ssl_keyfile` (PEM files), for
+  example a Let's Encrypt `fullchain.pem` and `privkey.pem`. On the add-on these are
+  options in its **Configuration** tab, and a bare file name is looked up in Home
+  Assistant's `/ssl` folder, so the add-on can use the certificate Home Assistant uses.
+  On Docker and pip they are `SSL_CERTFILE` and `SSL_KEYFILE`, full paths. Set both or
+  neither.
+- **Otherwise:** the bridge makes a self-signed certificate in `tls/` in its data
+  directory, for its host name, `localhost`, loopback and its LAN address. It is valid
+  for 825 days, the longest iPhones accept, and is made again 30 days before it runs out
+  or when the bridge's address changes. A new certificate has a new fingerprint, so a
+  phone that trusted the old one must trust the new one.
   **Settings → Admin → Security** shows its fingerprint, so you can check that the
   certificate your browser warns about is the bridge's own.
 

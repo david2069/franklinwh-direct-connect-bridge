@@ -27,6 +27,7 @@ from franklinwh_direct_connect_api.transport import TransportError
 from . import __version__, client, db
 from . import environment
 from . import security
+from . import tls
 from . import ha_instances
 from . import scheduler
 from . import fieldschema
@@ -1492,7 +1493,25 @@ def create_app() -> FastAPI:
                 "private_ranges": security.PRIVATE,
                 "your_address": host,
                 "via_ingress": security.is_ingress(host, request.headers),
-                "can_save": store is not None}
+                "can_save": store is not None,
+                "https": _https_status()}
+
+    def _https_status() -> dict:
+        st = {"port": tls.status["port"], "running": tls.running(), "error": tls.status["error"],
+              "source": tls.status["source"]}
+        if tls.status["certfile"]:
+            st.update(tls.describe(tls.status["certfile"]))
+        return st
+
+    @app.get("/api/security/certificate")
+    def api_security_certificate():
+        """The HTTPS port's certificate (PEM), to install and trust on a phone (#457)."""
+        cf = tls.status["certfile"]
+        if not cf or not Path(cf).is_file():
+            raise HTTPException(404, "The HTTPS port has no certificate (it is off or did not start).")
+        return Response(Path(cf).read_bytes(), media_type="application/x-x509-ca-cert",
+                        headers={"Content-Disposition":
+                                 'attachment; filename="franklinwh-bridge.crt"'})
 
     @app.put("/api/security/trusted-networks")
     def api_security_trusted_networks(request: Request, body: TrustedNetworksBody):

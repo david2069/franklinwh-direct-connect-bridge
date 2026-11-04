@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     # bridge service
     http_host: str = "0.0.0.0"
     http_port: int = 8101
+    #: The HTTPS port (#457 phase 2): the same web UI and API, over HTTPS. 0 = off.
+    https_port: int = 8102
+    #: Your own certificate and key (PEM). Unset = a self-signed one in DATA_DIR/tls. On
+    #: the add-on a bare file name is looked up in Home Assistant's /ssl folder.
+    ssl_certfile: str = ""
+    ssl_keyfile: str = ""
     poll_interval: int = 30
     #: Scheduler cadence (RUNTIME_DESIGN decision 2): fixed and configurable, not derived
     #: from poll_interval. Predictable beats clever — and a schedule window shorter than

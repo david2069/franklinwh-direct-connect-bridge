@@ -1457,6 +1457,32 @@
               x-text="security.saving ? 'Saving…' : 'Save'"></button>
     </div>
   </div>
+  <!-- The HTTPS port (#457 phase 2). -->
+  <div class="card space-y-2" data-testid="https-section" x-show="security.loaded" x-cloak>
+    <div class="flex items-center justify-between gap-2 flex-wrap">
+      <div>
+        <div class="text-sm" style="color:var(--text-primary)">HTTPS port</div>
+        <div class="text-xs text-slate-500">The same web UI and API over HTTPS. No sign-in yet; trusted networks apply.</div>
+      </div>
+      <span class="chip" :class="security.https.running ? 'ok' : (security.https.port ? 'warn' : 'muted')"
+            x-text="security.https.running ? 'on, port ' + security.https.port : (security.https.port ? 'not running' : 'off')"></span>
+    </div>
+    <p x-show="security.https.error" class="text-xs" :style="{ color: 'var(--danger)' }" x-text="security.https.error"></p>
+    <template x-if="security.https.fingerprint_sha256">
+      <div class="text-xs text-slate-500 space-y-1">
+        <div><span x-text="security.https.source === 'own' ? 'Your own certificate' : 'Self-signed certificate'"></span>,
+          valid until <span x-text="security.https.not_after"></span>, for
+          <span class="font-mono" x-text="(security.https.names || []).join(', ')"></span></div>
+        <div>Fingerprint (SHA-256): <span class="font-mono break-all" style="color:var(--text-secondary)"
+             data-testid="cert-fingerprint" x-text="security.https.fingerprint_sha256"></span></div>
+        <div class="text-[11px]">Check it against the one your browser or phone shows before you trust the certificate.</div>
+      </div>
+    </template>
+    <div class="flex justify-end" x-show="security.https.fingerprint_sha256">
+      <a href="api/security/certificate" download class="btn btn-secondary btn-sm"
+         data-testid="cert-download">Download certificate</a>
+    </div>
+  </div>
 
   <!-- ══ Storage & Admin ══ -->
   <div class="flex items-center gap-3" x-init="loadAdmin()">

@@ -12,6 +12,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **The HTTPS port** (#457 phase 2). The bridge serves the same web UI and REST API over
+  HTTPS on port 8102, next to 8101, on every install; trusted networks apply, and there is
+  no sign-in yet. The certificate is your own (`ssl_certfile` / `ssl_keyfile`; on the
+  add-on a bare name is looked up in Home Assistant's `/ssl`, which the add-on now maps
+  read-only) or a self-signed one the bridge makes for its host name and addresses, valid
+  825 days and renewed 30 days before it runs out or when the address changes. **Settings →
+  Admin → Security → HTTPS port** shows whether it runs, the certificate, its SHA-256
+  fingerprint and **Download certificate** (`GET /api/security/certificate`). If HTTPS
+  can't start, the reason shows there and 8101 carries on. `HTTPS_PORT` changes the port,
+  0 turns it off. The add-on publishes 8102, the Docker image exposes it, and the bridge
+  now depends on `cryptography`.
 - **Trusted networks** (#457 phase 1). **Settings → Admin → Security** lists the networks
   allowed to reach the bridge; a request from anywhere else gets 403 "Your network is not
   trusted by this bridge", pages and API alike, and one log line per address every 10

@@ -10,7 +10,9 @@ from franklinwh_direct_connect_bridge import cli
 
 
 def _run_main_at(level, monkeypatch):
-    monkeypatch.setattr(cli.uvicorn, "run", lambda *a, **k: None)
+    async def _no_serve(s):
+        return None
+    monkeypatch.setattr(cli, "serve", _no_serve)
     s = cli.get_settings()
     monkeypatch.setattr(s, "log_level", level)
     for name in cli.TRANSPORT_LOGGERS:

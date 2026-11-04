@@ -31,7 +31,7 @@ RUN if ls /tmp/wheels/*.whl >/dev/null 2>&1; then \
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
-EXPOSE 8101
+EXPOSE 8101 8102
 
 # Liveness of the web app only (/api/live does NO device I/O), so an unreachable aGate
 # never marks the container unhealthy — the bridge stays up by design when the gateway

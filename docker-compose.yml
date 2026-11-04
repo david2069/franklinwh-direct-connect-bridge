@@ -6,6 +6,7 @@ services:
     container_name: franklinwh-direct-connect-bridge
     ports:
       - "8101:8101"
+      - "8102:8102"     # HTTPS (#457); set HTTPS_PORT to change, 0 to turn off
     volumes:
       - ./data:/data
       - /etc/localtime:/etc/localtime:ro
