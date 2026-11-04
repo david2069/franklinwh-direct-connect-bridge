@@ -16,7 +16,7 @@ import datetime as _dt
 import json as _json
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
-from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, StreamingResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, ConfigDict
@@ -26,6 +26,7 @@ from franklinwh_direct_connect_api.transport import TransportError
 
 from . import __version__, client, db
 from . import environment
+from . import security
 from . import ha_instances
 from . import scheduler
 from . import fieldschema
@@ -560,6 +561,10 @@ class TariffUpdate(BaseModel):
     effective_end: str | None = None
 
 
+class TrustedNetworksBody(BaseModel):
+    networks: list[str]
+
+
 class MqttGroupsBody(BaseModel):
     groups: list[str] = []
 
@@ -965,6 +970,8 @@ def create_app() -> FastAPI:
     _log_disclaimer_once()   # stamp the unofficial-app disclaimer into the (durable) log
     try:  # first-run install date (for the support bundle) — set once, never overwritten
         _cfg_store = db.get_store(get_settings())
+        # Upgrade or new install (#457), decided before install_date is first set.
+        security.decide_install(_cfg_store)
         if _cfg_store is not None and not _cfg_store.get_config("install_date"):
             import datetime as _idt
             _cfg_store.set_config("install_date",
@@ -1313,6 +1320,18 @@ def create_app() -> FastAPI:
         ),
         lifespan=lifespan)
 
+    # Trusted networks (#457 phase 1): every request, pages and static files included.
+    # HA ingress and /api/live are always allowed (security.allowed).
+    @app.middleware("http")
+    async def _trusted_networks(request: Request, call_next):
+        host = request.client.host if request.client else None
+        nets = security.trusted_networks(db.get_store(get_settings()))
+        if not security.allowed(host, request.url.path, request.headers, nets):
+            security.log_refused(host, request.url.path)
+            return JSONResponse({"detail": "Your network is not trusted by this bridge "
+                                           "(Settings → Admin → Security)."}, status_code=403)
+        return await call_next(request)
+
     # The System view overlay's page files (#428), from the shared package.
     import franklinwh_system_view as _sv
     app.mount("/system-view", StaticFiles(directory=str(_sv.static_dir())), name="system-view")
@@ -1461,6 +1480,34 @@ def create_app() -> FastAPI:
         NOT mark the container unhealthy (the bridge stays up by design when the gateway
         is down). Use /api/health for actual gateway reachability."""
         return {"status": "ok", "service": "franklinwh-direct-connect-bridge", "version": __version__}
+
+    @app.get("/api/security")
+    def api_security(request: Request):
+        """Trusted networks (#457 phase 1): the list, whether this is an upgrade or a new
+        install, and the caller's address as the bridge sees it."""
+        store = db.get_store(get_settings())
+        host = request.client.host if request.client else None
+        return {"install": security.install_kind(store),
+                "trusted_networks": security.trusted_networks(store),
+                "private_ranges": security.PRIVATE,
+                "your_address": host,
+                "via_ingress": security.is_ingress(host, request.headers),
+                "can_save": store is not None}
+
+    @app.put("/api/security/trusted-networks")
+    def api_security_trusted_networks(request: Request, body: TrustedNetworksBody):
+        """Replace the trusted networks: ``{"networks": ["192.168.1.0/24", ...]}`` or
+        ``["any"]``. Refused (422) when an entry isn't a network or an address, or when the
+        list would shut out the browser saving it."""
+        store = db.get_store(get_settings())
+        if store is None:
+            raise HTTPException(503, "No settings store, so trusted networks can't be saved.")
+        host = request.client.host if request.client else None
+        try:
+            nets = security.save(store, body.networks, host, request.headers)
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from None
+        return {"trusted_networks": nets}
 
     @app.get("/api/providers")
     def api_providers():

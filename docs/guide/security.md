@@ -1,10 +1,12 @@
 # Security: logins, trusted networks and API tokens
 
-!!! warning "Planned — not in a release yet (#457)"
-    Planned — not in a release yet ([#457](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/457)).
-    Today the bridge has no login: anything that can reach port 8101 can call every
-    endpoint. See [There is no read-only mode today](control.md#there-is-no-read-only-mode-today)
-    and the REST API's [Authentication](../developers/rest-api.md#authentication) section.
+!!! warning "Mostly planned (#457)"
+    **Trusted networks** are in the bridge from 0.5.31; see
+    [Trusted networks: available now](#trusted-networks-available-now). The rest of this
+    page (the Security switch, the HTTPS port, sign-in, roles and API tokens) is planned
+    and not built yet ([#457](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/457)).
+    Until it is, anything on a trusted network can call every endpoint on port 8101. See
+    [There is no read-only mode today](control.md#there-is-no-read-only-mode-today).
 
 This page describes how the bridge's optional security will work once
 [#457](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/457) is built.
@@ -20,6 +22,29 @@ nothing on this page is built yet.
   login. Everything else (a browser on your network, a phone, an API caller) uses the new
   HTTPS port and signs in.
 - **Security can always be turned off.**
+
+## Trusted networks: available now
+
+**Settings → Admin → Security → Trusted networks** lists the networks that may reach the
+bridge. A request from anywhere else gets **403** "Your network is not trusted by this
+bridge", for pages and the API alike, and the bridge writes one log line per address
+every 10 minutes.
+
+- **An upgraded install** starts with **Any network** ticked: nothing changes.
+- **A new install** starts with the private ranges and loopback: `10.0.0.0/8`,
+  `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.0/8`, and for IPv6 `fc00::/7`, `fe80::/10`
+  and `::1`. A phone on your home Wi-Fi gets in; an address on the internet, or a VPN
+  range such as Tailscale's `100.64.0.0/10`, does not until you add it.
+- **Always allowed:** Home Assistant's sidebar panel (on the add-on, requests from the
+  ingress proxy with HA's ingress header) and `/api/live`, the health check.
+
+To change the list, untick **Any network**, enter one network (`192.168.1.0/24`) or
+address (`10.0.0.5`) per line, and **Save**. The section shows your address as the bridge
+sees it. A list that doesn't include it is refused ("saving it would shut you out"),
+unless you are in Home Assistant's sidebar panel, which always gets in.
+
+If you shut a browser out anyway, open the bridge from Home Assistant's sidebar, or from
+a machine on a trusted network, and add its network.
 
 ## Upgrading install vs new install
 
