@@ -287,7 +287,7 @@ document.addEventListener('alpine:init', () => {
       return a && a.question
         ? { on: true, question: a.question, timeout_min: a.timeout_min,
             if_no_reply: a.if_no_reply, choices, send_to }
-        : { on: false, question: 'Run this schedule now?', timeout_min: 10, if_no_reply: 'skip',
+        : { on: false, question: 'Run this schedule now?', timeout_min: 5, if_no_reply: 'skip',
             choices: [], send_to };
     },
     _askFromForm(a) {

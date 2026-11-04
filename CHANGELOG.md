@@ -40,6 +40,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   `%id%` code. Tapping a row puts the code where the cursor was (at the end if the field
   was never used) and returns to the field. On a phone the list fills the screen.
 
+### Changed
+- **Ask before continuing: 5-minute wait, must fit the window, deadline in the question.**
+  A new schedule waits 5 minutes for a reply (was 10). Saving a wait longer than the
+  schedule's window is refused with "the wait (N min) is longer than the schedule's window
+  (M min)", since a reply after the window closes cannot run the action. The window is the
+  duration (0 = the start minute only, so 1 minute), or the shortest window of a Recurring
+  windows schedule; Always has no window and takes any wait. Schedules already saved keep
+  loading and running, and an edit that leaves their wait and window alone (the on/off
+  switch) is still accepted. The question sent ends with " (reply within N min)";
+  `%sensor%` values are filled in as before.
+
 ### Fixed
 - **Questions with buttons survive a bridge restart** (franklinwh-ha-notify#6). Uses
   franklinwh-ha-notify 0.1.2, which keeps open requests in the bridge database

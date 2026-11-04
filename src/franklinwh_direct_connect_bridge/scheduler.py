@@ -1025,6 +1025,7 @@ def validate_spec(entry: dict) -> list[str]:
         errors += _condition_errors(entry.get(key) or [], label)
     errors += _action_errors(entry.get("action") or {})
     errors += _ask_errors(entry.get("ask") or {})
+    errors += _ask_window_errors(entry)
     for i, ha in enumerate(entry.get("ha_actions") or [], 1):
         errors += [f"HA action {i}: {e}" for e in _ha_action_errors(ha)]
     return errors
@@ -1113,6 +1114,33 @@ def _action_errors(action: dict) -> list[str]:
         if action.get(k) not in (None, "") and (v is None or not 0 <= v <= 100):
             out.append(f"{k} must be 0 to 100")
     return out
+
+
+def _run_window_min(entry: dict) -> int | None:
+    """How long one run of ``entry`` stays open, in minutes; None when it has no time
+    window ('always': its conditions are the window). A duration of 0 runs only in its
+    start minute, so it counts as 1; a 'window' schedule is bounded by its shortest window."""
+    tt = entry.get("trigger_type") or "daily"
+    if tt == "always":
+        return None
+    if tt == "window":
+        lens = [dur for _s, dur in _windows_for(entry)]
+        return min(lens) if lens else None
+    dur = entry.get("duration_min") or 0
+    return dur if _is_int(dur, lo=1) else 1
+
+
+def _ask_window_errors(entry: dict) -> list[str]:
+    """The Ask's wait must fit the schedule's window: a reply after the window closes
+    never runs the action. Checked on save only, so saved schedules keep running."""
+    ask = entry.get("ask")
+    if not isinstance(ask, dict) or not ask or not _is_int(ask.get("timeout_min"), lo=1):
+        return []
+    win = _run_window_min(entry)
+    if win is None or ask["timeout_min"] <= win:
+        return []
+    return [f"ask before continuing: the wait ({ask['timeout_min']} min) is longer than the "
+            f"schedule's window ({win} min); a reply after the window closes cannot run it"]
 
 
 def _ask_errors(ask: Any) -> list[str]:
@@ -3215,7 +3243,8 @@ def _ask_step(entry: dict, *, store, gateway_id: str | None,
             timeout_min * 60, getattr(gw, "label", None) or gid,
             remember=(None if occ_id is None else
                       lambda rid: store.set_occurrence_ask(occ_id, request_id=rid)),
-            schedule=entry.get("name") or "", question=question))
+            schedule=entry.get("name") or "",
+            question=f"{question} (reply within {timeout_min} min)"))
         held = _asks[dkey] = {"wkey": wkey, "fut": fut, "open": True, "decided": None,
                               "answer": None}
         if fut is not None:

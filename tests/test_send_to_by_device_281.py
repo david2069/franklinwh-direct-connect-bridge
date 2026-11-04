@@ -92,7 +92,8 @@ def c(monkeypatch):
 
 def test_the_api_saves_send_to_and_refuses_unknown_devices_and_roles(c):
     dev = "p1"
-    body = {"name": "asked", "enabled": False, "fire_at": "10:00", "gateway_id": "g1"}
+    body = {"name": "asked", "enabled": False, "fire_at": "10:00", "duration_min": 30,
+            "gateway_id": "g1"}
     ok = {**ASK, "send_to": {"type": "device", "ids": [dev]}}
     r = c.post("/api/schedules", json={**body, "ask": ok})
     assert r.status_code == 201 and r.json()["ask"] == ok

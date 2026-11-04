@@ -3409,9 +3409,11 @@ def create_app() -> FastAPI:
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
 
-    def _valid_spec(spec: dict) -> None:
-        """Refuse a schedule that cannot run as written (#198) — never quietly fix it."""
-        errors = scheduler.validate_spec(spec)
+    def _valid_spec(spec: dict, saved_as: tuple[str, ...] = ()) -> None:
+        """Refuse a schedule that cannot run as written (#198) — never quietly fix it.
+        ``saved_as``: errors the saved schedule already had under a newer rule; an edit
+        that leaves them as they were (the enable toggle) is not refused for them."""
+        errors = [e for e in scheduler.validate_spec(spec) if e not in saved_as]
         # Every schedule names its gateway (#379). There is no "default gateway" to
         # leave it on: the form starts on the active gateway.
         gid = spec.get("gateway_id") or ""
@@ -3466,7 +3468,10 @@ def create_app() -> FastAPI:
         sent = req.model_dump(exclude_unset=True, exclude={"name", "enabled"})
         spec = {**req.model_dump(exclude={"name", "enabled"}), **prior_spec, **sent}
         spec["action"] = _normalized_action(spec.get("action"))
-        _valid_spec(spec)
+        # A schedule saved before the Ask wait had to fit its window stays editable as
+        # long as the edit leaves that wait and window as they were.
+        _valid_spec(spec, saved_as=tuple(scheduler._ask_window_errors(
+            {**req.model_dump(exclude={"name", "enabled"}), **prior_spec})))
         # `enabled` merges like every other field (#168): left out, the schedule keeps its
         # state. Its model default (True) used to apply and turned a disabled one back on.
         enabled = req.enabled if "enabled" in req.model_fields_set else bool(prior.get("enabled"))
