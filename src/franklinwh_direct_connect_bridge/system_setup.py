@@ -69,14 +69,15 @@ def _solar_source(sp: dict, kind: str, kwp: float) -> str:
 
 def _generator_source(gen: dict) -> str:
     from . import generator as _gen
-    if not _gen.enabled(gen):
-        return "Generator is not turned on in the gateway's settings"
-    if not _gen.configured(gen):
-        return "Generator is turned on in the gateway's settings (no model or rating reported)"
+    head = "Read from the gateway's generator settings: "
     bits = [b for b in ((gen.get("genModel") or "").strip(),
                         f"{_num(gen.get('genRatedPower')) / 1000:g} kW" if gen.get("genRatedPower") else "")
             if b]
-    return "Generator is turned on in the gateway's settings: " + ", ".join(bits)
+    if bits:
+        return head + ", ".join((["turned on"] if _gen.enabled(gen) else []) + bits)
+    if _gen.enabled(gen):
+        return head + "turned on (no model or rating reported)"
+    return head + "not turned on, and no model or rating"
 
 
 def _derive(settings, host) -> dict:
@@ -115,7 +116,10 @@ def _derive(settings, host) -> dict:
                 pass
             try:
                 gen = c.generator() or {}
-                out["generator_input"] = bool(gen.get("genEn"))
+                # Installed, like Smart Circuits and V2L (owner, 2026-11-05): turned on,
+                # or a model, rating or run state reported.
+                from . import generator as _gen
+                out["generator_input"] = _gen.installed(gen)
                 sources["generator_input"] = _generator_source(gen)
             except Exception:                                   # noqa: BLE001
                 pass
