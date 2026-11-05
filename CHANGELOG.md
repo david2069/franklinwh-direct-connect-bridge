@@ -59,6 +59,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   tab's reading. The unit is not yet confirmed on a remote-solar site, so the size is shown
   for you to confirm.
 
+### Docs
+- **Guide: Home Assistant setup and notifications has screenshots** of the HA
+  Instances list and the add-instance form, the setup wizard's four Home Assistant checks,
+  the Push notifications switch with the Notifications check, Companion Devices and the
+  Add device form after Discover, an Auto-notify trigger's Send to list, Recent
+  notifications, a schedule's Ask before continuing step, and the Ask templates.
+
 ## [0.5.32] — 2026-11-05
 
 0.5.31 was built but never released: a defect found by its release gates (#491) went in,
