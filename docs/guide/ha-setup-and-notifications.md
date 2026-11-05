@@ -108,12 +108,16 @@ another Home Assistant.
 4. Press **Test**. It reports "token rejected" when Home Assistant refuses the token.
 5. Press **Save**. The bridge starts listening for button taps on it straight away.
 
+![The add-instance form: Name, URL (http://192.0.2.20:8123), Long-lived token and Default instance](../images/ha-setup-and-notifications/02-add-instance.png)
+
 **Disable** on an instance keeps it, and its devices, but sends nothing through it and
 stops listening on it.
 
 The token is **write-only**. The bridge never sends it back to the browser: the list
 shows **Token set** or **No token — reads will fail**, and an edit form shows the token
 field as unchanged. It is stored in the bridge's database in plain text.
+
+![Settings → Integrations → HA Instances: one instance, default, token set](../images/ha-setup-and-notifications/01-ha-instances.png)
 
 ---
 
@@ -133,11 +137,15 @@ is not shown as a failure. **Check again** runs them again.
 | Home Assistant's MQTT integration set up | Home Assistant has the MQTT integration loaded. | In Home Assistant: **Settings → Devices & services → Add integration → MQTT**. |
 | Bridge entities in Home Assistant | How many of this bridge's entities Home Assistant has, plus any left over from removed gateways. | Remove leftover devices in Home Assistant. |
 
+![The setup wizard's Home Assistant step: the publish question and the four setup checks, all passing](../images/ha-setup-and-notifications/03-wizard-ha-checks.png)
+
 ### The Notifications check
 
 For notifications, use the **Notifications check** under **Settings → Integrations →
 Notifications**. It answers "would a critical alert reach me?" See
 [Troubleshooting notifications](#troubleshooting-notifications).
+
+![Settings → Integrations → Notifications: the Push notifications switch on, and the Notifications check with every check passing](../images/ha-setup-and-notifications/04-notifications-check.png)
 
 ---
 
@@ -163,6 +171,8 @@ notifications and access from away](phone-and-remote-access.md).
 6. Press **Send test** to check that the phone receives it.
 7. Press **Save**.
 
+![The Add companion device form after Discover: the notify services, when each was last seen, and a duplicate marked](../images/ha-setup-and-notifications/06-add-device-discover.png)
+
 Each saved device has an on/off switch, an icon for its kind (phone, tablet, TV, speaker
 or other, guessed from the service name), **Edit**, **Test**, and remove. A device on an
 instance that is switched off is marked **instance disabled**, and receives nothing.
@@ -176,6 +186,8 @@ instance that is switched off is marked **instance disabled**, and receives noth
   pass proves the whole round trip: the bridge reaches Home Assistant, the phone shows
   the buttons, and the tap comes back. The last result is kept, and shown in the
   Notifications check.
+
+![Companion Devices: Phone and Tablet, each with Edit, Test and Test with buttons; Phone shows "Round trip works: you tapped Yes"](../images/ha-setup-and-notifications/05-companion-devices.png)
 
 **Broadcast** sends one message to every enabled device.
 
@@ -213,6 +225,8 @@ running force** (the two rows under the triggers), and on a schedule's **Ask bef
 continuing** step. Devices that show buttons are marked **buttons**. Targeting by user
 or role is not available yet.
 
+![Auto-notify triggers: aGate offline / online set to Chosen devices, with the device list open and Phone and Tablet ticked](../images/ha-setup-and-notifications/07-triggers-send-to.png)
+
 ### Push to your notification devices
 
 Set these under **Settings → Integrations → Notifications → Auto-notify triggers**. Each
@@ -240,6 +254,8 @@ titled "FranklinWH — scheduled dispatch …". See
 
 **Recent notifications**, on the same page, lists each delivery; the last 2,000 are
 kept.
+
+![Recent notifications: time, message, and the device each one went to](../images/ha-setup-and-notifications/08-recent-notifications.png)
 
 ### Home Assistant persistent notifications
 
@@ -390,6 +406,10 @@ tick **Ask before continuing**:
 | **If no reply** | **Skip this run** (the default) or **Continue**. |
 | **Send to** | **All enabled devices**, or **Chosen devices**. |
 
+Here it is filled in by the **Off-grid (user requested) for 30 min — ask** template, sent to the Phone only:
+
+![The schedule editor's Ask before continuing step: question, two own buttons, wait 5 minutes, skip if no reply, Send to Phone](../images/ha-setup-and-notifications/09-schedule-ask.png)
+
 The question is sent once per run, when the schedule's window opens. While it waits, the
 schedule shows **holding**, and other schedules carry on. Then:
 
@@ -433,6 +453,8 @@ sequenceDiagram
 **Templates** on the Scheduler tab has eight that ask before acting. Each watches its
 conditions all the time and asks once when they become true, waits 5 minutes, and skips
 when there is no reply. Change the thresholds, buttons and Send to as you like.
+
+![The Scheduler's Templates dialog showing the Ask templates; on a site without the Modbus client the charge and export ones are greyed](../images/ha-setup-and-notifications/10-ask-templates.png)
 
 | Template | Asks when | Buttons | Action |
 |---|---|---|---|
