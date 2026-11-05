@@ -37,3 +37,10 @@ def test_the_badges_point_at_real_workflows_and_facts():
     assert f"python-{py}%2B" in head
     assert "license-MIT" in head and "MIT License" in (ROOT / "LICENSE").read_text()
     assert "github/v/release" not in head      # no GitHub Releases: it would read "no releases"
+
+
+def test_the_installs_badge_counts_this_add_on():
+    slug = re.search(r'^slug:\s*"?([\w-]+)', (ROOT / "config.yaml").read_text(), re.M)[1]
+    head = (ROOT / "README.md").read_text().split("\n## ", 1)[0]
+    m = re.search(r"analytics\.home-assistant\.io%2Faddons\.json&query=%24%5B%27(\w+)%27%5D\.total", head)
+    assert m and m[1].split("_", 1)[1] == slug     # <repository hash>_<slug>

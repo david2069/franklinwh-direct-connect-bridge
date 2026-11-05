@@ -8,6 +8,7 @@
 [![Home Assistant add-on](https://img.shields.io/badge/Home%20Assistant-add--on-41BDF5?logo=homeassistant&logoColor=white)](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/INSTALL.md)
 [![python](https://img.shields.io/badge/python-3.11%2B-blue?logo=python&logoColor=white)](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/LICENSE)
+[![installs](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fanalytics.home-assistant.io%2Faddons.json&query=%24%5B%274a12892f_franklinwh_local_bridge%27%5D.total&label=installs&logo=homeassistant&logoColor=white&color=41BDF5)](https://analytics.home-assistant.io/)
 [![commit activity](https://img.shields.io/github/commit-activity/y/david2069/franklinwh-direct-connect-bridge)](https://github.com/david2069/franklinwh-direct-connect-bridge/commits/main)
 
 This integration is a proof-of-concept demonstration of how to integrate with a FranklinWH aGate gateway over the (undocumented, unofficial) FranklinWH Direct Connect local API.

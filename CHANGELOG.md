@@ -62,6 +62,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ### Docs
 - **README badges**: version, build, docs, add-on image, Home Assistant add-on, Python,
   licence and commit activity. A test keeps them pointing at real workflows and facts.
+- **README installs badge**: the add-on's install count from Home Assistant analytics
+  (only systems with analytics switched on are counted).
 - **Guide: Home Assistant setup and notifications has screenshots** of the HA
   Instances list and the add-instance form, the setup wizard's four Home Assistant checks,
   the Push notifications switch with the Notifications check, Companion Devices and the
