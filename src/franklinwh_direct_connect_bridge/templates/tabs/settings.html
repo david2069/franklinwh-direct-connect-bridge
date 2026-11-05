@@ -206,7 +206,7 @@
         <button type="button" class="btn btn-secondary btn-sm !py-0.5 !px-2 !text-[11px]"
                 :disabled="!apowerModel || !apowerCount" @click="fillCapacityFromModel()">Fill</button>
       </div>
-      <span class="text-[10px]" style="color:var(--text-faint)">Usable kWh — the local API can't read it. Powers the derived Stored energy / Headroom / ETA sensors. 0 = unset.</span>
+      <span class="text-[10px]" style="color:var(--text-faint)">Usable kWh: the aPower model is read from the gateway; Fill multiplies it by the count. Powers the derived Stored energy / Headroom / ETA sensors. 0 = unset.</span>
     </label>
     <label class="flex flex-col gap-1">
       <span class="text-xs" style="color:var(--text-secondary)">Max continuous power (kW) — fallback</span>

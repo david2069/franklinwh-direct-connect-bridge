@@ -3699,6 +3699,20 @@ def create_app() -> FastAPI:
                 "spec": system_setup.spec()}
 
     _install_modes: dict[str, tuple] = {}   # host -> (expires_monotonic, mode labels)
+    _install_history: dict[str, tuple] = {}  # gateway id -> (expires_monotonic, history)
+
+    def _gw_history(st, gw_id: str, s) -> dict | None:
+        """#496: stored power history for the install card, scanned at most hourly."""
+        hit = _install_history.get(gw_id)
+        if hit and hit[0] > time.monotonic():
+            return hit[1]
+        try:
+            since = int(time.time()) - int(s.metrics_retention_days) * 86400
+            hist = st.power_history(gw_id, since) if st is not None else None
+        except Exception:  # noqa: BLE001 - history is extra evidence, never required
+            hist = None
+        _install_history[gw_id] = (time.monotonic() + 3600, hist)
+        return hist
 
     def _install_cards() -> list[dict]:
         """#496: one plain-words install-profile card per gateway."""
@@ -3735,7 +3749,8 @@ def create_app() -> FastAPI:
             power = summ.get("power") or {}
             off_grid = bool(power["off_grid"]) if "off_grid" in power else None
             cards.append(install_profile.card(gw.id, gw.label or gw.serial or gw.id, info,
-                                              values, modes=modes, off_grid=off_grid))
+                                              values, modes=modes, off_grid=off_grid,
+                                              history=_gw_history(st, gw.id, s)))
         return cards
 
     @app.get("/api/install-profile")
@@ -6407,19 +6422,21 @@ def create_app() -> FastAPI:
     # -- Logs tab (in-memory ring buffer, P6) ---------------------------------
     @app.get("/api/apower-specs")
     def api_apower_specs(gateway: str = Depends(_gateway_q)):
-        """aPower model spec table (usable/rated kWh, kW) + the selected gateway's aPower COUNT,
-        so the UI can derive battery capacity = usable_kwh × count (the local API can't read the
-        model). Count comes from the cached firmware (FHP_SN array) when available."""
+        """aPower model spec table (usable/rated kWh, kW) + the selected gateway's aPower COUNT
+        and model, so the UI can derive battery capacity = usable_kwh × count. Count and model
+        come from the cached firmware (FHP_SN; PE_HW_VER via the catalogue, #496)."""
         from . import devicedb as _ddb
-        count = None
+        count, family = None, None
         try:
             gw = _gw_or_404(gateway)
             fwb = (gw.last_summary or {}).get("firmware") or {}
             fhp = fwb.get("FHP_SN")
             count = len(fhp) if isinstance(fhp, list) else None
+            fams = {(a or {}).get("family") for a in _ddb.apowers(fwb)}
+            family = fams.pop() if len(fams) == 1 else None    # mixed or unknown: not guessed
         except Exception:  # noqa: BLE001
             count = None
-        return {"models": _ddb.apower_specs(), "apower_count": count}
+        return {"models": _ddb.apower_specs(), "apower_count": count, "apower_model": family}
 
     @app.get("/api/support-info")
     def api_support_info():
@@ -6450,6 +6467,12 @@ def create_app() -> FastAPI:
 
         # Gateways (redacted): model from devicedb (SyHdVersion), firmware VERSIONS only.
         gateways = []
+        try:
+            # The install-profile card, as a few lines (#496); no names, serials or hosts.
+            from . import install_profile
+            _install = {c["gateway_id"]: install_profile.summary(c) for c in _install_cards()}
+        except Exception:  # noqa: BLE001 - the bundle must still be produced
+            _install = {}
         for i, g in enumerate(get_gateways()):
             row = {"index": i + 1, "is_mock": bool(getattr(g, "is_mock", False)),
                    "enabled": bool(getattr(g, "enabled", True))}
@@ -6471,6 +6494,9 @@ def create_app() -> FastAPI:
                                        if fw.get(k)}
                     apow = fw.get("FHP_SN") or fw.get("FPGA_VER")
                     row["apower_count"] = len(apow) if isinstance(apow, list) else None
+                    # Each aPower's model from its PE_HW_VER code (#496).
+                    row["apower_models"] = [(a or {}).get("model") or "unknown"
+                                            for a in devicedb.apowers(fw)] or None
                     row["contacted_at"] = int(_t.time())   # this read proves last contact
                 except Exception:  # noqa: BLE001
                     row["model"] = "unknown (read failed)"
@@ -6521,6 +6547,7 @@ def create_app() -> FastAPI:
             row["soc_pct"] = ls.get("soc")
             row["cloud_vpp"] = g.cloud_vpp
             row["cloud_programme"] = bool(g.cloud_programme)   # bool only (name may identify)
+            row["install"] = _install.get(g.id)
             gateways.append(row)
 
         # System setup flags (non-PII hardware/config), per gateway: there is no default
