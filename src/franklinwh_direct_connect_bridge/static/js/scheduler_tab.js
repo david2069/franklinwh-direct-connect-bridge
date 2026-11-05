@@ -1166,6 +1166,12 @@ document.addEventListener('alpine:init', () => {
       if (this._condNoValue(c)) return 'text-amber-400';
       return this.condPassed(c) ? 'text-emerald-400' : 'text-rose-400';
     },
+    /** A row whose value's feature is off, not set up or in error (#471). The row is
+     *  kept as it is; it only warns. */
+    condFeatureWarning(c) {
+      const s = c && this.sensors.find(x => x.id === c.sensor);
+      return s && s.inactive ? `${s.inactive} — this condition can't be met` : '';
+    },
     condRingClass(c) {
       if (!this.condTested(c)) return '';
       if (this._condNoValue(c)) return 'ring-1 ring-amber-400/60 rounded';
@@ -1203,7 +1209,7 @@ document.addEventListener('alpine:init', () => {
           || (x.label || '').toLowerCase().includes(t) || (x.id || '').toLowerCase().includes(t));
         if (!ss.length) continue;
         out.push({ kind: 'group', name: g.name, key: 'g:' + g.name });
-        for (const x of ss) out.push({ kind: 'sensor', id: x.id, label: x.label, key: 's:' + x.id });
+        for (const x of ss) out.push({ kind: 'sensor', id: x.id, label: x.label, inactive: x.inactive, key: 's:' + x.id });
       }
       return out;
     },

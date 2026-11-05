@@ -290,7 +290,7 @@ def test_no_reply_leaves_no_answer(st, notifier):
 def test_the_answer_is_a_sensor_in_the_picker(c):
     sensors = c.get("/api/schedules").json()["sensors"]
     assert {"id": "ask.answer", "label": "Ask: answer (the button tapped, or the reply typed)",
-            "group": "Ask before continuing"} in sensors
+            "group": "Ask before continuing", "inactive": None} in sensors
     assert "ask.answer" in sch.known_sensor_ids()
 
 

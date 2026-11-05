@@ -1872,6 +1872,116 @@ ASK_SENSORS = [
 ]
 
 
+# ── Feature states (#471) ────────────────────────────────────────────────────
+#: The features a value or template can depend on. HA entities depend on their
+#: instance, keyed ``ha:<instance>`` on top of these.
+FEATURES = ("gateway", "modbus", "solar_forecast", "spot_price", "feed_in_price",
+            "tariff", "utility", "constants", "ask")
+
+_SETUP_SOLAR = "set your location in Settings → Integrations → Location & Solar"
+_SETUP_PRICE = "set it in Settings → Integrations → Dynamic price"
+_SETUP_TARIFF = "give the meter a tariff in Settings → Sites & Billing"
+_SETUP_UTILITY = "give the meter a utility in Settings → Sites & Billing"
+
+
+def sensor_feature(sid: str) -> str:
+    """The feature a value comes from. Values computed from the gateway's own
+    readings (derived battery, system setup) are ``gateway``."""
+    if sid.startswith("ha:"):
+        return "ha:" + sid.split(":")[1]
+    if sid in ("tariff.spot_price", "tariff.feed_in_price"):
+        return sid.split(".", 1)[1]
+    if sid.startswith(("weather.", "solar_forecast.")):
+        return "solar_forecast"
+    if sid.startswith("service."):
+        return "utility"
+    if sid.startswith(("tariff.", "demand.", "energy.", "bonus.", "fixed.")):
+        return "tariff"
+    if sid.startswith("const."):
+        return "constants"
+    if sid.startswith("ask."):
+        return "ask"
+    return "gateway"
+
+
+def _feature(state: str = "active", reason: str = "") -> dict[str, str]:
+    return {"state": state, "reason": reason}
+
+
+def feature_states(settings, store, gateway_id=None) -> dict[str, dict[str, str]]:
+    """Each feature's state — active, off, not_set_up or error — with a short reason.
+    Configuration only: it never fetches, so a feature that is set up but has no
+    reading right now is still active (its values show "no value")."""
+    from . import battery_control
+    out = {k: _feature() for k in FEATURES}
+    ok, why = battery_control.available()
+    if not ok:
+        out["modbus"] = (_feature("error", why) if "not installed" in why
+                         else _feature("off", "Modbus client off"))
+    if getattr(settings, "pv_latitude", None) is None or getattr(settings, "pv_longitude", None) is None:
+        out["solar_forecast"] = _feature("not_set_up", "solar forecast — " + _SETUP_SOLAR)
+    try:
+        instances = {i["id"]: i for i in (store.ha_instances() if store is not None else [])}
+    except Exception:                                           # noqa: BLE001
+        instances = {}
+    for iid, inst in instances.items():
+        out["ha:" + iid] = (_feature() if inst.get("enabled")
+                            else _feature("off", f"Home Assistant '{inst.get('name') or iid}' off"))
+
+    def _entity(eid: str) -> dict[str, str]:
+        if not eid.startswith("ha:"):
+            return _feature()
+        return out.get(sensor_feature(eid)) or _feature("not_set_up", "its Home Assistant instance is gone")
+
+    price = (getattr(settings, "tariff_price_entity", "") or "").strip()
+    if price:
+        out["spot_price"] = _entity(price)
+    elif not (getattr(settings, "nem_region", "") or ""):
+        out["spot_price"] = _feature("not_set_up", "wholesale price — " + _SETUP_PRICE)
+    feed = (getattr(settings, "tariff_feedin_entity", "") or "").strip()
+    out["feed_in_price"] = (_entity(feed) if feed
+                            else _feature("not_set_up", "feed-in price — " + _SETUP_PRICE))
+    meter = _meter_for_gateway(store, gateway_id) or {}
+    if not meter.get("tariff_id"):
+        out["tariff"] = _feature("not_set_up", "tariff — " + _SETUP_TARIFF)
+    if not meter.get("utility_id"):
+        out["utility"] = _feature("not_set_up", "utility — " + _SETUP_UTILITY)
+    return out
+
+
+def _inactive(feature: str, states: dict) -> str | None:
+    f = states.get(feature) or _feature("not_set_up", "its Home Assistant instance is gone")
+    if f["state"] == "active":
+        return None
+    word = {"off": "inactive", "not_set_up": "not set up"}.get(f["state"], f["state"])
+    return f"{word}: {f['reason']}"
+
+
+def sensor_inactive(sid: str, states: dict) -> str | None:
+    """Why a value can't be picked, e.g. ``inactive: Modbus client off``; None when its
+    feature works (even with no reading right now)."""
+    return _inactive(sensor_feature(sid), states)
+
+
+def template_features(preset: dict) -> list[str]:
+    """The features a template needs: Modbus when it says so, plus its conditions'."""
+    need = ["modbus"] if preset.get("requires") == "modbus" else []
+    for sid in _sensor_ids_in((preset.get("spec") or {}).get("conditions") or []):
+        f = sensor_feature(sid)
+        if f not in need and f not in ("gateway", "constants", "ask"):
+            need.append(f)
+    return need
+
+
+def template_inactive(preset: dict, states: dict) -> str | None:
+    """The first reason a template can't run, or None."""
+    for f in template_features(preset):
+        why = _inactive(f, states)
+        if why:
+            return why
+    return None
+
+
 def _in_window(win: Any, now: dt.datetime) -> bool:
     """Is `now` inside a tariff window {months, days, start, end}? Empty months/days
     = all. Same-day range or overnight wrap (start > end). Ported from the Modbus
