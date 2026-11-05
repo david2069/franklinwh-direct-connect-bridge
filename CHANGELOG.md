@@ -11,6 +11,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+- **Scheduler pickers grey out values and templates that can't work** (#471). Every value
+  knows the feature it comes from (gateway, Modbus client, solar forecast, wholesale or
+  feed-in price, tariff, utility, a Home Assistant instance). When that feature is off, not
+  set up or in error, the condition picker and the `{x}` picker show the value greyed and
+  not selectable, with the reason, for example "(not set up: solar forecast — set your
+  location in Settings → Integrations → Location & Solar)". A template whose feature isn't
+  working is greyed the same way and its **Use** button is disabled. A value whose feature
+  works but has no reading right now stays selectable and shows "no value". Existing
+  schedules are not changed: a condition row whose feature is now off shows a warning that
+  it can't be met. Tariff and utility are checked against the default meter.
+
 ## [0.5.32] — 2026-11-05
 
 0.5.31 was built but never released: a defect found by its release gates (#491) went in,

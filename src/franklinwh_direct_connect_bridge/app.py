@@ -3740,6 +3740,7 @@ def create_app() -> FastAPI:
         and why, so the UI never offers a control that does nothing."""
         from . import battery_control
         _force_ok, _force_why = battery_control.available()
+        _features = scheduler.feature_states(get_settings(), _ha_store())
         _scheds = _ha_store().schedules()
         for _e in _scheds:
             _now = _site_now(_e.get("gateway_id"))
@@ -3754,8 +3755,9 @@ def create_app() -> FastAPI:
             "force_reason": _force_why,
             "trigger_types": list(scheduler.TRIGGER_TYPES),
             "cron_available": scheduler.cron_available(),
-            "sensors": (
-                [{"id": i, "label": l, "group": "Gateway"}
+            "sensors": [
+                {**row, "inactive": scheduler.sensor_inactive(row["id"], _features)}
+                for row in [{"id": i, "label": l, "group": "Gateway"}
                  for i, l in scheduler.SENSORS]
                 + [{"id": i, "label": l, "group": "Weather & Solar"}
                    for i, l in scheduler.SOLAR_SENSORS]
@@ -3782,7 +3784,7 @@ def create_app() -> FastAPI:
                 + [{"id": i, "label": l, "group": "Ask before continuing"}
                    for i, l in scheduler.ASK_SENSORS]
                 + scheduler.ha_sensor_options(_ha_store())
-            ),
+            ],
             "gateways": [{"id": g.id, "name": g.label or g.serial or g.id,
                           "host": g.active_host or g.configured_host}
                          for g in get_gateways()],
@@ -3998,8 +4000,11 @@ def create_app() -> FastAPI:
     @app.get("/api/schedules/presets")
     def api_schedule_presets():
         """Built-in schedule templates for the Load Preset dialog. Every action is
-        one the local channel can actually do — no force-charge preset."""
-        return {"presets": scheduler.PRESETS}
+        one the local channel can actually do — no force-charge preset. Each says why it
+        can't run right now (#471), or None."""
+        _features = scheduler.feature_states(get_settings(), _ha_store())
+        return {"presets": [{**p, "inactive": scheduler.template_inactive(p, _features)}
+                            for p in scheduler.PRESETS]}
 
     @app.get("/api/schedules/export")
     def api_schedules_export(ids: str | None = Query(None), fmt: str = Query("native")):
