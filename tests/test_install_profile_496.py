@@ -244,3 +244,21 @@ def test_one_shared_card_in_wizard_and_settings():
     assert 'x-text="k"' not in st[st.index("sub==='setup'"):st.index("sub==='general'")]
     confirm = wiz[wiz.index("step === 'confirm'"):wiz.index("step === 'publish'")]
     assert 'x-text="k"' not in confirm
+
+
+# ── accessories read as installed, like Smart Circuits (owner, 2026-11-05) ───
+def test_generator_and_v2l_read_as_installed():
+    card = ip.card("gw1", "Home", INFO, _values(generator_input=True, v2l=True), modes=[],
+                   off_grid=False)
+    facts = {f["key"]: f for f in card["facts"]}
+    assert facts["generator"]["value"] == "Installed"
+    assert facts["v2l"]["value"] == "Installed"
+    none = {f["key"]: f for f in ip.card("gw1", "Home", INFO, _values(), modes=[],
+                                         off_grid=False)["facts"]}
+    assert none["generator"]["value"] == "Not installed"
+    assert none["v2l"]["value"] == "Not installed"
+
+
+def test_a_generator_with_a_model_counts_as_installed(monkeypatch):
+    _fake(monkeypatch, gen={"genEn": 0, "genModel": "G-7"})
+    assert ss._derive(object(), "h")["generator_input"] is True

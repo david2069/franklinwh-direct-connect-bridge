@@ -53,14 +53,14 @@ def _facts(info: dict, v: dict, modes: list[str], off_grid: bool | None) -> list
          "source": "Read from the gateway's list of modes"},
         {"key": "solar", "label": "Solar", "value": solar, "source": solar_src},
         {"key": "generator", "label": "Generator",
-         "value": "Turned on" if v.get("generator_input") else "Not turned on",
+         "value": "Installed" if v.get("generator_input") else "Not installed",
          "source": gen_src},
         {"key": "smart_circuits", "label": "Smart Circuits (load shedding)",
          "value": ((_plural(n_sc, "circuit") if isinstance(n_sc, int) and n_sc else "Installed")
                    if v.get("load_shedding") else "None"),
          "source": sc_src},
         {"key": "v2l", "label": "Vehicle-to-Load (V2L)",
-         "value": "Turned on" if v.get("v2l") else "Not turned on",
+         "value": "Installed" if v.get("v2l") else "Not installed",
          "source": src.get("v2l") or "Not read yet: the gateway hasn't answered"},
     ]
 

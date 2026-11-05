@@ -20,6 +20,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   the battery backs up (whole home or a backup-loads panel), solar wired into an aPower S,
   and an optional battery name. Confirming never stops a value being re-read; if it later
   reads differently it asks again. Two new `system.*` scheduler values: aPower model and V2L.
+  Generator, Smart Circuits and V2L read as **Installed** or **Not installed**; a generator
+  counts as installed when it is turned on or reports a model, rating or run state.
 - **Scheduler pickers grey out values and templates that can't work** (#471). Every value
   knows the feature it comes from (gateway, Modbus client, solar forecast, wholesale or
   feed-in price, tariff, utility, a Home Assistant instance). When that feature is off, not
