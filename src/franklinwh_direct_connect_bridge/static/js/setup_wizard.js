@@ -41,7 +41,6 @@ window.setupWizard = function setupWizard() {
     // ONE profile per gateway. Solar, generator and backup wiring are per-gateway facts:
     // a site can have an aGate with 6.6 kW of PV and another with none, and showing a
     // single profile at the end of setup silently claims they are the same.
-    profiles: [],
 
     async init() {
       // Anything in the app can ask for the wizard — the dashboard banner does. A plain
@@ -144,7 +143,6 @@ window.setupWizard = function setupWizard() {
       if (step === 'hardware') this.intent = this.intent || 'hardware';
       if (step === 'find') { this.loadScanDefault().then(() => this.scan()); }
       if (step === 'publish') this.loadHaChecks();
-      if (step === 'confirm') this.loadProfiles();
     },
 
     back() {
@@ -337,37 +335,6 @@ window.setupWizard = function setupWizard() {
 
     publishNo() {
       this.ha.msg = 'Left off. You can turn publishing on later from the MQTT tab.';
-    },
-
-    async loadProfiles() {
-      this.profiles = [];
-      try {
-        const r = await fetch('api/gateways');
-        const gws = r.ok ? await r.json() : [];
-        for (const g of (Array.isArray(gws) ? gws : [])) {
-          if (!g || !g.id) continue;
-          let values = {}, derived = [];
-          try {
-            const pr = await fetch(`api/setup?gateway=${encodeURIComponent(g.id)}`);
-            if (pr.ok) {
-              const s = await pr.json();
-              const step = (s.steps || []).find(x => x.id === 'profile');
-              values = (step && step.values) || {};
-              derived = (step && step.derived) || [];
-            }
-          } catch (e) { /* one unreadable gateway must not hide the others */ }
-          this.profiles.push({
-            id: g.id,
-            label: g.label || g.id,
-            is_mock: !!g.is_mock,
-            values,
-            derived,
-            // Stated separately because it is the question people ask of a multi-gateway
-            // site: which of these has PV on it?
-            solar: !!(values.solar_kwp || values.solar_type),
-          });
-        }
-      } catch (e) { /* the step explains an empty list itself */ }
     },
 
     async finish(state) {

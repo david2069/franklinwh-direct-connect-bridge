@@ -1862,6 +1862,8 @@ SYSTEM_SENSORS = [
     ("system.load_shedding", "System: load shedding"),
     ("system.non_backup_loads", "System: non-backup loads panel"),
     ("system.battery_label", "System: battery label"),
+    ("system.apower_model", "System: aPower model"),
+    ("system.v2l", "System: V2L (car switch) on"),
 ]
 
 #: The answer to this run's "Ask before continuing" question (#374 P4): the label of the

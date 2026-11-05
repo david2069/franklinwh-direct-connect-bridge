@@ -275,7 +275,7 @@ def _profile_step(values: dict[str, Any]) -> dict[str, Any]:
         "title": "Confirm what's installed",
         "required": True,
         "satisfied": bool(derived),
-        "detail": ("Read from the gateway — change anything that is wrong."
+        "detail": ("Check what each gateway reports, and answer what it can't tell."
                    if derived else "Could not read the install profile from the gateway."),
         "values": facts,
         "derived": sorted(derived),
@@ -300,7 +300,8 @@ def capability_tabs(values: dict[str, Any], *, generator_installed: bool) -> dic
     it says nothing about whether a given user may see it.
     """
     facts = {k: v for k, v in (values or {}).items() if not k.startswith("_")}
-    solar = bool(facts.get("solar_kwp") or facts.get("solar_type"))
+    # "none" is a string, so it is compared, not tested for truth (#496).
+    solar = bool(facts.get("solar_kwp")) or facts.get("solar_type") not in (None, "", "none")
     return {
         "generator": bool(generator_installed or facts.get("generator_input")),
         "solar": solar,

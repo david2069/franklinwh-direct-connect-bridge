@@ -42,7 +42,8 @@ def test_snapshot_keys(tmp_path):
     assert snap["system.solar_type"] == "none" and snap["system.grid_forming"] is True
     assert set(snap) == {f"system.{k}" for k in
                          ("solar_type", "solar_kwp", "generator_input", "grid_forming",
-                          "whole_home_backup", "load_shedding", "non_backup_loads", "battery_label")}
+                          "whole_home_backup", "load_shedding", "non_backup_loads", "battery_label",
+                          "apower_model", "v2l")}
 
 
 def test_api_get_put_and_sensor_group(tmp_path, monkeypatch):

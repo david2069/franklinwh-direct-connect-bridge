@@ -17,6 +17,8 @@ import json
 import time as _time
 from typing import Any
 
+from .devicedb import APOWER_SPECS
+
 _KEY_PREFIX = "system_setup:"
 _DERIVE_TTL = 3600.0
 _derive_cache: dict[str, tuple] = {}   # host -> (expires_monotonic, derived dict)
@@ -32,6 +34,10 @@ _FIELDS: dict[str, dict] = {
     "load_shedding":     {"default": False,          "derived": True,  "kind": "bool"},
     "non_backup_loads":  {"default": False,          "derived": False, "kind": "bool"},
     "battery_label":     {"default": "FranklinWH",   "derived": False, "kind": "text"},
+    # #496: the aPower model can't be read locally (devicedb.APOWER_SPECS), so it is asked.
+    "apower_model":      {"default": "",             "derived": False, "kind": "enum",
+                          "options": ["", *APOWER_SPECS]},
+    "v2l":               {"default": False,          "derived": True,  "kind": "bool"},
 }
 
 
@@ -48,9 +54,35 @@ def spec() -> dict:
             for k, v in _FIELDS.items()}
 
 
+def _solar_source(sp: dict, kind: str, kwp: float) -> str:
+    """Where the solar answer came from, in words (#496)."""
+    from .solar import _kw
+    if kind == "ac":
+        ports = [f"PV port {n} ({_kw(sp.get(f'PV{n}RatedPower')) or 0:g} kW)"
+                 for n in (1, 2) if sp.get(f"installPV{n}port")]
+        return ("Read from the gateway's PV settings: " + ", ".join(ports) if ports
+                else f"Read from the gateway's PV settings: rated {kwp:g} kW")
+    if kind == "remote":
+        return f"Read from the gateway's PV settings: remote solar on, rated {kwp:g} kW"
+    return "The gateway's PV settings show no solar"
+
+
+def _generator_source(gen: dict) -> str:
+    from . import generator as _gen
+    if not _gen.enabled(gen):
+        return "Generator is not turned on in the gateway's settings"
+    if not _gen.configured(gen):
+        return "Generator is turned on in the gateway's settings (no model or rating reported)"
+    bits = [b for b in ((gen.get("genModel") or "").strip(),
+                        f"{_num(gen.get('genRatedPower')) / 1000:g} kW" if gen.get("genRatedPower") else "")
+            if b]
+    return "Generator is turned on in the gateway's settings: " + ", ".join(bits)
+
+
 def _derive(settings, host) -> dict:
     """Best-effort derive from the aGate (solar 1903 + generator 1901), cached ~1 h.
-    Returns {} when there's no host or the reads fail (stale cache re-used if present)."""
+    Returns {} when there's no host or the reads fail (stale cache re-used if present).
+    ``_sources`` says, per item, where the value came from (#496)."""
     if not host:
         return {}
     now = _time.monotonic()
@@ -58,6 +90,7 @@ def _derive(settings, host) -> dict:
     if hit and hit[0] > now:
         return hit[1]
     out: dict[str, Any] = {}
+    sources: dict[str, str] = {}
     try:
         from .client import _client
         with _client(settings, host) as c:
@@ -66,7 +99,8 @@ def _derive(settings, host) -> dict:
                 sp = c.solar_pv() or {}
                 kwp = round((_num(sp.get("PV1RatedPower")) + _num(sp.get("PV2RatedPower"))) * 100 / 1000.0, 2)
                 if kwp <= 0 and _num(sp.get("solarRatedPower")) > 0:
-                    kwp = round(_num(sp.get("solarRatedPower")) / 1000.0, 2)
+                    # 100 W steps, as the Solar tab reads it (solar._kw) — #496.
+                    kwp = round(_num(sp.get("solarRatedPower")) * 100 / 1000.0, 2)
                 out["solar_kwp"] = kwp
                 if sp.get("installPV1port") or sp.get("installPV2port"):
                     out["solar_type"] = "ac"
@@ -76,11 +110,13 @@ def _derive(settings, host) -> dict:
                     out["solar_type"] = "ac"
                 else:
                     out["solar_type"] = "none"
+                sources["solar"] = _solar_source(sp, out["solar_type"], kwp)
             except Exception:                                   # noqa: BLE001
                 pass
             try:
                 gen = c.generator() or {}
                 out["generator_input"] = bool(gen.get("genEn"))
+                sources["generator_input"] = _generator_source(gen)
             except Exception:                                   # noqa: BLE001
                 pass
             try:
@@ -91,10 +127,19 @@ def _derive(settings, host) -> dict:
                 model = devicedb.describe(manifest)
                 view = _circuits.build(cfg, None, expected=model.get("expected_circuits"))
                 out["load_shedding"] = bool(view.get("installed"))
+                n = view.get("count") or 0
+                out["_circuit_count"] = n
+                sources["load_shedding"] = (f"Read from the gateway's Smart Circuits: {n} found"
+                                            if n else "The gateway reports no Smart Circuits")
+                out["v2l"] = bool(_circuits.carsw(None, cfg).get("enabled"))
+                sources["v2l"] = ("V2L (car switch) is turned on in the gateway's Smart Circuits "
+                                  "settings" if out["v2l"] else
+                                  "V2L (car switch) is not turned on in the gateway's settings")
             except Exception:                                   # noqa: BLE001
                 pass
     except Exception:                                           # noqa: BLE001
         return (hit[1] if hit else {})                          # keep stale rather than nothing
+    out["_sources"] = sources
     _derive_cache[host] = (now + _DERIVE_TTL, out)
     return out
 
@@ -131,7 +176,29 @@ def values(store, settings=None, gateway_id=None, host=None) -> dict:
             out[k] = spc["default"]
     out["_derived"] = {k: derived[k] for k in _FIELDS if k in derived}
     out["_overridden"] = {k: (k in ov and ov[k] is not None) for k in _FIELDS}
+    out["_sources"] = dict(derived.get("_sources") or {})
+    out["_circuit_count"] = derived.get("_circuit_count")
+    out["_confirmed"] = dict(ov.get(_CONFIRMED) or {})
     return out
+
+
+#: Inside the overrides blob: what the user confirmed, as {item: the value they saw}.
+#: Kept apart from the overrides, so confirming never stops a value being re-read (#496).
+_CONFIRMED = "_confirmed"
+
+
+def confirm(store, gateway_id, keys, shown: dict) -> dict:
+    """Record that the user confirmed these items as shown (``shown`` = item → value text)."""
+    if store is None:
+        return {}
+    ov = _overrides(store, gateway_id)
+    done = dict(ov.get(_CONFIRMED) or {})
+    for k in keys or []:
+        if k in shown:
+            done[k] = shown[k]
+    ov[_CONFIRMED] = done
+    store.set_config(_KEY_PREFIX + _gw_key(gateway_id), json.dumps(ov))
+    return done
 
 
 def update(store, gateway_id, updates: dict) -> dict:

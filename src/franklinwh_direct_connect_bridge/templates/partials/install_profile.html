@@ -1,0 +1,74 @@
+<!-- What's installed, in plain words (#496): one card per gateway. Facts the gateway
+     reports say where they came from and wait for Confirm; only what it can't tell is
+     asked. Shared by the setup wizard's Confirm step and Settings → Setup. -->
+<div x-data="installProfile()" x-init="load()" class="space-y-3" data-testid="install-profile">
+  <p x-show="loading" class="text-xs" style="color:var(--text-faint)">Reading the gateways…</p>
+  <p x-show="error" class="text-xs" style="color:#fca5a5" x-text="error"></p>
+  <p x-show="!loading && !error && !cards.length" class="text-xs" style="color:var(--text-faint)">
+    No gateways to report on yet.</p>
+
+  <template x-for="card in cards" :key="card.gateway_id">
+    <div class="rounded-lg border p-3 space-y-3" style="border-color:var(--border)"
+         data-testid="install-card">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="text-sm font-semibold" style="color:var(--text-primary)" x-text="card.name"></span>
+        <span class="text-[11px]" style="color:var(--text-faint)"
+              x-text="unconfirmed(card) ? unconfirmed(card) + ' to check' : 'All checked'"></span>
+        <button class="btn btn-secondary btn-sm ml-auto"
+                x-show="card.facts.some(f => !f.confirmed && f.value !== &quot;Couldn't be read&quot;)"
+                @click="confirmAll(card)">Confirm all</button>
+      </div>
+
+      <!-- What the gateway reports -->
+      <div class="space-y-1.5">
+        <div class="text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)">
+          What your gateway reports</div>
+        <template x-for="f in card.facts" :key="f.key">
+          <div class="flex flex-wrap items-start gap-2 rounded px-2 py-1.5"
+               :style="f.confirmed ? { background: 'var(--surface-2)' }
+                                   : { background: 'var(--surface-2)', boxShadow: 'inset 3px 0 0 #f59e0b' }">
+            <div class="min-w-0 flex-1">
+              <div class="text-xs" style="color:var(--text-secondary)" x-text="f.label"></div>
+              <div class="text-sm" style="color:var(--text-primary)" x-text="f.value"></div>
+              <div class="text-[11px]" style="color:var(--text-faint)" x-text="f.source"></div>
+            </div>
+            <span x-show="f.confirmed" class="chip ok" style="font-size:.6rem">Confirmed</span>
+            <button x-show="!f.confirmed && f.value !== &quot;Couldn't be read&quot;"
+                    class="btn btn-secondary btn-sm" @click="confirm(card, [f.key])">Confirm</button>
+          </div>
+        </template>
+        <p class="text-[11px]" style="color:var(--text-faint)">
+          Something wrong? Change it in Settings → Gateways → System Setup.</p>
+      </div>
+
+      <!-- What only you can tell -->
+      <div class="space-y-1.5">
+        <div class="text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)">
+          What the gateway can't tell</div>
+        <template x-for="q in card.questions" :key="q.key">
+          <div class="rounded px-2 py-1.5 space-y-1"
+               :style="q.answered || q.key === 'battery_label'
+                 ? { background: 'var(--surface-2)' }
+                 : { background: 'var(--surface-2)', boxShadow: 'inset 3px 0 0 #f59e0b' }">
+            <div class="text-xs" style="color:var(--text-primary)" x-text="q.label"></div>
+            <div class="text-[11px]" style="color:var(--text-faint)" x-text="q.help"></div>
+            <div x-show="q.options.length" class="flex flex-wrap gap-1.5">
+              <template x-for="o in q.options" :key="String(o.value)">
+                <button type="button" class="btn btn-sm"
+                        :class="q.answered && q.value === o.value ? 'btn-primary' : 'btn-secondary'"
+                        @click="answer(card, q, o.value)" x-text="o.label"></button>
+              </template>
+            </div>
+            <input x-show="!q.options.length" type="text" class="form-control form-control-sm"
+                   style="max-width:16rem" :value="q.value"
+                   @change="answer(card, q, $event.target.value)">
+          </div>
+        </template>
+      </div>
+
+      <p x-show="msg[card.gateway_id]" class="text-xs"
+         :style="(msg[card.gateway_id] || '').startsWith('Not saved') ? { color: '#fca5a5' } : { color: '#86efac' }"
+         x-text="msg[card.gateway_id]"></p>
+    </div>
+  </template>
+</div>

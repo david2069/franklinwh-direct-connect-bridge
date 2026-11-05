@@ -336,7 +336,7 @@ def test_timezone_is_required_for_completion():
 
 def test_mock_creation_loops_over_the_declared_agate_count():
     js = _wizard_js()
-    body = js[js.index("async createMock()"):js.index("async loadProfiles()")]
+    body = js[js.index("async createMock()"):js.index("async finish(")]
     assert "counts.agates" in body
     assert "for (" in body                       # N gateways, not one
     assert "mock_units" in body and "counts.apowers" in body
@@ -345,7 +345,7 @@ def test_mock_creation_loops_over_the_declared_agate_count():
 def test_multiple_mocks_are_numbered():
     """Several gateways all called "Mock aGate" cannot be told apart in the switcher."""
     body = _wizard_js()
-    body = body[body.index("async createMock()"):body.index("async loadProfiles()")]
+    body = body[body.index("async createMock()"):body.index("async finish(")]
     assert "${base} ${i}" in body
 
 
@@ -384,24 +384,23 @@ def test_mocks_are_named_but_never_counted_as_agates():
 # are all alike.
 
 def test_confirm_step_reads_a_profile_for_every_gateway():
-    js = _wizard_js()
-    body = js[js.index("async loadProfiles()"):js.index("async finish(")]
-    assert "api/gateways" in body                       # enumerate them
-    assert "api/setup?gateway=" in body                  # scoped read per gateway
-    assert "for (const g of" in body
-    # one unreadable gateway must not take the others down with it
-    assert body.count("catch") >= 2
+    """#496: the Confirm step is the shared install-profile card — one per gateway."""
+    root = __import__("pathlib").Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
+    html = (root / "templates/partials/setup_wizard.html").read_text()
+    confirm = html[html.index("step === 'confirm'"):html.index("step === 'done'")]
+    assert "partials/install_profile.html" in confirm
+    part = (root / "templates/partials/install_profile.html").read_text()
+    assert 'x-for="card in cards"' in part               # a card each, not one merged view
+    js = (root / "static/js/install_profile.js").read_text()
+    assert "api/install-profile" in js
 
 
 def test_confirm_step_states_solar_per_gateway():
-    js = _wizard_js()
-    body = js[js.index("async loadProfiles()"):js.index("async finish(")]
-    assert "solar_kwp" in body and "solar_type" in body
-    html = (__import__("pathlib").Path(__file__).resolve().parents[1]
-            / "src/franklinwh_direct_connect_bridge/templates/partials/setup_wizard.html").read_text()
-    confirm = html[html.index("step === 'confirm'"):html.index("step === 'done'")]
-    assert "x-for=\"p in profiles\"" in confirm          # a card each, not one merged view
-    assert "No solar reported" in confirm                # absence is stated, not left blank
+    from franklinwh_direct_connect_bridge import install_profile, system_setup
+    v = {k: f["default"] for k, f in system_setup._FIELDS.items()}
+    card = install_profile.card("g", "G", {}, v, modes=[], off_grid=None)
+    solar = next(f for f in card["facts"] if f["key"] == "solar")
+    assert solar["value"] == "No solar"                   # absence is stated, not left blank
 
 
 # --- never prompt a working bridge -----------------------------------------------------------
@@ -444,7 +443,7 @@ def test_cloud_step_sits_between_finding_hardware_and_confirming():
 
 def test_cloud_credentials_are_tested_before_they_are_trusted():
     js = _wizard_js()
-    body = js[js.index("async testCloud()"):js.index("async loadProfiles()")]
+    body = js[js.index("async testCloud()"):js.index("async finish(")]
     assert "api/setup/cloud" in body
     # the password is dropped from the page once the server has it
     assert "this.cloud.password = ''" in body
@@ -527,7 +526,7 @@ def test_publishing_is_a_question_not_a_default():
     # Only the explicit Yes calls the enabling endpoint.
     body = js[js.index("async publishYes()"):js.index("publishNo()")]
     assert "api/mqtt/supervisor/enable" in body
-    no = js[js.index("publishNo()"):js.index("async loadProfiles()")]
+    no = js[js.index("publishNo()"):js.index("async finish(")]
     assert "fetch(" not in no                    # "No" changes nothing at all
 
 
