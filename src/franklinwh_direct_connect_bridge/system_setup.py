@@ -34,8 +34,8 @@ _FIELDS: dict[str, dict] = {
     "load_shedding":     {"default": False,          "derived": True,  "kind": "bool"},
     "non_backup_loads":  {"default": False,          "derived": False, "kind": "bool"},
     "battery_label":     {"default": "FranklinWH",   "derived": False, "kind": "text"},
-    # #496: the aPower model can't be read locally (devicedb.APOWER_SPECS), so it is asked.
-    "apower_model":      {"default": "",             "derived": False, "kind": "enum",
+    # #496: the aPower family, read from PE_HW_VER via the catalogue; asked only when unknown.
+    "apower_model":      {"default": "",             "derived": True,  "kind": "enum",
                           "options": ["", *APOWER_SPECS]},
     "v2l":               {"default": False,          "derived": True,  "kind": "bool"},
 }
@@ -97,6 +97,19 @@ def _derive(settings, host) -> dict:
         with _client(settings, host) as c:
             manifest = c.login()
             try:
+                from . import devicedb
+                units = devicedb.apowers(manifest)
+                if units:
+                    out["_apower_models"] = [u["model"] if u else None for u in units]
+                    fams = {u["family"] if u else None for u in units}
+                    if len(fams) == 1 and None not in fams:
+                        out["apower_model"] = fams.pop()
+                    codes = ", ".join(str(c) for c in manifest.get("PE_HW_VER"))
+                    sources["apower"] = ("Read from the gateway's list of aPowers "
+                                         f"(model code {codes})")
+            except Exception:                                   # noqa: BLE001
+                pass
+            try:
                 sp = c.solar_pv() or {}
                 kwp = round((_num(sp.get("PV1RatedPower")) + _num(sp.get("PV2RatedPower"))) * 100 / 1000.0, 2)
                 if kwp <= 0 and _num(sp.get("solarRatedPower")) > 0:
@@ -128,6 +141,10 @@ def _derive(settings, host) -> dict:
                 # smart-circuit registers). Present when smart circuits are detected.
                 from . import circuits as _circuits, devicedb
                 cfg = c.smart_circuits() or {}
+                try:
+                    meter = c.smart_circuit_meter() or {}
+                except Exception:                               # noqa: BLE001
+                    meter = {}
                 model = devicedb.describe(manifest)
                 view = _circuits.build(cfg, None, expected=model.get("expected_circuits"))
                 out["load_shedding"] = bool(view.get("installed"))
@@ -135,10 +152,19 @@ def _derive(settings, host) -> dict:
                 out["_circuit_count"] = n
                 sources["load_shedding"] = (f"Read from the gateway's Smart Circuits: {n} found"
                                             if n else "The gateway reports no Smart Circuits")
-                out["v2l"] = bool(_circuits.carsw(None, cfg).get("enabled"))
-                sources["v2l"] = ("V2L (car switch) is turned on in the gateway's Smart Circuits "
-                                  "settings" if out["v2l"] else
-                                  "V2L (car switch) is not turned on in the gateway's settings")
+                car = _circuits.carsw(meter, cfg)
+                used = sum(v for v in (car.get("export_lifetime_kwh"), car.get("import_lifetime_kwh"))
+                           if isinstance(v, (int, float)))
+                # Installed when turned on, or when it has ever carried energy (#496).
+                out["v2l"] = bool(car.get("enabled")) or used > 0
+                if used > 0:
+                    sources["v2l"] = (f"Read from the gateway's V2L meter: {used:g} kWh through "
+                                      "the car switch")
+                else:
+                    sources["v2l"] = ("V2L (car switch) is turned on in the gateway's Smart "
+                                      "Circuits settings" if out["v2l"] else
+                                      "V2L (car switch) is not turned on in the gateway's "
+                                      "settings, and its meter shows no energy")
             except Exception:                                   # noqa: BLE001
                 pass
     except Exception:                                           # noqa: BLE001
@@ -182,6 +208,7 @@ def values(store, settings=None, gateway_id=None, host=None) -> dict:
     out["_overridden"] = {k: (k in ov and ov[k] is not None) for k in _FIELDS}
     out["_sources"] = dict(derived.get("_sources") or {})
     out["_circuit_count"] = derived.get("_circuit_count")
+    out["_apower_models"] = derived.get("_apower_models")
     out["_confirmed"] = dict(ov.get(_CONFIRMED) or {})
     return out
 

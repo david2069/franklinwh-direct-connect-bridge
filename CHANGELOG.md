@@ -16,9 +16,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   **Settings → Setup** now show one card per gateway. Everything the gateway reports
   (model, number of aPowers, grid connection, operating modes, solar and its size,
   generator, Smart Circuits, V2L) is shown in plain words with where it was read from, and
-  waits for **Confirm**. Only what the gateway can't tell is asked: the aPower model, what
-  the battery backs up (whole home or a backup-loads panel), solar wired into an aPower S,
-  and an optional battery name. Confirming never stops a value being re-read; if it later
+  waits for **Confirm**. Only what the gateway can't tell is asked: what the battery backs
+  up (whole home or a backup-loads panel), solar wired into an aPower S, and an optional
+  battery name. Confirming never stops a value being re-read; if it later
   reads differently it asks again. Two new `system.*` scheduler values: aPower model and V2L.
   Generator, Smart Circuits and V2L read as **Installed** or **Not installed**; a generator
   counts as installed when it is turned on or reports a model, rating or run state.
@@ -34,6 +34,22 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   it can't be met. Tariff and utility are checked against the default meter.
 
 ### Fixed
+- **The aPower model is read from the gateway** (#496). Each aPower's model code
+  (`PE_HW_VER` in the login reply) is looked up in franklinwh-cloud's device catalogue, the
+  same way the aGate model already is: code 2 is the aPower X-01-AU. The install-profile
+  card shows it ("1 aPower X-01-AU") instead of asking, the battery-capacity helper in
+  Settings → Automation pre-selects it, and the support info lists it. The model is asked
+  only when a code isn't in the catalogue.
+- **History counts as evidence** (#496). Each install-profile card adds what the bridge's
+  own history shows: "Your history: solar up to 5.8 kW, most recently 2026-11-05", and the
+  same for the generator and the grid connection (from the stored samples, up to the
+  metrics retention). A generator that has run, or a V2L whose meter shows energy, reads as
+  **Installed**; solar seen in history but not in the aGate's PV settings (such as DC solar
+  on an aPower S) is shown as "Solar seen in your history".
+- **Support info lists what's installed** (#496). Each gateway in **Settings → Admin →
+  Support info** now has the install-profile card in four short lines: what's installed
+  (model, aPowers, grid, solar, generator, Smart Circuits, V2L), the modes, your answers,
+  and how much is confirmed.
 - **A site without solar no longer counts as having solar** (#496). The setting "none" was
   read as yes, so the Solar tab and the wizard showed solar everywhere.
 - **Saving System Setup keeps the gateway's readings** (#496). The form saved every field,

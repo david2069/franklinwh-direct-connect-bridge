@@ -170,14 +170,38 @@ def describe(manifest: dict | None) -> dict[str, Any]:
     }
 
 
-#: aPower model specs (usable/rated kWh + continuous kW), from datasheets — the local API
-#: cannot read the aPower model/SKU, so the user picks it; capacity = usable_kwh × count.
+#: aPower model specs (usable/rated kWh + continuous kW), from datasheets, keyed by family
+#: (the catalogue's ``name``). The model itself is read: see :func:`apower` (#496).
 #: See FEAT-DEVICE-CAPABILITIES. Values are per UNIT. Owner-provided where noted.
 APOWER_SPECS: dict[str, dict[str, Any]] = {
     "aPower X":  {"usable_kwh": 13.6, "rated_kwh": 15.0, "charge_kw": 5.0,  "discharge_kw": 5.0,  "has_mppt": False},
     "aPower 2":  {"usable_kwh": 16.0, "rated_kwh": 16.0, "charge_kw": 10.0, "discharge_kw": 10.0, "has_mppt": False},
     "aPower S":  {"usable_kwh": 15.0, "rated_kwh": 15.0, "charge_kw": 8.0,  "discharge_kw": 10.0, "has_mppt": True},
 }
+
+
+def apower(code: Any) -> dict[str, Any] | None:
+    """One aPower's model from its Direct Connect ``PE_HW_VER`` code, via franklinwh-cloud's
+    ``apower_models`` catalogue (code 2 = aPower X-01-AU, measured on the reference site).
+    ``None`` when the code or the optional library is missing — never a guess."""
+    try:
+        key = str(int(code))
+        from franklinwh_cloud.discovery import get_catalog
+        cat = get_catalog()
+    except Exception:  # noqa: BLE001 - no code, or the optional extra isn't installed
+        return None
+    row = (cat.get("apower_models") or {}).get(key)
+    if not row:
+        return None
+    country = ((cat.get("countries") or {}).get(str(row.get("country_id"))) or {}).get("code")
+    return {"code": int(key), "model": row.get("model"), "family": row.get("name"),
+            "sku": row.get("sku"), "country": country, "has_mppt": bool(row.get("has_mppt"))}
+
+
+def apowers(manifest: dict | None) -> list[dict[str, Any] | None]:
+    """Every aPower in a 1101 login manifest, in unit order (``PE_HW_VER``, one code each)."""
+    codes = (manifest or {}).get("PE_HW_VER")
+    return [apower(c) for c in codes] if isinstance(codes, list) else []
 
 
 def apower_specs() -> list[dict[str, Any]]:

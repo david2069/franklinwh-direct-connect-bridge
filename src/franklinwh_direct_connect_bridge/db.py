@@ -128,6 +128,28 @@ class MetricsStore:
             )
             self._conn.commit()
 
+    #: Below this a path is treated as idle: meters read a few watts of noise (#496).
+    HISTORY_THRESHOLD_W = 50
+
+    def power_history(self, gateway_id: str, since: int) -> dict:
+        """Evidence from stored samples (#496): for solar, generator, grid and battery, the
+        peak power and when it last passed the noise threshold, or ``None`` if it never did.
+        Power that has flowed through a path proves the path exists."""
+        t = self.HISTORY_THRESHOLD_W
+        cols = {"solar": "solar_w", "generator": "generator_w", "grid": "grid_w",
+                "battery": "battery_w"}
+        sel = ", ".join(f"MAX(ABS({c})), MAX(CASE WHEN ABS({c}) > {t} THEN ts END)"
+                        for c in cols.values())
+        with self._lock:
+            row = self._conn.execute(
+                f"SELECT MIN(ts), {sel} FROM metrics WHERE gateway_id = ? AND ts >= ?",
+                (gateway_id, since)).fetchone()
+        out: dict = {"first_ts": row[0]}
+        for i, name in enumerate(cols):
+            peak, last = row[1 + 2 * i], row[2 + 2 * i]
+            out[name] = {"peak_w": float(peak), "last_ts": int(last)} if last else None
+        return out
+
     def tier_samples(self, start: int, end: int,
                      gateway: str | None = None) -> list[dict]:
         """Samples that carry tier accumulators, oldest first.

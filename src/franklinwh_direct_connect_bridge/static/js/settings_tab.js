@@ -63,6 +63,7 @@ function settingsTab() {
         const d = await (await fetch('api/apower-specs' + this.$store.app.gwQuery())).json();
         this.apowerSpecs = d.models || [];
         if (d.apower_count) this.apowerCount = d.apower_count;
+        if (d.apower_model && !this.apowerModel) this.apowerModel = d.apower_model;   // read (#496)
       } catch (e) { /* optional */ }
     },
     fillCapacityFromModel() {
@@ -93,8 +94,9 @@ function settingsTab() {
       L.push('');
       (d.gateways||[]).forEach(g => {
         L.push(`gateway #${g.index}: ${g.model||'?'}${g.vendor_model?(' ('+g.vendor_model+')'):''}${g.is_mock?' [mock]':''}`);
-        if (g.country||g.hardware_model_id!=null) L.push(`  hw_id ${g.hardware_model_id} · ${g.country||'?'} · aPowers ${g.apower_count??'?'}`);
+        if (g.country||g.hardware_model_id!=null) L.push(`  hw_id ${g.hardware_model_id} · ${g.country||'?'} · aPowers ${g.apower_count??'?'}${(g.apower_models||[]).length?' ('+g.apower_models.join(', ')+')':''}`);
         if (g.grid) { const gr=g.grid; L.push(`  grid: service ${gr.service_amps??'?'}A · air-switch ${gr.air_switch_amps??'?'}A · import ${gr.import_limit_w===-1?'unlimited':gr.import_limit_w} · export ${gr.grid_export_enabled?'enabled':'disabled'} (${gr.export_limit_w===-1?'unlimited':gr.export_limit_w}) · pcs-discharge ${gr.pcs_discharge_enabled?'on':'off'} · inverter ${gr.inverter_max_charge_kw??'?'}/${gr.inverter_max_discharge_kw??'?'} kW`); }
+        (g.install||[]).forEach(line => L.push('  ' + line));   // the install-profile card (#496)
         if (g.firmware) L.push('  firmware: ' + Object.entries(g.firmware).map(([k,v])=>k+'='+v).join(' '));
         if (g.smart_circuits!=null) L.push(`  smart circuits: ${g.smart_circuits}`);
         if (g.generator) L.push(`  generator: feature ${g.generator.enabled?'on':'off'} · ${g.generator.state||'?'} · reported model ${(g.generator.evidence&&g.generator.evidence.model)||'none'}`);
