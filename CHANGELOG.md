@@ -11,15 +11,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
-### Fixed
-- **Under Podman the bridge keeps its data on the /data volume** (#491). It looked only for
-  Docker's `/.dockerenv` to know it runs in a container; Podman makes `/run/.containerenv`
-  instead, so the bridge wrote its database, settings, gateways and (from 0.5.31) accounts to
-  `/app/data` inside the container, and lost them whenever the container was recreated (an
-  image update). Docker and the Home Assistant add-on were not affected. A Podman install that
-  has been running already has its data in the container's `/app/data`. Before updating,
-  copy it to the folder mapped to `/data` (`./data` with `docker-compose.yml`):
-  `podman cp <container>:/app/data/. ./data/`. Otherwise set things up again after the update.
+## [0.5.32] — 2026-11-05
+
+0.5.31 was built but never released: a defect found by its release gates (#491) went in,
+and published image tags are not rebuilt.
 
 ### Added
 - **API tokens and the api role** (#457 phase 4). An admin adds an **api** account (no
@@ -74,12 +69,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   header) and `/api/live` always get in. A list that leaves out the address saving it is
   refused. `GET /api/security`, `PUT /api/security/trusted-networks`. The Security switch,
   the HTTPS port, sign-in and tokens come in later phases.
-- **Guide: Security (planned, #457).** A new page describing the planned optional security:
-  upgrades keep today's behaviour and new installs start with Security on (it can be turned
-  off); trusted networks; an HTTPS port (8102); HA admins are admins and other HA users are
-  users; the first admin; the roles admin, user, viewer and api; API tokens; the
-  self-signed certificate and how to trust it on a phone. Everything on it except
-  trusted networks is marked as planned.
+- **Guide: Security** (#457). A new page for all of the above: upgrades keep today's
+  behaviour and new installs start with Security on (it can be turned off); trusted
+  networks; the HTTPS port and its certificate, including how to trust it on a phone; Home
+  Assistant users' roles; the first admin; the roles admin, user, viewer and api; API
+  tokens. The REST API guide's Authentication section and Control's read-only section now
+  point to it.
 
 ### Fixed
 - **A pip install has its whole web UI** (#487). The package listed only the top-level files of
@@ -87,6 +82,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   `css/`, `js/`, `tabs/` and `partials/` folders: the page's styles and scripts answered 404
   and the main page failed. Docker and the Home Assistant add-on were not affected (they
   install from the source tree). Found by the new standalone release gate.
+- **Under Podman the bridge keeps its data on the /data volume** (#491). It looked only for
+  Docker's `/.dockerenv` to know it runs in a container; Podman makes `/run/.containerenv`
+  instead, so the bridge wrote its database, settings, gateways and (from 0.5.32) accounts to
+  `/app/data` inside the container, and lost them whenever the container was recreated (an
+  image update). Docker and the Home Assistant add-on were not affected. A Podman install that
+  has been running already has its data in the container's `/app/data`. Before updating,
+  copy it to the folder mapped to `/data` (`./data` with `docker-compose.yml`):
+  `podman cp <container>:/app/data/. ./data/`. Otherwise set things up again after the update.
 
 ## [0.5.30] — 2026-11-04
 
