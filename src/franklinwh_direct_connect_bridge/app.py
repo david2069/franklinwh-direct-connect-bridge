@@ -615,6 +615,19 @@ class SystemSetupBody(BaseModel):
     load_shedding: bool | None = None
     non_backup_loads: bool | None = None
     battery_label: str | None = None
+    apower_model: str | None = None
+    v2l: bool | None = None
+
+
+class InstallConfirmBody(BaseModel):
+    """#496: the install-profile items the user confirmed as shown."""
+    keys: list[str]
+
+
+class InstallAnswerBody(BaseModel):
+    """#496: one answer to an install-profile question."""
+    key: str
+    value: str | bool | None = None
 
 
 class ConstantsBody(BaseModel):
@@ -3684,6 +3697,80 @@ def create_app() -> FastAPI:
         system_setup.update(st, gateway, req.model_dump(exclude_unset=True))
         return {"values": system_setup.values(st, get_settings(), gateway, _gw_host(gateway)),
                 "spec": system_setup.spec()}
+
+    _install_modes: dict[str, tuple] = {}   # host -> (expires_monotonic, mode labels)
+
+    def _install_cards() -> list[dict]:
+        """#496: one plain-words install-profile card per gateway."""
+        from . import constants, devicedb, install_profile, system_setup
+        st, s = _gw_store(), get_settings()
+        labels = {v["work_mode"]: v["label"] for v in constants._MODES.values()}
+        cards = []
+        for gw in get_gateways():
+            host = gw.active_host or gw.configured_host
+            try:
+                values = system_setup.values(st, s, gw.id, host)
+            except Exception:  # noqa: BLE001 — one unreadable gateway must not hide the others
+                values = system_setup.values(st, None, gw.id, None)
+            summ = gw.last_summary or {}
+            fw = summ.get("firmware") or {}
+            m = (devicedb.gateway(fw["SyHdVersion"]) or {}) if fw.get("SyHdVersion") else {}
+            fhp = fw.get("FHP_SN")
+            info = {"model": "aGate (mock)" if gw.is_mock else m.get("model"),
+                    "country": m.get("country"),
+                    "apower_count": len(fhp) if isinstance(fhp, list) else None,
+                    "circuit_count": values.get("_circuit_count")}
+            hit = _install_modes.get(host)
+            if hit and hit[0] > time.monotonic():
+                modes = hit[1]
+            else:
+                try:
+                    reserves = client.cloud_reserves(s, host=host) or []
+                    modes = [labels[r["workMode"]] for r in reserves
+                             if r.get("workMode") in labels]
+                    # The mode list is install config: read it once in a while, not per click.
+                    _install_modes[host] = (time.monotonic() + 600, modes)
+                except Exception:  # noqa: BLE001
+                    modes = []
+            power = summ.get("power") or {}
+            off_grid = bool(power["off_grid"]) if "off_grid" in power else None
+            cards.append(install_profile.card(gw.id, gw.label or gw.serial or gw.id, info,
+                                              values, modes=modes, off_grid=off_grid))
+        return cards
+
+    @app.get("/api/install-profile")
+    def api_install_profile():
+        """#496: every gateway's install profile — facts with their source, then questions."""
+        return {"gateways": _install_cards()}
+
+    @app.post("/api/install-profile/confirm")
+    def api_install_profile_confirm(req: InstallConfirmBody,
+                                    gateway: str = Depends(_gateway_q)):
+        """Confirm items as currently shown. Never an override: they are still re-read."""
+        from . import system_setup
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        card = next((c for c in _install_cards() if c["gateway_id"] == gateway), None)
+        if card is None:
+            raise HTTPException(404, "unknown gateway")
+        system_setup.confirm(st, gateway, req.keys, {f["key"]: f["value"] for f in card["facts"]})
+        return {"gateways": _install_cards()}
+
+    @app.post("/api/install-profile/answer")
+    def api_install_profile_answer(req: InstallAnswerBody,
+                                   gateway: str = Depends(_gateway_q)):
+        """Answer one question; it is stored as that gateway's System Setup."""
+        from . import install_profile, system_setup
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        try:
+            updates = install_profile.answer_updates(req.key, req.value)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        system_setup.update(st, gateway, updates)
+        return {"gateways": _install_cards()}
 
     @app.get("/api/constants")
     def api_constants():

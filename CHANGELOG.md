@@ -12,6 +12,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Changed
+- **What's installed, in plain words** (#496). The setup wizard's Confirm step and
+  **Settings → Setup** now show one card per gateway. Everything the gateway reports
+  (model, number of aPowers, grid connection, operating modes, solar and its size,
+  generator, Smart Circuits, V2L) is shown in plain words with where it was read from, and
+  waits for **Confirm**. Only what the gateway can't tell is asked: the aPower model, what
+  the battery backs up (whole home or a backup-loads panel), solar wired into an aPower S,
+  and an optional battery name. Confirming never stops a value being re-read; if it later
+  reads differently it asks again. Two new `system.*` scheduler values: aPower model and V2L.
 - **Scheduler pickers grey out values and templates that can't work** (#471). Every value
   knows the feature it comes from (gateway, Modbus client, solar forecast, wholesale or
   feed-in price, tariff, utility, a Home Assistant instance). When that feature is off, not
@@ -22,6 +30,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   works but has no reading right now stays selectable and shows "no value". Existing
   schedules are not changed: a condition row whose feature is now off shows a warning that
   it can't be met. Tariff and utility are checked against the default meter.
+
+### Fixed
+- **A site without solar no longer counts as having solar** (#496). The setting "none" was
+  read as yes, so the Solar tab and the wizard showed solar everywhere.
+- **Saving System Setup keeps the gateway's readings** (#496). The form saved every field,
+  which pinned all of them as your own values; it now saves only what you changed.
+- **Remote solar size matches the Solar tab** (#496). The install profile read the remote
+  solar rating in watts while the Solar tab reads it in 100 W steps; both now use the Solar
+  tab's reading. The unit is not yet confirmed on a remote-solar site, so the size is shown
+  for you to confirm.
 
 ## [0.5.32] — 2026-11-05
 

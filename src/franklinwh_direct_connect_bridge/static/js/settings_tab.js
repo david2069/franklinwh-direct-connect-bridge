@@ -35,7 +35,7 @@ function settingsTab() {
     utilities: [], tariffs: [], utilEdit: null, tariffEdit: null,
     // ── Automation constants (const.* sensors) ──
     constants: {}, constSpec: {}, constModes: [], constSaving: false,
-    systemSetup: {}, systemSpec: {}, systemSaving: false,
+    systemSetup: {}, systemSpec: {}, systemSaving: false, systemLoaded: {},
     systemFor: null,   // the gwQuery() the System Setup form was read for (#352)
     gwBusy: {},          // id -> true while a toggle/test is in flight
     gwAdd: null,         // add-form object when open, else null
@@ -580,26 +580,40 @@ function settingsTab() {
       const gwq = this.$store.app.gwQuery();
       try { const d = await (await fetch('api/system-setup' + gwq)).json();
             if (gwq !== this.$store.app.gwQuery()) return;     // a late reply for another gateway
-            this.systemSetup = d.values || {}; this.systemSpec = d.spec || {}; this.systemFor = gwq; }
+            this.systemSetup = d.values || {}; this.systemSpec = d.spec || {}; this.systemFor = gwq;
+            this.systemLoaded = this.sysFields(); }
       catch { this.systemSetup = {}; }
     },
     //: The form shows the gateway on screen, so Save can't write one gateway's form to another.
     get systemCurrent() { return this.systemFor === this.$store.app.gwQuery(); },
     sysDerived(k) { return !!(this.systemSetup._overridden && this.systemSetup._overridden[k] === false && this.systemSpec[k] && this.systemSpec[k].derived); },
+    /** The form's fields, normalised the way they are stored. */
+    sysFields() {
+      const s = this.systemSetup || {};
+      return { solar_type: s.solar_type, solar_kwp: Number(s.solar_kwp) || 0,
+        generator_input: !!s.generator_input, grid_forming: !!s.grid_forming,
+        whole_home_backup: !!s.whole_home_backup, load_shedding: !!s.load_shedding,
+        non_backup_loads: !!s.non_backup_loads, battery_label: s.battery_label || '' };
+    },
+    /** Only what was changed here (#496): saving every field would turn each one into an
+     *  override, and the gateway's later readings would be ignored. */
+    sysChanged() {
+      const now = this.sysFields(), was = this.systemLoaded || {};
+      return Object.fromEntries(Object.entries(now).filter(([k, v]) => was[k] !== v));
+    },
     async saveSystemSetup() {
       if (!this.canWrite()) { this.$store.app.toast('Enable writes to save', 'error'); return; }
       if (!this.systemCurrent) return;
       this.systemSaving = true;
       try {
-        const s = this.systemSetup;
+        const changed = this.sysChanged();
+        if (!Object.keys(changed).length) { this.$store.app.toast('Nothing changed', 'info'); return; }
         const r = await fetch('api/system-setup' + this.$store.app.gwQuery(), { method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ solar_type: s.solar_type, solar_kwp: Number(s.solar_kwp) || 0,
-            generator_input: !!s.generator_input, grid_forming: !!s.grid_forming,
-            whole_home_backup: !!s.whole_home_backup, load_shedding: !!s.load_shedding,
-            non_backup_loads: !!s.non_backup_loads, battery_label: s.battery_label || '' }) });
+          body: JSON.stringify(changed) });
         const d = await r.json(); if (!r.ok) throw new Error(d.detail || 'save failed');
         this.systemSetup = d.values || this.systemSetup;
+        this.systemLoaded = this.sysFields();
         this.$store.app.toast('System Setup saved', 'success');
       } catch (e) { this.$store.app.toast('System Setup save failed: ' + e.message, 'error'); }
       finally { this.systemSaving = false; }

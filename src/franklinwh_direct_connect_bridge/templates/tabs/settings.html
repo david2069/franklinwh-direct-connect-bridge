@@ -107,27 +107,9 @@
               </div>
             </template>
 
-            <!-- What the gateway told us, separated from what merely has a default. -->
-            <template x-if="st.id === 'profile' &amp;&amp; st.values">
-              <div class="mt-2 text-xs grid gap-1"
-                   style="grid-template-columns:repeat(auto-fill,minmax(210px,1fr))">
-                <template x-for="k in Object.keys(st.values)" :key="k">
-                  <div class="flex items-center justify-between gap-2 rounded px-2 py-1"
-                       style="background:var(--surface-2)">
-                    <span style="color:var(--text-secondary)" x-text="k"></span>
-                    <span class="flex items-center gap-1">
-                      <span class="font-mono" style="color:var(--text-primary)"
-                            x-text="String(st.values[k])"></span>
-                      <span x-show="(st.derived || []).includes(k)" class="chip ok"
-                            style="padding:0 5px;font-size:.55rem"
-                            title="Read from the gateway">READ</span>
-                      <span x-show="(st.overridden || []).includes(k)" class="chip"
-                            style="padding:0 5px;font-size:.55rem"
-                            title="You changed this; it overrides what was read">SET BY YOU</span>
-                    </span>
-                  </div>
-                </template>
-              </div>
+            <!-- What's installed, every gateway, in plain words (#496). -->
+            <template x-if="st.id === 'profile'">
+              <div class="mt-2">{% include "partials/install_profile.html" %}</div>
             </template>
           </div>
         </div>
