@@ -1,5 +1,15 @@
 # FranklinWH Direct Connect Bridge
 
+[![version](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fdavid2069/franklinwh-direct-connect-bridge%2Fmain%2Fpyproject.toml&query=%24.project.version&label=version&color=blue)](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/CHANGELOG.md)
+[![Install smoke](https://img.shields.io/github/actions/workflow/status/david2069/franklinwh-direct-connect-bridge/install-smoke.yml?branch=main&label=build)](https://github.com/david2069/franklinwh-direct-connect-bridge/actions/workflows/install-smoke.yml)
+[![Docs](https://img.shields.io/github/actions/workflow/status/david2069/franklinwh-direct-connect-bridge/docs.yml?branch=main&label=docs)](https://github.com/david2069/franklinwh-direct-connect-bridge/actions/workflows/docs.yml)
+[![Add-on image](https://img.shields.io/github/actions/workflow/status/david2069/franklinwh-direct-connect-bridge/publish-image.yml?branch=main&label=image)](https://github.com/david2069/franklinwh-direct-connect-bridge/actions/workflows/publish-image.yml)
+
+[![Home Assistant add-on](https://img.shields.io/badge/Home%20Assistant-add--on-41BDF5?logo=homeassistant&logoColor=white)](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/INSTALL.md)
+[![python](https://img.shields.io/badge/python-3.11%2B-blue?logo=python&logoColor=white)](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/pyproject.toml)
+[![license](https://img.shields.io/badge/license-MIT-green)](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/LICENSE)
+[![commit activity](https://img.shields.io/github/commit-activity/y/david2069/franklinwh-direct-connect-bridge)](https://github.com/david2069/franklinwh-direct-connect-bridge/commits/main)
+
 This integration is a proof-of-concept demonstration of how to integrate with a FranklinWH aGate gateway over the (undocumented, unofficial) FranklinWH Direct Connect local API.
 
 > **On the names.** **Direct Connect** is FranklinWH's own term for the gateway's local

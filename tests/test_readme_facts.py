@@ -25,3 +25,15 @@ def test_the_editable_install_names_the_library_checkout():
         text = (ROOT / doc).read_text()
         assert "pip install -e ../franklinwh-direct-connect-api" in text
         assert "../franklinwh-local " not in text
+
+
+def test_the_badges_point_at_real_workflows_and_facts():
+    head = (ROOT / "README.md").read_text().split("\n## ", 1)[0]
+    badges = re.findall(r"\[!\[[^\]]*\]\((https://img\.shields\.io/[^)]+)\)\]", head)
+    assert len(badges) >= 8, badges
+    wf = set(re.findall(r"actions/workflows/([\w.-]+\.yml)", head))
+    assert wf == {p.name for p in (ROOT / ".github/workflows").glob("*.yml")}
+    py = re.search(r'requires-python\s*=\s*">=([\d.]+)"', (ROOT / "pyproject.toml").read_text())[1]
+    assert f"python-{py}%2B" in head
+    assert "license-MIT" in head and "MIT License" in (ROOT / "LICENSE").read_text()
+    assert "github/v/release" not in head      # no GitHub Releases: it would read "no releases"
