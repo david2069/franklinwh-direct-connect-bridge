@@ -31,13 +31,21 @@ class FakeNotifier:
         self.loop = loop
         self.calls = []
         self._answer: asyncio.Future | None = None
+        self._asked = threading.Event()
 
     async def ask(self, event, targets, buttons, *, ttl_s, gateway=None, meta=None, **values):
         self.calls.append({"event": event, "targets": targets, "verbs": [b.verb for b in buttons],
                            "buttons": [(b.title, b.reply) for b in buttons],
                            "timeout_s": ttl_s, "gateway": gateway, **values})
+        self._asked.set()
         self._answer = self.loop.create_future()
         return Request(new_id(), event, gateway, tuple(buttons), time.time() + ttl_s)
+
+    def asked(self) -> list[dict]:
+        """The questions asked so far, once the first has arrived. The tick only hands
+        the question to the Notifier's loop, so it may not have been asked yet."""
+        assert self._asked.wait(2), "the question was never asked"
+        return self.calls
 
     async def wait(self, request, timeout_s):
         return await self._answer
@@ -102,7 +110,7 @@ def _occ(st, sid="s1"):
 def test_yes_runs_the_action_after_the_reply(st, notifier):
     _schedule(st)
     assert _tick(st) == [], "the action waits for the answer"
-    assert notifier.calls[0]["question"] == "Charge now? (reply within 5 min)"
+    assert notifier.asked()[0]["question"] == "Charge now? (reply within 5 min)"
     assert notifier.calls[0]["verbs"] == [YES, NO] and notifier.calls[0]["timeout_s"] == 300
     assert _tick(st) == [] and len(notifier.calls) == 1, "asked once per run"
     notifier.answer(Answer(YES))
@@ -191,20 +199,20 @@ def test_the_question_takes_sensor_values(st, notifier, monkeypatch):
     monkeypatch.setattr(sch, "snapshot_from_state", lambda state: {"battery.soc_pct": 41})
     _schedule(st, ask={**ASK, "question": "SoC is %battery.soc_pct% for %schedule.name%. Charge?"})
     _tick(st)
-    assert notifier.calls[0]["question"] == "SoC is 41 for Rule s1. Charge? (reply within 5 min)"
+    assert notifier.asked()[0]["question"] == "SoC is 41 for Rule s1. Charge? (reply within 5 min)"
     assert any('asked "SoC is 41 for Rule s1. Charge?"' in r for _, r in _log(st))
 
 
 def test_without_choices_the_buttons_are_yes_and_no(st, notifier):
     _schedule(st)
     _tick(st)
-    assert notifier.calls[0]["buttons"] == [("Yes", False), ("No", False)]
+    assert notifier.asked()[0]["buttons"] == [("Yes", False), ("No", False)]
 
 
 def test_own_buttons_are_offered_with_one_text_reply(st, notifier):
     _schedule(st, ask=CHOICES)
     _tick(st)
-    assert notifier.calls[0]["verbs"] == ["CHOICE_1", "CHOICE_2", REPLY]
+    assert notifier.asked()[0]["verbs"] == ["CHOICE_1", "CHOICE_2", REPLY]
     assert notifier.calls[0]["buttons"] == [("Full", False), ("Not today", False), ("Why?", True)]
 
 
