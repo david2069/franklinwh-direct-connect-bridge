@@ -42,6 +42,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   it can't be met. Tariff and utility are checked against the default meter.
 
 ### Fixed
+- **Settings → Setup: Mark complete shows its result** (#395). A failed save looked the
+  same as success, and success showed nothing. The Setup card now shows the result, or the
+  error with its HTTP status, and keeps it there. It also shows the stored state
+  (Complete, Skipped or Not done), and once setup is complete the button becomes
+  **Mark not complete**.
 - **Selects are the same height as text and number fields in Safari** (#393). Safari drew
   them as native pop-up menus that ignore padding, so they came out shorter. Selects now
   draw their own chevron and take the same padding as inputs, as in the Modbus Bridge.
