@@ -399,7 +399,8 @@
   // overlay becomes the picker's (they could disagree before).
   FWHSystemView.mount({endpoint: "api/system", below: "header", above: "nav.fixed.bottom-0",
     gateway: () => window.Alpine && Alpine.store("app").selectedGateway,
-    onGateway: (id) => { const a = Alpine.store("app"); if (a.selectedGateway !== id) a.selectGateway(id); }});
+    onGateway: (id) => { const a = Alpine.store("app"); if (a.selectedGateway !== id) a.selectGateway(id); },
+    gatewayChips: false});   // the top bar's picker is the one place to choose
   document.addEventListener("alpine:initialized", () =>
     Alpine.effect(() => FWHSystemView.showGateway(Alpine.store("app").selectedGateway)));
   // The sidebar's logo row is as tall as the top bar, also when the top bar wraps to two
