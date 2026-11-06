@@ -989,7 +989,7 @@ def summary(s: Settings, host: str | None = None, *, mock: bool = False) -> dict
     host = _need_host(host)
     out: dict[str, Any] = {
         "host": host, "ok": False, "latency_ms": None,
-        "configured_host": s.fwh_host, "rediscovered": host != s.fwh_host,
+        "configured_host": s.fwh_host,
         "mqtt_enabled": s.mqtt_enabled, "read_only": s.read_only,
         "writes_enabled": writes_enabled(s),
     }

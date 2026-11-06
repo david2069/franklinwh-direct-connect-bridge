@@ -1,5 +1,5 @@
 <!-- Global terminal console — bottom drawer. Toggle with ` (backtick) or Ctrl-`; Escape closes. -->
-<div x-data="terminalConsole()" x-init="init()" @keydown.window="onGlobalKey($event)">
+<div x-data="terminalConsole()" @keydown.window="onGlobalKey($event)">
 
   <!-- Open: the drawer -->
   <div x-show="open" x-cloak

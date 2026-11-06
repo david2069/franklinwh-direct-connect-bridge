@@ -46,6 +46,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   (#368). Its Edit buttons were already disabled, but the card wasn't dimmed like the
   others and the reason was only in a tooltip. The card is now dimmed and says on screen
   to install and configure the generator module first.
+- **Health → Rediscovered is per gateway** (#163). It compared each gateway's address
+  with the global host, so with several gateways every gateway but one showed
+  **Rediscovered: true**, a mock included. It is now true only when re-discovery moved
+  that gateway to a new address, and n/a for a mock.
+- **Each tab sets itself up once, not twice** (#376). Alpine already calls a component's
+  `init()`, and fourteen templates called it again with `x-init="init()"`, so their
+  watchers and first reads ran twice (for example two `GET /api/system-setup` on one
+  gateway switch). The extra `x-init` is gone, and a test stops it coming back.
 - **Control and Circuits no longer say "Set ALLOW_WRITES=true"** (#87). The read-only
   card told users to set a switch that stopped blocking writes in 0.5.2; it is removed.
 - **`POST /api/reboot` description no longer says it is gated by `allow_writes`** (#178).
