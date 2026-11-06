@@ -46,6 +46,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   it can't be met. Tariff and utility are checked against the default meter.
 
 ### Fixed
+- **Settings → Setup: the Mark complete result line binds its colour as an object**, not a
+  string, so Alpine's `x-show` can't wipe the element's `display` when the message changes
+  (#395 follow-up).
 - **Version reported from a source checkout matches pyproject.toml.** `__version__` (the
   MQTT device `sw_version`, `/health`, the API title) came from the installed package's
   metadata, which an editable install freezes at install time: after a version bump a
