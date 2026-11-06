@@ -42,6 +42,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   it can't be met. Tariff and utility are checked against the default meter.
 
 ### Fixed
+- **Settings → Setup: Mark complete shows its result** (#395). A failed save looked the
+  same as success, and success showed nothing. The Setup card now shows the result, or the
+  error with its HTTP status, and keeps it there. It also shows the stored state
+  (Complete, Skipped or Not done), and once setup is complete the button becomes
+  **Mark not complete**.
 - **Health → Rediscovered is per gateway** (#163). It compared each gateway's address
   with the global host, so with several gateways every gateway but one showed
   **Rediscovered: true**, a mock included. It is now true only when re-discovery moved

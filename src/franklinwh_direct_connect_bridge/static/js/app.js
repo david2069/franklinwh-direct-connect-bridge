@@ -231,13 +231,26 @@ document.addEventListener('alpine:init', () => {
       return !!(this.setup.should_prompt && !this.setupDismissed && !this.setupModalOpen);
     },
 
+    //: The result of the last Mark complete / Mark not complete, shown on the Setup card
+    //  and kept there (#395). A failure used to look the same as success.
+    setupStateMsg: null,
+
     async setSetupState(value) {
+      const DONE = { done: 'Setup marked complete.', pending: 'Setup marked not complete.',
+                     skipped: 'Setup skipped.' };
       try {
-        await fetch('api/setup/state', {
+        const r = await fetch('api/setup/state', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ state: value }),
         });
-      } catch (e) { /* the banner still dismisses locally */ }
+        const d = await r.json().catch(() => ({}));
+        this.setupStateMsg = r.ok
+          ? { ok: true, text: DONE[value] || 'Saved.' }
+          : { ok: false, text: `Not saved: ${d.detail || 'the bridge refused it'} (HTTP ${r.status}).` };
+      } catch (e) {
+        // The banner still dismisses locally.
+        this.setupStateMsg = { ok: false, text: `Not saved: ${e}` };
+      }
       this.setupDismissed = true;
       await this.loadSetup();
     },
