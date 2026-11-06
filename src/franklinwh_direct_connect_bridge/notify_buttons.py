@@ -88,11 +88,32 @@ def _ask_from_thread(store, event: str, buttons: list[Button], ttl_s: float, *,
 
 
 # ── Release / Keep ───────────────────────────────────────────────────────────────
-def ask_release(store, host: str, title: str, message: str) -> bool:
-    """Ask Release / Keep about a force still running on ``host``."""
+#: What a Release / Keep question is about: a force seen over Modbus (the M704 WSet bit),
+#: or a VPP seen on the local channel (1707 programme id 9, the VPP-at-boot ask), which
+#: may be a remote controller that is not a WSet force.
+FORCE, VPP = "force", "vpp"
+
+
+def ask_release(store, host: str, title: str, message: str, *, about: str = FORCE) -> bool:
+    """Ask Release / Keep about a force (or, ``about=VPP``, a VPP) running on ``host``.
+    The question keeps which force this bridge held then, so a tap never releases a later
+    one."""
+    from . import battery_control
     return _ask_from_thread(store, FORCE_RUNNING, [Button(RELEASE, "Release"), Button(NO, "Keep")],
-                            RELEASE_TTL_S, gateway=_label_for_host(host), meta={"host": host},
+                            RELEASE_TTL_S, gateway=_label_for_host(host),
+                            meta={"host": host, "about": about,
+                                  "force": battery_control.force_id(host)},
                             title=title, message=message)
+
+
+def _vpp_now(host: str) -> bool | None:
+    """The gateway's VPP state from its last local reading (1707), None when unknown."""
+    from . import battery_control, state
+    hp = battery_control._host_part(host)
+    for gw in state.gateways():
+        if hp in {battery_control._host_part(h) for h in (gw.active_host, gw.configured_host) if h}:
+            return gw.vpp_active
+    return None
 
 
 async def _on_release(request, answer) -> str:
@@ -100,8 +121,24 @@ async def _on_release(request, answer) -> str:
         return "kept"
     from . import battery_control
     host = request.meta["host"]
+    # Not the force asked about: this bridge has started (or ended) one since.
+    held = battery_control.force_id(host)
+    if request.meta.get("force") != held:
+        if held is not None:
+            log.info("Release tapped for %s: a different force is running; left alone", host)
+            return "not released: a different force is running"
+        log.info("Release tapped for %s: the force asked about has ended; nothing to do", host)
+        return "already released"
+    vpp = _vpp_now(host) if request.meta.get("about") == VPP else None
+    if vpp is False:
+        log.info("Release tapped for %s: the VPP has ended; nothing to do", host)
+        return "already released"
     now = await asyncio.to_thread(battery_control.status, host)
     if now.get("available") and not now.get("vpp_active"):
+        if vpp:
+            log.info("Release tapped for %s: the VPP is not a Modbus (WSet) force; "
+                     "left alone", host)
+            return "not released: the VPP is not a Modbus force this bridge can release"
         log.info("Release tapped for %s: no force is running there; nothing to do", host)
         return "already released"
     out = await asyncio.to_thread(battery_control.execute, "Release", host=host)

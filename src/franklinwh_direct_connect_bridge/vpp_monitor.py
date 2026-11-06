@@ -98,7 +98,8 @@ def check(host: str, store, *, boot: bool = False, notify: bool = True,
             from . import notify_buttons
             # With Release / Keep buttons when a phone can show them (#374), else plain.
             if not (notify_engine._enabled(notify_engine.config(store), "dispatch")
-                    and notify_buttons.ask_release(store, host, title, msg)):
+                    and notify_buttons.ask_release(store, host, title, msg,
+                                                     about=notify_buttons.VPP)):
                 notify_engine.fire(store, "dispatch_at_boot", gateway=gw_name, **vals)
         return {"vpp": vpp, "changed": True, "event": "vpp-at-boot"}
 

@@ -35,6 +35,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   the hourly roll-ups.
 
 ### Fixed
+- **A late Release tap no longer releases a different force.** A Release / Keep question
+  works for 15 minutes; if a schedule started a force on that aGate in the meantime, a tap
+  released it. Release now acts only on the force it asked about, and otherwise answers
+  "not released: a different force is running".
+- **Release on a VPP found at start-up checks the VPP.** It checked the Modbus force (WSet)
+  instead, so a VPP that is not a Modbus force was answered "already released" while it was
+  still running. It now answers "already released" only when the VPP has ended, and
+  "not released: the VPP is not a Modbus force this bridge can release" when it has not.
 - An empty gap could sit between the top bar and System view when it opened while the top
   bar was still loading; the overlay now follows the top bar's height.
 - **Metrics export leaves mock gateways out** unless that gateway is named (#9). With no

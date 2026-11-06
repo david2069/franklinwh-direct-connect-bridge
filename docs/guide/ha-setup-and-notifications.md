@@ -361,6 +361,14 @@ it running. The buttons work for 15 minutes. The question goes to the devices ch
 under **Release / Keep a running force → Send to**. When none of them can show buttons,
 the bridge sends the plain message instead.
 
+**Release** acts only on what was asked about. If this bridge has started a force on that
+aGate since the question was sent (a schedule, say), the tap leaves it running and the
+answer is "not released: a different force is running". A VPP found at start-up is checked
+on the local channel, as it was found: if it has ended, the answer is "already released";
+if it is still running but is not a Modbus force (the aGate's WSet is off), the bridge
+writes nothing and answers "not released: the VPP is not a Modbus force this bridge can
+release". The answer is in **Recent notifications** and the bridge log.
+
 ---
 
 ## 5. Notifications from a schedule
