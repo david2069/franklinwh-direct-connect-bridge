@@ -19,6 +19,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, RedirectResponse, StreamingResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html, get_swagger_ui_oauth2_redirect_html
 from pydantic import BaseModel, Field, ConfigDict
 from starlette.requests import Request
 
@@ -1371,6 +1372,9 @@ def create_app() -> FastAPI:
             "raise issues, defects, or feature requests on GitHub: "
             "https://github.com/david2069/franklinwh-direct-connect-bridge/issues . MIT License."
         ),
+        # /docs and /redoc are served below, after _base_path(), so they find the schema
+        # under Home Assistant ingress too (#177).
+        docs_url=None, redoc_url=None,
         lifespan=lifespan)
 
     # Trusted networks (#457 phase 1): every request, pages and static files included.
@@ -7024,6 +7028,25 @@ def create_app() -> FastAPI:
         """
         p = (request.headers.get("X-Ingress-Path") or "").strip()
         return p.rstrip("/") if p.startswith("/") else ""
+
+    # FastAPI's own /docs and /redoc load the schema from root_path + "/openapi.json".
+    # root_path is never set, so under ingress that was HA's root, not the bridge (#177).
+    # Same pages, with the schema URL taken from X-Ingress-Path like <base href>.
+    @app.get("/docs", include_in_schema=False)
+    def swagger_ui(request: Request):
+        base = _base_path(request)
+        return get_swagger_ui_html(
+            openapi_url=base + app.openapi_url, title=f"{app.title} - Swagger UI",
+            oauth2_redirect_url=base + app.swagger_ui_oauth2_redirect_url)
+
+    @app.get(app.swagger_ui_oauth2_redirect_url, include_in_schema=False)
+    def swagger_ui_redirect():
+        return get_swagger_ui_oauth2_redirect_html()
+
+    @app.get("/redoc", include_in_schema=False)
+    def redoc(request: Request):
+        return get_redoc_html(openapi_url=_base_path(request) + app.openapi_url,
+                              title=f"{app.title} - ReDoc")
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
