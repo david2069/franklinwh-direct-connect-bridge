@@ -11,6 +11,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.33] — 2026-11-07
+
+What's installed, in plain words (#496), and greyed-out scheduler values that can't work
+(#471).
+
 ### Changed
 - **What's installed, in plain words** (#496). The setup wizard's Confirm step and
   **Settings → Setup** now show one card per gateway. Everything the gateway reports
