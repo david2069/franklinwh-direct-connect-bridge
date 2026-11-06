@@ -646,6 +646,10 @@ select.form-control:not([multiple]):not([size]) {
 @media (max-width: 768px) {
   .metrics-grid { grid-template-columns: 1fr 1fr; }
 }
+/* Top-bar menus on a phone: full width just under the top bar, never off an edge. */
+@media (max-width: 639px) {
+  .tb-menu { position: fixed !important; left: 1rem !important; right: 1rem !important; top: calc(var(--topbar-h, 52px) + 4px); width: auto !important; max-width: none !important; margin-top: 0 !important; }
+}
 
 
 /* Device tab master/detail: stack on mobile, sticky two-column only at lg+.

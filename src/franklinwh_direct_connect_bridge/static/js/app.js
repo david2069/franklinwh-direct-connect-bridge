@@ -409,6 +409,10 @@ document.addEventListener('alpine:init', () => {
       });
       // Track width for the dynamic bottom bar (innerWidth doesn't change on vertical scroll).
       window.addEventListener('resize', () => { this.winW = window.innerWidth; });
+      // A scroll of the page closes the top-bar menus; a scroll inside one doesn't.
+      document.addEventListener('scroll', (e) => {
+        if (this.anyTopbarMenuOpen && !(e.target.closest && e.target.closest('.tb-menu'))) this.closeTopbarMenus();
+      }, { capture: true, passive: true });
     },
     setNavLayout(v) {
       this.navLayout = (v === 'sidebar' || v === 'bottom') ? v : 'auto';
@@ -1627,6 +1631,12 @@ document.addEventListener('alpine:init', () => {
     // #372: the menu is 18rem wide and right-aligned to the selector. When the selector
     // sits near the content's left edge it would reach under the sidebar, so open it
     // left-aligned when there is no room to its left.
+    get anyTopbarMenuOpen() { return this.gwMenuOpen || this.modeMenuOpen || this.topbarPrefsOpen; },
+    closeTopbarMenus() {
+      this.gwMenuOpen = false;
+      this.modeMenuOpen = false;
+      this.topbarPrefsOpen = false;
+    },
     toggleGwMenu(btn) {
       if (!this.gwMenuOpen && btn) {
         const r = btn.getBoundingClientRect();

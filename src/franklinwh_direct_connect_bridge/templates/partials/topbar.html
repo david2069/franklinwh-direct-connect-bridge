@@ -20,6 +20,11 @@
     </h1>
   </div>
 
+  <!-- Menu backdrop: on a phone an open menu covers the page, so dim it to show the menu is
+       on top, and a tap on it closes the menu. -->
+  <div x-show="$store.app.anyTopbarMenuOpen" x-cloak x-transition.opacity
+       class="sm:hidden fixed inset-0 bg-black/50 z-[110]" @click="$store.app.closeTopbarMenus()"></div>
+
   <!-- Right: customisable status chips + buttons (CSS order from Topbar Preferences) -->
   <div class="flex flex-wrap items-center justify-end gap-2 sm:gap-3 min-w-0 w-full sm:w-auto">
 
@@ -34,7 +39,7 @@
         </svg>
       </button>
       <div x-show="$store.app.gwMenuOpen" x-cloak x-transition
-           class="absolute mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-lg border shadow-xl z-[120] overflow-hidden"
+           class="tb-menu absolute mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-lg border shadow-xl z-[120] overflow-hidden"
            :class="$store.app.gwMenuLeft ? 'left-0' : 'right-0'"
            style="background:var(--surface-1);border-color:var(--border)">
         <div class="px-3 py-2 text-[10px] uppercase tracking-wide border-b"
@@ -132,7 +137,7 @@
         </svg>
       </button>
       <div x-show="$store.app.modeMenuOpen" x-cloak x-transition
-           class="absolute right-0 mt-1 w-52 rounded-lg border shadow-xl z-[120] overflow-hidden"
+           class="tb-menu absolute right-0 mt-1 w-52 rounded-lg border shadow-xl z-[120] overflow-hidden"
            style="background:var(--surface-1);border-color:var(--border)">
         <div class="px-3 py-2 text-[10px] uppercase tracking-wide border-b"
              style="color:var(--text-secondary);border-color:var(--border)">Operating mode</div>
@@ -285,7 +290,7 @@
         </svg>
       </button>
       <div x-show="$store.app.topbarPrefsOpen" x-cloak x-transition
-           class="absolute right-0 mt-1 w-80 max-w-[calc(100vw-1rem)] rounded-lg border shadow-xl z-[120] overflow-hidden"
+           class="tb-menu absolute right-0 mt-1 w-80 max-w-[calc(100vw-1rem)] rounded-lg border shadow-xl z-[120] overflow-hidden"
            style="background:var(--surface-1);border-color:var(--border)">
         <div class="px-3 py-2 flex items-center justify-between border-b" style="border-color:var(--border)">
           <span class="text-[10px] uppercase tracking-wide font-semibold" style="color:var(--text-secondary)">Preferences</span>
