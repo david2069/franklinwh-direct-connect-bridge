@@ -108,3 +108,26 @@ def _security_off():
 def _security_on_when_marked(request, monkeypatch):
     if request.node.get_closest_marker("security_on"):
         monkeypatch.setattr(security, "enabled", _REAL_SECURITY_ENABLED)
+
+
+@pytest.fixture(autouse=True)
+def _drop_dead_pollers():
+    """A test client whose event loop ends without the app's shutdown (a request that
+    added a gateway, outside ``with TestClient``) leaves its poller tasks cancelled in
+    the supervisor's module-level maps and the worker registry. The next app's shutdown
+    then awaited one and re-raised its CancelledError, and its supervisor restarted the
+    dead pollers on the new loop. Drop what has finished before each test; anything still
+    running belongs to a live (module-scoped) app and is kept."""
+    from franklinwh_direct_connect_bridge import supervisor, workers
+
+    for gw_id, (task, _stop) in list(supervisor._pollers.items()):
+        if task.done():
+            supervisor._pollers.pop(gw_id, None)
+    for d in (supervisor._stopping, supervisor._deferred):
+        for gw_id, task in list(d.items()):
+            if task.done():
+                d.pop(gw_id, None)
+    for w in workers.registry.all():
+        if w.name.startswith("poller:") and w._task is not None and w._task.done():
+            workers.registry.unregister(w.name)
+    yield

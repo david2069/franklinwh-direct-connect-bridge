@@ -42,6 +42,22 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   it can't be met. Tariff and utility are checked against the default meter.
 
 ### Fixed
+- **Version reported from a source checkout matches pyproject.toml.** `__version__` (the
+  MQTT device `sw_version`, `/health`, the API title) came from the installed package's
+  metadata, which an editable install freezes at install time: after a version bump a
+  development checkout reported the old version (0.5.18 against 0.5.32). It is now read
+  from the `pyproject.toml` of the source tree the code runs from, and from the package
+  metadata when there is none. The add-on image is installed from the same tree, so
+  the version it reports does not change.
+- **Tests: three intermittent failures made reliable.** The Ask-step tests read the fake
+  phone's questions right after the tick, but the question is sent on the Notifier's own
+  event loop, so under load it had not arrived yet; they now wait for it. Tests that add a
+  gateway through a test client without its shutdown left their cancelled poller tasks in
+  the supervisor's module state, and the next app's shutdown awaited one and failed with
+  `CancelledError` (`test_app_start_registers_workers_paused_or_beating`, and likely the
+  start-up/shutdown `CancelledError` seen once in
+  `test_start_up_binds_to_the_default_gateway`); finished poller tasks are now dropped
+  before each test.
 - **The aPower model is read from the gateway** (#496). Each aPower's model code
   (`PE_HW_VER` in the login reply) is looked up in franklinwh-cloud's device catalogue, the
   same way the aGate model already is: code 2 is the aPower X-01-AU. The install-profile
