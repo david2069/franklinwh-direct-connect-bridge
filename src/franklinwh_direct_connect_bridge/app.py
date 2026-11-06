@@ -6982,9 +6982,13 @@ def create_app() -> FastAPI:
             start = max(start, end - 24 * 90 * 3600)        # same 90-day cap as hours
         else:
             start, end = now - max(1, min(hours, 24 * 90)) * 3600, now
-        # A database export: no gateway means every gateway's rows, never the default's.
+        # A database export: no gateway means every real gateway's rows, never the default's.
+        # Mock gateways' rows come out only when that gateway is named (#9).
         gw = _metrics_gw_key(gateway) if gateway else None
         rows = store.query(start, end, None, gateway=gw, with_gateway=True)
+        if gw is None:
+            mocks = {k for g in state.gateways() if g.is_mock for k in (g.id, g.serial) if k}
+            rows = [r for r in rows if r.get("gateway_id") not in mocks]
         cols = ["ts", "soc", "grid_w", "solar_w", "battery_w", "load_w", "generator_w", "mode",
                 "gateway_id"]                         # last, so existing columns keep their place (#9)
         stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
