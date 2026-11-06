@@ -42,6 +42,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   it can't be met. Tariff and utility are checked against the default meter.
 
 ### Fixed
+- **Selects are the same height as text and number fields in Safari** (#393). Safari drew
+  them as native pop-up menus that ignore padding, so they came out shorter. Selects now
+  draw their own chevron and take the same padding as inputs, as in the Modbus Bridge.
 - **The aPower model is read from the gateway** (#496). Each aPower's model code
   (`PE_HW_VER` in the login reply) is looked up in franklinwh-cloud's device catalogue, the
   same way the aGate model already is: code 2 is the aPower X-01-AU. The install-profile
