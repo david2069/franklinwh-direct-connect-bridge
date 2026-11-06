@@ -142,53 +142,107 @@
       </div>
     </div>
 
-    <!-- Power flow -->
+    <!-- Power flow: a row per source with what it is doing, like the Modbus Bridge's.
+         Now = live watts; Today = today's kWh from the same 1301 read (resets daily). -->
     <div class="card lg:col-span-2" x-show="$store.app.dashCards.powerFlow" :style="$store.app.dashCardStyle('powerFlow')">
-      <div class="card-label mb-3">Power Flow</div>
-      <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <!-- Grid -->
-        <div class="text-center">
-          <div class="text-[0.7rem] uppercase tracking-wider text-slate-500 mb-1">Grid</div>
-          <div class="text-lg font-bold font-mono"
-               :style="'color:' + powerColour($store.app.power.grid_w, 'grid')"
-               x-text="$store.app.fmtPower($store.app.power.grid_w)"></div>
-          <div x-show="$store.app.showRawKeys" class="font-mono text-[9px] mt-0.5"
-               style="color:var(--text-faint)" x-text="$store.app.srcTag('p_uti', 1301)"></div>
+      <div class="flex items-center justify-between mb-3">
+        <div class="card-label" style="margin-bottom:0">Power Flow</div>
+        <div class="inline-flex rounded-md overflow-hidden border text-[11px]" style="border-color:var(--border)" role="group" aria-label="Power Flow view">
+          <button type="button" class="px-2.5 py-1 transition" @click="$store.app.setFlowView('now')"
+                  :aria-pressed="$store.app.flowView === 'now'"
+                  :style="$store.app.flowView === 'now' ? 'background:var(--accent);color:#fff' : 'color:var(--text-secondary)'">Now</button>
+          <button type="button" class="px-2.5 py-1 transition" @click="$store.app.setFlowView('today')"
+                  :aria-pressed="$store.app.flowView === 'today'"
+                  :style="$store.app.flowView === 'today' ? 'background:var(--accent);color:#fff' : 'color:var(--text-secondary)'">Today</button>
         </div>
-        <!-- Solar -->
-        <div class="text-center">
-          <div class="text-[0.7rem] uppercase tracking-wider text-slate-500 mb-1">Solar</div>
-          <div class="text-lg font-bold font-mono"
-               :style="'color:' + powerColour($store.app.power.solar_w, 'solar')"
-               x-text="$store.app.fmtPower($store.app.power.solar_w)"></div>
-          <div x-show="$store.app.showRawKeys" class="font-mono text-[9px] mt-0.5"
-               style="color:var(--text-faint)" x-text="$store.app.srcTag('p_sun', 1301)"></div>
+      </div>
+      <div x-show="$store.app.flowView === 'now'" class="grid gap-x-4 gap-y-2.5 text-sm items-baseline" style="grid-template-columns:auto 1fr auto">
+          <div class="contents">
+            <span class="text-slate-400">Solar
+              <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('p_sun', 1301)"></span></span>
+            <span class="font-mono font-bold text-right" :style="'color:' + powerColour($store.app.power.solar_w, 'solar')"
+                  x-text="$store.app.fmtPower($store.app.power.solar_w)"></span>
+            <span class="text-right text-xs" :style="'color:' + ($store.app.flowText('solar', $store.app.power.solar_w) === 'Idle' ? 'var(--text-faint)' : 'var(--text-secondary)')"
+                  x-text="$store.app.flowText('solar', $store.app.power.solar_w)"></span>
+          </div>
+          <div class="contents">
+            <span class="text-slate-400">Home
+              <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('p_load', 1301)"></span></span>
+            <span class="font-mono font-bold text-right" style="color:var(--text-primary)"
+                  x-text="$store.app.fmtPower($store.app.power.load_w)"></span>
+            <span class="text-right text-xs" :style="'color:' + ($store.app.flowText('home', $store.app.power.load_w) === 'Idle' ? 'var(--text-faint)' : 'var(--text-secondary)')"
+                  x-text="$store.app.flowText('home', $store.app.power.load_w)"></span>
+          </div>
+          <div class="contents">
+            <span class="text-slate-400">Battery
+              <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('p_fhp', 1301)"></span></span>
+            <span class="font-mono font-bold text-right" :style="'color:' + powerColour($store.app.power.battery_w, 'battery')"
+                  x-text="$store.app.fmtPower($store.app.power.battery_w)"></span>
+            <span class="text-right text-xs" :style="'color:' + ($store.app.flowText('battery', $store.app.power.battery_w) === 'Idle' ? 'var(--text-faint)' : 'var(--text-secondary)')"
+                  x-text="$store.app.flowText('battery', $store.app.power.battery_w)"></span>
+          </div>
+          <div class="contents">
+            <span class="text-slate-400">Grid
+              <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('p_uti', 1301)"></span></span>
+            <span class="font-mono font-bold text-right" :style="'color:' + powerColour($store.app.power.grid_w, 'grid')"
+                  x-text="$store.app.fmtPower($store.app.power.grid_w)"></span>
+            <span class="text-right text-xs" :style="'color:' + ($store.app.flowText('grid', $store.app.power.grid_w) === 'Idle' ? 'var(--text-faint)' : 'var(--text-secondary)')"
+                  x-text="$store.app.flowText('grid', $store.app.power.grid_w)"></span>
+          </div>
+          <!-- Generator — only while the generator feature is on (else it's a permanent 0 W) -->
+          <div class="contents" x-show="$store.app.generatorEnabled" x-cloak>
+          <span class="text-slate-400">Generator
+            <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('p_gen', 1301)"></span></span>
+          <span class="font-mono font-bold text-right" style="color:var(--text-primary)"
+                x-text="$store.app.fmtPower($store.app.power.generator_w)"></span>
+          <span class="text-right text-xs" :style="'color:' + ($store.app.flowText('generator', $store.app.power.generator_w) === 'Idle' ? 'var(--text-faint)' : 'var(--text-secondary)')"
+                x-text="$store.app.flowText('generator', $store.app.power.generator_w)"></span>
         </div>
-        <!-- Battery -->
-        <div class="text-center">
-          <div class="text-[0.7rem] uppercase tracking-wider text-slate-500 mb-1">Battery</div>
-          <div class="text-lg font-bold font-mono"
-               :style="'color:' + powerColour($store.app.power.battery_w, 'battery')"
-               x-text="$store.app.fmtPower($store.app.power.battery_w)"></div>
-          <div x-show="$store.app.showRawKeys" class="font-mono text-[9px] mt-0.5"
-               style="color:var(--text-faint)" x-text="$store.app.srcTag('p_fhp', 1301)"></div>
+      </div>
+      <div x-show="$store.app.flowView === 'today'" x-cloak class="grid gap-x-4 gap-y-2.5 text-sm items-baseline" style="grid-template-columns:auto 1fr auto">
+          <div class="contents">
+            <span class="text-slate-400">Solar
+              <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('kwh_sun', 1301)"></span></span>
+            <span class="font-mono font-bold text-right text-slate-200" x-text="$store.app.fmtKwh($store.app.energyToday.solar)"></span>
+            <span class="text-right text-xs" style="color:var(--text-secondary)">Produced</span>
+          </div>
+          <div class="contents">
+            <span class="text-slate-400">Home
+              <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('kwh_load', 1301)"></span></span>
+            <span class="font-mono font-bold text-right text-slate-200" x-text="$store.app.fmtKwh($store.app.energyToday.home)"></span>
+            <span class="text-right text-xs" style="color:var(--text-secondary)">Used</span>
+          </div>
+          <div class="contents">
+            <span class="text-slate-400">Battery
+              <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('kwh_fhp_chg', 1301)"></span></span>
+            <span class="font-mono font-bold text-right text-slate-200" x-text="$store.app.fmtKwh($store.app.energyToday.charged)"></span>
+            <span class="text-right text-xs" style="color:var(--text-secondary)">Charged</span>
+          </div>
+          <div class="contents">
+            <span class="text-slate-400">Battery
+              <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('kwh_fhp_di', 1301)"></span></span>
+            <span class="font-mono font-bold text-right text-slate-200" x-text="$store.app.fmtKwh($store.app.energyToday.discharged)"></span>
+            <span class="text-right text-xs" style="color:var(--text-secondary)">Discharged</span>
+          </div>
+          <div class="contents">
+            <span class="text-slate-400">Grid
+              <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('kwh_uti_in', 1301)"></span></span>
+            <span class="font-mono font-bold text-right text-slate-200" x-text="$store.app.fmtKwh($store.app.energyToday.grid_in)"></span>
+            <span class="text-right text-xs" style="color:var(--text-secondary)">Imported</span>
+          </div>
+          <div class="contents">
+            <span class="text-slate-400">Grid
+              <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('kwh_uti_out', 1301)"></span></span>
+            <span class="font-mono font-bold text-right text-slate-200" x-text="$store.app.fmtKwh($store.app.energyToday.grid_out)"></span>
+            <span class="text-right text-xs" style="color:var(--text-secondary)">Exported</span>
+          </div>
+        <div class="contents" x-show="$store.app.generatorEnabled" x-cloak>
+          <span class="text-slate-400">Generator
+            <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('kwh_gen', 1301)"></span></span>
+          <span class="font-mono font-bold text-right text-slate-200" x-text="$store.app.fmtKwh($store.app.energyToday.generator)"></span>
+          <span class="text-right text-xs" style="color:var(--text-secondary)">Produced</span>
         </div>
-        <!-- Load -->
-        <div class="text-center">
-          <div class="text-[0.7rem] uppercase tracking-wider text-slate-500 mb-1">Load</div>
-          <div class="text-lg font-bold font-mono text-slate-200"
-               x-text="$store.app.fmtPower($store.app.power.load_w)"></div>
-          <div x-show="$store.app.showRawKeys" class="font-mono text-[9px] mt-0.5"
-               style="color:var(--text-faint)" x-text="$store.app.srcTag('p_load', 1301)"></div>
-        </div>
-        <!-- Generator — only while the generator feature is on (else it's a permanent 0 W) -->
-        <div class="text-center" x-show="$store.app.generatorEnabled" x-cloak>
-          <div class="text-[0.7rem] uppercase tracking-wider text-slate-500 mb-1">Generator</div>
-          <div class="text-lg font-bold font-mono text-slate-200"
-               x-text="$store.app.fmtPower($store.app.power.generator_w)"></div>
-          <div x-show="$store.app.showRawKeys" class="font-mono text-[9px] mt-0.5"
-               style="color:var(--text-faint)" x-text="$store.app.srcTag('p_gen', 1301)"></div>
-        </div>
+        <div class="text-[0.65rem] text-slate-500 col-span-3">kWh since midnight · resets daily</div>
       </div>
     </div>
 
