@@ -12,6 +12,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Changed
+- **The dashboard's Power Flow card reads like the Modbus Bridge's:** one row per source
+  with its value and what it is doing (Solar · Generating, Battery · Charging, Grid ·
+  Exporting, Home · Consuming; Idle at 0 W). A **Now / Today** toggle in the card switches
+  to today's kWh (produced, used, charged, discharged, imported, exported) from the same
+  read; the choice is remembered in the browser. The separate Energy card is unchanged.
 - **System view on a phone** (franklinwh-system-view 0.2.4). The zoom buttons, Customise
   diagram and Start on System view are under an **Options** button, folded on phones and
   shown on wider screens, and the choice is remembered; on a phone they took more room
