@@ -105,3 +105,20 @@ def test_admin_metrics_export_uses_start_and_end(tmp_path, monkeypatch):
     assert js["count"] == 3
     assert all(now - 210 <= r["ts"] <= now - 30 for r in js["rows"])
     assert c.get(f"/api/admin/metrics/export?fmt=json&start={now}&end={now - 60}").status_code == 422
+
+
+def test_admin_metrics_export_leaves_mock_gateways_out_unless_named(tmp_path, monkeypatch):
+    """#9 — with no gateway named, the export is the real gateways' rows; a mock gateway's
+    rows come out only when that gateway is asked for by name."""
+    from franklinwh_direct_connect_bridge import state
+    c, store = _client(tmp_path, monkeypatch)
+    state.register_gateway("mock1", "127.0.0.1", "Mock", is_mock=True)
+    try:
+        store.insert({"soc": 10, "mode": "Self-Consumption"}, int(time.time()) - 30,
+                     gateway_id="mock1")
+        rows = c.get("/api/admin/metrics/export?fmt=json&hours=24").json()["rows"]
+        assert sorted({r["gateway_id"] for r in rows}) == ["gw1"]
+        named = c.get("/api/admin/metrics/export?fmt=json&hours=24&gateway=mock1").json()["rows"]
+        assert [r["gateway_id"] for r in named] == ["mock1"]
+    finally:
+        state.unregister_gateway("mock1")
