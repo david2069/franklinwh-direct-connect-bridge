@@ -42,6 +42,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   it can't be met. Tariff and utility are checked against the default meter.
 
 ### Fixed
+- **Selects are the same height as text and number fields in Safari** (#393). Safari drew
+  them as native pop-up menus that ignore padding, so they came out shorter. Selects now
+  draw their own chevron and take the same padding as inputs, as in the Modbus Bridge.
 - **The metrics export says which gateway each row is from** (#9). Without `gateway=` it
   exports every gateway's rows, mocks included, and nothing told them apart. CSV and JSON
   now have a `gateway_id` column, added last so the other columns keep their place.
