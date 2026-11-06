@@ -1,7 +1,10 @@
 """#374 foundation: one franklinwh-ha-notify Notifier over the store's HA instances."""
 
 import asyncio
+import sqlite3
 import types
+
+import pytest
 
 from franklinwh_ha_notify import Event, Target
 
@@ -54,3 +57,15 @@ def test_start_and_stop(tmp_path):
         assert actionable.notifier() is None
     asyncio.run(run())
     assert asyncio.run(actionable.start(None, None)) is None
+
+
+def test_stop_closes_the_notifiers_database_connection(tmp_path):
+    st = db.MetricsStore(str(tmp_path / "bridge.db"))
+
+    async def run():
+        n = await actionable.start(st, types.SimpleNamespace(ha_notify=True))
+        await actionable.stop()
+        return n
+    n = asyncio.run(run())
+    with pytest.raises(sqlite3.ProgrammingError):     # closed, not left to the GC
+        n.ledger.record("SENT", "x")

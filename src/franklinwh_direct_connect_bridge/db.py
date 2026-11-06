@@ -1962,7 +1962,7 @@ class MetricsStore:
         lim = f" LIMIT {int(limit)}" if limit else ""
         with self._lock:
             sent = self._conn.execute(
-                "SELECT ts, event, gateway, title, message, direction, detail FROM notify_ledger "
+                "SELECT ts, event, gateway, title, message, direction, detail, status FROM notify_ledger "
                 f"WHERE direction IN ('SENT','ERROR','SKIPPED'){ev} ORDER BY ts DESC, id DESC{lim}",
                 args).fetchall()
             old = self._conn.execute(
@@ -1971,12 +1971,14 @@ class MetricsStore:
         names = {f"{d['instance_id']}::{d['service'].removeprefix('notify.')}": d["alias"]
                  for d in self.notify_devices()}
         rows = []
-        for ts, e, gw, title, message, direction, detail in sent:
+        for ts, e, gw, title, message, direction, detail, status in sent:
             base = {"ts": ts, "event": e, "gateway": gw, "title": title, "message": message}
             deliveries = json.loads(detail) if detail else []
             if not deliveries:
-                rows.append({**base, "ok": None, "device": "(notifications off)"
-                             if direction == "SKIPPED" else "(no devices)"})
+                # Since franklinwh-ha-notify 0.1.4 a send with no targets is SKIPPED
+                # too ("no targets"); the status tells it from notifications being off.
+                off = direction == "SKIPPED" and (status or "").startswith("notifications are off")
+                rows.append({**base, "ok": None, "device": "(notifications off)" if off else "(no devices)"})
             for x in deliveries:
                 key = x.get("target") or ""
                 rows.append({**base, "ok": int(bool(x.get("ok"))),

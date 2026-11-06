@@ -290,3 +290,30 @@ def test_the_answer_is_still_known_to_the_run_after_a_restart(store, sent, bridg
     entry = {"id": "s1", "_wkey": _occ(store)["occurrence_key"]}
     assert sch._ask_answer(entry, "gw") == {"ask.answer": "Full"}
     assert len(sent) == 1
+
+
+def test_a_question_sent_just_before_a_restart_is_not_sent_again(store, sent, bridge):
+    """A restart after the send but before the run recorded the request id: the run
+    finds its question among the Notifier's open requests rather than asking again."""
+    _schedule(store)
+    _tick(store)
+    rid = _asked(store)
+    store._conn.execute("UPDATE occurrences SET ask_request_id=NULL")
+    store._conn.commit()
+    bridge.restart()
+    assert _tick(store, NOW + dt.timedelta(seconds=15)) == []
+    assert len(sent) == 1, "not asked again"
+    assert _occ(store)["ask_request_id"] == rid
+    assert bridge.tap(YES, rid).status == "accepted"
+    _settle()
+    assert [f["id"] for f in _tick(store, NOW + dt.timedelta(seconds=30))] == ["s1"]
+    assert len(sent) == 1
+
+
+def test_another_runs_open_question_is_not_taken_for_this_one(store, sent, bridge):
+    _schedule(store)
+    _schedule(store, sid="s2")
+    _tick(store)
+    _asked(store)
+    _asked(store, "s2")
+    assert len(sent) == 2

@@ -26,6 +26,8 @@ from franklinwh_ha_notify import (HAInstance, Ledger, Notifier, Requests, SendRe
 log = logging.getLogger(__name__)
 
 _notifier: Notifier | None = None
+#: The running Notifier's own database connection, closed by :func:`stop`.
+_conn: sqlite3.Connection | None = None
 _loop: asyncio.AbstractEventLoop | None = None
 _templates = Templates()
 _handlers: dict = {}
@@ -121,14 +123,15 @@ def _instances(store) -> dict[str, HAInstance]:
     return out
 
 
-def build(store, settings) -> Notifier:
+def build(store, settings, conn: sqlite3.Connection | None = None) -> Notifier:
     """A Notifier over ``store``'s HA instances and ledger, with the registered
-    handlers. No listeners started.
+    handlers. No listeners started. ``conn`` is its connection to the bridge database;
+    without one it opens its own, which the caller leaves to the garbage collector.
 
     Its requests are kept in the bridge database (``notify_requests``, created by the
     store's migration) as well as in memory, so a tap inside a request's TTL after a
     restart still resolves and runs its handler (franklinwh-ha-notify#6)."""
-    conn = sqlite3.connect(store.path, check_same_thread=False)
+    conn = conn or sqlite3.connect(store.path, check_same_thread=False)
     n = Notifier(_instances(store), Ledger(conn, create=False), _templates,
                  enabled=lambda: bool(settings.ha_notify),
                  requests=Requests.persistent(conn, create=False))
@@ -144,11 +147,12 @@ def notifier() -> Notifier | None:
 
 async def start(store, settings) -> Notifier | None:
     """Build the Notifier and open one tap listener per HA instance. Never raises."""
-    global _notifier, _loop
+    global _notifier, _loop, _conn
     if store is None:
         return None
     try:
-        _notifier = build(store, settings)
+        _conn = sqlite3.connect(store.path, check_same_thread=False)
+        _notifier = build(store, settings, _conn)
         _loop = asyncio.get_running_loop()
         _notifier.listen()
         log.info("actionable notifications: listening on %d Home Assistant instance(s)",
@@ -156,7 +160,15 @@ async def start(store, settings) -> Notifier | None:
     except Exception as e:  # noqa: BLE001 - notifications must never stop the bridge
         log.error("actionable notifications could not start: %s", e)
         _notifier = None
+        _close_conn()
     return _notifier
+
+
+def _close_conn() -> None:
+    global _conn
+    if _conn is not None:
+        _conn.close()
+        _conn = None
 
 
 async def stop() -> None:
@@ -164,3 +176,4 @@ async def stop() -> None:
     if _notifier is not None:
         await _notifier.close()
         _notifier = None
+    _close_conn()
