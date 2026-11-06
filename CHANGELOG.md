@@ -42,6 +42,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   it can't be met. Tariff and utility are checked against the default meter.
 
 ### Fixed
+- **The metrics export says which gateway each row is from** (#9). Without `gateway=` it
+  exports every gateway's rows, mocks included, and nothing told them apart. CSV and JSON
+  now have a `gateway_id` column, added last so the other columns keep their place.
 - **Swagger UI (`/docs`) and ReDoc (`/redoc`) work through Home Assistant ingress**
   (#177). They loaded the schema from `/openapi.json`, which under ingress is Home
   Assistant's root, not the bridge. They now take the ingress path from

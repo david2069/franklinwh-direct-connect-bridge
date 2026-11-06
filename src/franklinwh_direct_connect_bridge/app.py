@@ -6982,8 +6982,9 @@ def create_app() -> FastAPI:
             start, end = now - max(1, min(hours, 24 * 90)) * 3600, now
         # A database export: no gateway means every gateway's rows, never the default's.
         gw = _metrics_gw_key(gateway) if gateway else None
-        rows = store.query(start, end, None, gateway=gw)
-        cols = ["ts", "soc", "grid_w", "solar_w", "battery_w", "load_w", "generator_w", "mode"]
+        rows = store.query(start, end, None, gateway=gw, with_gateway=True)
+        cols = ["ts", "soc", "grid_w", "solar_w", "battery_w", "load_w", "generator_w", "mode",
+                "gateway_id"]                         # last, so existing columns keep their place (#9)
         stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
         if fmt == "json":
             return StreamingResponse(
