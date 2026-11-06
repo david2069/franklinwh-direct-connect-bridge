@@ -961,6 +961,16 @@ document.addEventListener('alpine:init', () => {
       this.closeAllGateways();
       if (row.id !== this.selectedGateway) this.selectGateway(row.id);
     },
+    //: The gateway menu's SoC (#373): the last value read, not live. When the reading is
+    //  older than the poll interval allows (one poll may still be running), its age is
+    //  added: "55% · 4 min ago". Empty when the gateway has no SoC yet.
+    gwSocText(g) {
+      if (typeof g.soc !== 'number') return '';
+      const pct = `${Math.round(g.soc)}%`;
+      const age = g.last_poll_ts ? Date.now() / 1000 - g.last_poll_ts : null;
+      const old = g.stale || age === null || age > 2 * (g.poll_interval || 30);
+      return old && g.last_poll_ts ? `${pct} · ${this.agoText(g.last_poll_ts)}` : pct;
+    },
     agoText(ts) {
       if (!ts) return '—';
       const s = Math.max(0, Math.round(Date.now() / 1000 - ts));
