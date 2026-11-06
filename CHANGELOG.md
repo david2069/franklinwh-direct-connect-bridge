@@ -46,6 +46,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   it can't be met. Tariff and utility are checked against the default meter.
 
 ### Fixed
+- **Metrics export leaves mock gateways out** unless that gateway is named (#9). With no
+  gateway named it exports the real gateways' rows; each row already names its gateway.
 - **Tests: the send-to tests wait for the question** (`notifier.asked()`), the same race
   fixed for the ask-step tests in #516; it failed a full-suite run on main.
 - **Settings → Setup: the Mark complete result line binds its colour as an object**, not a
