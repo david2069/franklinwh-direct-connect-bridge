@@ -14,7 +14,7 @@
   It can always be closed. Closing records `skipped`, which stops the prompt and disables
   nothing; Settings → Setup is the same content, reachable for ever.
 #}
-<div x-data="setupWizard()" x-init="init()" x-cloak>
+<div x-data="setupWizard()" x-cloak>
   <template x-if="open">
     <div class="fixed inset-0 z-[110] flex items-center justify-center p-4"
          style="background:rgba(0,0,0,.6)" role="dialog" aria-modal="true"

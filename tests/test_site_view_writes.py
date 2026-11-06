@@ -35,7 +35,7 @@ def test_system_setup_is_reread_on_a_switch_and_save_waits_for_it():
 
 
 def test_system_setup_watchers_register_once_although_init_runs_twice():
-    # settings.html has x-data="settingsTab()" x-init="init()", so init() runs twice.
+    # The guard stays although init() now runs once (#376).
     src = (JS / "settings_tab.js").read_text()
     assert src.count("if (!this._systemWatched) this.$watch(") == 2
     assert "this._systemWatched = true;" in src

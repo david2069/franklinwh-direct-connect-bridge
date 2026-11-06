@@ -18,22 +18,8 @@
           x-text="(($store.app.gateways.find(g => g.id === $store.app.selectedGateway) || {}).label) || $store.app.selectedGateway"></span>
   </p>
 
-  <!-- Read-only notice -->
-  <div class="card" x-show="!$store.app.summary.writes_enabled"
-       style="border-color: var(--border); background: var(--surface-1)">
-    <div class="flex items-center gap-3">
-      <svg class="w-5 h-5 flex-shrink-0 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-      </svg>
-      <div>
-        <div class="text-sm font-semibold text-slate-300">Control writes are disabled (read-only)</div>
-        <div class="text-xs text-slate-500">Set <span class="font-mono">ALLOW_WRITES=true</span> to enable mode switching and off-grid control.</div>
-      </div>
-    </div>
-  </div>
-
   <!-- Battery Control — Force Charge/Discharge/Standby via direct Modbus (WSet) -->
-  <div class="card space-y-4" x-data="batteryControl()" x-init="init()">
+  <div class="card space-y-4" x-data="batteryControl()">
     <div class="flex items-center justify-between">
       <div class="card-label inline-flex items-center gap-2" style="margin-bottom:0">Battery Control <a :href="$store.app.guideUrl('control/#battery-force-two-paths-and-which-one-you-are-on')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a> <a :href="$store.app.guideUrl('battery-dispatch/#releasing-a-force')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Releasing a force</a>
         {% with kind='modbus', label='Modbus' %}{% include 'partials/cap-marker.html' %}{% endwith %}

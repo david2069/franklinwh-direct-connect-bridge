@@ -1,7 +1,7 @@
 {% from "partials/dialog_msg.html" import dialog_msg %}
 {% from "partials/device_multiselect.html" import device_multiselect %}
 <!-- ── Settings Tab (read-only) ───────────────────────────── -->
-<div class="space-y-6 max-w-5xl" x-data="settingsTab()" x-init="init()">
+<div class="space-y-6 max-w-5xl" x-data="settingsTab()">
 
   <!-- Settings sub-tabs -->
   <div class="flex flex-wrap gap-1.5">
@@ -2513,7 +2513,7 @@
        Where each value comes from, with a live Probe. Lives under Integrations
        because that is what it configures; it is not a separate concern. -->
   <!-- ── Integration → Mapping ──────────────────────────────────────────────── -->
-  <div x-data="integrationsTab()" x-init="init()" class="space-y-4">
+  <div x-data="integrationsTab()" class="space-y-4">
 
     <div class="flex items-center justify-between gap-3 flex-wrap">
       <div>
