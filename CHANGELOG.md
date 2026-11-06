@@ -12,6 +12,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Changed
+- **franklinwh-ha-notify 0.1.4** (was 0.1.3). Ledger writes from a worker thread, two
+  waits on one question both get the tap, a question no phone received is not left open,
+  a tap handler that asks its own question gets its answer, and a send with no targets is
+  recorded as SKIPPED (was ERROR), as the notifications log already described it.
 - **The dashboard's Power Flow card reads like the Modbus Bridge's:** one row per source
   with its value and what it is doing (Solar · Generating, Battery · Charging, Grid ·
   Exporting, Home · Consuming; Idle at 0 W). A **Now / Today** toggle in the card switches
