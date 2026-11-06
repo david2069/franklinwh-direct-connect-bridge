@@ -3262,11 +3262,13 @@ def _ask_targets(store, send_to: dict | None = None) -> list[Target]:
 
 
 async def _ask(targets: list[Target], buttons: list[Button], timeout_s: int, gateway: str,
-               *, remember=None, **values):
+               *, remember=None, run: str | None = None, **values):
     """Ask, record the request on the run (``remember(request_id)``), then wait.
-    Returns ``(answer, delivered)``."""
+    Returns ``(answer, delivered)``. ``run`` names the run on the request (its meta),
+    so a restart before ``remember`` still finds it (:func:`_open_question`)."""
     n = actionable.notifier()
-    req = await n.ask(ASK_EVENT, targets, buttons, ttl_s=timeout_s, gateway=gateway, **values)
+    req = await n.ask(ASK_EVENT, targets, buttons, ttl_s=timeout_s, gateway=gateway,
+                      meta={"run": run} if run else None, **values)
     if req is None:
         return Answer(None, timed_out=True), False
     if remember is not None:
@@ -3279,8 +3281,10 @@ async def _ask(targets: list[Target], buttons: list[Button], timeout_s: int, gat
 
 async def _rewait(request, timeout_s: int):
     """The waiting half again, after a restart: what is left of the request's time.
-    A request answered while the bridge was down returns its answer at once; one that
-    expired unanswered times out at once."""
+    A request answered before the restart, and not yet acted on, returns its answer at
+    once; one that expired unanswered times out at once. A tap made while the bridge was
+    down never arrives: Home Assistant does not resend events to a listener that was not
+    connected."""
     return await actionable.notifier().wait(request, timeout_s), True
 
 
@@ -3303,14 +3307,24 @@ def _restore_ask(entry: dict, *, store, gateway_id: str | None, wkey: str | None
 
 
 def _reattach(request_id: str | None):
-    """The question a run asked before a restart: still open or answered (``pending``),
-    or expired while the bridge was down (so ``wait`` records it as no reply). None when
-    it is gone, or nothing is running to find it with."""
+    """The question a run asked before a restart: still open or answered before the
+    restart (``pending``), or expired while the bridge was down (so ``wait`` records it as
+    no reply). None when it is gone, or nothing is running to find it with."""
     n = actionable.notifier()
     if not request_id or n is None:
         return None
     return (next((r for r in n.pending(ASK_EVENT) if r.id == request_id), None)
             or n.requests.get(request_id))
+
+
+def _open_question(run: str) -> str | None:
+    """The id of the open question this run sent, found by its ``run`` meta: for a restart
+    after the send but before the run recorded the id. None when there is none."""
+    n = actionable.notifier()
+    if n is None:
+        return None
+    return next((r.id for r in n.pending(ASK_EVENT) if (r.meta or {}).get("run") == run),
+                None)
 
 
 def _ask_step(entry: dict, *, store, gateway_id: str | None,
@@ -3333,6 +3347,12 @@ def _ask_step(entry: dict, *, store, gateway_id: str | None,
     occ_id = (occ or {}).get("id")
     held = _asks.get(dkey)
     asked = (occ or {}).get("ask_request_id")
+    run = f"{dkey}|{wkey}"
+    if (held is None or held["wkey"] != wkey) and not asked:
+        # Sent before a restart that came before the run recorded it.
+        asked = _open_question(run)
+        if asked and occ_id is not None:
+            store.set_occurrence_ask(occ_id, request_id=asked)
     if (held is None or held["wkey"] != wkey) and asked:
         # Asked before a restart: wait for that question rather than asking again.
         req = _reattach(asked)
@@ -3355,7 +3375,7 @@ def _ask_step(entry: dict, *, store, gateway_id: str | None,
             timeout_min * 60, getattr(gw, "label", None) or gid,
             remember=(None if occ_id is None else
                       lambda rid: store.set_occurrence_ask(occ_id, request_id=rid)),
-            schedule=entry.get("name") or "",
+            run=run, schedule=entry.get("name") or "",
             question=f"{question} (reply within {timeout_min} min)"))
         held = _asks[dkey] = {"wkey": wkey, "fut": fut, "open": True, "decided": None,
                               "answer": None}
