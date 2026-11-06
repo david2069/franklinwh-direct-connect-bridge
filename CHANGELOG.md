@@ -12,6 +12,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Changed
+- **The top bar gateway menu shows each gateway's SoC** (#373). Each row shows the last
+  SoC read, for example "55%", from the poller's cache, so no new device reads. When the
+  reading is older than the poll interval allows, its age is added: "55% · 4 min ago".
+  `/api/gateways` rows now also carry `poll_interval`.
 - **Every number each poll reads is kept, not just the chart values.** A poll reads about
   84 values (each aPower's battery, relays, today's energy, comms, grid voltage) but only 8
   were stored; the rest were shown live and lost. Now all of them are stored with each
