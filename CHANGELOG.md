@@ -12,6 +12,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Changed
+- **The dashboard's Power Flow card reads like the Modbus Bridge's:** one row per source
+  with its value and what it is doing (Solar · Generating, Battery · Charging, Grid ·
+  Exporting, Home · Consuming; Idle at 0 W). A **Now / Today** toggle in the card switches
+  to today's kWh (produced, used, charged, discharged, imported, exported) from the same
+  read; the choice is remembered in the browser. The separate Energy card is unchanged.
 - **The top bar gateway menu shows each gateway's SoC** (#373). Each row shows the last
   SoC read, for example "55%", from the poller's cache, so no new device reads. When the
   reading is older than the poll interval allows, its age is added: "55% · 4 min ago".

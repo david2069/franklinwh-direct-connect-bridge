@@ -1373,6 +1373,26 @@ document.addEventListener('alpine:init', () => {
     get energyToday() {
       return this.summary.energy_today || {};
     },
+    //: Power Flow card: 'now' (live watts) or 'today' (today's kWh), kept in this browser.
+    flowView: (() => { try { return localStorage.getItem('fwh-local-flow-view') === 'today' ? 'today' : 'now'; } catch (e) { return 'now'; } })(),
+    setFlowView(v) {
+      this.flowView = v === 'today' ? 'today' : 'now';
+      try { localStorage.setItem('fwh-local-flow-view', this.flowView); } catch (e) { /* private mode */ }
+    },
+    //: What a flow is doing, in a word, for the Power Flow rows. grid_w > 0 is import and
+    //  battery_w > 0 is discharge; no reading says nothing.
+    flowText(kind, w) {
+      if (w == null) return '';
+      const words = {
+        grid: ['Importing', 'Exporting'],
+        battery: ['Discharging', 'Charging'],
+        solar: ['Generating', 'Idle'],
+        home: ['Consuming', 'Idle'],
+        generator: ['Running', 'Idle'],
+      };
+      const [pos, neg] = words[kind] || ['', ''];
+      return w > 0 ? pos : (w < 0 ? neg : 'Idle');
+    },
 
     // ── Unit formatters (display-only) ─────────────────────
     // Power in raw watts → 'W' or 'kW' per the user's preference.
