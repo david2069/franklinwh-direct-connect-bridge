@@ -6813,6 +6813,23 @@ def create_app() -> FastAPI:
         return {"latitude": float(lat), "longitude": float(lon),
                 "postcode": tl.get("postcode"), "timezone": tl.get("timezone")}
 
+    @app.get("/api/metrics/raw")
+    def api_metrics_raw(
+        start: int = Query(...),
+        end: int = Query(...),
+        gateway: str = Depends(_gateway_q),
+    ):
+        """Stored rows exactly as kept: every column plus ``poll``, every number each poll
+        read. Polls older than ``db.POLL_RAW_DAYS`` come back in ``hourly`` as
+        mean/min/max. For looking at values the charts don't show."""
+        store = db.get_store(get_settings())
+        if store is None:
+            return {"enabled": False, "rows": [], "hourly": [], "count": 0}
+        gw = _metrics_gw_key(gateway)
+        rows = store.raw(start, end, gateway=gw)
+        return {"enabled": True, "start": start, "end": end, "count": len(rows), "rows": rows,
+                "hourly": store.poll_hourly(start, end, gateway=gw)}
+
     @app.get("/api/metrics/info")
     def api_metrics_info():
         s = get_settings()
