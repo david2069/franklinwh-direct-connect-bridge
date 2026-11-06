@@ -33,7 +33,7 @@
   </div>
 
   <!-- Battery Control — Force Charge/Discharge/Standby via direct Modbus (WSet) -->
-  <div class="card space-y-4" x-data="batteryControl()" x-init="init()">
+  <div class="card space-y-4" x-data="batteryControl()">
     <div class="flex items-center justify-between">
       <div class="card-label inline-flex items-center gap-2" style="margin-bottom:0">Battery Control <a :href="$store.app.guideUrl('control/#battery-force-two-paths-and-which-one-you-are-on')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a> <a :href="$store.app.guideUrl('battery-dispatch/#releasing-a-force')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Releasing a force</a>
         {% with kind='modbus', label='Modbus' %}{% include 'partials/cap-marker.html' %}{% endwith %}

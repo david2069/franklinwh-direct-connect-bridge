@@ -42,6 +42,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   it can't be met. Tariff and utility are checked against the default meter.
 
 ### Fixed
+- **Each tab sets itself up once, not twice** (#376). Alpine already calls a component's
+  `init()`, and fourteen templates called it again with `x-init="init()"`, so their
+  watchers and first reads ran twice (for example two `GET /api/system-setup` on one
+  gateway switch). The extra `x-init` is gone, and a test stops it coming back.
 - **The aPower model is read from the gateway** (#496). Each aPower's model code
   (`PE_HW_VER` in the login reply) is looked up in franklinwh-cloud's device catalogue, the
   same way the aGate model already is: code 2 is the aPower X-01-AU. The install-profile
