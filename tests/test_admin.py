@@ -85,6 +85,17 @@ def test_admin_metrics_export_csv_and_json(tmp_path, monkeypatch):
     assert js["count"] == 5
 
 
+def test_admin_metrics_export_names_each_rows_gateway(tmp_path, monkeypatch):
+    """#9 — an export of every gateway must say which gateway each row is from."""
+    c, store = _client(tmp_path, monkeypatch)
+    store.insert({"soc": 10, "mode": "Self-Consumption"}, int(time.time()) - 30, gateway_id="gw2")
+    lines = c.get("/api/admin/metrics/export?fmt=csv&hours=24").text.strip().splitlines()
+    assert lines[0].split(",")[-1] == "gateway_id"
+    assert sorted(l.split(",")[-1] for l in lines[1:]) == ["gw1"] * 5 + ["gw2"]
+    rows = c.get("/api/admin/metrics/export?fmt=json&hours=24").json()["rows"]
+    assert sorted(r["gateway_id"] for r in rows) == ["gw1"] * 5 + ["gw2"]
+
+
 def test_admin_metrics_export_uses_start_and_end(tmp_path, monkeypatch):
     """#145 — a custom range must export what the chart shows, not 'the last N hours'."""
     c, _ = _client(tmp_path, monkeypatch)

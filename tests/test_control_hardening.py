@@ -95,3 +95,14 @@ def test_cloud_programme_label_parses_strings_and_dicts():
     assert cloud_status._programme_label([{"programName": "Solar Sponge"}]) == "Solar Sponge"
     assert cloud_status._programme_label([]) is None
     assert cloud_status._programme_label(None) is None
+
+
+# ── /api/reboot docstring (#178) ─────────────────────────────────────────────
+def test_reboot_docstring_does_not_claim_allow_writes_gate(tmp_path, monkeypatch):
+    """allow_writes no longer blocks anything, so the reboot route's description (shown
+    in the API docs) must not say it is gated by it. confirm=true is still required."""
+    c, _ = _client(tmp_path, monkeypatch)
+    route = next(r for r in c.app.routes if getattr(r, "path", "") == "/api/reboot")
+    doc = route.endpoint.__doc__
+    assert "allow_writes" not in doc and "Double-gated" not in doc
+    assert "confirm=true" in doc

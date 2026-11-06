@@ -1,7 +1,7 @@
 {% from "partials/dialog_msg.html" import dialog_msg %}
 {% from "partials/device_multiselect.html" import device_multiselect %}
 <!-- ── Settings Tab (read-only) ───────────────────────────── -->
-<div class="space-y-6 max-w-5xl" x-data="settingsTab()" x-init="init()">
+<div class="space-y-6 max-w-5xl" x-data="settingsTab()">
 
   <!-- Settings sub-tabs -->
   <div class="flex flex-wrap gap-1.5">
@@ -23,6 +23,15 @@
             What this bridge could read from the gateway, and what still needs you.
             Everything here can be changed later.
           </p>
+          <!-- The stored state, and the result of the last Mark complete (#395). -->
+          <p class="text-xs mt-1" style="color:var(--text-secondary)">Status:
+            <span class="chip" style="padding:0 6px;font-size:.6rem"
+                  :class="$store.app.setup.state === 'done' ? 'ok' : 'muted'"
+                  x-text="({ done: 'Complete', skipped: 'Skipped' })[$store.app.setup.state] || 'Not done'"></span>
+          </p>
+          <p x-show="$store.app.setupStateMsg" class="text-xs mt-1"
+             :style="$store.app.setupStateMsg?.ok ? 'color:var(--ok,#10b981)' : 'color:#fca5a5'"
+             x-text="$store.app.setupStateMsg?.text"></p>
         </div>
         <div class="flex items-center gap-2">
           <!-- The same wizard, on demand. Settings -> Setup is the checklist; this is the
@@ -31,8 +40,11 @@
                   @click="window.dispatchEvent(new CustomEvent('fwh:open-setup-wizard'))">Run the wizard</button>
           <button class="btn btn-secondary btn-sm" @click="$store.app.loadSetup()">Re-check</button>
           <button class="btn btn-primary btn-sm"
-                  x-show="$store.app.setup.required_satisfied"
+                  x-show="$store.app.setup.required_satisfied && $store.app.setup.state !== 'done'"
                   @click="$store.app.setSetupState('done')">Mark complete</button>
+          <button class="btn btn-secondary btn-sm"
+                  x-show="$store.app.setup.state === 'done'"
+                  @click="$store.app.setSetupState('pending')">Mark not complete</button>
         </div>
       </div>
     </div>
@@ -2513,7 +2525,7 @@
        Where each value comes from, with a live Probe. Lives under Integrations
        because that is what it configures; it is not a separate concern. -->
   <!-- ── Integration → Mapping ──────────────────────────────────────────────── -->
-  <div x-data="integrationsTab()" x-init="init()" class="space-y-4">
+  <div x-data="integrationsTab()" class="space-y-4">
 
     <div class="flex items-center justify-between gap-3 flex-wrap">
       <div>

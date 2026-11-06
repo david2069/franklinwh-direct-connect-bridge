@@ -231,13 +231,26 @@ document.addEventListener('alpine:init', () => {
       return !!(this.setup.should_prompt && !this.setupDismissed && !this.setupModalOpen);
     },
 
+    //: The result of the last Mark complete / Mark not complete, shown on the Setup card
+    //  and kept there (#395). A failure used to look the same as success.
+    setupStateMsg: null,
+
     async setSetupState(value) {
+      const DONE = { done: 'Setup marked complete.', pending: 'Setup marked not complete.',
+                     skipped: 'Setup skipped.' };
       try {
-        await fetch('api/setup/state', {
+        const r = await fetch('api/setup/state', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ state: value }),
         });
-      } catch (e) { /* the banner still dismisses locally */ }
+        const d = await r.json().catch(() => ({}));
+        this.setupStateMsg = r.ok
+          ? { ok: true, text: DONE[value] || 'Saved.' }
+          : { ok: false, text: `Not saved: ${d.detail || 'the bridge refused it'} (HTTP ${r.status}).` };
+      } catch (e) {
+        // The banner still dismisses locally.
+        this.setupStateMsg = { ok: false, text: `Not saved: ${e}` };
+      }
       this.setupDismissed = true;
       await this.loadSetup();
     },
@@ -948,6 +961,16 @@ document.addEventListener('alpine:init', () => {
       this.closeAllGateways();
       if (row.id !== this.selectedGateway) this.selectGateway(row.id);
     },
+    //: The gateway menu's SoC (#373): the last value read, not live. When the reading is
+    //  older than the poll interval allows (one poll may still be running), its age is
+    //  added: "55% · 4 min ago". Empty when the gateway has no SoC yet.
+    gwSocText(g) {
+      if (typeof g.soc !== 'number') return '';
+      const pct = `${Math.round(g.soc)}%`;
+      const age = g.last_poll_ts ? Date.now() / 1000 - g.last_poll_ts : null;
+      const old = g.stale || age === null || age > 2 * (g.poll_interval || 30);
+      return old && g.last_poll_ts ? `${pct} · ${this.agoText(g.last_poll_ts)}` : pct;
+    },
     agoText(ts) {
       if (!ts) return '—';
       const s = Math.max(0, Math.round(Date.now() / 1000 - ts));
@@ -1580,6 +1603,19 @@ document.addEventListener('alpine:init', () => {
     // ── Control writes ─────────────────────────────────────
     modeMenuOpen: false,
     gwMenuOpen: false,  // styled gateway selector dropdown
+    gwMenuLeft: false,  // open the gateway menu left-aligned (#372)
+    // #372: the menu is 18rem wide and right-aligned to the selector. When the selector
+    // sits near the content's left edge it would reach under the sidebar, so open it
+    // left-aligned when there is no room to its left.
+    toggleGwMenu(btn) {
+      if (!this.gwMenuOpen && btn) {
+        const r = btn.getBoundingClientRect();
+        const edge = (btn.closest('header') || document.body).getBoundingClientRect().left;
+        const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+        this.gwMenuLeft = r.right - 18 * rem < edge;
+      }
+      this.gwMenuOpen = !this.gwMenuOpen;
+    },
     // All gateways (#383): read-only, every gateway at once. Opened from the gateway
     // picker; a row makes that gateway the one on screen. No controls.
     allGw: { open: false, rows: [], totals: null, error: '' },

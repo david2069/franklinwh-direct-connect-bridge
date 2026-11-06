@@ -26,7 +26,7 @@
     <!-- Gateway selector: the active gateway, shown even when it is the only one -->
     <div class="relative" style="order:-3" x-show="$store.app.gateways.length"
          @click.outside="$store.app.gwMenuOpen = false">
-      <button class="chip muted inline-flex items-center gap-1" @click="$store.app.gwMenuOpen = !$store.app.gwMenuOpen"
+      <button class="chip muted inline-flex items-center gap-1" @click="$store.app.toggleGwMenu($el)"
               title="Select gateway">
         <span class="truncate max-w-[9rem]" x-text="$store.app.selectedGatewayLabel"></span>
         <svg class="w-3 h-3 opacity-70 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -34,7 +34,8 @@
         </svg>
       </button>
       <div x-show="$store.app.gwMenuOpen" x-cloak x-transition
-           class="absolute right-0 mt-1 w-72 rounded-lg border shadow-xl z-[120] overflow-hidden"
+           class="absolute mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-lg border shadow-xl z-[120] overflow-hidden"
+           :class="$store.app.gwMenuLeft ? 'left-0' : 'right-0'"
            style="background:var(--surface-1);border-color:var(--border)">
         <div class="px-3 py-2 text-[10px] uppercase tracking-wide border-b"
              style="color:var(--text-secondary);border-color:var(--border)">Gateway</div>
@@ -78,6 +79,10 @@
                     style="padding:0 6px;font-size:.6rem"
                     :title="'Operating mode: ' + (g.mode || '')"
                     x-text="$store.app.modeTag(g.mode)"></span>
+              <!-- Last-read SoC (#373); its age is added when the reading is old. -->
+              <span x-show="$store.app.gwSocText(g)" class="text-xs font-mono shrink-0"
+                    style="color:var(--text-secondary)" title="State of charge, last value read"
+                    x-text="$store.app.gwSocText(g)"></span>
               <svg x-show="$store.app.flowDir(g) === 'charge'" class="w-3.5 h-3.5 shrink-0"
                    style="color:#34d399" fill="none" stroke="currentColor" stroke-width="2.5"
                    viewBox="0 0 24 24">
