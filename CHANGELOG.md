@@ -12,6 +12,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Changed
+- **Every number each poll reads is kept, not just the chart values.** A poll reads about
+  84 values (each aPower's battery, relays, today's energy, comms, grid voltage) but only 8
+  were stored; the rest were shown live and lost. Now all of them are stored with each
+  sample (numbers only, so serials and names are never kept). Like Home Assistant's
+  recorder, full detail is kept for 10 days and then rolled up into hourly mean/min/max for
+  the rest of the metrics retention; the 8 chart values are unchanged. New read-only
+  `GET /api/metrics/raw?gateway=&start=&end=` returns stored rows with every column, plus
+  the hourly roll-ups.
 - **What's installed, in plain words** (#496). The setup wizard's Confirm step and
   **Settings → Setup** now show one card per gateway. Everything the gateway reports
   (model, number of aPowers, grid connection, operating modes, solar and its size,

@@ -522,7 +522,7 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                         try:
                             await asyncio.to_thread(
                                 store.insert, st, int(time.time()), gw.serial or gw.id,
-                                summ.get("tou_tiers"))
+                                summ.get("tou_tiers"), summ)
                             inserts += 1
                             if inserts % 20 == 0:
                                 deleted = await asyncio.to_thread(
