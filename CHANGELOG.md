@@ -46,6 +46,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   it can't be met. Tariff and utility are checked against the default meter.
 
 ### Fixed
+- **Tests: the send-to tests wait for the question** (`notifier.asked()`), the same race
+  fixed for the ask-step tests in #516; it failed a full-suite run on main.
 - **Settings → Setup: the Mark complete result line binds its colour as an object**, not a
   string, so Alpine's `x-show` can't wipe the element's `display` when the message changes
   (#395 follow-up).
