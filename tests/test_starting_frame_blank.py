@@ -75,7 +75,7 @@ class _FakeStore:
     def __init__(self):
         self.inserted = []
 
-    def insert(self, st, ts, serial, tiers=None):
+    def insert(self, st, ts, serial, tiers=None, poll=None):
         self.inserted.append(dict(st))
 
     def prune(self, *a, **k):

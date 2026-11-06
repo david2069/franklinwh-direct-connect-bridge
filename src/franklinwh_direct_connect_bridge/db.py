@@ -18,6 +18,10 @@ from pathlib import Path
 
 from .config import Settings
 
+#: Days each poll is kept in full; after that it is rolled up into hourly
+#: mean/min/max. Home Assistant's recorder default (purge_keep_days) is 10.
+POLL_RAW_DAYS = 10
+
 # Numeric columns written per sample (mode is stored separately as TEXT).
 #: `grid_voltage_v` is the SERVICE voltage — one reading of the thing itself, not
 #: the sum of gridVol1 + gridVol2. On a single-phase service those two are halves of
@@ -57,6 +61,7 @@ class MetricsStore:
         self._conn.execute("CREATE INDEX IF NOT EXISTS ix_metrics_ts ON metrics(ts)")
         self._migrate_gateway_id()
         self._migrate_tiers()
+        self._migrate_poll()
         self._migrate_grid_voltage()
         self._migrate_bms()
         self._migrate_ha_instances()
@@ -106,24 +111,39 @@ class MetricsStore:
         if "tiers" not in cols:
             self._conn.execute("ALTER TABLE metrics ADD COLUMN tiers TEXT")
 
+    def _migrate_poll(self) -> None:
+        """Add the ``poll`` column (every number the poll read, as JSON). Idempotent."""
+        cols = [r[1] for r in self._conn.execute("PRAGMA table_info(metrics)")]
+        if "poll" not in cols:
+            self._conn.execute("ALTER TABLE metrics ADD COLUMN poll TEXT")
+        self._conn.execute(
+            """CREATE TABLE IF NOT EXISTS metrics_poll_hourly(
+                   ts INTEGER NOT NULL, gateway_id TEXT NOT NULL DEFAULT '',
+                   n INTEGER NOT NULL, stats TEXT NOT NULL,
+                   PRIMARY KEY (gateway_id, ts))""")
+
     def insert(self, state: dict, ts: int, gateway_id: str | None = None,
-               tiers: dict | None = None) -> None:
+               tiers: dict | None = None, poll: dict | None = None) -> None:
         """Insert one sample. Missing keys → NULL. Under lock; commits atomically.
 
         ``tiers`` is the 1301 tariff-tier accumulator block; stored as JSON when
         present, NULL otherwise. Malformed input is stored as NULL rather than
         raising — a poll must never die over a telemetry extra.
+
+        ``poll`` is the whole poll summary: every number in it is kept (see
+        :func:`_poll_json`), so values beyond the chart columns can be looked at later.
         """
         vals = [ts]
         vals += [_num(state.get(k)) for k in _NUM_COLS]
         vals.append(state.get("mode"))
         vals.append(gateway_id)
         vals.append(_tiers_json(tiers))
+        vals.append(_poll_json(poll))
         with self._lock:
             self._conn.execute(
                 "INSERT INTO metrics(ts, soc, grid_w, solar_w, battery_w, load_w, "
-                "generator_w, grid_voltage_v, grid_freq_hz, mode, gateway_id, tiers) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                "generator_w, grid_voltage_v, grid_freq_hz, mode, gateway_id, tiers, poll) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 vals,
             )
             self._conn.commit()
@@ -174,6 +194,27 @@ class MetricsStore:
                 continue
             if isinstance(parsed, dict):
                 out.append({"ts": int(ts), **parsed})
+        return out
+
+    def raw(self, start: int, end: int, gateway: str | None = None) -> list[dict]:
+        """Stored rows between ``start`` and ``end`` exactly as kept: every column, and
+        ``poll`` (every number the poll read) as a dict. No averaging, no rounding."""
+        gw_sql = " AND gateway_id = :gw" if gateway is not None else ""
+        cols = ("ts",) + _NUM_COLS + ("mode",)
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT {', '.join(cols)}, poll FROM metrics "
+                "WHERE ts BETWEEN :s AND :e" + gw_sql + " ORDER BY ts",
+                {"s": start, "e": end, "gw": gateway},
+            ).fetchall()
+        out = []
+        for r in rows:
+            row = dict(zip(cols, r[:-1]))
+            try:
+                row["poll"] = json.loads(r[-1]) if r[-1] else {}
+            except ValueError:
+                row["poll"] = {}
+            out.append(row)
         return out
 
     def query(self, start: int, end: int, bucket_s: int | None,
@@ -2830,12 +2871,62 @@ class MetricsStore:
             self._conn.commit()
 
     def prune(self, retention_days: int, now: int) -> int:
-        """Delete rows older than ``retention_days``. Returns rows deleted."""
+        """Delete rows older than ``retention_days``, and roll the full poll of rows
+        older than :data:`POLL_RAW_DAYS` up into hourly mean/min/max. Returns metrics
+        rows deleted."""
         cutoff = now - retention_days * 86400
+        self._roll_up_poll(now - POLL_RAW_DAYS * 86400)
         with self._lock:
             cur = self._conn.execute("DELETE FROM metrics WHERE ts < ?", (cutoff,))
+            self._conn.execute("DELETE FROM metrics_poll_hourly WHERE ts < ?", (cutoff,))
             self._conn.commit()
             return cur.rowcount
+
+    def _roll_up_poll(self, before: int) -> None:
+        """Hours wholly before ``before``: their polls become one hourly row per gateway
+        (mean/min/max of each number, like Home Assistant's long-term statistics), and
+        the per-poll JSON is cleared. The chart columns are left as they are."""
+        before -= before % 3600
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT ts, COALESCE(gateway_id, ''), poll FROM metrics "
+                "WHERE poll IS NOT NULL AND ts < ? ORDER BY ts", (before,)).fetchall()
+            if not rows:
+                return
+            hours: dict = {}
+            for ts, gw, poll in rows:
+                try:
+                    vals = json.loads(poll)
+                except ValueError:
+                    continue
+                h = hours.setdefault((gw, ts - ts % 3600), {"n": 0, "acc": {}})
+                h["n"] += 1
+                for k, v in vals.items():
+                    a = h["acc"].setdefault(k, [0.0, 0, v, v])
+                    a[0] += v
+                    a[1] += 1
+                    a[2] = min(a[2], v)
+                    a[3] = max(a[3], v)
+            for (gw, hts), h in hours.items():
+                stats = {k: {"mean": round(a[0] / a[1], 3), "min": a[2], "max": a[3]}
+                         for k, a in h["acc"].items()}
+                self._conn.execute(
+                    "INSERT OR IGNORE INTO metrics_poll_hourly(ts, gateway_id, n, stats) "
+                    "VALUES (?,?,?,?)", (hts, gw, h["n"], json.dumps(stats, separators=(",", ":"))))
+            self._conn.execute(
+                "UPDATE metrics SET poll = NULL WHERE poll IS NOT NULL AND ts < ?", (before,))
+            self._conn.commit()
+
+    def poll_hourly(self, start: int, end: int, gateway: str | None = None) -> list[dict]:
+        """Hourly mean/min/max of every polled number, for hours older than
+        :data:`POLL_RAW_DAYS`."""
+        gw_sql = " AND gateway_id = :gw" if gateway is not None else ""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT ts, n, stats FROM metrics_poll_hourly "
+                "WHERE ts BETWEEN :s AND :e" + gw_sql + " ORDER BY ts",
+                {"s": start, "e": end, "gw": gateway}).fetchall()
+        return [{"ts": ts, "n": n, "stats": json.loads(stats)} for ts, n, stats in rows]
 
     def info(self, gateway: str | None = None) -> dict:
         if gateway is not None:
@@ -2965,6 +3056,30 @@ def _tiers_json(tiers) -> str | None:
         return json.dumps(kept, separators=(",", ":"))
     except (TypeError, ValueError):
         return None
+
+
+def _poll_json(poll) -> str | None:
+    """Every number in the poll summary as one flat JSON object, keyed by path
+    (``battery.apowers[0].soc``). Booleans are kept as 0/1. Text is left out, so serials
+    and names are never stored here. Anything unusable → None."""
+    if not isinstance(poll, dict):
+        return None
+    flat: dict = {}
+
+    def walk(v, path):
+        if isinstance(v, bool):
+            flat[path] = int(v)
+        elif isinstance(v, (int, float)):
+            flat[path] = v
+        elif isinstance(v, dict):
+            for k, x in v.items():
+                walk(x, f"{path}.{k}" if path else str(k))
+        elif isinstance(v, (list, tuple)):
+            for i, x in enumerate(v):
+                walk(x, f"{path}[{i}]")
+
+    walk(poll, "")
+    return json.dumps(flat, separators=(",", ":")) if flat else None
 
 
 def _num(v):
