@@ -42,6 +42,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   it can't be met. Tariff and utility are checked against the default meter.
 
 ### Fixed
+- **Health → Rediscovered is per gateway** (#163). It compared each gateway's address
+  with the global host, so with several gateways every gateway but one showed
+  **Rediscovered: true**, a mock included. It is now true only when re-discovery moved
+  that gateway to a new address, and n/a for a mock.
 - **The aPower model is read from the gateway** (#496). Each aPower's model code
   (`PE_HW_VER` in the login reply) is looked up in franklinwh-cloud's device catalogue, the
   same way the aGate model already is: code 2 is the aPower X-01-AU. The install-profile

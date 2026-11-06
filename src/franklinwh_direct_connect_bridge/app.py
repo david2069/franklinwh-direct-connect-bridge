@@ -1527,6 +1527,10 @@ def create_app() -> FastAPI:
         this gateway's host. Shared by /api/summary and /api/gateways/{id}/summary."""
         summ = {**gw.last_summary, "cached": True} if gw.last_summary \
             else client.summary(get_settings(), host=gw.active_host or gw.configured_host)
+        # Per gateway (#163): true only when re-discovery moved this gateway off the
+        # address it was set up with. A mock is never re-discovered, so n/a.
+        summ["rediscovered"] = None if gw.is_mock else bool(
+            gw.active_host and gw.configured_host and gw.active_host != gw.configured_host)
         return _apply_capabilities(_apply_vpp(summ, gw))
 
     def _apply_capabilities(summ: dict) -> dict:
