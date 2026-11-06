@@ -83,3 +83,16 @@ def test_the_store_description_is_short_enough_not_to_be_clipped():
     m = re.search(r'^description:\s*"([^"]+)"', cfg, re.M)
     assert m, "config.yaml has no description"
     assert len(m.group(1)) <= 75, "the add-on store clips the description to two short lines"
+
+
+def test_swagger_and_redoc_load_the_schema_inside_ingress(tmp_path, monkeypatch):
+    # #177: FastAPI's own /docs used the absolute '/openapi.json', which under ingress
+    # points at Home Assistant's root, not at the bridge.
+    c = _client(tmp_path, monkeypatch)
+    for page in ("/docs", "/redoc"):
+        r = c.get(page, headers={"X-Ingress-Path": INGRESS})
+        assert r.status_code == 200, page
+        assert f"{INGRESS}/openapi.json" in r.text, page
+        r = c.get(page)
+        assert "'/openapi.json'" in r.text or '"/openapi.json"' in r.text, page
+    assert c.get("/openapi.json").status_code == 200

@@ -10,8 +10,9 @@ UI does is a call to its REST API, so anything the UI can do, your code can do t
 ## Where the API is served
 
 The app is built by `create_app()` in `app.py`. Its `FastAPI(...)` call sets a title, a
-version and a description, and does **not** set `docs_url`, `redoc_url` or
-`openapi_url`. FastAPI's defaults therefore apply:
+version and a description, and leaves `openapi_url` at its default. It sets
+`docs_url=None, redoc_url=None` because `create_app()` serves `/docs` and `/redoc` itself,
+so they work under ingress (see below). The paths are FastAPI's usual ones:
 
 | Path | What it is |
 |---|---|
@@ -45,18 +46,10 @@ The web UI works under ingress. `_base_path()` in `app.py` reads the `X-Ingress-
 header on every request, and `templates/index.html` puts it in `<base href>`, so every
 relative URL the UI uses resolves inside the ingress path.
 
-**Swagger UI does not get the same treatment.** The `/docs` page served live loads its
-schema from an absolute URL:
-
-```js
-url: '/openapi.json',
-```
-
-The app is started with no `root_path` (`cli.py` calls `uvicorn.run(...)` without one),
-so under ingress that URL points at Home Assistant's root rather than at the bridge.
-The likely result is that `/docs` opened through the sidebar panel fails to load the
-schema. This is read from the code and the served page, and was **not tested through
-ingress**.
+Swagger UI and ReDoc follow the same header. FastAPI's built-in pages load the schema
+from `root_path + "/openapi.json"`, and the app never sets `root_path`, so under ingress
+that pointed at Home Assistant's root rather than at the bridge (#177). `create_app()`
+now serves `/docs` and `/redoc` itself, with the schema URL taken from `_base_path()`.
 
 !!! tip "Use port 8101 for API work"
     For scripts and for Swagger, use `http://<ha-host>:8101/...`. Ingress also needs a
