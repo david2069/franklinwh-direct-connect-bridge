@@ -12,6 +12,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Changed
+- **System view on a phone** (franklinwh-system-view 0.2.4). The zoom buttons, Customise
+  diagram and Start on System view are under an **Options** button, folded on phones and
+  shown on wider screens, and the choice is remembered; on a phone they took more room
+  than the diagram. The overlay's own gateway buttons are gone: it shows the gateway
+  picked in the top bar, the one place to choose. It always opens fitted to the screen.
+- **Top-bar menus on a phone** (gateway, operating mode, preferences) open full width just
+  under the top bar and dim the page behind them; a tap outside or a scroll closes them.
+  The gateway menu could open partly off the left edge, over the page, with nothing to
+  show it was a menu.
 - **The top bar gateway menu shows each gateway's SoC** (#373). Each row shows the last
   SoC read, for example "55%", from the poller's cache, so no new device reads. When the
   reading is older than the poll interval allows, its age is added: "55% · 4 min ago".
@@ -26,6 +35,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   the hourly roll-ups.
 
 ### Fixed
+- An empty gap could sit between the top bar and System view when it opened while the top
+  bar was still loading; the overlay now follows the top bar's height.
 - **Metrics export leaves mock gateways out** unless that gateway is named (#9). With no
   gateway named it exports the real gateways' rows; each row already names its gateway.
 - **Tests: the send-to tests wait for the question** (`notifier.asked()`), the same race
