@@ -88,6 +88,10 @@ What's installed, in plain words (#496), and greyed-out scheduler values that ca
   it can't be met. Tariff and utility are checked against the default meter.
 
 ### Fixed
+- **Health → Rediscovered is per gateway** (#163). It compared each gateway's address
+  with the global host, so with several gateways every gateway but one showed
+  **Rediscovered: true**, a mock included. It is now true only when re-discovery moved
+  that gateway to a new address, and n/a for a mock.
 - **Each tab sets itself up once, not twice** (#376). Alpine already calls a component's
   `init()`, and fourteen templates called it again with `x-init="init()"`, so their
   watchers and first reads ran twice (for example two `GET /api/system-setup` on one

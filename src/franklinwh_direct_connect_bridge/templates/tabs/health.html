@@ -27,7 +27,7 @@
           </td>
         </tr>
         <tr><td class="text-slate-500">Ping</td><td class="font-mono text-right" x-text="$store.app.summary.ping ?? 'n/a'"></td></tr>
-        <tr><td class="text-slate-500">Rediscovered</td><td class="font-mono text-right" x-text="String($store.app.summary.rediscovered ?? false)"></td></tr>
+        <tr><td class="text-slate-500">Rediscovered</td><td class="font-mono text-right" x-text="$store.app.summary.rediscovered == null ? 'n/a' : String($store.app.summary.rediscovered)"></td></tr>
         <tr><td class="text-slate-500">MQTT</td><td class="font-mono text-right" x-text="$store.app.summary.mqtt_enabled ? 'enabled' : 'disabled'"></td></tr>
         <tr><td class="text-slate-500">Writes</td><td class="font-mono text-right" x-text="$store.app.summary.writes_enabled ? 'enabled' : 'disabled'"></td></tr>
       </tbody>
