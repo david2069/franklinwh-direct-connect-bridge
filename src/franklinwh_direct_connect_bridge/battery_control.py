@@ -46,6 +46,15 @@ def current(host: str | None = None) -> dict:
         return _view(rec) if rec else {"active": "Not Active"}
 
 
+def force_id(host: str) -> str | None:
+    """Which force this bridge holds on ``host``, as a string that changes with every new
+    force; None when it holds none (fast; no Modbus). A notification's Release keeps it, so
+    a late tap never releases a force started after the question was asked."""
+    with _lock:
+        rec = _active.get(_host_part(host))
+        return f"{rec['command']}@{rec['started']!r}" if rec else None
+
+
 def held_hosts() -> list[str]:
     """Every host this bridge is holding a force on (fast; no Modbus)."""
     with _lock:

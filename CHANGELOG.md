@@ -12,6 +12,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Changed
+- **franklinwh-ha-notify 0.1.4** (was 0.1.3). Ledger writes from a worker thread, two
+  waits on one question both get the tap, a question no phone received is not left open,
+  a tap handler that asks its own question gets its answer, and a send with no targets is
+  recorded as SKIPPED (was ERROR), as the notifications log already described it.
 - **The dashboard's Power Flow card reads like the Modbus Bridge's:** one row per source
   with its value and what it is doing (Solar · Generating, Battery · Charging, Grid ·
   Exporting, Home · Consuming; Idle at 0 W). A **Now / Today** toggle in the card switches
@@ -40,6 +44,25 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   the hourly roll-ups.
 
 ### Fixed
+- **A late Release tap no longer releases a different force.** A Release / Keep question
+  works for 15 minutes; if a schedule started a force on that aGate in the meantime, a tap
+  released it. Release now acts only on the force it asked about, and otherwise answers
+  "not released: a different force is running".
+- **Release on a VPP found at start-up checks the VPP.** It checked the Modbus force (WSet)
+  instead, so a VPP that is not a Modbus force was answered "already released" while it was
+  still running. It now answers "already released" only when the VPP has ended, and
+  "not released: the VPP is not a Modbus force this bridge can release" when it has not.
+- **A restart just after a schedule asks no longer sends the question twice.** The run
+  recorded its question only once the send had finished, so a restart in between asked
+  again. The run now finds its question among the open ones and waits for that (#523).
+- The notifications' own database connection is closed when the bridge stops, rather than
+  left open until the process exits (#523).
+- **Notifications guide corrections** (#523). A tap made while the bridge is restarting or
+  reconnecting to Home Assistant is lost (Home Assistant does not resend it), so it counts
+  as no reply; the guide said it was used, and now suggests **If no reply: Skip this run**
+  for questions before battery or mode changes. Recent notifications keeps 30 days, not
+  the last 2,000. Critical alerts are ordinary pushes that do not get past silent mode or
+  Do Not Disturb.
 - An empty gap could sit between the top bar and System view when it opened while the top
   bar was still loading; the overlay now follows the top bar's height.
 - **Metrics export leaves mock gateways out** unless that gateway is named (#9). With no

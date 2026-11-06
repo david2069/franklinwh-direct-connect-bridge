@@ -129,6 +129,80 @@ def test_a_refused_release_says_why(running, sent, store, monkeypatch):
     assert _ledger(store, rid) == ["accepted: not released: Modbus client off"]
 
 
+def _hold(monkeypatch, host, command="Force Charge", started=1000.0):
+    """This bridge holding a force on ``host``, as a schedule's force would be."""
+    monkeypatch.setitem(bc._active, bc._host_part(host),
+                        {"command": command, "started": started, "host": host})
+
+
+def test_a_stale_release_leaves_a_force_started_after_the_ask(running, sent, store,
+                                                               monkeypatch):
+    calls = []
+    monkeypatch.setattr(bc, "status", lambda host: {"available": True, "vpp_active": True})
+    monkeypatch.setattr(bc, "execute", lambda cmd, **kw: calls.append(cmd) or {"ok": True})
+    notify_buttons.ask_release(store, "192.0.2.10", "t", "m")
+    rid = sent[-1]["request_id"]
+    _hold(monkeypatch, "192.0.2.10")                 # a schedule forces after the ask
+    running.tap("RELEASE", rid)
+    assert calls == []
+    assert _ledger(store, rid) == ["accepted: not released: a different force is running"]
+
+
+def test_release_of_a_held_force_that_ended_since_the_ask_is_a_no_op(running, sent, store,
+                                                                     monkeypatch):
+    calls = []
+    monkeypatch.setattr(bc, "status", lambda host: {"available": True, "vpp_active": True})
+    monkeypatch.setattr(bc, "execute", lambda cmd, **kw: calls.append(cmd) or {"ok": True})
+    _hold(monkeypatch, "192.0.2.10")
+    notify_buttons.ask_release(store, "192.0.2.10", "t", "m")
+    rid = sent[-1]["request_id"]
+    bc._active.pop(bc._host_part("192.0.2.10"))      # its watchdog ended it
+    _hold(monkeypatch, "192.0.2.10", started=2000.0)  # and a later one is running
+    running.tap("RELEASE", rid)
+    assert calls == []
+    assert _ledger(store, rid) == ["accepted: not released: a different force is running"]
+
+
+def test_release_of_the_same_force_still_running_releases(running, sent, store, monkeypatch):
+    calls = []
+    monkeypatch.setattr(bc, "status", lambda host: {"available": True, "vpp_active": True})
+    monkeypatch.setattr(bc, "execute", lambda cmd, **kw: calls.append(cmd) or
+                        {"ok": True, "result": "released"})
+    _hold(monkeypatch, "192.0.2.10")
+    notify_buttons.ask_release(store, "192.0.2.10", "t", "m")
+    running.tap("RELEASE", sent[-1]["request_id"])
+    assert calls == ["Release"]
+
+
+@pytest.fixture
+def vpp_gw():
+    g = GatewayState(id="gw1", label="Home", configured_host="192.0.2.10")
+    state._gateways["gw1"] = g
+    yield g
+    state._gateways.pop("gw1", None)
+
+
+@pytest.mark.parametrize("vpp,wset,reply,released", [
+    (True, False, "not released: the VPP is not a Modbus force this bridge can release",
+     False),
+    (False, False, "already released", False),
+    (True, True, "released", True),
+])
+def test_a_vpp_at_boot_release_checks_the_vpp(running, sent, store, monkeypatch, vpp_gw,
+                                             vpp, wset, reply, released):
+    """The VPP-at-boot ask is about 1707's programme (VPP), not the M704 WSet bit."""
+    calls = []
+    monkeypatch.setattr(bc, "status", lambda host: {"available": True, "vpp_active": wset})
+    monkeypatch.setattr(bc, "execute", lambda cmd, **kw: calls.append(cmd) or
+                        {"ok": True, "result": "released"})
+    notify_buttons.ask_release(store, "192.0.2.10", "t", "m", about="vpp")
+    vpp_gw.vpp_active = vpp
+    rid = sent[-1]["request_id"]
+    running.tap("RELEASE", rid)
+    assert _ledger(store, rid) == [f"accepted: {reply}"]
+    assert calls == (["Release"] if released else [])
+
+
 def test_ask_release_is_false_without_the_notifier(store):
     assert notify_buttons.ask_release(store, "192.0.2.10", "t", "m") is False
 
@@ -136,18 +210,20 @@ def test_ask_release_is_false_without_the_notifier(store):
 def test_vpp_at_boot_asks_release_instead_of_the_plain_push(store, monkeypatch):
     from franklinwh_direct_connect_bridge import notify_engine
     asked, plain = [], []
-    monkeypatch.setattr(notify_buttons, "ask_release", lambda *a: asked.append(a) or True)
+    monkeypatch.setattr(notify_buttons, "ask_release",
+                        lambda *a, **k: asked.append((a, k)) or True)
     monkeypatch.setattr(notify_engine, "fire", lambda *a, **k: plain.append(a) or 1)
     vpp_monitor.reset()
     r = vpp_monitor.check("192.0.2.10", store, boot=True, snapshot={"vpp": True}, label="Home")
     assert r["event"] == "vpp-at-boot"
-    assert asked and asked[0][1] == "192.0.2.10" and plain == []
+    assert asked and asked[0][0][1] == "192.0.2.10" and plain == []
+    assert asked[0][1] == {"about": "vpp"}           # asked about the VPP, not a WSet force
 
 
 def test_vpp_at_boot_falls_back_to_the_plain_push(store, monkeypatch):
     from franklinwh_direct_connect_bridge import notify_engine
     plain = []
-    monkeypatch.setattr(notify_buttons, "ask_release", lambda *a: False)
+    monkeypatch.setattr(notify_buttons, "ask_release", lambda *a, **k: False)
     monkeypatch.setattr(notify_engine, "fire", lambda *a, **k: plain.append(a) or 1)
     vpp_monitor.reset()
     vpp_monitor.check("192.0.2.10", store, boot=True, snapshot={"vpp": True}, label="Home")

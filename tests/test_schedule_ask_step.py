@@ -47,6 +47,9 @@ class FakeNotifier:
         assert self._asked.wait(2), "the question was never asked"
         return self.calls
 
+    def pending(self, event=None):
+        return []
+
     async def wait(self, request, timeout_s):
         return await self._answer
 
