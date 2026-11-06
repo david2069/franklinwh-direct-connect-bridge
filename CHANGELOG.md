@@ -42,6 +42,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   it can't be met. Tariff and utility are checked against the default meter.
 
 ### Fixed
+- **Generator → Operating windows looks unavailable while the generator feature is off**
+  (#368). Its Edit buttons were already disabled, but the card wasn't dimmed like the
+  others and the reason was only in a tooltip. The card is now dimmed and says on screen
+  to install and configure the generator module first.
 - **The aPower model is read from the gateway** (#496). Each aPower's model code
   (`PE_HW_VER` in the login reply) is looked up in franklinwh-cloud's device catalogue, the
   same way the aGate model already is: code 2 is the aPower X-01-AU. The install-profile
