@@ -24,26 +24,6 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   the rest of the metrics retention; the 8 chart values are unchanged. New read-only
   `GET /api/metrics/raw?gateway=&start=&end=` returns stored rows with every column, plus
   the hourly roll-ups.
-- **What's installed, in plain words** (#496). The setup wizard's Confirm step and
-  **Settings → Setup** now show one card per gateway. Everything the gateway reports
-  (model, number of aPowers, grid connection, operating modes, solar and its size,
-  generator, Smart Circuits, V2L) is shown in plain words with where it was read from, and
-  waits for **Confirm**. Only what the gateway can't tell is asked: what the battery backs
-  up (whole home or a backup-loads panel), solar wired into an aPower S, and an optional
-  battery name. Confirming never stops a value being re-read; if it later
-  reads differently it asks again. Two new `system.*` scheduler values: aPower model and V2L.
-  Generator, Smart Circuits and V2L read as **Installed** or **Not installed**; a generator
-  counts as installed when it is turned on or reports a model, rating or run state.
-- **Scheduler pickers grey out values and templates that can't work** (#471). Every value
-  knows the feature it comes from (gateway, Modbus client, solar forecast, wholesale or
-  feed-in price, tariff, utility, a Home Assistant instance). When that feature is off, not
-  set up or in error, the condition picker and the `{x}` picker show the value greyed and
-  not selectable, with the reason, for example "(not set up: solar forecast — set your
-  location in Settings → Integrations → Location & Solar)". A template whose feature isn't
-  working is greyed the same way and its **Use** button is disabled. A value whose feature
-  works but has no reading right now stays selectable and shows "no value". Existing
-  schedules are not changed: a condition row whose feature is now off shows a warning that
-  it can't be met. Tariff and utility are checked against the default meter.
 
 ### Fixed
 - **Metrics export leaves mock gateways out** unless that gateway is named (#9). With no
@@ -104,6 +84,35 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   card told users to set a switch that stopped blocking writes in 0.5.2; it is removed.
 - **`POST /api/reboot` description no longer says it is gated by `allow_writes`** (#178).
   That setting stopped blocking writes in 0.5.2; the route only needs `confirm=true`.
+
+## [0.5.33] — 2026-11-07
+
+What's installed, in plain words (#496), and greyed-out scheduler values that can't work
+(#471).
+
+### Changed
+- **What's installed, in plain words** (#496). The setup wizard's Confirm step and
+  **Settings → Setup** now show one card per gateway. Everything the gateway reports
+  (model, number of aPowers, grid connection, operating modes, solar and its size,
+  generator, Smart Circuits, V2L) is shown in plain words with where it was read from, and
+  waits for **Confirm**. Only what the gateway can't tell is asked: what the battery backs
+  up (whole home or a backup-loads panel), solar wired into an aPower S, and an optional
+  battery name. Confirming never stops a value being re-read; if it later
+  reads differently it asks again. Two new `system.*` scheduler values: aPower model and V2L.
+  Generator, Smart Circuits and V2L read as **Installed** or **Not installed**; a generator
+  counts as installed when it is turned on or reports a model, rating or run state.
+- **Scheduler pickers grey out values and templates that can't work** (#471). Every value
+  knows the feature it comes from (gateway, Modbus client, solar forecast, wholesale or
+  feed-in price, tariff, utility, a Home Assistant instance). When that feature is off, not
+  set up or in error, the condition picker and the `{x}` picker show the value greyed and
+  not selectable, with the reason, for example "(not set up: solar forecast — set your
+  location in Settings → Integrations → Location & Solar)". A template whose feature isn't
+  working is greyed the same way and its **Use** button is disabled. A value whose feature
+  works but has no reading right now stays selectable and shows "no value". Existing
+  schedules are not changed: a condition row whose feature is now off shows a warning that
+  it can't be met. Tariff and utility are checked against the default meter.
+
+### Fixed
 - **The aPower model is read from the gateway** (#496). Each aPower's model code
   (`PE_HW_VER` in the login reply) is looked up in franklinwh-cloud's device catalogue, the
   same way the aGate model already is: code 2 is the aPower X-01-AU. The install-profile
