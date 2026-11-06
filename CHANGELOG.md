@@ -47,6 +47,24 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   error with its HTTP status, and keeps it there. It also shows the stored state
   (Complete, Skipped or Not done), and once setup is complete the button becomes
   **Mark not complete**.
+- **Selects are the same height as text and number fields in Safari** (#393). Safari drew
+  them as native pop-up menus that ignore padding, so they came out shorter. Selects now
+  draw their own chevron and take the same padding as inputs, as in the Modbus Bridge.
+- **The metrics export says which gateway each row is from** (#9). Without `gateway=` it
+  exports every gateway's rows, mocks included, and nothing told them apart. CSV and JSON
+  now have a `gateway_id` column, added last so the other columns keep their place.
+- **The top-bar gateway menu is no longer cut off under the sidebar** (#372). It was
+  always right-aligned to the selector, so when the selector sat near the content's left
+  edge the gateway names were hidden. It now opens left-aligned when there is no room to
+  the left, and is never wider than the screen on a phone.
+- **Swagger UI (`/docs`) and ReDoc (`/redoc`) work through Home Assistant ingress**
+  (#177). They loaded the schema from `/openapi.json`, which under ingress is Home
+  Assistant's root, not the bridge. They now take the ingress path from
+  `X-Ingress-Path`, the same way the web UI does.
+- **Generator → Operating windows looks unavailable while the generator feature is off**
+  (#368). Its Edit buttons were already disabled, but the card wasn't dimmed like the
+  others and the reason was only in a tooltip. The card is now dimmed and says on screen
+  to install and configure the generator module first.
 - **Health → Rediscovered is per gateway** (#163). It compared each gateway's address
   with the global host, so with several gateways every gateway but one showed
   **Rediscovered: true**, a mock included. It is now true only when re-discovery moved
