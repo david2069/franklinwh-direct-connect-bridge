@@ -28,7 +28,7 @@ is not confirmed, the tab shows it under its raw key rather than guessing a labe
 
 **Enable generator** / **Disable** writes `genEn` and reads it back (`PUT /api/generator/enable`).
 While the feature is off, the settings are shown read-only, and the dashboard's Power Flow
-leaves out the Generator column (it would only ever read 0 W). Turn it on, and the column
+leaves out the Generator row (it would only ever read 0 W). Turn it on, and the row
 appears, even while the generator is idle.
 
 The generator only supplies power **off-grid**: you can configure it on grid, but it will not
