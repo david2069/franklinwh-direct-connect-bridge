@@ -12,10 +12,6 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Changed
-- **franklinwh-ha-notify 0.1.4** (was 0.1.3). Ledger writes from a worker thread, two
-  waits on one question both get the tap, a question no phone received is not left open,
-  a tap handler that asks its own question gets its answer, and a send with no targets is
-  recorded as SKIPPED (was ERROR), as the notifications log already described it.
 - **The dashboard's Power Flow card reads like the Modbus Bridge's:** one row per source
   with its value and what it is doing (Solar · Generating, Battery · Charging, Grid ·
   Exporting, Home · Consuming; Idle at 0 W). A **Now / Today** toggle in the card switches
@@ -44,50 +40,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   the hourly roll-ups.
 
 ### Fixed
-- **A late Release tap no longer releases a different force.** A Release / Keep question
-  works for 15 minutes; if a schedule started a force on that aGate in the meantime, a tap
-  released it. Release now acts only on the force it asked about, and otherwise answers
-  "not released: a different force is running".
-- **Release on a VPP found at start-up checks the VPP.** It checked the Modbus force (WSet)
-  instead, so a VPP that is not a Modbus force was answered "already released" while it was
-  still running. It now answers "already released" only when the VPP has ended, and
-  "not released: the VPP is not a Modbus force this bridge can release" when it has not.
-- **A restart just after a schedule asks no longer sends the question twice.** The run
-  recorded its question only once the send had finished, so a restart in between asked
-  again. The run now finds its question among the open ones and waits for that (#523).
-- The notifications' own database connection is closed when the bridge stops, rather than
-  left open until the process exits (#523).
-- **Notifications guide corrections** (#523). A tap made while the bridge is restarting or
-  reconnecting to Home Assistant is lost (Home Assistant does not resend it), so it counts
-  as no reply; the guide said it was used, and now suggests **If no reply: Skip this run**
-  for questions before battery or mode changes. Recent notifications keeps 30 days, not
-  the last 2,000. Critical alerts are ordinary pushes that do not get past silent mode or
-  Do Not Disturb.
 - An empty gap could sit between the top bar and System view when it opened while the top
   bar was still loading; the overlay now follows the top bar's height.
 - **Metrics export leaves mock gateways out** unless that gateway is named (#9). With no
   gateway named it exports the real gateways' rows; each row already names its gateway.
-- **Tests: the send-to tests wait for the question** (`notifier.asked()`), the same race
-  fixed for the ask-step tests in #516; it failed a full-suite run on main.
 - **Settings → Setup: the Mark complete result line binds its colour as an object**, not a
   string, so Alpine's `x-show` can't wipe the element's `display` when the message changes
   (#395 follow-up).
-- **Version reported from a source checkout matches pyproject.toml.** `__version__` (the
-  MQTT device `sw_version`, `/health`, the API title) came from the installed package's
-  metadata, which an editable install freezes at install time: after a version bump a
-  development checkout reported the old version (0.5.18 against 0.5.32). It is now read
-  from the `pyproject.toml` of the source tree the code runs from, and from the package
-  metadata when there is none. The add-on image is installed from the same tree, so
-  the version it reports does not change.
-- **Tests: three intermittent failures made reliable.** The Ask-step tests read the fake
-  phone's questions right after the tick, but the question is sent on the Notifier's own
-  event loop, so under load it had not arrived yet; they now wait for it. Tests that add a
-  gateway through a test client without its shutdown left their cancelled poller tasks in
-  the supervisor's module state, and the next app's shutdown awaited one and failed with
-  `CancelledError` (`test_app_start_registers_workers_paused_or_beating`, and likely the
-  start-up/shutdown `CancelledError` seen once in
-  `test_start_up_binds_to_the_default_gateway`); finished poller tasks are now dropped
-  before each test.
 - **Settings → Setup: Mark complete shows its result** (#395). A failed save looked the
   same as success, and success showed nothing. The Setup card now shows the result, or the
   error with its HTTP status, and keeps it there. It also shows the stored state
@@ -123,6 +82,55 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   card told users to set a switch that stopped blocking writes in 0.5.2; it is removed.
 - **`POST /api/reboot` description no longer says it is gated by `allow_writes`** (#178).
   That setting stopped blocking writes in 0.5.2; the route only needs `confirm=true`.
+
+## [0.5.34] — 2026-11-08
+
+Notifications with buttons: fixes from a peer review (#523), and the test-reliability fixes.
+
+### Changed
+- **franklinwh-ha-notify 0.1.4** (was 0.1.3). Ledger writes from a worker thread, two
+  waits on one question both get the tap, a question no phone received is not left open,
+  a tap handler that asks its own question gets its answer, and a send with no targets is
+  recorded as SKIPPED (was ERROR), as the notifications log already described it.
+
+### Fixed
+- **A late Release tap no longer releases a different force.** A Release / Keep question
+  works for 15 minutes; if a schedule started a force on that aGate in the meantime, a tap
+  released it. Release now acts only on the force it asked about, and otherwise answers
+  "not released: a different force is running".
+- **Release on a VPP found at start-up checks the VPP.** It checked the Modbus force (WSet)
+  instead, so a VPP that is not a Modbus force was answered "already released" while it was
+  still running. It now answers "already released" only when the VPP has ended, and
+  "not released: the VPP is not a Modbus force this bridge can release" when it has not.
+- **A restart just after a schedule asks no longer sends the question twice.** The run
+  recorded its question only once the send had finished, so a restart in between asked
+  again. The run now finds its question among the open ones and waits for that (#523).
+- The notifications' own database connection is closed when the bridge stops, rather than
+  left open until the process exits (#523).
+- **Notifications guide corrections** (#523). A tap made while the bridge is restarting or
+  reconnecting to Home Assistant is lost (Home Assistant does not resend it), so it counts
+  as no reply; the guide said it was used, and now suggests **If no reply: Skip this run**
+  for questions before battery or mode changes. Recent notifications keeps 30 days, not
+  the last 2,000. Critical alerts are ordinary pushes that do not get past silent mode or
+  Do Not Disturb.
+- **Version reported from a source checkout matches pyproject.toml.** `__version__` (the
+  MQTT device `sw_version`, `/health`, the API title) came from the installed package's
+  metadata, which an editable install freezes at install time: after a version bump a
+  development checkout reported the old version (0.5.18 against 0.5.32). It is now read
+  from the `pyproject.toml` of the source tree the code runs from, and from the package
+  metadata when there is none. The add-on image is installed from the same tree, so
+  the version it reports does not change.
+- **Tests: three intermittent failures made reliable.** The Ask-step tests read the fake
+  phone's questions right after the tick, but the question is sent on the Notifier's own
+  event loop, so under load it had not arrived yet; they now wait for it. Tests that add a
+  gateway through a test client without its shutdown left their cancelled poller tasks in
+  the supervisor's module state, and the next app's shutdown awaited one and failed with
+  `CancelledError` (`test_app_start_registers_workers_paused_or_beating`, and likely the
+  start-up/shutdown `CancelledError` seen once in
+  `test_start_up_binds_to_the_default_gateway`); finished poller tasks are now dropped
+  before each test.
+- **Tests: the send-to tests wait for the question** (`notifier.asked()`), the same race
+  fixed for the ask-step tests in #516; it failed a full-suite run on main.
 
 ## [0.5.33] — 2026-11-07
 
