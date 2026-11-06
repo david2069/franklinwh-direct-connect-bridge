@@ -65,7 +65,7 @@ def test_a_device_on_a_switched_off_instance_is_not_asked(st):
 def test_the_question_goes_to_the_chosen_devices(st, notifier):  # noqa: F811
     _schedule(st, ask={**ASK, "send_to": {"type": "device", "ids": ["d2"]}})
     _tick(st)
-    assert [t.label for t in notifier.calls[0]["targets"]] == ["Tablet"]
+    assert [t.label for t in notifier.asked()[0]["targets"]] == ["Tablet"]
     notifier.answer(Answer(YES))
     _settle()
 
@@ -73,7 +73,7 @@ def test_the_question_goes_to_the_chosen_devices(st, notifier):  # noqa: F811
 def test_without_send_to_the_question_goes_to_every_enabled_device(st, notifier):  # noqa: F811
     _schedule(st)
     _tick(st)
-    assert [t.label for t in notifier.calls[0]["targets"]] == ["Phone", "Tablet"]
+    assert [t.label for t in notifier.asked()[0]["targets"]] == ["Phone", "Tablet"]
     notifier.answer(Answer(YES))
     _settle()
 
