@@ -1580,6 +1580,19 @@ document.addEventListener('alpine:init', () => {
     // ── Control writes ─────────────────────────────────────
     modeMenuOpen: false,
     gwMenuOpen: false,  // styled gateway selector dropdown
+    gwMenuLeft: false,  // open the gateway menu left-aligned (#372)
+    // #372: the menu is 18rem wide and right-aligned to the selector. When the selector
+    // sits near the content's left edge it would reach under the sidebar, so open it
+    // left-aligned when there is no room to its left.
+    toggleGwMenu(btn) {
+      if (!this.gwMenuOpen && btn) {
+        const r = btn.getBoundingClientRect();
+        const edge = (btn.closest('header') || document.body).getBoundingClientRect().left;
+        const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+        this.gwMenuLeft = r.right - 18 * rem < edge;
+      }
+      this.gwMenuOpen = !this.gwMenuOpen;
+    },
     // All gateways (#383): read-only, every gateway at once. Opened from the gateway
     // picker; a row makes that gateway the one on screen. No controls.
     allGw: { open: false, rows: [], totals: null, error: '' },

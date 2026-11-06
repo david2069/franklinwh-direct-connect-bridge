@@ -45,6 +45,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - **The metrics export says which gateway each row is from** (#9). Without `gateway=` it
   exports every gateway's rows, mocks included, and nothing told them apart. CSV and JSON
   now have a `gateway_id` column, added last so the other columns keep their place.
+- **The top-bar gateway menu is no longer cut off under the sidebar** (#372). It was
+  always right-aligned to the selector, so when the selector sat near the content's left
+  edge the gateway names were hidden. It now opens left-aligned when there is no room to
+  the left, and is never wider than the screen on a phone.
 - **Swagger UI (`/docs`) and ReDoc (`/redoc`) work through Home Assistant ingress**
   (#177). They loaded the schema from `/openapi.json`, which under ingress is Home
   Assistant's root, not the bridge. They now take the ingress path from
