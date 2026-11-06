@@ -42,6 +42,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   it can't be met. Tariff and utility are checked against the default meter.
 
 ### Fixed
+- **Swagger UI (`/docs`) and ReDoc (`/redoc`) work through Home Assistant ingress**
+  (#177). They loaded the schema from `/openapi.json`, which under ingress is Home
+  Assistant's root, not the bridge. They now take the ingress path from
+  `X-Ingress-Path`, the same way the web UI does.
 - **Each tab sets itself up once, not twice** (#376). Alpine already calls a component's
   `init()`, and fourteen templates called it again with `x-init="init()"`, so their
   watchers and first reads ran twice (for example two `GET /api/system-setup` on one
