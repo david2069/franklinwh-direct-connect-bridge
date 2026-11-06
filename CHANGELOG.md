@@ -48,6 +48,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   again. The run now finds its question among the open ones and waits for that (#523).
 - The notifications' own database connection is closed when the bridge stops, rather than
   left open until the process exits (#523).
+- **Notifications guide corrections** (#523). A tap made while the bridge is restarting or
+  reconnecting to Home Assistant is lost (Home Assistant does not resend it), so it counts
+  as no reply; the guide said it was used, and now suggests **If no reply: Skip this run**
+  for questions before battery or mode changes. Recent notifications keeps 30 days, not
+  the last 2,000. Critical alerts are ordinary pushes that do not get past silent mode or
+  Do Not Disturb.
 - An empty gap could sit between the top bar and System view when it opened while the top
   bar was still loading; the overlay now follows the top bar's height.
 - **Metrics export leaves mock gateways out** unless that gateway is named (#9). With no

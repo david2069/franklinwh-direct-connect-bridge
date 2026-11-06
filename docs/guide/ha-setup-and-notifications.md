@@ -252,8 +252,8 @@ dispatch**, when the restart policy is **notify** (the default is **release**), 
 titled "FranklinWH — scheduled dispatch …". See
 [Control → After a bridge restart mid-dispatch](control.md#after-a-bridge-restart-mid-dispatch).
 
-**Recent notifications**, on the same page, lists each delivery; the last 2,000 are
-kept.
+**Recent notifications**, on the same page, lists each delivery; deliveries are kept for
+30 days.
 
 ![Recent notifications: time, message, and the device each one went to](../images/ha-setup-and-notifications/08-recent-notifications.png)
 
@@ -327,7 +327,9 @@ under **Critical alerts → Send to**. On `GATEWAY_UNREACHABLE` there is also
 **Re-discover**, which asks that gateway to search the LAN for the aGate again. It is
 sent once, even when the Home Assistant notification fails or has nowhere to go; retries
 of that notification do not send it again. The buttons work for an hour. When none of the
-chosen devices can show buttons, the alert reaches Home Assistant only. Warnings are not
+chosen devices can show buttons, the alert reaches Home Assistant only. It is an ordinary
+push notification, not a critical one: it does not get past silent mode or Do Not
+Disturb. Warnings are not
 sent to devices.
 
 With the switch **off**, no Home Assistant notification is made, and each one skipped is
@@ -426,6 +428,12 @@ schedule shows **holding**, and other schedules carry on. Then:
 - a tap on a button that **skips this run**: the run is recorded as skipped;
 - no tap in time: **If no reply** decides.
 
+A tap made while the bridge is restarting, or while its connection to Home Assistant is
+dropped, never reaches it (see [How buttons work](#6-how-buttons-work)), and counts as no
+reply. With **Continue**, a **No** tapped then lets the action run. For a question
+before an action that changes the battery or the operating mode, choose **If no reply:
+Skip this run**.
+
 **If no reply** also decides, at once, when nobody could be asked: no device in **Send
 to** shows buttons, the send failed, or the **Push notifications** switch is off. The
 schedule's log says which.
@@ -494,9 +502,12 @@ Every notification with buttons works the same way:
 - A question takes one answer. A second tap, on the same phone or another, does nothing.
 - **Open questions survive a bridge restart.** A tap within the time limit after a
   restart works as it would have before. A schedule waiting for a reply waits only for
-  the time left, uses a reply given while the bridge was down, and never asks twice.
+  the time left, uses a reply given before the restart, and never asks twice.
   Releasing a force that has already ended, or acknowledging an alert someone already
   acknowledged, does nothing and is logged.
+- **A tap made while the bridge is down, or while its connection to Home Assistant is
+  dropped, is lost.** Home Assistant does not resend it. The question stays open, so tap
+  again once the bridge is back; if nobody does, it is treated as no reply.
 - Each send and each tap is recorded in the bridge's database, whether or not it went
   through.
 - If the connection to Home Assistant drops, the bridge reconnects, waiting 2, 5, 10, 30,
