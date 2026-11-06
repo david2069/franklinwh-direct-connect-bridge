@@ -88,6 +88,10 @@ What's installed, in plain words (#496), and greyed-out scheduler values that ca
   it can't be met. Tariff and utility are checked against the default meter.
 
 ### Fixed
+- **Generator → Operating windows looks unavailable while the generator feature is off**
+  (#368). Its Edit buttons were already disabled, but the card wasn't dimmed like the
+  others and the reason was only in a tooltip. The card is now dimmed and says on screen
+  to install and configure the generator module first.
 - **Health → Rediscovered is per gateway** (#163). It compared each gateway's address
   with the global host, so with several gateways every gateway but one showed
   **Rediscovered: true**, a mock included. It is now true only when re-discovery moved
