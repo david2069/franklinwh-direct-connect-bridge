@@ -190,16 +190,14 @@
                   x-text="$store.app.flowText('grid', $store.app.power.grid_w)"></span>
           </div>
           <!-- Generator — only while the generator feature is on (else it's a permanent 0 W) -->
-          <template x-if="$store.app.generatorEnabled">
-            <div class="contents">
-            <span class="text-slate-400">Generator
-              <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('p_gen', 1301)"></span></span>
-            <span class="font-mono font-bold text-right" style="color:var(--text-primary)"
-                  x-text="$store.app.fmtPower($store.app.power.generator_w)"></span>
-            <span class="text-right text-xs" :style="'color:' + ($store.app.flowText('generator', $store.app.power.generator_w) === 'Idle' ? 'var(--text-faint)' : 'var(--text-secondary)')"
-                  x-text="$store.app.flowText('generator', $store.app.power.generator_w)"></span>
-          </div>
-          </template>
+          <div class="contents" x-show="$store.app.generatorEnabled" x-cloak>
+          <span class="text-slate-400">Generator
+            <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('p_gen', 1301)"></span></span>
+          <span class="font-mono font-bold text-right" style="color:var(--text-primary)"
+                x-text="$store.app.fmtPower($store.app.power.generator_w)"></span>
+          <span class="text-right text-xs" :style="'color:' + ($store.app.flowText('generator', $store.app.power.generator_w) === 'Idle' ? 'var(--text-faint)' : 'var(--text-secondary)')"
+                x-text="$store.app.flowText('generator', $store.app.power.generator_w)"></span>
+        </div>
       </div>
       <div x-show="$store.app.flowView === 'today'" x-cloak class="grid gap-x-4 gap-y-2.5 text-sm items-baseline" style="grid-template-columns:auto 1fr auto">
           <div class="contents">
@@ -238,14 +236,12 @@
             <span class="font-mono font-bold text-right text-slate-200" x-text="$store.app.fmtKwh($store.app.energyToday.grid_out)"></span>
             <span class="text-right text-xs" style="color:var(--text-secondary)">Exported</span>
           </div>
-          <template x-if="$store.app.generatorEnabled">
-          <div class="contents">
-            <span class="text-slate-400">Generator
-              <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('kwh_gen', 1301)"></span></span>
-            <span class="font-mono font-bold text-right text-slate-200" x-text="$store.app.fmtKwh($store.app.energyToday.generator)"></span>
-            <span class="text-right text-xs" style="color:var(--text-secondary)">Produced</span>
-          </div>
-          </template>
+        <div class="contents" x-show="$store.app.generatorEnabled" x-cloak>
+          <span class="text-slate-400">Generator
+            <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('kwh_gen', 1301)"></span></span>
+          <span class="font-mono font-bold text-right text-slate-200" x-text="$store.app.fmtKwh($store.app.energyToday.generator)"></span>
+          <span class="text-right text-xs" style="color:var(--text-secondary)">Produced</span>
+        </div>
         <div class="text-[0.65rem] text-slate-500 col-span-3">kWh since midnight · resets daily</div>
       </div>
     </div>
