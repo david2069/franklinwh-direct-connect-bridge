@@ -5821,7 +5821,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/reboot")
     def api_reboot(req: RebootReq, gateway: str = Depends(_gateway_q)):
-        """DESTRUCTIVE — reboot the aGate. Double-gated (allow_writes + confirm=true). The
+        """DESTRUCTIVE — reboot the aGate. Needs confirm=true. The
         gateway drops the connection while it restarts and may trigger 4G failover."""
         _guard_writes()
         host = _gw_host(gateway)   # SAFETY: the write must hit the SELECTED gateway
