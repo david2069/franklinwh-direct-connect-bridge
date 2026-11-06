@@ -270,7 +270,7 @@
     </div>
 
   <!-- Energy Flow (Sankey) — reconstructed from power samples, with a day picker -->
-  <div class="card lg:col-span-3" x-data="energyFlowCard()" x-init="init()" x-show="$store.app.dashCards.energyFlow" :style="$store.app.dashCardStyle('energyFlow')">
+  <div class="card lg:col-span-3" x-data="energyFlowCard()" x-show="$store.app.dashCards.energyFlow" :style="$store.app.dashCardStyle('energyFlow')">
     <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
       <div class="card-label" style="margin-bottom:0">Energy Flow <a :href="$store.app.guideUrl('energy-and-costs/#the-energy-flow-sankey')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></div>
       <!-- Period presets — week/month/year are anchored on the chosen date. -->
@@ -520,7 +520,7 @@
   </div>
 
   <!-- Solar Forecast (Open-Meteo weather + PV production) -->
-  <div class="card lg:col-span-3" x-data="solarForecastCard()" x-init="init()" x-show="$store.app.dashCards.solarForecast" :style="$store.app.dashCardStyle('solarForecast')">
+  <div class="card lg:col-span-3" x-data="solarForecastCard()" x-show="$store.app.dashCards.solarForecast" :style="$store.app.dashCardStyle('solarForecast')">
     <div class="flex items-center justify-between gap-2 flex-wrap mb-3">
       <div class="flex items-center gap-2">
         <span class="card-label" style="margin-bottom:0">Solar Forecast <a :href="$store.app.guideUrl('energy-and-costs/#solar-forecast')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
