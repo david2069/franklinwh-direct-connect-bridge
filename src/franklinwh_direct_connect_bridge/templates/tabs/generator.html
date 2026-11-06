@@ -159,10 +159,15 @@
       </div>
 
       <!-- charge windows: NOT claimed as generator config -->
-      <div class="card overflow-hidden">
+      <div class="card overflow-hidden" :class="data.enabled ? '' : 'opacity-60'">
         <div class="px-4 py-2 border-b text-xs uppercase tracking-wide"
              style="border-color:var(--border);color:var(--text-secondary)">Operating windows</div>
         <div class="p-4 space-y-2 text-sm">
+          <!-- #368: say why Edit is unavailable on screen, not only in a tooltip -->
+          <p class="text-xs" x-show="!data.enabled" style="color:var(--text-secondary)">
+            Install and configure the generator module to edit these windows. Editing
+            stays unavailable until then.
+          </p>
           <template x-for="w in windows" :key="w.index">
             <div class="flex items-center justify-between gap-2">
               <span style="color:var(--text-secondary)" x-text="`Window ${w.index}`"></span>
