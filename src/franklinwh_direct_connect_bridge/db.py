@@ -218,14 +218,15 @@ class MetricsStore:
         return out
 
     def query(self, start: int, end: int, bucket_s: int | None,
-              gateway: str | None = None) -> list[dict]:
+              gateway: str | None = None, with_gateway: bool = False) -> list[dict]:
         """Return samples between ``start`` and ``end`` (inclusive).
 
         With a positive ``bucket_s`` the rows are grouped into fixed time buckets and
         the numeric columns averaged (mode is dropped — it doesn't average). Otherwise
         raw rows are returned (mode included). When ``gateway`` is given, only that
-        gateway's rows are returned. All numerics are None-safe and rounded
-        (soc → 1dp, watts → 0dp).
+        gateway's rows are returned. ``with_gateway`` adds each raw row's ``gateway_id``,
+        so an export of every gateway can tell them apart (#9). All numerics are
+        None-safe and rounded (soc → 1dp, watts → 0dp).
         """
         gw_sql = " AND gateway_id = :gw" if gateway is not None else ""
         if bucket_s and bucket_s > 0:
@@ -257,8 +258,8 @@ class MetricsStore:
             params["gw"] = gateway
         with self._lock:
             rows = self._conn.execute(
-                "SELECT ts, soc, grid_w, solar_w, battery_w, load_w, generator_w, mode "
-                "FROM metrics WHERE ts BETWEEN :s AND :e" + gw_sql + " ORDER BY ts",
+                "SELECT ts, soc, grid_w, solar_w, battery_w, load_w, generator_w, mode, "
+                "gateway_id FROM metrics WHERE ts BETWEEN :s AND :e" + gw_sql + " ORDER BY ts",
                 params,
             ).fetchall()
         return [
@@ -271,6 +272,7 @@ class MetricsStore:
                 "load_w": _round(r[5], 0),
                 "generator_w": _round(r[6], 0),
                 "mode": r[7],
+                **({"gateway_id": r[8]} if with_gateway else {}),
             }
             for r in rows
         ]
