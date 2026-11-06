@@ -46,6 +46,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   with the global host, so with several gateways every gateway but one showed
   **Rediscovered: true**, a mock included. It is now true only when re-discovery moved
   that gateway to a new address, and n/a for a mock.
+- **`POST /api/reboot` description no longer says it is gated by `allow_writes`** (#178).
+  That setting stopped blocking writes in 0.5.2; the route only needs `confirm=true`.
 - **The aPower model is read from the gateway** (#496). Each aPower's model code
   (`PE_HW_VER` in the login reply) is looked up in franklinwh-cloud's device catalogue, the
   same way the aGate model already is: code 2 is the aPower X-01-AU. The install-profile
