@@ -30,7 +30,7 @@
                   x-text="({ done: 'Complete', skipped: 'Skipped' })[$store.app.setup.state] || 'Not done'"></span>
           </p>
           <p x-show="$store.app.setupStateMsg" class="text-xs mt-1"
-             :style="$store.app.setupStateMsg?.ok ? 'color:var(--ok,#10b981)' : 'color:#fca5a5'"
+             :style="{ color: $store.app.setupStateMsg?.ok ? 'var(--ok,#10b981)' : '#fca5a5' }"
              x-text="$store.app.setupStateMsg?.text"></p>
         </div>
         <div class="flex items-center gap-2">
