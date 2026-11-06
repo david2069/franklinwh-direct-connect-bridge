@@ -46,6 +46,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - **A restart just after a schedule asks no longer sends the question twice.** The run
   recorded its question only once the send had finished, so a restart in between asked
   again. The run now finds its question among the open ones and waits for that (#523).
+- The notifications' own database connection is closed when the bridge stops, rather than
+  left open until the process exits (#523).
 - An empty gap could sit between the top bar and System view when it opened while the top
   bar was still loading; the overlay now follows the top bar's height.
 - **Metrics export leaves mock gateways out** unless that gateway is named (#9). With no
