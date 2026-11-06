@@ -175,6 +175,8 @@ def _roster_entry(gw: GatewayState) -> dict:
         # For the All gateways view (#383): the flows and when the poller last had a reading.
         "power": {k: power.get(k) for k in ("battery_w", "grid_w", "solar_w", "load_w")},
         "last_poll_ts": getattr(gw, "state_ts", 0) or None,
+        # So the gateway menu can tell an old SoC from a current one (#373).
+        "poll_interval": get_settings().poll_interval,
     }
 
 
