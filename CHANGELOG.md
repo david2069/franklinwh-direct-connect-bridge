@@ -42,6 +42,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   it can't be met. Tariff and utility are checked against the default meter.
 
 ### Fixed
+- **The metrics export says which gateway each row is from** (#9). Without `gateway=` it
+  exports every gateway's rows, mocks included, and nothing told them apart. CSV and JSON
+  now have a `gateway_id` column, added last so the other columns keep their place.
 - **The top-bar gateway menu is no longer cut off under the sidebar** (#372). It was
   always right-aligned to the selector, so when the selector sat near the content's left
   edge the gateway names were hidden. It now opens left-aligned when there is no room to
