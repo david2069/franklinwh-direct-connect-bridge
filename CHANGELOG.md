@@ -42,6 +42,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   it can't be met. Tariff and utility are checked against the default meter.
 
 ### Fixed
+- **Control and Circuits no longer say "Set ALLOW_WRITES=true"** (#87). The read-only
+  card told users to set a switch that stopped blocking writes in 0.5.2; it is removed.
 - **The aPower model is read from the gateway** (#496). Each aPower's model code
   (`PE_HW_VER` in the login reply) is looked up in franklinwh-cloud's device catalogue, the
   same way the aGate model already is: code 2 is the aPower X-01-AU. The install-profile
