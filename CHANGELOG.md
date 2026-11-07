@@ -11,6 +11,67 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.35] — 2026-11-09
+
+### Changed
+- **System view on a phone** (franklinwh-system-view 0.2.4). The zoom buttons, Customise
+  diagram and Start on System view are under an **Options** button, folded on phones and
+  shown on wider screens, and the choice is remembered; on a phone they took more room
+  than the diagram. The overlay's own gateway buttons are gone: it shows the gateway
+  picked in the top bar, the one place to choose. It always opens fitted to the screen.
+- **Top-bar menus on a phone** (gateway, operating mode, preferences) open full width just
+  under the top bar and dim the page behind them; a tap outside or a scroll closes them.
+  The gateway menu could open partly off the left edge, over the page, with nothing to
+  show it was a menu.
+- **The dashboard's Power Flow card reads like the Modbus Bridge's:** one row per source
+  with its value and what it is doing (Solar · Generating, Battery · Charging, Grid ·
+  Exporting, Home · Consuming; Idle at 0 W). A **Now / Today** toggle in the card switches
+  to today's kWh (produced, used, charged, discharged, imported, exported) from the same
+  read; the choice is remembered in the browser. The separate Energy card is unchanged.
+- **The top bar gateway menu shows each gateway's SoC** (#373). Each row shows the last
+  SoC read, for example "55%", from the poller's cache, so no new device reads. When the
+  reading is older than the poll interval allows, its age is added: "55% · 4 min ago".
+  `/api/gateways` rows now also carry `poll_interval`.
+
+### Fixed
+- An empty gap could sit between the top bar and System view when it opened while the top
+  bar was still loading; the overlay now follows the top bar's height.
+- **`POST /api/reboot` description no longer says it is gated by `allow_writes`** (#178).
+  That setting stopped blocking writes in 0.5.2; the route only needs `confirm=true`.
+- **Control and Circuits no longer say "Set ALLOW_WRITES=true"** (#87). The read-only
+  card told users to set a switch that stopped blocking writes in 0.5.2; it is removed.
+- **Each tab sets itself up once, not twice** (#376). Alpine already calls a component's
+  `init()`, and fourteen templates called it again with `x-init="init()"`, so their
+  watchers and first reads ran twice (for example two `GET /api/system-setup` on one
+  gateway switch). The extra `x-init` is gone, and a test stops it coming back.
+- **Health → Rediscovered is per gateway** (#163). It compared each gateway's address
+  with the global host, so with several gateways every gateway but one showed
+  **Rediscovered: true**, a mock included. It is now true only when re-discovery moved
+  that gateway to a new address, and n/a for a mock.
+- **Generator → Operating windows looks unavailable while the generator feature is off**
+  (#368). Its Edit buttons were already disabled, but the card wasn't dimmed like the
+  others and the reason was only in a tooltip. The card is now dimmed and says on screen
+  to install and configure the generator module first.
+- **Swagger UI (`/docs`) and ReDoc (`/redoc`) work through Home Assistant ingress**
+  (#177). They loaded the schema from `/openapi.json`, which under ingress is Home
+  Assistant's root, not the bridge. They now take the ingress path from
+  `X-Ingress-Path`, the same way the web UI does.
+- **The top-bar gateway menu is no longer cut off under the sidebar** (#372). It was
+  always right-aligned to the selector, so when the selector sat near the content's left
+  edge the gateway names were hidden. It now opens left-aligned when there is no room to
+  the left, and is never wider than the screen on a phone.
+- **Selects are the same height as text and number fields in Safari** (#393). Safari drew
+  them as native pop-up menus that ignore padding, so they came out shorter. Selects now
+  draw their own chevron and take the same padding as inputs, as in the Modbus Bridge.
+- **Settings → Setup: Mark complete shows its result** (#395). A failed save looked the
+  same as success, and success showed nothing. The Setup card now shows the result, or the
+  error with its HTTP status, and keeps it there. It also shows the stored state
+  (Complete, Skipped or Not done), and once setup is complete the button becomes
+  **Mark not complete**.
+- **Settings → Setup: the Mark complete result line binds its colour as an object**, not a
+  string, so Alpine's `x-show` can't wipe the element's `display` when the message changes
+  (#395 follow-up).
+
 ## [0.5.34] — 2026-11-08
 
 Notifications with buttons: fixes from a peer review (#523), and the test-reliability fixes.
@@ -88,30 +149,6 @@ What's installed, in plain words (#496), and greyed-out scheduler values that ca
   it can't be met. Tariff and utility are checked against the default meter.
 
 ### Fixed
-- **The top-bar gateway menu is no longer cut off under the sidebar** (#372). It was
-  always right-aligned to the selector, so when the selector sat near the content's left
-  edge the gateway names were hidden. It now opens left-aligned when there is no room to
-  the left, and is never wider than the screen on a phone.
-- **Swagger UI (`/docs`) and ReDoc (`/redoc`) work through Home Assistant ingress**
-  (#177). They loaded the schema from `/openapi.json`, which under ingress is Home
-  Assistant's root, not the bridge. They now take the ingress path from
-  `X-Ingress-Path`, the same way the web UI does.
-- **Generator → Operating windows looks unavailable while the generator feature is off**
-  (#368). Its Edit buttons were already disabled, but the card wasn't dimmed like the
-  others and the reason was only in a tooltip. The card is now dimmed and says on screen
-  to install and configure the generator module first.
-- **Health → Rediscovered is per gateway** (#163). It compared each gateway's address
-  with the global host, so with several gateways every gateway but one showed
-  **Rediscovered: true**, a mock included. It is now true only when re-discovery moved
-  that gateway to a new address, and n/a for a mock.
-- **Each tab sets itself up once, not twice** (#376). Alpine already calls a component's
-  `init()`, and fourteen templates called it again with `x-init="init()"`, so their
-  watchers and first reads ran twice (for example two `GET /api/system-setup` on one
-  gateway switch). The extra `x-init` is gone, and a test stops it coming back.
-- **Control and Circuits no longer say "Set ALLOW_WRITES=true"** (#87). The read-only
-  card told users to set a switch that stopped blocking writes in 0.5.2; it is removed.
-- **`POST /api/reboot` description no longer says it is gated by `allow_writes`** (#178).
-  That setting stopped blocking writes in 0.5.2; the route only needs `confirm=true`.
 - **The aPower model is read from the gateway** (#496). Each aPower's model code
   (`PE_HW_VER` in the login reply) is looked up in franklinwh-cloud's device catalogue, the
   same way the aGate model already is: code 2 is the aPower X-01-AU. The install-profile
