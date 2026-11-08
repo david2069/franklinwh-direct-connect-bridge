@@ -18,6 +18,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   dropdown and date stepping on the site's calendar. Read-only, through the new shared
   package franklinwh-ha-cloud-analytics 0.1.1 (also for the Modbus Bridge), in the
   `cloud` extra. New `GET /api/analytics/cloud?gateway=&period=&date=`.
+
+## [0.5.37] — 2026-11-10
+
+### Added
 - **Notifications when the bridge starts, restarts or stops**, under a new trigger
   **Bridge started / restarted / stopped** (on by default), like the Energipays bridge (#528). A
   start after a clean stop says it restarted, how long it was down and, after an update, the
