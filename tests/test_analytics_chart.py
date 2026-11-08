@@ -31,3 +31,16 @@ def test_site_zone_follows_the_selected_gateway():
     sel = APP[APP.index("selectGateway(id) {"):]
     assert "this.loadSiteTz();" in sel[:sel.index("},")]
     assert "this._siteTzFor !== this._siteTzKey()" in APP
+
+
+def test_steps_back_and_forward_by_the_shown_span_and_has_today():
+    # Owner, 2026-11-09: ‹ › stepping and Today, as on the Cloud view.
+    assert "stepWindow(-1)" in HTML and "stepWindow(1)" in HTML and "goToday()" in HTML
+    assert "atToday" in HTML and "atOldest" in HTML
+
+
+def test_stepping_stops_at_the_oldest_stored_sample():
+    assert "this.firstTs = (d && d.first_ts) || null;" in JS
+    body = JS[JS.index("get atOldest()"):][:200]
+    assert "this.firstTs" in body and "this.window.start" in body
+    assert "history from" in HTML or "history from" in JS

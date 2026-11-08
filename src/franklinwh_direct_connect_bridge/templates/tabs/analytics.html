@@ -48,6 +48,13 @@
                 :class="custom ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-slate-200'"
                 @click="custom = true">Custom</button>
       </div>
+      <!-- step through history, as on the Cloud view; ‹ stops at the oldest stored sample -->
+      <div class="inline-flex items-center gap-1">
+        <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="stepWindow(-1)" :disabled="loading || atOldest"
+                aria-label="Earlier" :title="atOldest ? 'No stored history before this' : 'Earlier'">‹</button>
+        <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="stepWindow(1)" :disabled="loading || atToday" aria-label="Later" title="Later">›</button>
+        <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="goToday()" :disabled="loading || atToday" title="Back to now">Today</button>
+      </div>
       <!-- chart type -->
       <div class="inline-flex rounded-lg overflow-hidden border" style="border-color:var(--border)">
         <button class="px-3 py-1.5 text-xs font-medium transition"
@@ -62,9 +69,11 @@
     <!-- custom date range -->
     <div x-show="custom" x-cloak class="flex items-center gap-2 flex-wrap">
       <label class="text-xs text-slate-500">From
-        <input type="datetime-local" step="60" class="form-control form-control-sm ml-1" x-model="customStart"></label>
+        <input type="datetime-local" step="60" class="form-control form-control-sm ml-1" x-model="customStart"
+               :min="firstTs ? toSiteLocal(firstTs) : null" :max="toSiteLocal(Math.floor(Date.now() / 1000))"></label>
       <label class="text-xs text-slate-500">To
-        <input type="datetime-local" step="60" class="form-control form-control-sm ml-1" x-model="customEnd"></label>
+        <input type="datetime-local" step="60" class="form-control form-control-sm ml-1" x-model="customEnd"
+               :min="firstTs ? toSiteLocal(firstTs) : null" :max="toSiteLocal(Math.floor(Date.now() / 1000))"></label>
       <button class="btn btn-secondary btn-sm" @click="applyCustom()">Apply</button>
       <button class="btn btn-ghost btn-sm" @click="resetCustom()" title="Today 00:00 to now">Today</button>
       <span class="text-[11px] text-slate-500" x-text="'Times in ' + zoneLabel"></span>
