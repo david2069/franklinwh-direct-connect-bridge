@@ -80,7 +80,8 @@ never checked. A generator that never ran is left out.
 Under the chart, a chip per series shows or hides it, and the chart rescales to what is
 shown. **Line | Area | Bars** picks the style for any period (a day starts as lines, the
 longer periods as bars). Hover, or tap on a phone, anywhere on the chart for every shown
-value at that time. With Bars, the
+value at that time. Dates are shown in your browser's own format (5 Nov in
+Australia, Nov 5 in the US); times are 24-hour, on the site's clock. With Bars, the
 **stacked** button (at the end of the chips) draws one column per bar instead of one per
 value: where the energy came from (solar, battery, grid import) above zero, and where it
 went (home, battery charge, grid export) below. Refresh **↻** is at
