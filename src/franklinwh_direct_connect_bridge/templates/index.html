@@ -9,6 +9,7 @@
   <base href="{{ base_path }}/">
   <link rel="stylesheet" href="static/css/design-system.css?v={{ cache_bust }}">
   <link rel="stylesheet" href="system-view/system-view.css?v={{ cache_bust }}">
+  <link rel="stylesheet" href="cloud-analytics/cloud-analytics.css?v={{ cache_bust }}">
 
   <!-- Tailwind 3.4.1 — local, no CDN -->
   <script src="static/js/tailwind-3.4.1.min.js"></script>
@@ -394,6 +395,8 @@
 
 <!-- System view (#428): a self-contained overlay from franklinwh-system-view. -->
 <script src="system-view/system-view.js?v={{ cache_bust }}"></script>
+<!-- Analytics → Cloud (#215): the period chart from franklinwh-ha-cloud-analytics. -->
+<script src="cloud-analytics/cloud-analytics.js?v={{ cache_bust }}"></script>
 <script>
   // The overlay shows the gateway the top-bar picker has, and a gateway picked in the
   // overlay becomes the picker's (they could disagree before).

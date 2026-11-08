@@ -1462,6 +1462,13 @@ def create_app() -> FastAPI:
     # The System view overlay's page files (#428), from the shared package.
     import franklinwh_system_view as _sv
     app.mount("/system-view", StaticFiles(directory=str(_sv.static_dir())), name="system-view")
+    # Analytics → Cloud's panel (#215), from the shared package; absent without the cloud extra.
+    try:
+        import franklinwh_ha_cloud_analytics as _ca
+        app.mount("/cloud-analytics", StaticFiles(directory=str(_ca.static_dir())),
+                  name="cloud-analytics")
+    except ImportError:
+        pass
     app.mount("/static",
               StaticFiles(directory=str(Path(__file__).parent / "static")),
               name="static")
@@ -5539,6 +5546,40 @@ def create_app() -> FastAPI:
         return providers.cloud_target_refusal(
             get_settings(), serial=gw.serial,
             serial_locked=bool(getattr(gw, "serial_locked", False)), is_mock=bool(gw.is_mock))
+
+    @app.get("/api/analytics/cloud")
+    def api_analytics_cloud(period: str = "day5", date: str | None = None, refresh: bool = False,
+                            gateway: str = Depends(_gateway_q)):
+        """Analytics → Cloud (#215): the FranklinWH cloud's energy history for one period of
+        the viewed gateway, as the shared franklinwh-ha-cloud-analytics payload. Read-only.
+        Anything that stops it (no cloud account, a mock gateway, the cloud refusing) comes
+        back as ``{"error": ...}`` for the panel to show; a bad period or date is a 400."""
+        try:
+            import franklinwh_ha_cloud_analytics as ca
+        except ImportError:
+            return {"error": "Cloud analytics isn't installed in this build."}
+        gw = _gw_or_404(gateway)
+        if period not in ca.PERIODS:
+            raise HTTPException(status_code=400, detail=f"period is one of {', '.join(ca.PERIODS)}")
+        today = site_time.now_known(gw.active_host or gw.configured_host).date()
+        try:
+            on = _dt.date.fromisoformat(date) if date else today
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date is YYYY-MM-DD") from None
+        s = get_settings()
+        if not (s.fwh_cloud_email and s.fwh_cloud_password):
+            return {"error": "Add your FranklinWH cloud account in Settings to see the "
+                             "cloud's energy history here."}
+        refused = _cloud_target_refusal(gw)
+        if refused:
+            return {"error": refused}
+        try:
+            from . import cloud_status
+            return cloud_status.read_energy(s.fwh_cloud_email, s.fwh_cloud_password,
+                                            gw.serial, period, on, today, refresh)
+        except Exception as e:  # noqa: BLE001 — shown in the panel, never a 500
+            log.warning("cloud call failed: energy history — %s: %s", type(e).__name__, e)
+            return {"error": f"The FranklinWH cloud didn't answer: {type(e).__name__}: {e}"}
 
     @app.post("/api/cloud/reserve")
     def api_cloud_reserve(req: ReserveReq, gateway: str = Depends(_gateway_q)):
