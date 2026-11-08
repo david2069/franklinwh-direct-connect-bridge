@@ -235,10 +235,11 @@ has a switch and a **Send to**; the two SoC triggers also have a threshold.
 | Trigger | Default | Sent when | Message |
 |---|---|---|---|
 | aGate offline / online | on | The gateway stops or starts answering polls. | "aGate is UNREACHABLE [gateway] — check network / WiFi / power." / "aGate is reachable again [gateway]." |
-| Off-grid started / ended | on | The off-grid flag changes. | "Gateway went OFF-GRID [gateway] — running on battery." / "Gateway is back ON-GRID [gateway]." |
+| Off-grid started / ended | on | The off-grid flag changes. The message says why, in the top bar's words: **user requested** (someone asked for off-grid) or **grid outage** (no request was made); **reason unknown** when that wasn't read. | "Gateway went OFF-GRID [gateway] (user requested) — running on battery." / "Gateway is back ON-GRID [gateway]." |
 | Battery dispatch (VPP / force) started / ended | on | A dispatch is found active at start-up, or one starts that **this bridge did not start**. | "FranklinWH — VPP dispatch active at startup" / "FranklinWH — battery dispatch started (VPP)" |
 | Battery SoC drops below | off, 20 % | SoC crosses the threshold downward. | "Battery SoC dropped below 20% [gateway] (now N%)." |
 | Battery SoC reaches | off, 100 % | SoC crosses the threshold upward. | "Battery SoC reached 100% [gateway] (now N%)." |
+| Bridge started / restarted / stopped | on | The bridge starts or stops. A start after a clean stop is a **restart**: it says how long the bridge was down and, after an update, the version it came from. A start with no clean stop before it (first run, or a crash or power cut) is **started**. | "Bridge started (v0.5.36)." / "Bridge restarted (v0.5.36, updated from 0.5.35) after 1 min 35 s down." / "Bridge stopping (v0.5.36) — no polling or notifications until it starts again." |
 
 A trigger fires on a **change** between one poll and the next, not on every poll. There
 is no other rate limit.
