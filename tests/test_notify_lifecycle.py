@@ -61,3 +61,14 @@ def test_app_sends_started_on_start_and_stopped_before_notifications_stop():
     assert APP.index("await actionable.start(") < up < APP.index("yield", up)
     stop = APP.index("await actionable.stop()")
     assert APP.index('"bridge_stopped"') < stop and down < stop
+
+
+def test_shutdown_releases_the_battery_before_the_stop_notification():
+    """Home Assistant kills an add-on 10 s after asking it to stop. A held dispatch is
+    released first, and the stop notification may only take what is left (3 s at most)."""
+    end = APP.index("await supervisor.stop_all()")
+    block = APP[APP.index("finally:", APP.index("yield", APP.index("notify_engine.bridge_up("))):end]
+    assert block.index('release_held("shutdown")') < block.index('"bridge_stopped"') \
+        < block.index("await actionable.stop()")
+    wait = block[block.index('"bridge_stopped"'):block.index("await actionable.stop()")]
+    assert "version=__version__), 3)" in wait
