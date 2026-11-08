@@ -47,6 +47,12 @@ Longer-horizon charts over the stored samples — power, battery, energy — wit
 selectable range. This is the bridge's own record, so it survives a gateway reboot and
 goes back further than the aGate's.
 
+**‹ ›** step the shown window back or forward by its own length (24h, 3d, 7d, 30d or the
+custom range) and **Today** comes back to now. **‹** stops at the oldest stored sample;
+the caption under the chart says where the history starts ("history from …"), and the
+custom range can't start before it. The chips (SoC, Grid, Solar, Battery, Home, Generator)
+show or hide each series; **Line | Area** picks the style.
+
 ### Local or Cloud
 
 The **Local | Cloud** switch under the Analytics title picks the source, and the page says
@@ -62,16 +68,20 @@ FranklinWH cloud's energy history for the gateway picked in the top bar:
 | Year | each month's kWh |
 | Lifetime | each year's kWh |
 
-Pick the period from the dropdown, then step with **‹ ›** or choose a date; Week starts on
+Pick the period from the dropdown, then step with **‹ ›**, choose a date, or press
+**Today** to come back to the current period; Week starts on
 its Monday, and Month and Year on the 1st. Battery discharge and grid import are drawn
 above zero, battery charge and grid export below. A period with no data is left empty,
 never drawn as 0. Values marked **≈** are added up from the cloud's 5-minute flows rather
 than read as a total. **(inferred)** marks a value the cloud's field is only named for,
 never checked. A generator that never ran is left out.
 
-For the bar charts, the **stacked** button (next to the date) draws one column per bar
-instead of one per value: where the energy came from (solar, battery, grid import) above
-zero, and where it went (home, battery charge, grid export) below. Hover for each value.
+Under the chart, a chip per series shows or hides it, and the chart rescales to what is
+shown. For Day (5-min), **Line | Area** picks the style. For the bar charts, the
+**stacked** button (at the end of the chips) draws one column per bar instead of one per
+value: where the energy came from (solar, battery, grid import) above zero, and where it
+went (home, battery charge, grid export) below. Hover for each value. Refresh **↻** is at
+the end of the line that says what is shown.
 
 Cloud needs your FranklinWH cloud account in **Settings**; without one, or for a mock
 gateway, the panel says why it's empty. The bridge asks the cloud as little as it can: the

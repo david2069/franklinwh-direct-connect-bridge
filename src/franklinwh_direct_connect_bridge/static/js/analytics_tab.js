@@ -35,6 +35,8 @@ function analyticsTab() {
     custom: false,
     customStart: '',      // 'YYYY-MM-DDTHH:MM', site wall-clock
     customEnd: '',
+    shiftS: 0,            // a preset window moved back from now by ‹ (seconds)
+    firstTs: null,        // the oldest stored sample for this gateway (epoch s)
     chartType: 'area',
     series: [],
     bucketS: null,        // the server's bucket size for the loaded series
@@ -137,10 +139,31 @@ function analyticsTab() {
         return { start: this.fromSiteLocal(this.customStart), end: this.fromSiteLocal(this.customEnd) };
       }
       const h = (this.ranges.find(r => r.key === this.range) || this.ranges[0]).hours;
-      return { start: now - h * 3600, end: now };
+      return { start: now - this.shiftS - h * 3600, end: now - this.shiftS };
     },
 
-    setRange(k) { this.range = k; this.custom = false; this.load(); },
+    setRange(k) { this.range = k; this.custom = false; this.shiftS = 0; this.load(); },
+    /** ‹ / ›: the window before or after this one, the same length. */
+    stepWindow(dir) {
+      const w = this.window, span = w.end - w.start;
+      if (this.custom) {
+        const now = Math.floor(Date.now() / 1000);
+        const end = Math.min(now, w.end + dir * span);
+        this.customStart = this.toSiteLocal(end - span);
+        this.customEnd = this.toSiteLocal(end);
+      } else {
+        this.shiftS = Math.max(0, this.shiftS - dir * span);
+      }
+      this.load();
+    },
+    /** Back to the window that ends now. */
+    goToday() { this.custom = false; this.shiftS = 0; this.load(); },
+    get atToday() {
+      return this.custom ? this.window.end >= Math.floor(Date.now() / 1000) - 120 : this.shiftS === 0;
+    },
+    get atOldest() {
+      return this.firstTs != null && this.window.start <= this.firstTs;
+    },
     applyCustom() {
       if (!this.customValid) {
         this.$store.app.toast('"To" must be after "From"', 'error');
@@ -160,6 +183,7 @@ function analyticsTab() {
         const d = await (await fetch(url)).json();
         this.series = (d && d.series) || [];
         this.bucketS = (d && d.bucket_s) || null;
+        this.firstTs = (d && d.first_ts) || null;
         this.win = w;
         this.render();
       } catch (e) {
@@ -263,6 +287,7 @@ function analyticsTab() {
         + ` · ${this.zoneLabel}`;
       const w = this.win;
       if (w && b && s[0].ts - w.start > 2 * b) txt += ` · no data before ${this.stamp(s[0].ts)}`;
+      if (this.firstTs) txt += ` · history from ${this.dayLabel(this.firstTs)} ${this.siteDate(this.firstTs).getUTCFullYear()}`;
       return txt;
     },
 

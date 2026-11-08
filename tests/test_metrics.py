@@ -96,3 +96,12 @@ def test_metrics_explicit_bucket_and_window(monkeypatch, tmp_path):
     body = r.json()
     assert body["bucket_s"] == 300
     assert body["enabled"] is True
+
+
+def test_metrics_says_where_the_gateways_history_starts(monkeypatch, tmp_path):
+    # Owner, 2026-11-09: Local stops stepping back at the oldest stored day.
+    store = _seeded_store(tmp_path)
+    monkeypatch.setattr(db_module, "get_store", lambda s: store)
+    body = _app().get("/api/metrics?range=24h&" + G).json()
+    assert body["first_ts"] == store.info(GW)["first_ts"] == store.first_ts(GW) is not None
+    assert store.first_ts("another-gateway") is None

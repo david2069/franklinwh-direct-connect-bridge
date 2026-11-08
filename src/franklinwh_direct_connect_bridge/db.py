@@ -2932,6 +2932,15 @@ class MetricsStore:
                 {"s": start, "e": end, "gw": gateway}).fetchall()
         return [{"ts": ts, "n": n, "stats": json.loads(stats)} for ts, n, stats in rows]
 
+    def first_ts(self, gateway: str | None = None) -> int | None:
+        """The oldest stored sample's time (epoch s), for one gateway or all; None if empty."""
+        if gateway is not None:
+            sql, args = "SELECT MIN(ts) FROM metrics WHERE gateway_id = ?", (gateway,)
+        else:
+            sql, args = "SELECT MIN(ts) FROM metrics", ()
+        with self._lock:
+            return self._conn.execute(sql, args).fetchone()[0]
+
     def info(self, gateway: str | None = None) -> dict:
         if gateway is not None:
             sql = "SELECT COUNT(*), MIN(ts), MAX(ts) FROM metrics WHERE gateway_id = ?"

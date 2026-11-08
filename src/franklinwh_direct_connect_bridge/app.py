@@ -6782,9 +6782,12 @@ def create_app() -> FastAPI:
         store = db.get_store(get_settings())
         if store is None:
             return {"enabled": False, "series": [], "count": 0}
-        series = store.query(start, end, b, gateway=_metrics_gw_key(gateway))
+        gw_key = _metrics_gw_key(gateway)
+        series = store.query(start, end, b, gateway=gw_key)
+        # where this gateway's history starts, so the page stops stepping back there
         return {"enabled": True, "range": range, "start": start, "end": end,
-                "bucket_s": b, "count": len(series), "series": series}
+                "bucket_s": b, "count": len(series), "series": series,
+                "first_ts": store.first_ts(gw_key)}
 
     @app.get("/api/energy/flow")
     def api_energy_flow(
