@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 
 from franklinwh_ha_notify import Event
 
@@ -30,6 +31,7 @@ DEFAULT_TRIGGERS: dict = {
     "dispatch": {"enabled": True, "label": "Battery dispatch (VPP / force) started / ended"},
     "soc_low": {"enabled": False, "label": "Battery SoC drops below", "threshold": 20},
     "soc_full": {"enabled": False, "label": "Battery SoC reaches", "threshold": 100},
+    "bridge": {"enabled": True, "label": "Bridge started / restarted / stopped"},
 }
 
 #: Notifications with buttons that have only a Send to setting (#281): critical alerts
@@ -148,7 +150,8 @@ def _enabled(cfg: dict, key: str) -> bool:
 #: The event behind each trigger whose transition has two directions. Stats and the
 #: enable flag are per trigger.
 TRIGGER = {"aGate_online": "aGate_offline", "on_grid": "off_grid",
-           "dispatch_start": "dispatch", "dispatch_at_boot": "dispatch"}
+           "dispatch_start": "dispatch", "dispatch_at_boot": "dispatch",
+           "bridge_started": "bridge", "bridge_restarted": "bridge", "bridge_stopped": "bridge"}
 
 #: Every companion-push event and its default text (#374 P2). ``{gateway}`` is the
 #: gateway's label (#361).
@@ -156,7 +159,8 @@ EVENTS = (
     Event("aGate_offline", "FranklinWH aGate",
           "aGate is UNREACHABLE [{gateway}] — check network / WiFi / power."),
     Event("aGate_online", "FranklinWH aGate", "aGate is reachable again [{gateway}]."),
-    Event("off_grid", "FranklinWH off-grid", "Gateway went OFF-GRID [{gateway}] — running on battery."),
+    Event("off_grid", "FranklinWH off-grid",
+          "Gateway went OFF-GRID [{gateway}] ({reason}) — running on battery.", ("reason",)),
     Event("on_grid", "FranklinWH off-grid", "Gateway is back ON-GRID [{gateway}]."),
     Event("soc_low", "FranklinWH battery",
           "Battery SoC dropped below {threshold}% [{gateway}] (now {soc}%).", ("threshold", "soc")),
@@ -174,9 +178,54 @@ EVENTS = (
           "{gateway}: {detail}", ("action", "detail")),
     Event("schedule_notify", "{title}", "{message} [{gateway}]", ("title", "message")),
     Event("broadcast", "{title}", "{message}", ("title", "message")),
+    Event("bridge_started", "FranklinWH bridge", "Bridge started (v{version}).", ("version",)),
+    Event("bridge_restarted", "FranklinWH bridge",
+          "Bridge restarted (v{version}{update}) after {down} down.", ("version", "update", "down")),
+    Event("bridge_stopped", "FranklinWH bridge",
+          "Bridge stopping (v{version}) — no polling or notifications until it starts again.",
+          ("version",)),
     Event("test", "FranklinWH — test", "This is a test notification from the trigger engine."),
 )
 actionable.templates().register(*EVENTS)
+
+
+#: Why it went off-grid, per client._off_grid_kind: the same words as the top-bar chip. The
+#: scheduler's grid.offgrid_reason uses this too.
+OFF_GRID_REASON = {"simulated": "user requested", "outage": "grid outage"}
+
+#: app_config key holding the last clean stop ({ts, version}), read once by the next start.
+STOP_KEY = "bridge_last_stop"
+
+
+def bridge_down(store, version: str, now: float | None = None) -> None:
+    """Record a clean stop, so the next start can say it is a restart."""
+    store.set_config(STOP_KEY, json.dumps({"ts": time.time() if now is None else now,
+                                           "version": version}))
+
+
+def bridge_up(store, version: str, now: float | None = None) -> tuple[str, dict]:
+    """The start-up notification: restarted after a clean stop (how long it was down, and
+    the version it came from if that changed), else started (first run, or the last run
+    ended without a clean stop). The stop record is used once."""
+    try:
+        stop = json.loads(store.get_config(STOP_KEY) or "null")
+    except ValueError:
+        stop = None
+    store.set_config(STOP_KEY, "")
+    if not isinstance(stop, dict) or not isinstance(stop.get("ts"), (int, float)):
+        return "bridge_started", {"version": version}
+    down = max(0, round((time.time() if now is None else now) - stop["ts"]))
+    old = stop.get("version")
+    return "bridge_restarted", {
+        "version": version, "down": _duration(down),
+        "update": f", updated from {old}" if old and old != version else ""}
+
+
+def _duration(s: int) -> str:
+    h, m = divmod(s // 60, 60)
+    if h:
+        return f"{h} h {m} min"
+    return f"{m} min {s % 60} s" if m else f"{s} s"
 
 
 def evaluate(summ: dict, prev: dict | None, cfg: dict) -> list[tuple[str, dict]]:
@@ -191,7 +240,9 @@ def evaluate(summ: dict, prev: dict | None, cfg: dict) -> list[tuple[str, dict]]
         out.append(("aGate_online" if summ.get("ok") else "aGate_offline", {}))
 
     if _enabled(cfg, "off_grid") and bool(p.get("off_grid")) != bool(c.get("off_grid")):
-        out.append(("off_grid" if c.get("off_grid") else "on_grid", {}))
+        out.append(("off_grid", {"reason": OFF_GRID_REASON.get(c.get("off_grid_kind"),
+                                                                "reason unknown")})
+                   if c.get("off_grid") else ("on_grid", {}))
 
     ps, cs = p.get("soc"), c.get("soc")
     if isinstance(ps, (int, float)) and isinstance(cs, (int, float)):
