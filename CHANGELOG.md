@@ -11,7 +11,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+- **Notifications when the bridge starts, restarts or stops**, under a new trigger
+  **Bridge started / restarted / stopped** (on by default), like the Energipays bridge (#528). A
+  start after a clean stop says it restarted, how long it was down and, after an update, the
+  version it came from; a start with no clean stop before it says started. The stop
+  notification goes out before notifications shut down, waiting at most 10 s.
+
 ### Changed
+- **The off-grid notification says why:** "user requested" (someone asked for off-grid) or
+  "grid outage" (no request was made), the same words as the top bar, or "reason unknown"
+  when that wasn't read. Before, every off-grid message read the same (#528).
 - **Every number each poll reads is kept, not just the chart values.** A poll reads about
   84 values (each aPower's battery, relays, today's energy, comms, grid voltage) but only 8
   were stored; the rest were shown live and lost. Now all of them are stored with each

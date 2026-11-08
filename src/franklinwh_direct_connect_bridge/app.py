@@ -1110,6 +1110,17 @@ def create_app() -> FastAPI:
         # pollers and the VPP monitor, so their first pass can already ask (Release).
         from . import actionable, notify_buttons  # noqa: F401 - registers the buttons
         await actionable.start(db.get_store(s), s)
+        # Bridge started / restarted (after a clean stop): sent in the background, so a slow
+        # Home Assistant never holds up start-up.
+        from . import notify_engine
+
+        def _notify_bridge_up():
+            st = db.get_store(s)
+            if st is not None:
+                ev, vals = notify_engine.bridge_up(st, __version__)
+                notify_engine.fire(st, ev, **vals)
+
+        _bridge_up_task = asyncio.create_task(asyncio.to_thread(_notify_bridge_up))  # noqa: F841
         if s.mqtt_enabled or metrics_active(s):
             gws = state.gateways()
             log.info("starting %d poller(s) (mqtt=%s, metrics=%s)",
@@ -1345,6 +1356,16 @@ def create_app() -> FastAPI:
         try:
             yield
         finally:
+            # Bridge stopped: recorded first (so the next start says restarted), then sent
+            # while notifications are still running, waiting at most 10 s.
+            try:
+                _st = db.get_store(s)
+                if _st is not None:
+                    notify_engine.bridge_down(_st, __version__)
+                    await asyncio.wait_for(asyncio.to_thread(
+                        notify_engine.fire, _st, "bridge_stopped", version=__version__), 10)
+            except Exception as e:  # noqa: BLE001 — never block shutdown on a notification
+                log.warning("bridge stopped notification failed: %s", e)
             await actionable.stop()
             _sched_stop.set()
             _alert_stop.set()

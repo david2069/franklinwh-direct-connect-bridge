@@ -1298,8 +1298,8 @@ def timeline_segments(entries: list[dict], now: dt.datetime) -> dict[str, Any]:
 
 
 #: grid.offgrid_reason text per client._off_grid_kind — the same source as the top-bar chip
-#: and HA's Grid Status (#463).
-OFFGRID_REASON = {"simulated": "user requested", "outage": "grid outage"}
+#: and HA's Grid Status (#463). One copy, shared with the off-grid notification.
+from .notify_engine import OFF_GRID_REASON as OFFGRID_REASON  # noqa: E402
 
 
 def off_grid_since(prev: float | None, off_grid: Any, now_ts: float) -> float | None:
