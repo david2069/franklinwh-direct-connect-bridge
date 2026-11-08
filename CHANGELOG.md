@@ -22,7 +22,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   **Bridge started / restarted / stopped** (on by default), like the Energipays bridge (#528). A
   start after a clean stop says it restarted, how long it was down and, after an update, the
   version it came from; a start with no clean stop before it says started. The stop
-  notification goes out before notifications shut down, waiting at most 10 s.
+  notification goes out after any battery dispatch the bridge holds is
+  released, and before notifications shut down, waiting at most 3 s (Home Assistant stops
+  an add-on after 10 s).
 
 ### Changed
 - **The off-grid notification says why:** "user requested" (someone asked for off-grid) or
