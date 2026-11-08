@@ -139,3 +139,9 @@ def test_the_local_cloud_switch_is_its_own_row_and_full_size():
     sw = TAB[TAB.index('aria-label="Source"') - 300:][:1200]
     assert "text-xs" not in sw and "text-sm" in sw
     assert TAB.index('aria-label="Source"') > TAB.index("</h1>")
+
+
+def test_the_cloud_account_link_shows_only_while_the_account_is_not_usable():
+    # Owner, 2026-11-09: the credentials prompt only when they are not present.
+    line = TAB[:TAB.index("openCloudSettings()")].rsplit("<p ", 1)[1]
+    assert 'x-show="!$store.app.cloudAvailable"' in line
