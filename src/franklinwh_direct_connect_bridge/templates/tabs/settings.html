@@ -1,7 +1,8 @@
 {% from "partials/dialog_msg.html" import dialog_msg %}
 {% from "partials/device_multiselect.html" import device_multiselect %}
 <!-- ── Settings Tab (read-only) ───────────────────────────── -->
-<div class="space-y-6 max-w-5xl" x-data="settingsTab()">
+<div class="space-y-6 max-w-5xl" x-data="settingsTab()"
+     @fwh-open-settings.window="setSub($event.detail.sub); setTimeout(() => { const el = document.getElementById($event.detail.card); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50)">
 
   <!-- Settings sub-tabs -->
   <div class="flex flex-wrap gap-1.5">
@@ -2432,7 +2433,7 @@
        schedules, force charge/discharge. Probed, not assumed: the gateway accepts
        and discards all three locally. Without valid credentials those features are
        disabled rather than offered and failing. -->
-  <div class="card p-4 space-y-3">
+  <div class="card p-4 space-y-3" id="settings-cloud-api">
     <div class="flex items-center justify-between">
       <div class="card-label" style="margin-bottom:0">FranklinWH Cloud API</div>
       <span class="chip" :class="cloudOk ? 'ok' : 'muted'"

@@ -67,6 +67,12 @@ function analyticsTab() {
       if (src === 'cloud') this.mountCloud(); else this.load();
     },
 
+    /** Settings → Integrations, scrolled to the FranklinWH Cloud API card. */
+    openCloudSettings() {
+      Alpine.store('app').setActiveTab('settings');
+      window.dispatchEvent(new CustomEvent('fwh-open-settings', { detail: { sub: 'integrations', card: 'settings-cloud-api' } }));
+    },
+
     /** The shared cloud panel, mounted once; it reads the gateway picked in the top bar. */
     mountCloud() {
       if (this._cloud || !window.FWHCloudAnalytics) return;

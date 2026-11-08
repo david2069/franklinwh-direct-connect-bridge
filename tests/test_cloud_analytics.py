@@ -120,3 +120,22 @@ def test_analytics_has_a_local_cloud_switch_that_mounts_the_panel():
     assert 'x-ref="cloud"' in TAB
     assert "FWHCloudAnalytics.mount(" in JS and "fwh-analytics-source" in JS
     assert "selectedGateway" in JS[JS.index("FWHCloudAnalytics.mount("):][:300]
+
+
+SETTINGS = (PKG / "templates" / "tabs" / "settings.html").read_text()
+
+
+def test_the_cloud_view_links_to_the_cloud_account_card():
+    # Owner, 2026-11-09: the cloud view needs a link to where the credentials go.
+    assert "openCloudSettings()" in TAB
+    body = JS[JS.index("openCloudSettings()"):][:400]
+    assert "setActiveTab('settings')" in body and "fwh-open-settings" in body
+    assert 'id="settings-cloud-api"' in SETTINGS
+    assert "@fwh-open-settings.window" in SETTINGS
+
+
+def test_the_local_cloud_switch_is_its_own_row_and_full_size():
+    # Owner, 2026-11-09: the switch was too small and lost in the middle of the header.
+    sw = TAB[TAB.index('aria-label="Source"') - 300:][:1200]
+    assert "text-xs" not in sw and "text-sm" in sw
+    assert TAB.index('aria-label="Source"') > TAB.index("</h1>")

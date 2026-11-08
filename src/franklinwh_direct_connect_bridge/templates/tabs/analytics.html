@@ -5,15 +5,6 @@
       <h1 class="text-xl font-semibold" style="color:var(--text-primary)">Analytics <a :href="$store.app.guideUrl('energy-and-costs/#analytics')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></h1>
       <p class="text-sm text-slate-500" x-text="source === 'cloud' ? 'Energy history from the FranklinWH cloud.' : 'Power &amp; state history from the bridge\'s own store.'"></p>
     </div>
-    <!-- Local: this bridge's own samples. Cloud: the FranklinWH cloud's history (#215). -->
-    <div class="inline-flex rounded-lg overflow-hidden border" style="border-color:var(--border)" role="tablist" aria-label="Source">
-      <button class="px-3 py-1.5 text-xs font-medium transition" role="tab" :aria-selected="source === 'local'"
-              :class="source === 'local' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-slate-200'"
-              @click="setSource('local')">Local</button>
-      <button class="px-3 py-1.5 text-xs font-medium transition" role="tab" :aria-selected="source === 'cloud'"
-              :class="source === 'cloud' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-slate-200'"
-              @click="setSource('cloud')">Cloud</button>
-    </div>
     <div class="flex items-center gap-2" x-show="source === 'local'">
       <button class="btn btn-secondary btn-sm" @click="exportData('csv')">Export CSV</button>
       <button class="btn btn-secondary btn-sm" @click="exportData('json')">JSON</button>
@@ -23,8 +14,21 @@
     </div>
   </div>
 
+  <!-- Local: this bridge's own samples. Cloud: the FranklinWH cloud's history (#215).
+       Its own row, full size, so it is not lost in the header. -->
+  <div class="inline-flex rounded-lg overflow-hidden border" style="border-color:var(--border)" role="tablist" aria-label="Source">
+    <button class="px-5 py-2 text-sm font-semibold transition" role="tab" :aria-selected="source === 'local'"
+            :class="source === 'local' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-slate-200'"
+            @click="setSource('local')">Local</button>
+    <button class="px-5 py-2 text-sm font-semibold transition border-l" style="border-color:var(--border)" role="tab" :aria-selected="source === 'cloud'"
+            :class="source === 'cloud' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-slate-200'"
+            @click="setSource('cloud')">Cloud</button>
+  </div>
+
   <!-- Cloud: the shared panel draws its own period, dates and chart. -->
   <div class="card" x-show="source === 'cloud'" x-cloak>
+    <p class="text-sm mb-3" style="color:var(--text-secondary)">Cloud account:
+      <button class="underline" style="color:var(--accent, #34d399)" @click="openCloudSettings()">Settings → Integrations → FranklinWH Cloud API</button></p>
     <div x-ref="cloud"></div>
   </div>
 
