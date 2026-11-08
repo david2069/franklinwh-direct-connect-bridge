@@ -11,6 +11,25 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.36] — 2026-11-09
+
+### Changed
+- **Every number each poll reads is kept, not just the chart values.** A poll reads about
+  84 values (each aPower's battery, relays, today's energy, comms, grid voltage) but only 8
+  were stored; the rest were shown live and lost. Now all of them are stored with each
+  sample (numbers only, so serials and names are never kept). Like Home Assistant's
+  recorder, full detail is kept for 10 days and then rolled up into hourly mean/min/max for
+  the rest of the metrics retention; the 8 chart values are unchanged. New read-only
+  `GET /api/metrics/raw?gateway=&start=&end=` returns stored rows with every column, plus
+  the hourly roll-ups.
+
+### Fixed
+- **Metrics export leaves mock gateways out** unless that gateway is named (#9). With no
+  gateway named it exports the real gateways' rows; each row already names its gateway.
+- **The metrics export says which gateway each row is from** (#9). Without `gateway=` it
+  exports every gateway's rows, mocks included, and nothing told them apart. CSV and JSON
+  now have a `gateway_id` column, added last so the other columns keep their place.
+
 ## [0.5.35] — 2026-11-09
 
 ### Changed
@@ -127,14 +146,6 @@ What's installed, in plain words (#496), and greyed-out scheduler values that ca
 (#471).
 
 ### Changed
-- **Every number each poll reads is kept, not just the chart values.** A poll reads about
-  84 values (each aPower's battery, relays, today's energy, comms, grid voltage) but only 8
-  were stored; the rest were shown live and lost. Now all of them are stored with each
-  sample (numbers only, so serials and names are never kept). Like Home Assistant's
-  recorder, full detail is kept for 10 days and then rolled up into hourly mean/min/max for
-  the rest of the metrics retention; the 8 chart values are unchanged. New read-only
-  `GET /api/metrics/raw?gateway=&start=&end=` returns stored rows with every column, plus
-  the hourly roll-ups.
 - **What's installed, in plain words** (#496). The setup wizard's Confirm step and
   **Settings → Setup** now show one card per gateway. Everything the gateway reports
   (model, number of aPowers, grid connection, operating modes, solar and its size,
