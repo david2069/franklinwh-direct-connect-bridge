@@ -12,6 +12,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Analytics → Cloud** (#215, phase 1). A **Local | Cloud** switch on Analytics; Cloud
+  shows the FranklinWH cloud's energy history for the gateway in the top bar: Day (5-min)
+  as kW lines, Day (hourly), Week, Month, Year and Lifetime as kWh bars, with a period
+  dropdown and date stepping on the site's calendar. Read-only, through the new shared
+  package franklinwh-ha-cloud-analytics 0.1.0 (also for the Modbus Bridge), in the
+  `cloud` extra. New `GET /api/analytics/cloud?gateway=&period=&date=`.
 - **Notifications when the bridge starts, restarts or stops**, under a new trigger
   **Bridge started / restarted / stopped** (on by default), like the Energipays bridge (#528). A
   start after a clean stop says it restarted, how long it was down and, after an update, the

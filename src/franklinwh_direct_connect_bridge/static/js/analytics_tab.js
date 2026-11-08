@@ -41,6 +41,9 @@ function analyticsTab() {
     win: null,            // the {start, end} the loaded series was asked for
     loading: false,
     _chart: null,
+    // Local (this bridge's samples) or Cloud (the FranklinWH cloud's history, #215).
+    source: (() => { try { return localStorage.getItem('fwh-analytics-source') === 'cloud' ? 'cloud' : 'local'; } catch (e) { return 'local'; } })(),
+    _cloud: null,
 
     init() {
       this.resetCustom();
@@ -52,9 +55,25 @@ function analyticsTab() {
         this.render();
       });
       this.$watch('$store.app.selectedGateway', () => {
-        if (this.$store.app.activeTab === 'analytics') this.load();
+        if (this.$store.app.activeTab !== 'analytics') return;
+        if (this.source === 'cloud') { if (this._cloud) this._cloud.reload(); } else this.load();
       });
-      lazyTab(this, 'analytics', () => this.load());
+      lazyTab(this, 'analytics', () => (this.source === 'cloud' ? this.mountCloud() : this.load()));
+    },
+
+    setSource(src) {
+      this.source = src;
+      try { localStorage.setItem('fwh-analytics-source', src); } catch (e) { /* private mode */ }
+      if (src === 'cloud') this.mountCloud(); else this.load();
+    },
+
+    /** The shared cloud panel, mounted once; it reads the gateway picked in the top bar. */
+    mountCloud() {
+      if (this._cloud || !window.FWHCloudAnalytics) return;
+      this._cloud = FWHCloudAnalytics.mount(this.$refs.cloud, {
+        endpoint: 'api/analytics/cloud',
+        params: () => ({ gateway: this.$store.app.selectedGateway || '' }),
+      });
     },
 
     // ---- site-zone helpers ------------------------------------------------------------
