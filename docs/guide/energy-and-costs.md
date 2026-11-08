@@ -78,10 +78,12 @@ than read as a total. **(inferred)** marks a value the cloud's field is only nam
 never checked. A generator that never ran is left out.
 
 Under the chart, a chip per series shows or hides it, and the chart rescales to what is
-shown. For Day (5-min), **Line | Area** picks the style. For the bar charts, the
+shown. **Line | Area | Bars** picks the style for any period (a day starts as lines, the
+longer periods as bars). Hover, or tap on a phone, anywhere on the chart for every shown
+value at that time. With Bars, the
 **stacked** button (at the end of the chips) draws one column per bar instead of one per
 value: where the energy came from (solar, battery, grid import) above zero, and where it
-went (home, battery charge, grid export) below. Hover for each value. Refresh **↻** is at
+went (home, battery charge, grid export) below. Refresh **↻** is at
 the end of the line that says what is shown.
 
 Cloud needs your FranklinWH cloud account in **Settings**; without one, or for a mock

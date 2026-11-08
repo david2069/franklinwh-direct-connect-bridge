@@ -16,11 +16,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   shows the FranklinWH cloud's energy history for the gateway in the top bar: Day (5-min)
   as kW lines, Day (hourly), Week, Month, Year and Lifetime as kWh bars, with a period
   dropdown and date stepping on the site's calendar. Read-only, through the new shared
-  package franklinwh-ha-cloud-analytics 0.1.2 (also for the Modbus Bridge), in the
+  package franklinwh-ha-cloud-analytics 0.1.3 (also for the Modbus Bridge), in the
   `cloud` extra. New `GET /api/analytics/cloud?gateway=&period=&date=`. The switch has its
   own row under the title, full size. While the cloud account is missing or refused, the
   Cloud view links straight to Settings → Integrations → **FranklinWH Cloud API**. Cloud has
-  **Today**, a chip per series to show or hide it, and **Line | Area** for Day (5-min).
+  **Today**, a chip per series to show or hide it, **Line | Area | Bars** for every period,
+  and, on hover or tap, every value at that time.
 - **Analytics → Local steps through history:** **‹ ›** move the shown window back or forward
   by its own length (24h, 3d, 7d, 30d or a custom range), **Today** comes back to now, and
   **‹** stops at the oldest stored sample. The caption says where the history starts, and
