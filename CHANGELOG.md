@@ -28,6 +28,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - **The off-grid notification says why:** "user requested" (someone asked for off-grid) or
   "grid outage" (no request was made), the same words as the top bar, or "reason unknown"
   when that wasn't read. Before, every off-grid message read the same (#528).
+
+## [0.5.36] — 2026-11-09
+
+### Changed
 - **Every number each poll reads is kept, not just the chart values.** A poll reads about
   84 values (each aPower's battery, relays, today's energy, comms, grid voltage) but only 8
   were stored; the rest were shown live and lost. Now all of them are stored with each
@@ -44,7 +48,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   exports every gateway's rows, mocks included, and nothing told them apart. CSV and JSON
   now have a `gateway_id` column, added last so the other columns keep their place.
 
-## [0.5.35] — 2026-11-09
+## [0.5.35] — 2026-11-08
 
 ### Changed
 - **System view on a phone** (franklinwh-system-view 0.2.4). The zoom buttons, Customise
