@@ -27,7 +27,8 @@
 
   <!-- Cloud: the shared panel draws its own period, dates and chart. -->
   <div class="card" x-show="source === 'cloud'" x-cloak>
-    <p class="text-sm mb-3" style="color:var(--text-secondary)">Cloud account:
+    <!-- Only while the cloud account is missing or refused; hidden once it works. -->
+    <p class="text-sm mb-3" style="color:var(--text-secondary)" x-show="!$store.app.cloudAvailable">Cloud account:
       <button class="underline" style="color:var(--accent, #34d399)" @click="openCloudSettings()">Settings → Integrations → FranklinWH Cloud API</button></p>
     <div x-ref="cloud"></div>
   </div>
