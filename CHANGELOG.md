@@ -30,7 +30,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   exports every gateway's rows, mocks included, and nothing told them apart. CSV and JSON
   now have a `gateway_id` column, added last so the other columns keep their place.
 
-## [0.5.35] — 2026-11-09
+## [0.5.35] — 2026-11-08
 
 ### Changed
 - **System view on a phone** (franklinwh-system-view 0.2.4). The zoom buttons, Customise
