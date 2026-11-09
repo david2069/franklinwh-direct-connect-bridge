@@ -151,6 +151,13 @@ The choice of Local or Cloud and the period are remembered in this browser.
 On the Dashboard. It shows directional flows for a local day: solar to home, solar to
 battery, solar to grid, battery to home, battery to grid, grid to home, grid to battery.
 
+The card says where its numbers come from. Signed in to the FranklinWH cloud (Settings →
+Integrations → **FranklinWH Cloud API**), it shows the cloud's own metered breakdown, with a
+cloud icon. Otherwise it shows this bridge's estimate (below), with a slashed cloud and
+how many days of samples the bridge holds ("Local · 12 days of data"); if the cloud can't
+answer, it falls back to Local. In Week, Month and Year the date picker shows the period's
+first day. **In Analytics** opens the same period in Analytics → Flow.
+
 **Be clear about what this is.** The gateway reports *node* totals — how much solar, how
 much import — and never the arcs between them. The bridge reconstructs the arcs from its
 own power samples by a merit-order split. It is a well-founded estimate, not a meter

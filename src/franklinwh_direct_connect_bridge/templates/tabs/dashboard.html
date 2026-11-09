@@ -326,7 +326,22 @@
   <!-- Energy Flow (Sankey) — reconstructed from power samples, with a day picker -->
   <div class="card lg:col-span-3" x-data="energyFlowCard()" x-show="$store.app.dashCards.energyFlow" :style="$store.app.dashCardStyle('energyFlow')">
     <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-      <div class="card-label" style="margin-bottom:0">Energy Flow <a :href="$store.app.guideUrl('energy-and-costs/#the-energy-flow-sankey')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></div>
+      <div class="card-label flex items-center gap-2 flex-wrap" style="margin-bottom:0">Energy Flow
+        <!-- where the data comes from (#543): the cloud's metered breakdown, or this bridge's
+             estimate with a slashed cloud; Cloud is offered, never pushed -->
+        <span class="inline-flex items-center gap-1 normal-case tracking-normal font-normal text-xs" style="color:var(--text-secondary)">
+          <svg x-show="source === 'cloud'" role="img" aria-label="Cloud data" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24">
+            <title>Cloud data: metered by the FranklinWH cloud</title>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z"/></svg>
+          <svg x-show="source !== 'cloud'" role="img" aria-label="Local data; cloud not set up" class="w-4 h-4 opacity-70" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24">
+            <title>Local data from this bridge. Cloud data needs the FranklinWH Cloud API in Settings → Integrations.</title>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z"/>
+            <path stroke-linecap="round" d="M3 3l18 18"/></svg>
+          <span x-show="source !== 'cloud' && localDays" x-text="'Local · ' + localDays + (localDays === 1 ? ' day' : ' days') + ' of data'"></span>
+        </span>
+        <a :href="$store.app.guideUrl('energy-and-costs/#the-energy-flow-sankey')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a>
+        <button class="text-xs underline normal-case tracking-normal font-normal" style="color:var(--text-secondary)" @click="openInAnalytics()" title="This period in Analytics → Flow">In Analytics</button>
+      </div>
       <!-- Period presets — week/month/year are anchored on the chosen date. -->
       <div class="flex items-center gap-1">
         <template x-for="p in ['day','week','month','year']" :key="p">
@@ -338,7 +353,7 @@
     <div class="flex flex-wrap items-center gap-1.5 mb-3">
       <button class="btn btn-secondary btn-sm" @click="shiftDay(-1)" :title="'Previous ' + period">‹</button>
       <input type="date" class="form-control form-control-sm text-center flex-1 min-w-[8rem]"
-             x-model="day" :max="today" @change="load()">
+             :value="startDay" :max="today" @change="day = $event.target.value; load()">
       <button class="btn btn-secondary btn-sm" @click="shiftDay(1)" :disabled="atToday()" :title="'Next ' + period">›</button>
       <button class="btn btn-secondary btn-sm" @click="goToday()" :disabled="atToday()">Today</button>
       <span class="chip muted text-center" x-show="period !== 'day'" x-text="spanLabel"></span>

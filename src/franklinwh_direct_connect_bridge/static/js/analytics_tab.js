@@ -134,6 +134,15 @@ function analyticsTab() {
       });
       lazyTab(this, 'analytics', () => (this.chartType === 'flow' ? this.loadFlow()
         : this.source === 'cloud' ? this.mountCloud() : this.load()));
+      // The Dashboard's Energy Flow card opens its period here (#543).
+      window.addEventListener('fwh-analytics-flow', (e) => {
+        const d = e.detail || {};
+        if (ANALYTICS_PERIODS.some(x => x[0] === d.period)) this.period = d.period;
+        this.source = d.source === 'cloud' ? 'cloud' : 'local';
+        this.style = 'flow';
+        this.day = !d.day || d.day >= this.today ? null : d.day;
+        this.loadFlow();
+      });
       // the Sankey is laid out from its width: draw it again when that changes
       if (window.ResizeObserver && this.$refs.flow) {
         let last = 0;

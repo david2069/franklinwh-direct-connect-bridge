@@ -70,6 +70,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   Cloud is the FranklinWH cloud's own metered breakdown. The period's totals are under the
   diagram, and **Export ▾** downloads them. `GET /api/energy/flow` takes spans up to 10
   years and returns `first_ts`. franklinwh-ha-cloud-analytics 0.1.12 (`flows`).
+- **Dashboard → Energy Flow says where its data comes from** (#543): signed in to the
+  cloud, the card shows the cloud's metered breakdown with a cloud icon; otherwise this
+  bridge's estimate with a slashed cloud and "Local · N days of data" (Local again if the
+  cloud can't answer). **In Analytics** opens the period in Analytics → Flow, and Week,
+  Month and Year show the period's first day rather than the day picked.
 - **Analytics: Line | Area | Bars at the top** (owner): one chart-style choice in the top
   row, right after the time span, serving Local and Cloud (remembered in this browser);
   it is no longer under each chart.
