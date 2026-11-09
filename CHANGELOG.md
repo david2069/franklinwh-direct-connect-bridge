@@ -20,6 +20,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   `METRICS_RETENTION_DAYS` still wins and shows as set for the install. On the add-on, the
   card says this overlaps Home Assistant's recorder. New `PUT /api/metrics/settings`;
   `GET /api/metrics/info` adds the choices, locks and growth.
+- **Local history keeps full resolution for 10 days, then 5-minute rows** (#540): each
+  gateway's older samples become one row per 5 minutes (average, with min, max and count,
+  the last mode and tier counters), so energy totals are unchanged and long Keep for
+  choices stay small. Runs hourly and logs what it did ("Local history: N samples older than
+  10 days kept as M five-minute rows", "deleted N rows older than D days"). Windows reaching
+  past 10 days are read in buckets of at least 5 minutes. The Local history card shows
+  growth measured from the database (the old fixed 0.35–0.7 MB a day predates the per-poll
+  record, about 8 MB a day for recent days); Database storage counts the WAL and SHM files
+  and shows each table's size.
 - **Analytics → Cloud** (#215, phase 1). A **Local | Cloud** switch on Analytics; Cloud
   shows the FranklinWH cloud's energy history for the gateway in the top bar: Day (5-min)
   as kW lines, Day (hourly), Week, Month, Year and Lifetime as kWh bars, with a period

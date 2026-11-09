@@ -31,7 +31,7 @@ def test_info_says_what_is_kept_and_what_is_locked(env):
     assert info["enabled"] is True and info["retention_days"] == 365
     assert info["retention_choices"] == [90, 365, 730, 0]          # 0 = forever
     assert info["locked"] == {"enabled": False, "retention_days": False}
-    assert "db_bytes" in info and info["mb_per_day"] == [0.35, 0.7]
+    assert "db_bytes" in info and {"recent_mb_day", "older_mb_day"} <= set(info["growth"])
 
 
 def test_retention_choice_applies_now_and_survives_a_restart(env):

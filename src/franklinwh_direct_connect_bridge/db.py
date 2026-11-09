@@ -11,6 +11,7 @@ caller's guard.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import threading
 import time
@@ -18,9 +19,16 @@ from pathlib import Path
 
 from .config import Settings
 
+log = logging.getLogger(__name__)
+
 #: Days each poll is kept in full; after that it is rolled up into hourly
 #: mean/min/max. Home Assistant's recorder default (purge_keep_days) is 10.
 POLL_RAW_DAYS = 10
+
+#: Chart samples older than POLL_RAW_DAYS become one row per gateway per this many
+#: seconds: the mean, with min, max and count in ``span`` (#540, like Home Assistant's
+#: statistics). About a tenth of the rows at a 30 s poll.
+ROLLUP_BUCKET_S = 300
 
 # Numeric columns written per sample (mode is stored separately as TEXT).
 #: `grid_voltage_v` is the SERVICE voltage — one reading of the thing itself, not
@@ -63,6 +71,7 @@ class MetricsStore:
         self._migrate_tiers()
         self._migrate_poll()
         self._migrate_grid_voltage()
+        self._migrate_span()
         self._migrate_bms()
         self._migrate_ha_instances()
         self._migrate_notify_devices()
@@ -203,17 +212,22 @@ class MetricsStore:
         cols = ("ts",) + _NUM_COLS + ("mode",)
         with self._lock:
             rows = self._conn.execute(
-                f"SELECT {', '.join(cols)}, poll FROM metrics "
+                f"SELECT {', '.join(cols)}, span, poll FROM metrics "
                 "WHERE ts BETWEEN :s AND :e" + gw_sql + " ORDER BY ts",
                 {"s": start, "e": end, "gw": gateway},
             ).fetchall()
         out = []
         for r in rows:
-            row = dict(zip(cols, r[:-1]))
+            row = dict(zip(cols, r[:-2]))
             try:
                 row["poll"] = json.loads(r[-1]) if r[-1] else {}
             except ValueError:
                 row["poll"] = {}
+            # a 5-minute row (#540): {n, min, max}; None on a sample as recorded
+            try:
+                row["span"] = json.loads(r[-2]) if r[-2] else None
+            except ValueError:
+                row["span"] = None
             out.append(row)
         return out
 
@@ -329,6 +343,91 @@ class MetricsStore:
         for c in ("grid_voltage_v", "grid_freq_hz"):
             if c not in cols:
                 self._conn.execute(f"ALTER TABLE metrics ADD COLUMN {c} REAL")
+
+    def _migrate_span(self) -> None:
+        """Add ``span``: on a 5-minute row (#540), the bucket's count and each value's
+        min and max as JSON; NULL on a sample as recorded. Idempotent."""
+        cols = [r[1] for r in self._conn.execute("PRAGMA table_info(metrics)")]
+        if "span" not in cols:
+            self._conn.execute("ALTER TABLE metrics ADD COLUMN span TEXT")
+
+    def roll_up(self, now: int) -> dict:
+        """Samples older than POLL_RAW_DAYS become one row per gateway per 5 minutes:
+        each value's mean over the samples that have it (NULL is not zero), its min and
+        max and the count in ``span``, the bucket's last mode and last tier counters.
+        Energy over a bucket is unchanged (mean x time). Rows already rolled up are left
+        alone, so running it again changes nothing. Works a day at a time."""
+        cutoff = now - POLL_RAW_DAYS * 86400
+        cutoff -= cutoff % ROLLUP_BUCKET_S
+        with self._lock:
+            first = self._conn.execute(
+                "SELECT MIN(ts) FROM metrics WHERE span IS NULL AND ts < ?", (cutoff,)).fetchone()[0]
+        samples = made = 0
+        day = first
+        while day is not None and day < cutoff:
+            hi = min(cutoff, day - day % 86400 + 86400)
+            n, m = self._roll_up_range(day, hi)
+            samples += n; made += m
+            day = hi
+        return {"samples": samples, "rows": made}
+
+    def growth(self, now: int) -> dict:
+        """How fast Local history grows per gateway, from this database (#540): MB a day
+        at full resolution (the last day's rows x this table's bytes per row) and for older
+        days (288 five-minute rows plus 24 hourly poll summaries, sized from what is
+        stored). ``measured`` is False when there is too little recent data to tell."""
+        with self._lock:
+            n, lo, gws = self._conn.execute(
+                "SELECT COUNT(*), MIN(ts), COUNT(DISTINCT gateway_id) FROM metrics "
+                "WHERE span IS NULL AND ts >= ?", (now - 86400,)).fetchone()
+            raw_len, tiers_len, poll_len = self._conn.execute(
+                "SELECT AVG(LENGTH(COALESCE(poll, '')) + LENGTH(COALESCE(tiers, ''))), "
+                "AVG(LENGTH(tiers)), AVG(LENGTH(poll)) FROM metrics "
+                "WHERE span IS NULL AND ts >= ?", (now - 86400,)).fetchone()
+            span_len = self._conn.execute(
+                "SELECT AVG(LENGTH(span)) FROM metrics WHERE span IS NOT NULL").fetchone()[0]
+            hour_len = self._conn.execute(
+                "SELECT AVG(LENGTH(stats)) FROM metrics_poll_hourly").fetchone()[0]
+        hours = (now - lo) / 3600 if n and lo else 0
+        gws = max(1, gws or 1)
+        if hours < 0.25:
+            return {"measured": False, "gateways": gws, "rows_per_day": None,
+                    "recent_mb_day": None, "older_mb_day": None}
+        rows_day = n / hours * 24 / gws
+        row_bytes = 120 + (raw_len or 0)            # 10 numbers, ts, mode, ids, page overhead
+        older = (86400 // ROLLUP_BUCKET_S) * (120 + (tiers_len or 0) + (span_len or 300)) \
+            + 24 * (hour_len or 3 * (poll_len or 0))
+        return {"measured": True, "gateways": gws, "rows_per_day": round(rows_day),
+                "recent_mb_day": round(rows_day * row_bytes / 1e6, 2),
+                "older_mb_day": round(older / 1e6, 2)}
+
+    def _roll_up_range(self, lo: int, hi: int) -> tuple[int, int]:
+        cols = ("id", "ts", "gateway_id") + _NUM_COLS + ("mode", "tiers")
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT {', '.join(cols)} FROM metrics WHERE span IS NULL AND ts >= ? AND ts < ? "
+                "ORDER BY ts", (lo, hi)).fetchall()
+            groups: dict = {}
+            for r in rows:
+                d = dict(zip(cols, r))
+                groups.setdefault((d["gateway_id"], d["ts"] - d["ts"] % ROLLUP_BUCKET_S), []).append(d)
+            for (gw, bts), g in groups.items():
+                mean, lo_, hi_ = {}, {}, {}
+                for c in _NUM_COLS:
+                    vals = [x[c] for x in g if x[c] is not None]
+                    mean[c] = sum(vals) / len(vals) if vals else None
+                    if vals:
+                        lo_[c], hi_[c] = min(vals), max(vals)
+                mode = next((x["mode"] for x in reversed(g) if x["mode"] is not None), None)
+                tiers = next((x["tiers"] for x in reversed(g) if x["tiers"] is not None), None)
+                span = json.dumps({"n": len(g), "min": lo_, "max": hi_}, separators=(",", ":"))
+                self._conn.execute(
+                    f"INSERT INTO metrics(ts, {', '.join(_NUM_COLS)}, mode, gateway_id, tiers, span) "
+                    f"VALUES ({','.join('?' * (len(_NUM_COLS) + 5))})",
+                    [bts] + [mean[c] for c in _NUM_COLS] + [mode, gw, tiers, span])
+            self._conn.executemany("DELETE FROM metrics WHERE id = ?", [(r[0],) for r in rows])
+            self._conn.commit()
+        return len(rows), len(groups)
 
     def _migrate_bms(self) -> None:
         self._conn.execute(
@@ -2983,8 +3082,19 @@ class MetricsStore:
                 db_bytes = Path(self.path).stat().st_size
             except OSError:
                 db_bytes = None
+        side = {}
+        for suffix in ("wal", "shm"):
+            try:
+                side[suffix] = Path(self.path + "-" + suffix).stat().st_size if self.path != ":memory:" else None
+            except OSError:
+                side[suffix] = None
         tables: list[dict] = []
         with self._lock:
+            try:
+                sizes = dict(self._conn.execute(
+                    "SELECT name, SUM(pgsize) FROM dbstat GROUP BY name").fetchall())
+            except Exception:  # noqa: BLE001 — SQLite built without dbstat
+                sizes = {}
             try:
                 page_size = self._conn.execute("PRAGMA page_size").fetchone()[0]
                 page_count = self._conn.execute("PRAGMA page_count").fetchone()[0]
@@ -3009,9 +3119,12 @@ class MetricsStore:
                             span = round((hi - lo) / 86400, 1)
                     except Exception:  # pragma: no cover
                         span = None
-                tables.append({"name": t, "rows": rows, "span_days": span})
+                tables.append({"name": t, "rows": rows, "span_days": span,
+                               "bytes": sizes.get(t)})
         tables.sort(key=lambda x: (x["rows"] or 0), reverse=True)
-        return {"db_bytes": db_bytes, "page_size": page_size, "page_count": page_count,
+        total = sum(v for v in (db_bytes, side["wal"], side["shm"]) if v)
+        return {"db_bytes": db_bytes, "wal_bytes": side["wal"], "shm_bytes": side["shm"],
+                "total_bytes": total, "page_size": page_size, "page_count": page_count,
                 "freelist_count": freelist, "tables": tables}
 
     def backup_to(self, dest_path: str) -> int:
@@ -3054,6 +3167,44 @@ class MetricsStore:
     def close(self) -> None:
         with self._lock:
             self._conn.close()
+
+
+def history_bucket(start: int, bucket: int | None, now: float | None = None) -> int | None:
+    """The bucket to read ``start``.. with: never finer than 5 minutes once the window
+    reaches back past POLL_RAW_DAYS, where only 5-minute rows are left (#540); finer
+    would show the gaps between them as breaks."""
+    now = time.time() if now is None else now
+    if bucket and bucket < ROLLUP_BUCKET_S and start < now - POLL_RAW_DAYS * 86400:
+        return ROLLUP_BUCKET_S
+    return bucket
+
+
+def history_maintenance(store: "MetricsStore", retention_days: int, now: int | None = None) -> dict:
+    """Delete what is past ``retention_days`` (0 = Forever), then keep older samples
+    as 5-minute rows. Logs what it did (#540); nothing when there was nothing to do."""
+    now = int(time.time()) if now is None else int(now)
+    deleted = store.prune(retention_days, now)
+    if deleted:
+        log.info("Local history: deleted %d rows older than %d days", deleted, retention_days)
+    done = store.roll_up(now)
+    if done["samples"]:
+        log.info("Local history: %d samples older than %d days kept as %d five-minute rows "
+                 "(full resolution for the last %d days)",
+                 done["samples"], POLL_RAW_DAYS, done["rows"], POLL_RAW_DAYS)
+    return {"deleted": deleted, **done}
+
+
+_last_maintenance: dict[str, float] = {}
+
+
+def maybe_maintain(store: "MetricsStore", retention_days: int) -> dict | None:
+    """history_maintenance at most once an hour per database, however many pollers
+    call it."""
+    now = time.time()
+    if now - _last_maintenance.get(store.path, 0.0) < 3600:
+        return None
+    _last_maintenance[store.path] = now
+    return history_maintenance(store, retention_days, int(now))
 
 
 def _tiers_json(tiers) -> str | None:
