@@ -14,7 +14,7 @@ to trust them.
 
 | Store | Retention |
 |---|---|
-| Power / metrics samples | `METRICS_RETENTION_DAYS`, **365 days** by default |
+| Power / metrics samples | **1 year** by default; Settings → Admin → Local history → **Keep for** (90 days, 1 year, 2 years or Forever) |
 | Application log | the newest **50,000** rows |
 | Hourly link-health buckets | 90 days |
 
@@ -23,15 +23,24 @@ the code is 0.35 MB per day, rising to roughly 0.67 with the tariff-tier column.
 a year locally is deliberate: it removes the only reason the gateway's own history (about
 105 days) looked like the longer record.
 
-### History is automatically off in one specific case
+### Choosing how long it is kept, or turning it off
 
-![Settings → Admin → Local history, with its mode](../images/energy-and-costs/02-history-auto-off.png)
+![Settings → Admin → Local history](../images/energy-and-costs/02-history-auto-off.png)
 
-When the bridge runs as a **Home Assistant add-on** *and* MQTT is enabled, the local store
-is **off by default** — Home Assistant's recorder is already storing the published
-entities, so a second copy would be redundant. Everywhere else it is on. Set
-`METRICS_ENABLED` to `true` or `false` to decide explicitly; an explicit value always
-wins.
+Settings → Admin → **Local history** has the switch and **Keep for**: 90 days, 1 year
+(the default), 2 years or **Forever**. The card shows the database size now and how fast
+it grows (about 0.35–0.7 MB a day per gateway); with Forever it keeps growing. A change
+applies at once and is kept across restarts.
+
+Local history is **on by default everywhere**, the Home Assistant add-on included: the
+Dashboard's power history, Analytics and Energy Costs read only this store. On the add-on
+with MQTT on, Home Assistant's recorder also keeps the values the bridge publishes, so this
+is a second copy of them; the card says so. Turning it off asks first, because those
+charts stop getting new data; what is already stored is kept.
+
+`METRICS_ENABLED` and `METRICS_RETENTION_DAYS` (environment variables, or the add-on's
+options) still decide when they are set: the card then shows them as set for this install,
+and they are changed there.
 
 If the store is disabled, the features built on it degrade honestly rather than
 pretending: the Logs tab falls back to an in-memory ring, and the endpoints that need the

@@ -1201,12 +1201,38 @@ function settingsTab() {
                dev: 'Development' }[rt] || (rt || '—');
     },
 
-    metricsCaption() {
-      const m = this.cfg.metrics || {};
-      if (m.mode !== 'auto') return '';
-      if (m.runtime === 'ha_addon' && !m.enabled)
-        return 'Auto: off in the add-on because Home Assistant stores history via MQTT.';
-      return 'Auto: local history is on (no Home Assistant recorder covers it).';
+    // ── Local history (#540): on/off and how long it is kept ────────────────
+    history: { info: {}, busy: false, confirmOff: false, msg: null },
+    async loadHistory() {
+      try { this.history.info = await (await fetch('api/metrics/info')).json(); } catch (e) { /* leave last-known */ }
+    },
+    async setHistory(change) {
+      this.history.busy = true;
+      this.history.msg = null;
+      try {
+        const r = await fetch('api/metrics/settings', { method: 'PUT',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(change) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
+        this.history.info = d;
+        this.history.confirmOff = false;
+        const days = d.retention_days;
+        this.history.msg = { kind: 'ok', text: 'enabled' in change
+          ? (d.enabled ? 'Local history is on.' : 'Local history is off. What is stored is kept.')
+          : 'Kept for ' + (days ? (days % 365 ? days + ' days' : (days / 365) + (days === 365 ? ' year' : ' years')) : 'ever') + '.' };
+      } catch (e) {
+        this.history.msg = { kind: 'danger', text: 'Not changed: ' + e.message };
+      } finally { this.history.busy = false; }
+    },
+    /** The database size now and how fast it grows, so the choice is an informed one. */
+    historySize() {
+      const i = this.history.info;
+      if (i.db_bytes == null) return '';
+      const mb = (i.db_bytes / 1048576).toFixed(1);
+      const [lo, hi] = i.mb_per_day || [0.35, 0.7];
+      const days = i.retention_days;
+      const total = days ? ` — about ${Math.round(lo * days)}–${Math.round(hi * days)} MB per gateway when full` : ' — with Forever it keeps growing';
+      return `Database ${mb} MB now. Grows about ${lo}–${hi} MB a day per gateway${total}.`;
     },
 
     /** Persist ONE whitelisted setting immediately (auto-save). Everything the

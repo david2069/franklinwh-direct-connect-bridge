@@ -6896,15 +6896,68 @@ def create_app() -> FastAPI:
         return {"enabled": True, "start": start, "end": end, "count": len(rows), "rows": rows,
                 "hourly": store.poll_hourly(start, end, gateway=gw)}
 
-    @app.get("/api/metrics/info")
-    def api_metrics_info():
+    def _history_info() -> dict:
+        """Local history for Settings (#540): on or off, how long it is kept, which of those
+        an explicit env value locks, the database size and the expected growth."""
+        from .config import RETENTION_CHOICES, env_locked
         s = get_settings()
         store = db.get_store(s)
         out = {"enabled": metrics_active(s),
-               "retention_days": s.metrics_retention_days}
+               "retention_days": s.metrics_retention_days,
+               "retention_choices": list(RETENTION_CHOICES),
+               "locked": {"enabled": env_locked("metrics_enabled"),
+                          "retention_days": env_locked("metrics_retention_days")},
+               # measured per gateway at a 30 s poll: 0.35 MB a day, about 0.7 with tiers
+               "mb_per_day": [0.35, 0.7],
+               "is_ha_addon": environment.IS_HA_ADDON}
         if store is not None:
             out.update(store.info())
         return out
+
+    @app.get("/api/metrics/info")
+    def api_metrics_info():
+        return _history_info()
+
+    @app.put("/api/metrics/settings")
+    async def api_metrics_settings(request: Request):
+        """Turn Local history on or off and choose how long it is kept (#540). Applies now
+        and is kept across restarts; an explicit env value wins (409). Turning it on or off
+        restarts each gateway's poller so it starts or stops recording."""
+        from .config import RETENTION_CHOICES, env_locked
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            raise HTTPException(status_code=422, detail="request body must be JSON")
+        if not isinstance(body, dict) or not set(body) <= {"enabled", "retention_days"}:
+            raise HTTPException(status_code=422, detail="send enabled and/or retention_days")
+        s = get_settings()
+        if "retention_days" in body:
+            days = body["retention_days"]
+            if days not in RETENTION_CHOICES or isinstance(days, bool):
+                raise HTTPException(status_code=422, detail="retention_days must be one of "
+                                    + ", ".join(map(str, RETENTION_CHOICES)) + " (0 = forever)")
+            if env_locked("metrics_retention_days"):
+                raise HTTPException(status_code=409, detail="METRICS_RETENTION_DAYS is set for "
+                                    "this install; change it there")
+            s.metrics_retention_days = days
+            save_override("metrics_retention_days", days)
+            _audit("history_retention", detail=f"{days or 'forever'} days", result="ok", ok=True)
+        if "enabled" in body:
+            on = body["enabled"]
+            if not isinstance(on, bool):
+                raise HTTPException(status_code=422, detail="enabled must be true or false")
+            if env_locked("metrics_enabled"):
+                raise HTTPException(status_code=409, detail="METRICS_ENABLED is set for this "
+                                    "install; change it there")
+            changed = metrics_active(s) != on
+            s.metrics_enabled = on
+            save_override("metrics_enabled", on)
+            _audit("history_enabled", detail="on" if on else "off", result="ok", ok=True)
+            st = _gw_store()
+            if changed and st is not None:
+                for row in st.gateways():
+                    await _reconcile_gateway(row)
+        return _history_info()
 
     # ── Admin: storage insight + backup / restore / export (OPS-ADMIN-*) ──────
     import os as _os
