@@ -69,7 +69,7 @@ def test_local_dates_follow_the_browsers_own_format():
 def test_local_offers_line_area_and_bars_like_cloud_and_remembers_it():
     # Owner, 2026-11-09: "there is no bar charts" on Local; the same choices as Cloud.
     for k in ("line", "area", "bars"):
-        assert f"setChartType('{k}')" in HTML
+        assert f"setChartType('{k}')" in HTML or (k == 'bars' and "setBars(false)" in HTML)
     assert "chartType === 'bars'" in JS and "fwh-analytics-style" in JS
     # SoC stays a line on its own % axis whatever the style
     ds = JS[JS.index("const datasets ="):][:900]

@@ -15,7 +15,7 @@ TOP = HTML[:HTML.index('x-ref="cloud"')]
 
 
 def test_flow_is_a_fourth_chart_type_in_the_top_row():
-    seg = TOP[TOP.index('aria-label="Chart style"'):][:1500]
+    seg = TOP[TOP.index('aria-label="Chart style"'):][:6000]
     assert "setChartType('flow')" in seg and ">Flow<" in seg
     assert "['line', 'area', 'bars', 'flow']" in JS               # remembered like the others
 

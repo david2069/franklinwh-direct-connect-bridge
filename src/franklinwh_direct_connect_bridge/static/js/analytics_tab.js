@@ -93,11 +93,12 @@ function analyticsTab() {
     periods: (window.FWHCloudAnalytics && FWHCloudAnalytics.PERIODS) || ANALYTICS_PERIODS,
     metricDefs: [
       { key: 'soc', label: 'SoC', color: '#34d399', pct: true },
-      { key: 'grid_w', label: 'Grid', color: '#f87171' },
-      { key: 'solar_w', label: 'Solar', color: '#fbbf24' },
-      { key: 'battery_w', label: 'Battery', color: '#22d3ee' },
-      { key: 'load_w', label: 'Home', color: '#a78bfa' },
-      { key: 'generator_w', label: 'Generator', color: '#94a3b8' },
+      // Cloud's colours, so a day looks the same from either source (owner, 2026-11-10)
+      { key: 'grid_w', label: 'Grid', color: '#8a94a3' },
+      { key: 'solar_w', label: 'Solar', color: '#e8b100' },
+      { key: 'battery_w', label: 'Battery', color: '#2fae6b' },
+      { key: 'load_w', label: 'Home', color: '#5b8def' },
+      { key: 'generator_w', label: 'Generator', color: '#9b6bd6' },
     ],
     metrics: { soc: true, grid_w: true, solar_w: true, battery_w: true, load_w: true, generator_w: false,
                home: true, solar: true, battery_discharge: true, battery_charge: true, grid_import: true, grid_export: true },
@@ -269,6 +270,8 @@ function analyticsTab() {
     get chartType() { return this.style || (this.energyMode ? 'bars' : 'line'); },
     get unit() { return this.energyMode ? 'kWh' : 'kW'; },
 
+    /** Bars ▾: plain or stacked. */
+    setBars(on) { this.setStacked(on); this.setChartType('bars'); },
     setStacked(on) {
       this.stacked = on;
       try { localStorage.setItem('fwh-analytics-stacked', on ? '1' : '0'); } catch (e) { /* private mode */ }

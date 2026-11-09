@@ -28,7 +28,7 @@ def test_the_top_row_is_time_span_then_source_export_and_refresh():
 
 def test_one_chart_style_at_the_top_after_the_time_span_for_both_sources():
     # Owner, 2026-11-10: "the chart type on the top right after the time span".
-    assert HTML.count("setChartType('bars')") == 1 and "setChartType('bars')" in TOP
+    assert HTML.count("setBars(false)") == 1 and "setBars(false)" in TOP
     assert TOP.index('aria-label="Chart style"') > TOP.index('aria-label="Time span"')
     m = JS[JS.index("FWHCloudAnalytics.mount("):][:500]
     assert "styleControl: false" in m and "style: this.style" in m
