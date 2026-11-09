@@ -182,6 +182,8 @@ function analyticsTab() {
         styleControl: false, style: this.style,           // Line | Area | Bars at the top serves both
         stackControl: false, stacked: this.stacked,       // and Stack
         navControl: false, date: this.startDay,           // and the date picker
+        refreshControl: false, statusBelow: true,         // Refresh at the top; the note under the chart, as Local's
+        socAxis: 'always',                                // the SoC axis every period, so the plots line up
       });
     },
 
@@ -270,7 +272,12 @@ function analyticsTab() {
     get chartType() { return this.style || (this.energyMode ? 'bars' : 'line'); },
     get unit() { return this.energyMode ? 'kWh' : 'kW'; },
 
-    /** Bars ▾: plain or stacked. */
+    /** What the Chart button says: the type shown (Line until one is picked for a day). */
+    get chartLabel() {
+      const t = this.chartType;
+      return t === 'flow' ? 'Flow' : t === 'area' ? 'Area' : t === 'bars' ? (this.stacked ? 'Bars stacked' : 'Bars') : 'Line';
+    },
+    /** Bars or Bars stacked. */
     setBars(on) { this.setStacked(on); this.setChartType('bars'); },
     setStacked(on) {
       this.stacked = on;
@@ -368,6 +375,7 @@ function analyticsTab() {
           this.bucketS = null;
           this.firstTs = (d && d.first_ts) || null;
           this.win = { start: edges[0], end: edges[edges.length - 1] };
+          this.edges = edges;
           // Lifetime starts at the oldest sample, known only after the first read
           if (this.period === 'lifetime' && this.firstTs && this.firstTs < edges[0]) { this.load(); return; }
         } else {
@@ -437,7 +445,16 @@ function analyticsTab() {
         if (!el || !window.Chart) return;
         const w = this.win || this.window;
         const max = Math.max(3, Math.min(8, Math.floor((el.parentElement.clientWidth || 800) / 80)));
-        const { step, ticks } = this.ticksFor(w.start, w.end, max);
+        let { step, ticks } = this.ticksFor(w.start, w.end, max);
+        // kWh slots: labelled as the Cloud view labels its bars (owner, 2026-11-10), every
+        // n-th slot from the first, under the bar's middle, at most 8 (4 on a phone)
+        let slotTick = null;
+        if (this.energyMode && this.edges && this.edges.length > 1) {
+          const e = this.edges, n = e.length - 1, every = Math.ceil(n / ((el.parentElement.clientWidth || 800) < 520 ? 4 : 8));
+          slotTick = {};
+          ticks = [];
+          for (let i = 0; i < n; i += every) { const mid = (e[i] + e[i + 1]) / 2; ticks.push(mid); slotTick[mid] = e[i]; }
+        }
         const self = this;
         // Bars draw each bucket's power as a bar; SoC (its own % axis) stays a line.
         const bars = this.chartType === 'bars', stack = bars && this.stacked;
@@ -485,12 +502,14 @@ function analyticsTab() {
             scales: {
               x: {
                 type: 'linear', min: w.start, max: w.end, stacked: stack,
+                offset: false,     // bars inside the period's edges, as the Cloud view draws them
                 afterBuildTicks: (axis) => { axis.ticks = ticks.map(v => ({ value: v })); },
                 ticks: {
                   color: '#64748b', font: { size: 10 }, maxRotation: 0, autoSkip: false,
                   // HH:MM, with the short date on a second line where the day changes;
                   // whole-day steps show the date only.
                   callback: (v, i) => {
+                    if (slotTick && slotTick[v] != null) return self.slotTickLabel(slotTick[v]);
                     if (step >= 2592000) return self.monthLabel(v, w.end - w.start > 400 * 86400);
                     if (step >= 86400) return self.dayLabel(v);
                     const newDay = i === 0 || self.dayLabel(ticks[i - 1]) !== self.dayLabel(v);
@@ -515,6 +534,13 @@ function analyticsTab() {
     },
 
     /** A kWh slot's name in the readout: the hour, the day, the month or the year. */
+    /** A kWh slot's tick, as the Cloud view writes it: 03:00, 5 Nov, Jan, 2025. */
+    slotTickLabel(start) {
+      if (this.period === 'dayhour') return this.hhmm(start);
+      if (this.period === 'year') return this.monthLabel(start);
+      if (this.period === 'lifetime') return String(this.siteDate(start).getUTCFullYear());
+      return this.dayLabel(start);
+    },
     slotLabel(p) {
       if (!p) return '';
       if (this.period === 'dayhour') return this.stamp(p.ts) + '–' + this.hhmm(p.end);

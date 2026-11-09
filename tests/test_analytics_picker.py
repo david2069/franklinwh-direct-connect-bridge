@@ -42,14 +42,21 @@ def test_stack_beside_the_chart_styles_for_both_sources():
     assert "stacked: stack" in render                              # Chart.js stacking on x and y
 
 
-def test_line_and_bars_are_dropdowns_with_their_variants():
-    # Owner, 2026-11-10: Stack wrapped the row; "Bars stacked" under Bars, Area under Line.
-    seg = TOP[TOP.index('aria-label="Chart style"'):][:6000]
-    assert 'aria-label="Line chart"' in seg and 'aria-label="Bar chart"' in seg
-    assert "setChartType('line')" in seg and "setChartType('area')" in seg
-    assert "setBars(false)" in seg and "setBars(true)" in seg and ">Bars stacked<" in seg
-    assert "setChartType('flow')" in seg
-    assert '@click="setStacked(!stacked)"' not in HTML                # no separate Stack button
+def test_one_chart_button_with_every_chart_type():
+    # Owner, 2026-11-10: one Chart button holding all the chart types, remembered.
+    seg = TOP[TOP.index('aria-label="Chart style"'):TOP.index('aria-label="Source"')]
+    assert seg.count('aria-haspopup="menu"') == 1 and 'x-text="chartLabel"' in seg
+    for call in ("setChartType('line')", "setChartType('area')", "setBars(false)", "setBars(true)", "setChartType('flow')"):
+        assert call in seg
+    assert seg.count('role="menuitemradio"') == 5
+    label = JS[JS.index("get chartLabel()"):][:400]
+    assert "'Bars stacked'" in label and "'Flow'" in label
+    assert "fwh-analytics-style" in JS and "fwh-analytics-stacked" in JS   # remembered
+
+
+def test_cloud_has_no_refresh_of_its_own_and_its_note_sits_under_the_chart():
+    mount = JS[JS.index("FWHCloudAnalytics.mount("):][:900]
+    assert "refreshControl: false" in mount and "statusBelow: true" in mount
 
 
 def test_local_day_uses_clouds_colours():
@@ -61,3 +68,13 @@ def test_local_day_uses_clouds_colours():
 def test_the_cloud_panel_takes_this_pages_theme():
     css = (SRC / "static" / "css" / "design-system.css").read_text()
     assert "html .fwhca {" in css and "--ca-menu-bg: var(--surface-1)" in css and "--ca-gridline" in css
+
+
+def test_local_and_cloud_plots_line_up():
+    # Owner, 2026-11-10: "the charts are still not aligning".
+    mount = JS[JS.index("FWHCloudAnalytics.mount("):][:1100]
+    assert "socAxis: 'always'" in mount                            # same plot width every period
+    render = JS[JS.index("render() {"):][:3000]
+    assert "slotTick" in render and "< 520 ? 4 : 8" in render       # Cloud's tick rule for kWh slots
+    assert "this.edges = edges;" in JS and "slotTickLabel(start) {" in JS
+    assert "offset: false" in render or "offset: false" in JS[JS.index("render() {"):][:6000]

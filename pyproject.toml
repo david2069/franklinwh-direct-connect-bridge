@@ -49,7 +49,7 @@ test = ["pytest>=8.0", "httpx>=0.27"]
 # Pinned (#254): an open range put each release into the image untested. 0.6.0 adds the
 # typed login errors, resolve_gateway and Client.aclose() that the bridge now relies on.
 # Analytics → Cloud (#215): the shared period chart. Pinned like the other shared packages.
-cloud = ["franklinwh-cloud==0.6.5", "franklinwh-ha-cloud-analytics==0.1.17"]
+cloud = ["franklinwh-cloud==0.6.5", "franklinwh-ha-cloud-analytics==0.1.19"]
 
 [project.scripts]
 franklinwh-direct-connect-bridge = "franklinwh_direct_connect_bridge.cli:main"
