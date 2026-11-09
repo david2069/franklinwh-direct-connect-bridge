@@ -11,7 +11,14 @@
  * Flows are RECONSTRUCTED from the bridge's power samples by a merit-order
  * split — an estimate, not a meter — so the caption says so, and a partial
  * span (bridge offline) is flagged rather than shown as a quiet one.
+ *
+ * Signed in to the FranklinWH cloud, the card shows the cloud's own metered
+ * breakdown instead, with a cloud icon; otherwise Local, a slashed cloud and how
+ * many days this bridge has stored (#543). A cloud that fails falls back to Local.
  */
+// The card's periods as the Cloud view names them.
+const FLOW_CLOUD_PERIOD = { day: 'day5', week: 'week', month: 'month', year: 'year' };
+
 function energyFlowCard() {
   return {
     day: '',
@@ -21,6 +28,8 @@ function energyFlowCard() {
     spanLabel: '',
     warn: false,
     nodes: null,
+    source: 'local',   // local | cloud: what the card shows now
+    localDays: null,   // days since this bridge's oldest sample
     _flows: null,
     _ro: null,
 
@@ -45,6 +54,8 @@ function energyFlowCard() {
       // Cease the Sankey rebuild when the dashboard isn't shown (DEF-BROWSER-MEMORY).
       setInterval(() => { if (this._spansToday() && this.$store.app.activeTab === 'dashboard') this.load(); }, 120000);
       this.$watch('$store.app.selectedGateway', () => this.load());
+      // the cloud sign-in is known only once the capabilities arrive (#543)
+      this.$watch('$store.app.cloudAvailable', () => this.load());
     },
 
     // Local calendar date. toISOString() converts to UTC first, which east of
@@ -71,6 +82,36 @@ function energyFlowCard() {
     atToday() { return this.day >= this.today; },
 
     setPeriod(p) { this.period = p; this.load(); },
+
+    /** The period's first day (the date picker shows it, as Analytics does). */
+    get startDay() {
+      const d = new Date(this._span()[0] * 1000); const p = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    },
+
+    /** The same period in Analytics → Flow. */
+    openInAnalytics() {
+      const detail = { period: FLOW_CLOUD_PERIOD[this.period], day: this.day, source: this.source };
+      try {
+        localStorage.setItem('fwh-analytics-period', detail.period);
+        localStorage.setItem('fwh-analytics-style', 'flow');
+        localStorage.setItem('fwh-analytics-source', detail.source);
+      } catch (e) { /* private mode */ }
+      window.dispatchEvent(new CustomEvent('fwh-analytics-flow', { detail }));
+      this.$store.app.setActiveTab('analytics');
+    },
+
+    _nodes(f) {
+      const g = (k) => Number(f[k]) || 0;
+      return {
+        solar: g('solar_to_home') + g('solar_to_battery') + g('solar_to_grid'),
+        home: g('solar_to_home') + g('battery_to_home') + g('grid_to_home'),
+        grid_import: g('grid_to_home') + g('grid_to_battery'),
+        grid_export: g('solar_to_grid') + g('battery_to_grid'),
+        battery_charge: g('solar_to_battery') + g('grid_to_battery'),
+        battery_discharge: g('battery_to_home') + g('battery_to_grid'),
+      };
+    },
 
     // Step by one period (day/week/month/year), keeping the anchor within range.
     shiftDay(dir) {
@@ -130,10 +171,25 @@ function energyFlowCard() {
       let url = `api/energy/flow?start=${s0}&end=${e0}`;
       if (!this.$store.app.selectedGateway) return;          // no gateway yet
       url += this.$store.app.gwQuery('&');
+      if (this.$store.app.cloudAvailable) {
+        try {
+          const r = await fetch(`api/analytics/cloud?period=${FLOW_CLOUD_PERIOD[this.period]}&date=${this.startDay}`
+            + this.$store.app.gwQuery('&'), { headers: { Accept: 'application/json' } });
+          const d = await r.json();
+          if (r.ok && !d.error && d.flows) {
+            this.source = 'cloud';
+            this._flows = d.flows; this.nodes = this._nodes(d.flows);
+            this._draw(); this.warn = false; this.quality = 'Metered by the FranklinWH cloud.';
+            return;
+          }
+        } catch (e) { /* fall back to this bridge's samples */ }
+      }
+      this.source = 'local';
       try {
         const r = await fetch(url, { headers: { Accept: 'application/json' } });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const data = await r.json();
+        this.localDays = data.first_ts ? Math.max(1, Math.round((Date.now() / 1000 - data.first_ts) / 86400)) : null;
         this._flows = data.flows; this.nodes = data.nodes;
         this._draw(); this._setQuality(data.quality);
       } catch (e) {

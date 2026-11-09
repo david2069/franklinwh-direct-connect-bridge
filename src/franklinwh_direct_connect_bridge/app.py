@@ -6802,7 +6802,8 @@ def create_app() -> FastAPI:
         merit-order split — a well-founded estimate, not a meter (the gateway reports
         node scalars, never the arcs). ``quality.coverage`` says how much of the span
         actually had samples. Never 500s."""
-        _TARGET_BUCKETS, _MIN_BUCKET_S, _MAX_SPAN_DAYS = 720, 60, 366
+        # 10 years: Analytics' Lifetime reads from the oldest sample (#543)
+        _TARGET_BUCKETS, _MIN_BUCKET_S, _MAX_SPAN_DAYS = 720, 60, 3660
         if start is not None and end is not None:
             if end <= start:
                 raise HTTPException(400, "end must be greater than start")
@@ -6830,12 +6831,14 @@ def create_app() -> FastAPI:
             raw = store.query(int(span_start), int(query_end), bucket, gateway=_metrics_gw_key(gateway))
             # The decomposition speaks `home_w`; our column is `load_w`.
             rows = [{**r, "home_w": r.get("load_w")} for r in raw]
+        first_ts = store.first_ts(_metrics_gw_key(gateway)) if store is not None else None
 
         flows = _eflow.integrate(rows)
         nodes = _eflow.node_totals(flows)
         span_s = query_end - span_start
         return {
             "day": label, "start": span_start, "end": span_end, "gateway_id": gateway,
+            "first_ts": first_ts,
             "flows": {k: v for k, v in flows.items()
                       if k not in ("residual_kwh", "covered_s", "samples")},
             "nodes": nodes,
