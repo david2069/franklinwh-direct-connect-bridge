@@ -1406,19 +1406,50 @@
     <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Local history <a :href="$store.app.guideUrl('energy-and-costs/#what-is-stored-and-for-how-long')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
     <div class="flex-1 border-t border-white/[0.08]"></div>
   </div>
-  <div class="card space-y-2.5">
-    <div class="flex items-center justify-between text-sm">
-      <span class="text-slate-500">Metrics store</span>
-      <span class="chip" :class="cfg.metrics.enabled ? 'ok' : 'muted'"
-            x-text="cfg.metrics.enabled ? 'on' : 'off'"></span>
+  <!-- On/off and how long it is kept (#540). The result of a change stays in the card. -->
+  <div class="card space-y-3" x-init="loadHistory()">
+    <div class="flex items-center justify-between gap-2">
+      <div>
+        <div class="text-sm" style="color:var(--text-primary)">Record local history</div>
+        <div class="text-xs text-slate-500">Dashboard power history, Analytics and Energy Costs read only this store.</div>
+      </div>
+      <button type="button" role="switch" :aria-checked="history.info.enabled"
+              @click="history.info.enabled ? (history.confirmOff = true) : setHistory({ enabled: true })"
+              :disabled="history.busy || history.info.locked?.enabled"
+              class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0 disabled:opacity-50"
+              :class="history.info.enabled ? 'bg-emerald-500' : 'bg-slate-600'">
+        <span class="inline-block h-5 w-5 rounded-full bg-white transition"
+              :class="history.info.enabled ? 'translate-x-5' : 'translate-x-0.5'"></span>
+      </button>
     </div>
-    <div class="flex items-center justify-between text-sm">
-      <span class="text-slate-500">Mode</span>
-      <span class="chip muted" style="text-transform:none;letter-spacing:0"
-            x-text="cfg.metrics.mode || '—'"></span>
+    <!-- turning it off asks first: the bridge's own charts go empty -->
+    <div x-show="history.confirmOff" x-cloak class="rounded-lg border p-3 space-y-2" style="border-color:var(--warn)">
+      <p class="text-xs" style="color:var(--text-primary)">Turn off local history? Dashboard power history, Analytics and Energy Costs stop getting new data until you turn it on again. What is already stored is kept.</p>
+      <div class="flex gap-2">
+        <button class="btn btn-secondary btn-sm" @click="history.confirmOff = false">Cancel</button>
+        <button class="btn btn-sm" style="background:var(--warn);color:#111" @click="setHistory({ enabled: false })">Turn off</button>
+      </div>
     </div>
-    <p x-show="metricsCaption()" x-cloak class="text-xs text-slate-500 pt-1"
-       x-text="metricsCaption()"></p>
+    <div class="flex items-center justify-between gap-2 text-sm">
+      <label class="text-slate-500" for="history-keep">Keep for</label>
+      <select id="history-keep" class="form-control form-control-sm" style="width:auto"
+              :value="String(history.info.retention_days)" @change="setHistory({ retention_days: +$event.target.value })"
+              :disabled="history.busy || history.info.locked?.retention_days">
+        <option value="90">90 days</option>
+        <option value="365">1 year</option>
+        <option value="730">2 years</option>
+        <option value="0">Forever</option>
+        <template x-if="![90, 365, 730, 0].includes(history.info.retention_days)">
+          <option :value="String(history.info.retention_days)" x-text="history.info.retention_days + ' days'"></option>
+        </template>
+      </select>
+    </div>
+    <p class="text-xs text-slate-500" x-show="history.info.locked?.enabled || history.info.locked?.retention_days" x-cloak>
+      Set for this install (<span x-text="[history.info.locked?.enabled && 'METRICS_ENABLED', history.info.locked?.retention_days && 'METRICS_RETENTION_DAYS'].filter(Boolean).join(', ')"></span>, an environment variable or add-on option), so it is changed there, not here.</p>
+    <p class="text-xs text-slate-500" x-text="historySize()"></p>
+    <p class="text-xs text-slate-500" x-show="history.info.is_ha_addon" x-cloak>
+      In Home Assistant, the recorder also keeps the values this bridge publishes over MQTT, so this is a second copy of them. It stays on because the bridge's own charts read only this one.</p>
+    {{ dialog_msg('history.msg') }}
   </div>
 
   </div>

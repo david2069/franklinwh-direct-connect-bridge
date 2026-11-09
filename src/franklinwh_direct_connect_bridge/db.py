@@ -2877,9 +2877,11 @@ class MetricsStore:
     def prune(self, retention_days: int, now: int) -> int:
         """Delete rows older than ``retention_days``, and roll the full poll of rows
         older than :data:`POLL_RAW_DAYS` up into hourly mean/min/max. Returns metrics
-        rows deleted."""
-        cutoff = now - retention_days * 86400
+        rows deleted. ``retention_days`` 0 keeps every row (Forever, #540)."""
         self._roll_up_poll(now - POLL_RAW_DAYS * 86400)
+        if retention_days <= 0:
+            return 0
+        cutoff = now - retention_days * 86400
         with self._lock:
             cur = self._conn.execute("DELETE FROM metrics WHERE ts < ?", (cutoff,))
             self._conn.execute("DELETE FROM metrics_poll_hourly WHERE ts < ?", (cutoff,))

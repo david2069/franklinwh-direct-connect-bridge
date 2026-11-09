@@ -57,6 +57,8 @@ NOT_DEVICE_BOUND = {
                                    # one call that reaches a device (/run) DOES scope.
     "api/scheduler/monitor",       # the scheduler monitor's in-memory ring (#345): every
                                    # gateway's lines, each naming its gateway; no device read
+    "api/metrics/info",            # Local history on/off, retention and DB size (#540):
+    "api/metrics/settings",        # one store and one setting for the whole bridge
     "api/ha",                      # Home Assistant instances are bridge-wide config,
                                    # not per-gateway: one bridge feeds many HAs and
                                    # reads their entities regardless of which gateway

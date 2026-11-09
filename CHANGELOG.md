@@ -12,6 +12,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Local history: how long it is kept, and an off switch, in Settings** (#540). Settings →
+  Admin → Local history → **Keep for** 90 days, 1 year (default), 2 years or **Forever**,
+  with the database size and its growth; the switch turns recording off after a
+  confirmation that Dashboard power history, Analytics and Energy Costs stop getting new
+  data. Both apply at once and survive a restart. An explicit `METRICS_ENABLED` /
+  `METRICS_RETENTION_DAYS` still wins and shows as set for the install. On the add-on, the
+  card says this overlaps Home Assistant's recorder. New `PUT /api/metrics/settings`;
+  `GET /api/metrics/info` adds the choices, locks and growth.
 - **Analytics → Cloud** (#215, phase 1). A **Local | Cloud** switch on Analytics; Cloud
   shows the FranklinWH cloud's energy history for the gateway in the top bar: Day (5-min)
   as kW lines, Day (hourly), Week, Month, Year and Lifetime as kWh bars, with a period
@@ -44,6 +52,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - **The off-grid notification says why:** "user requested" (someone asked for off-grid) or
   "grid outage" (no request was made), the same words as the top bar, or "reason unknown"
   when that wasn't read. Before, every off-grid message read the same (#528).
+
+### Fixed
+- **The guide said Local history is off by default on the add-on with MQTT**; it has been on
+  everywhere since 0.4.10 (#136). The guide and Settings now say so (#540).
 
 ## [0.5.36] — 2026-11-09
 
