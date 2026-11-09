@@ -73,9 +73,8 @@ goes back further than the aGate's.
 
 Local and Cloud share one layout. The top row has the time span (Day (5-min), Day (hourly),
 Week, Month, Year or Lifetime; one choice for both sources, remembered in this browser) and
-the chart type (also one choice for both): **Line ▾** (Line or Area), **Bars ▾** (Bars, or
-**Bars stacked**, which piles each slot's sources above zero and its uses below) and
-**Flow**, then **Local | Cloud**, **Export ▾** and
+**Chart ▾**, one choice for both: Line, Area, Bars, **Bars stacked** (each slot's sources
+piled above zero and its uses below) or Flow; Analytics opens on the last one picked, then **Local | Cloud**, **Export ▾** and
 **Refresh**. Under it, one date picker serves Local, Cloud and Flow: **‹ ›** move by the
 period (a day, a Monday-to-Sunday week, a month or a year on the site's calendar), the
 period button (9 Nov 2026, Week of 2 Nov 2026, October 2026, 2026) opens a calendar of days,

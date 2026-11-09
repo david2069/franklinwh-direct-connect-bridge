@@ -731,3 +731,4 @@ select.form-control:not([multiple]):not([size]) {
    menu on our raised surface, light or dark, and axes and grid lines as Local's chart draws
    them. `html .fwhca` outranks the panel's own stylesheet, which loads after this one. */
 html .fwhca { --ca-menu-bg: var(--surface-1); --ca-gridline: rgba(148,163,184,.12); --ca-muted: #64748b; }
+html .fwhca .fwhca-status { font-size: .75rem; }   /* as Local's note under its chart */
