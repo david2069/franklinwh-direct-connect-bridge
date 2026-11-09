@@ -72,6 +72,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   **Colours** button (the Chart ▾ → Colours… dialog), and Day (5-min) and Day (hourly) show
   a **Time** button beside the date that opens the calendar at its Time row; the picked time
   shows on that button rather than on the date.
+- **Analytics: a Custom From → To range** (#543): **Custom** in the time span list, with
+  **From** and **To** each picked as a day and a time; Local, Cloud and Flow show it, with
+  5-minute power up to 2 days, hourly kWh up to 31 days, daily up to a year and monthly
+  beyond, the same on both. The time is picked from a styled grid of hours and 5-minute
+  steps, here and on the Day views, instead of the browser's lists.
+  `GET /api/analytics/cloud?period=custom&from=&to=`. franklinwh-ha-cloud-analytics 0.1.21.
 
 ### Changed
 - **Analytics: one top row and the same periods for Local and Cloud** (owner). The time span

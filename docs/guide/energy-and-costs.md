@@ -83,10 +83,18 @@ battery's greens). Under it, one date picker serves Local, Cloud and Flow: **‹
 period (a day, a Monday-to-Sunday week, a month or a year on the site's calendar), the
 period button (9 Nov 2026, Week of 2 Nov 2026, October 2026, 2026) opens a calendar of days,
 months or years to pick from, and **Today** comes back to the current one. On Day (5-min) and Day (hourly) the calendar also has a
-**Time** row: an hour, and on Day (5-min) a minute in 5-minute steps. The chart then opens
+**Time** grid: an hour, and on Day (5-min) a minute in 5-minute steps. The chart then opens
 with its readout (every value at that time) there, on Local and Cloud. The **Time** button
 beside the date opens the calendar too and shows the picked time; **Clear** takes it away. **‹** stops at the oldest stored sample;
 the caption under the chart says where the history starts ("history from …").
+
+**Custom** (last in the time span list) shows any range: **From** and **To** each open the
+calendar with the time grid (5-minute steps); pick a day and a time, then **Apply**. To is
+where the range stops and isn't included, so 00:00 the next day takes in the whole of a day;
+To must be after From. The range is remembered in this browser, and Local, Cloud and Flow
+all show it. The longer the range, the coarser the slots, the same on both sources: 5-minute
+power up to 2 days, kWh per hour up to 31 days, per day up to a year, per month beyond. On
+Cloud a long hourly range reads the cloud once per day the first time, then from the cache.
 
 Local shows the same quantity as Cloud: Day (5-min) is power in **kW** (5-minute averages), and Day (hourly), Week, Month, Year and Lifetime are **kWh** per hour, day,
 month or year with Cloud's series (home, solar, battery discharged and charged, grid

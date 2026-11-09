@@ -5550,19 +5550,30 @@ def create_app() -> FastAPI:
 
     @app.get("/api/analytics/cloud")
     def api_analytics_cloud(period: str = "day5", date: str | None = None, refresh: bool = False,
-                            gateway: str = Depends(_gateway_q)):
+                            gateway: str = Depends(_gateway_q),
+                            from_: str | None = Query(None, alias="from"), to: str | None = None):
         """Analytics → Cloud (#215): the FranklinWH cloud's energy history for one period of
         the viewed gateway, as the shared franklinwh-ha-cloud-analytics payload. Read-only.
-        Anything that stops it (no cloud account, a mock gateway, the cloud refusing) comes
-        back as ``{"error": ...}`` for the panel to show; a bad period or date is a 400."""
+        ``period=custom&from=&to=`` (site-local ``YYYY-MM-DDTHH:MM``, the end not included)
+        is a custom range (owner, 2026-11-10). Anything that stops it (no cloud account, a
+        mock gateway, the cloud refusing) comes back as ``{"error": ...}`` for the panel to
+        show; a bad period, date or range is a 400."""
         try:
             import franklinwh_ha_cloud_analytics as ca
         except ImportError:
             return {"error": "Cloud analytics isn't installed in this build."}
         gw = _gw_or_404(gateway)
-        if period not in ca.PERIODS:
-            raise HTTPException(status_code=400, detail=f"period is one of {', '.join(ca.PERIODS)}")
+        if period not in ca.PERIODS and period != "custom":
+            raise HTTPException(status_code=400, detail=f"period is one of {', '.join(ca.PERIODS)}, custom")
         today = site_time.now_known(gw.active_host or gw.configured_host).date()
+        span = None
+        if period == "custom":
+            try:
+                span = (_dt.datetime.fromisoformat(from_ or ""), _dt.datetime.fromisoformat(to or ""))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="from and to are YYYY-MM-DDTHH:MM") from None
+            if span[1] <= span[0]:
+                raise HTTPException(status_code=400, detail="to must be after from")
         try:
             on = _dt.date.fromisoformat(date) if date else today
         except ValueError:
@@ -5576,6 +5587,9 @@ def create_app() -> FastAPI:
             return {"error": refused}
         try:
             from . import cloud_status
+            if span:
+                return cloud_status.read_range(s.fwh_cloud_email, s.fwh_cloud_password,
+                                               gw.serial, span[0], span[1], today, refresh)
             return cloud_status.read_energy(s.fwh_cloud_email, s.fwh_cloud_password,
                                             gw.serial, period, on, today, refresh)
         except Exception as e:  # noqa: BLE001 — shown in the panel, never a 500
