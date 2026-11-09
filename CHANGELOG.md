@@ -77,7 +77,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   5-minute power up to 2 days, hourly kWh up to 31 days, daily up to a year and monthly
   beyond, the same on both. The time is picked from a styled grid of hours and 5-minute
   steps, here and on the Day views, instead of the browser's lists.
-  `GET /api/analytics/cloud?period=custom&from=&to=`. franklinwh-ha-cloud-analytics 0.1.22.
+  `GET /api/analytics/cloud?period=custom&from=&to=`. franklinwh-ha-cloud-analytics 0.1.23.
 
 ### Changed
 - **Analytics: one top row and the same periods for Local and Cloud** (owner). The time span
