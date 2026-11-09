@@ -32,4 +32,4 @@ def test_the_time_shows_on_the_date_button_and_opens_both_readouts():
 
 
 def test_the_cloud_extra_has_show_at():
-    assert "franklinwh-ha-cloud-analytics==0.1.21" in (ROOT / "pyproject.toml").read_text()
+    assert "franklinwh-ha-cloud-analytics==0.1.22" in (ROOT / "pyproject.toml").read_text()
