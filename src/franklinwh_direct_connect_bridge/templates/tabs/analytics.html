@@ -103,22 +103,7 @@
            class="absolute right-0 mt-1 z-40 w-72 rounded-xl border shadow-xl p-3 space-y-2"
            style="background:var(--surface-1);border-color:var(--border)">
         <p x-show="pickerFor !== 'period'" class="text-xs font-semibold" style="color:var(--text-primary)" x-text="pickerFor === 'from' ? 'From' : 'To (not included)'"></p>
-        <div class="flex items-center justify-between">
-          <button class="btn btn-secondary btn-sm" @click="pickerStep(-1)" aria-label="Earlier in the calendar">‹</button>
-          <span class="text-sm font-semibold" style="color:var(--text-primary)" x-text="pickerTitle"></span>
-          <button class="btn btn-secondary btn-sm disabled:opacity-40" @click="pickerStep(1)" :disabled="pickerAtEnd" aria-label="Later in the calendar">›</button>
-        </div>
-        <template x-if="pickerMode === 'days'">
-          <div class="grid grid-cols-7 gap-0.5 text-center text-xs">
-            <template x-for="w in ['Mo','Tu','We','Th','Fr','Sa','Su']" :key="w"><span class="py-1 text-slate-500" x-text="w"></span></template>
-            <template x-for="c in pickerDays" :key="c.iso">
-              <button class="py-1.5 rounded-md transition disabled:opacity-25 disabled:cursor-default"
-                      :class="c.sel ? 'bg-emerald-500/25 text-emerald-300 font-semibold' : (c.inMonth ? 'hover:bg-white/[0.08]' : 'opacity-50 hover:bg-white/[0.08]')"
-                      :style="c.today && !c.sel ? 'outline:1px solid var(--border)' : ''"
-                      :disabled="c.off" @click="pick(c.iso)" :aria-label="c.iso" x-text="c.d"></button>
-            </template>
-          </div>
-        </template>
+        {% include "partials/calendar.html" %}
         <!-- The time, from a styled grid (owner, 2026-11-10): the Day views' readout time
              (hourly snaps to the hour), or From / To's; minutes in 5-minute steps -->
         <div x-show="(timeMode && pickerFor === 'period') || pickerFor !== 'period'" class="pt-2 border-t space-y-1.5" style="border-color:var(--border)">
@@ -146,24 +131,6 @@
             <button class="btn btn-primary btn-sm" @click="applyRange()">Apply</button>
           </div>
         </div>
-        <template x-if="pickerMode === 'months'">
-          <div class="grid grid-cols-3 gap-1 text-sm">
-            <template x-for="m in pickerMonths" :key="m.iso">
-              <button class="py-2 rounded-md transition disabled:opacity-25 disabled:cursor-default"
-                      :class="m.sel ? 'bg-emerald-500/25 text-emerald-300 font-semibold' : 'hover:bg-white/[0.08]'"
-                      :disabled="m.off" @click="pick(m.iso)" x-text="m.label"></button>
-            </template>
-          </div>
-        </template>
-        <template x-if="pickerMode === 'years'">
-          <div class="grid grid-cols-3 gap-1 text-sm">
-            <template x-for="y in pickerYears" :key="y.iso">
-              <button class="py-2 rounded-md transition disabled:opacity-25 disabled:cursor-default"
-                      :class="y.sel ? 'bg-emerald-500/25 text-emerald-300 font-semibold' : 'hover:bg-white/[0.08]'"
-                      :disabled="y.off" @click="pick(y.iso)" x-text="y.label"></button>
-            </template>
-          </div>
-        </template>
       </div>
     </div>
     <button x-show="period !== 'custom'" class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="stepWindow(1)" :disabled="loading || atToday" aria-label="Later" title="Later">›</button>

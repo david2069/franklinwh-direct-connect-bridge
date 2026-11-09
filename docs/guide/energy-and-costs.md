@@ -168,12 +168,16 @@ The choice of Local or Cloud and the period are remembered in this browser.
 On the Dashboard. It shows directional flows for a local day: solar to home, solar to
 battery, solar to grid, battery to home, battery to grid, grid to home, grid to battery.
 
-The card says where its numbers come from. Signed in to the FranklinWH cloud (Settings →
-Integrations → **FranklinWH Cloud API**), it shows the cloud's own metered breakdown, with a
-cloud icon. Otherwise it shows this bridge's estimate (below), with a slashed cloud and
-how many days of samples the bridge holds ("Local · 12 days of data"); if the cloud can't
-answer, it falls back to Local. In Week, Month and Year the date picker shows the period's
-first day. **In Analytics** opens the same period in Analytics → Flow.
+The card says where its numbers come from, and **Local | Cloud** switches between them:
+**Cloud** is the FranklinWH cloud's own metered breakdown, with a cloud icon (it needs the
+sign-in in Settings → Integrations → **FranklinWH Cloud API**, and is greyed out until
+then); **Local** is this bridge's estimate (below), with a slashed cloud and how many days of
+samples the bridge holds ("Local · 12 days of data"). The choice is the same one as
+Analytics' Local | Cloud, so changing either changes both; until one is picked it's Cloud
+when signed in. If the cloud can't answer, the card says why and shows Local. **‹ ›** move
+by the period, the date button opens the same calendar as Analytics (days, or months for
+Month, or years for Year) and shows the period ("Week of 2 Nov 2026", "November 2026"), and
+**Today** comes back. **In Analytics** opens the same period in Analytics → Flow.
 
 Hover over a flow, or tap it on a touch screen, to see what it carried, e.g.
 "Solar → Battery 321.7 kWh"; the other flows dim while it shows. Tapping outside the flows

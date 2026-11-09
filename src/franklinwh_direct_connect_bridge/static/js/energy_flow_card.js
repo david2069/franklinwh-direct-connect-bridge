@@ -15,6 +15,10 @@
  * Signed in to the FranklinWH cloud, the card shows the cloud's own metered
  * breakdown instead, with a cloud icon; otherwise Local, a slashed cloud and how
  * many days this bridge has stored (#543). A cloud that fails falls back to Local.
+ *
+ * Local | Cloud (owner, 2026-11-10) is one choice with Analytics ('fwh-analytics-source',
+ * and a 'fwh-source' event each way); until one is picked, Cloud when signed in. The date
+ * picker is Analytics' styled calendar (partials/calendar.html, FWHCalendar).
  */
 // The card's periods as the Cloud view names them.
 const FLOW_CLOUD_PERIOD = { day: 'day5', week: 'week', month: 'month', year: 'year' };
@@ -25,10 +29,13 @@ function energyFlowCard() {
     today: '',
     period: 'day',   // day | week | month | year
     quality: '',
-    spanLabel: '',
     warn: false,
     nodes: null,
     source: 'local',   // local | cloud: what the card shows now
+    pref: (() => { try { const v = localStorage.getItem('fwh-analytics-source'); return v === 'cloud' || v === 'local' ? v : null; } catch (e) { return null; } })(),
+    cloudErr: '',      // why Cloud was picked but Local is shown
+    pickerOpen: false,
+    pickerCursor: null,
     localDays: null,   // days since this bridge's oldest sample
     _flows: null,
     _ro: null,
@@ -56,6 +63,46 @@ function energyFlowCard() {
       this.$watch('$store.app.selectedGateway', () => this.load());
       // the cloud sign-in is known only once the capabilities arrive (#543)
       this.$watch('$store.app.cloudAvailable', () => this.load());
+      // Analytics changed the shared Local | Cloud choice
+      window.addEventListener('fwh-source', (e) => {
+        const d = e.detail || {};
+        if (d.from === 'card' || d.source === this.pref) return;
+        this.pref = d.source; this.load();
+      });
+    },
+
+    /** The source asked for: the shared choice, or Cloud when signed in until one is picked. */
+    get wanted() {
+      return this.pref || (this.$store.app.cloudAvailable ? 'cloud' : 'local');
+    },
+    /** Local | Cloud: remembered for the card and Analytics alike. */
+    setSource(src) {
+      this.pref = src;
+      try { localStorage.setItem('fwh-analytics-source', src); } catch (e) { /* private mode */ }
+      window.dispatchEvent(new CustomEvent('fwh-source', { detail: { source: src, from: 'card' } }));
+      this.load();
+    },
+
+    // ---- the styled calendar (partials/calendar.html) -------------------------------
+    get pickerMode() { return FWHCalendar.mode(this.period); },
+    get pickerTitle() { return FWHCalendar.title(this.pickerCursor || this.startDay, this.pickerMode); },
+    pickerStep(dir) { this.pickerCursor = FWHCalendar.step(this.pickerCursor || this.startDay, this.pickerMode, dir); },
+    get pickerAtEnd() { return FWHCalendar.atEnd(this.pickerCursor || this.startDay, this.pickerMode, this.today); },
+    get pickerDays() {
+      return FWHCalendar.days(this.pickerCursor || this.startDay, { sel: this.startDay, week: this.period === 'week', today: this.today });
+    },
+    get pickerMonths() { return FWHCalendar.months(this.pickerCursor || this.startDay, { sel: this.startDay, today: this.today }); },
+    get pickerYears() { return FWHCalendar.years(this.pickerCursor || this.startDay, { sel: this.startDay, today: this.today }); },
+    openPicker() { this.pickerCursor = this.startDay; this.pickerOpen = !this.pickerOpen; },
+    pick(iso) { this.pickerOpen = false; this.day = iso > this.today ? this.today : iso; this.load(); },
+    /** The period on the date button, as Analytics writes it: 9 Nov 2026, Week of 2 Nov 2026, November 2026, 2026. */
+    get periodLabel() {
+      const [y, m, d] = this.startDay.split('-').map(Number), at = new Date(Date.UTC(y, m - 1, d));
+      const f = (o) => new Intl.DateTimeFormat(undefined, Object.assign({ timeZone: 'UTC' }, o)).format(at);
+      if (this.period === 'year') return String(y);
+      if (this.period === 'month') return f({ month: 'long', year: 'numeric' });
+      const day = f({ day: 'numeric', month: 'short', year: 'numeric' });
+      return this.period === 'week' ? 'Week of ' + day : day;
     },
 
     // Local calendar date. toISOString() converts to UTC first, which east of
@@ -69,14 +116,6 @@ function energyFlowCard() {
     _spansToday() {
       const [, e] = this._span();
       return Date.now() / 1000 < e;
-    },
-
-    prettyDay() {
-      if (this.period !== 'day') return this.spanLabel;
-      if (this.day === this.today) return 'Today';
-      const [y, m, d] = this.day.split('-').map(Number);
-      return new Date(y, m - 1, d).toLocaleDateString(undefined,
-        { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
     },
 
     atToday() { return this.day >= this.today; },
@@ -153,25 +192,13 @@ function energyFlowCard() {
       return [Math.floor(start.getTime() / 1000), Math.floor(end.getTime() / 1000)];
     },
 
-    // What the span actually covers — a week anchored midweek still starts Monday,
-    // so showing only the anchor date would mislead.
-    _describeSpan(s, e) {
-      const f = (secs) => new Date(secs * 1000).toLocaleDateString(undefined,
-        { day: '2-digit', month: 'short' });
-      if (this.period === 'year') return String(new Date(s * 1000).getFullYear());
-      if (this.period === 'month') return new Date(s * 1000).toLocaleDateString(undefined,
-        { month: 'long', year: 'numeric' });
-      if (this.period === 'week') return `${f(s)} – ${f(e - 1)}`;
-      return '';
-    },
-
     async load() {
       const [s0, e0] = this._span();
-      this.spanLabel = this._describeSpan(s0, e0);
       let url = `api/energy/flow?start=${s0}&end=${e0}`;
       if (!this.$store.app.selectedGateway) return;          // no gateway yet
       url += this.$store.app.gwQuery('&');
-      if (this.$store.app.cloudAvailable) {
+      this.cloudErr = '';
+      if (this.wanted === 'cloud' && this.$store.app.cloudAvailable) {
         try {
           const r = await fetch(`api/analytics/cloud?period=${FLOW_CLOUD_PERIOD[this.period]}&date=${this.startDay}`
             + this.$store.app.gwQuery('&'), { headers: { Accept: 'application/json' } });
@@ -182,7 +209,8 @@ function energyFlowCard() {
             this._draw(); this.warn = false; this.quality = 'Metered by the FranklinWH cloud.';
             return;
           }
-        } catch (e) { /* fall back to this bridge's samples */ }
+          this.cloudErr = (d && (d.error || d.detail)) || (d && !d.flows ? 'The cloud has no flow breakdown for this period.' : `HTTP ${r.status}`);
+        } catch (e) { this.cloudErr = e.message; }     // then this bridge's samples
       }
       this.source = 'local';
       try {

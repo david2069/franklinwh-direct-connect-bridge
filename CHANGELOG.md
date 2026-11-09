@@ -78,6 +78,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   beyond, the same on both. The time is picked from a styled grid of hours and 5-minute
   steps, here and on the Day views, instead of the browser's lists.
   `GET /api/analytics/cloud?period=custom&from=&to=`. franklinwh-ha-cloud-analytics 0.1.23.
+- **Dashboard → Energy Flow: Local | Cloud and Analytics' calendar** (#543): the card has
+  Analytics' Local | Cloud switch, one choice shared with Analytics (Cloud when signed in
+  until one is picked; Cloud greyed out with a sign-in hint until then; a cloud that fails
+  says why and shows Local), and Analytics' styled calendar in place of the browser's date
+  box and the repeated "November 2026" chip. Both use one calendar.
 
 ### Changed
 - **Analytics: one top row and the same periods for Local and Cloud** (owner). The time span
