@@ -215,7 +215,8 @@
   <div x-show="coloursOpen" x-cloak role="dialog" aria-modal="true" aria-label="Chart colours"
        @click.self="coloursOpen = false" @keydown.escape.window="coloursOpen = false"
        class="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
-       style="z-index:60;background:rgba(0,0,0,.6)">
+       style="z-index:80;background:rgba(0,0,0,.6)">
+    <!-- above the phone's bottom tab bar (z-70) -->
     <div class="card w-full sm:max-w-sm max-h-[90dvh] overflow-y-auto space-y-3" style="padding:16px">
       <div class="flex items-center justify-between gap-2">
         <h4 class="text-base font-semibold" style="color:var(--text-primary)">Chart colours</h4>
