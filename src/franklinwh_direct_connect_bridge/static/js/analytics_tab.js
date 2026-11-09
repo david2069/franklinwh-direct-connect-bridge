@@ -12,7 +12,6 @@
 
 /** Tick steps the time axis may use, in seconds (all divide a day, or are whole days). */
 const ANALYTICS_STEPS = [900, 1800, 3600, 7200, 10800, 21600, 43200, 86400, 172800, 604800];
-const ANALYTICS_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function analyticsTab() {
   return {
@@ -31,7 +30,8 @@ function analyticsTab() {
       { key: 'generator_w', label: 'Generator', color: '#94a3b8' },
     ],
     metrics: { soc: true, grid_w: true, solar_w: true, battery_w: true, load_w: true, generator_w: false },
-    range: '24h',
+    // the period, remembered in this browser like the Cloud view's
+    range: (() => { try { const r = localStorage.getItem('fwh-analytics-range'); return ['24h', '3d', '7d', '30d'].includes(r) ? r : '24h'; } catch (e) { return '24h'; } })(),
     custom: false,
     customStart: '',      // 'YYYY-MM-DDTHH:MM', site wall-clock
     customEnd: '',
@@ -104,9 +104,11 @@ function analyticsTab() {
     /** Epoch seconds → 'YYYY-MM-DDTHH:MM' in site wall-clock (for the inputs). */
     toSiteLocal(ts) { return this.siteDate(ts).toISOString().slice(0, 16); },
     hhmm(ts) { return this.siteDate(ts).toISOString().slice(11, 16); },
-    dayLabel(ts) {
-      const d = this.siteDate(ts);
-      return d.getUTCDate() + ' ' + ANALYTICS_MONTHS[d.getUTCMonth()];
+    // In the browser's own date format (5 Nov, Nov 5); siteDate's UTC fields are the site's
+    // wall clock, so it is formatted as UTC.
+    dayLabel(ts, year) {
+      return new Intl.DateTimeFormat(undefined, Object.assign({ day: 'numeric', month: 'short', timeZone: 'UTC' },
+        year ? { year: 'numeric' } : {})).format(this.siteDate(ts));
     },
     stamp(ts) { return this.dayLabel(ts) + ' ' + this.hhmm(ts); },
 
@@ -142,7 +144,35 @@ function analyticsTab() {
       return { start: now - this.shiftS - h * 3600, end: now - this.shiftS };
     },
 
-    setRange(k) { this.range = k; this.custom = false; this.shiftS = 0; this.load(); },
+    setRange(k) {
+      this.range = k; this.custom = false; this.shiftS = 0;
+      try { localStorage.setItem('fwh-analytics-range', k); } catch (e) { /* private mode */ }
+      this.load();
+    },
+    /** The period dropdown: a preset, or Custom (which starts from the window shown). */
+    setPeriod(v) {
+      if (v !== 'custom') { this.setRange(v); return; }
+      const w = this.window;
+      this.customStart = this.toSiteLocal(w.start);
+      this.customEnd = this.toSiteLocal(w.end);
+      this.custom = true;
+    },
+    /** The site day the shown window ends on, for the day picker. */
+    get endDay() { return this.toSiteLocal(this.window.end - 1).slice(0, 10); },
+    get today() { return this.toSiteLocal(Math.floor(Date.now() / 1000)).slice(0, 10); },
+    /** The day picker: the same-length window, ending at the end of that day (or now). */
+    jumpTo(day) {
+      if (!day) return;
+      const now = Math.floor(Date.now() / 1000), w = this.window, span = w.end - w.start;
+      const end = Math.min(now, this.fromSiteLocal(day + 'T00:00') + 86400);
+      if (this.custom) {
+        this.customStart = this.toSiteLocal(end - span);
+        this.customEnd = this.toSiteLocal(end);
+      } else {
+        this.shiftS = Math.max(0, now - end);
+      }
+      this.load();
+    },
     refresh() { if (this.source === 'cloud') { if (this._cloud) this._cloud.reload(); } else this.load(); },
     /** ‹ / ›: the window before or after this one, the same length. */
     stepWindow(dir) {
@@ -288,7 +318,7 @@ function analyticsTab() {
         + ` · ${this.zoneLabel}`;
       const w = this.win;
       if (w && b && s[0].ts - w.start > 2 * b) txt += ` · no data before ${this.stamp(s[0].ts)}`;
-      if (this.firstTs) txt += ` · history from ${this.dayLabel(this.firstTs)} ${this.siteDate(this.firstTs).getUTCFullYear()}`;
+      if (this.firstTs) txt += ` · history from ${this.dayLabel(this.firstTs, true)}`;
       return txt;
     },
 

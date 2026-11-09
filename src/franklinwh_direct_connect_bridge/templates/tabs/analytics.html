@@ -35,35 +35,26 @@
   </div>
 
   <div class="space-y-4" x-show="source === 'local'">
-  <!-- Range + chart controls -->
+  <!-- One card, laid out as the Cloud view (owner, 2026-11-09): the period dropdown, then
+       ‹ day › Today; the chart; the chips and Line | Area under it. -->
   <div class="card space-y-3">
-    <div class="flex items-center justify-between gap-3 flex-wrap">
-      <!-- range presets -->
-      <div class="inline-flex rounded-lg overflow-hidden border" style="border-color:var(--border)">
-        <template x-for="r in ranges" :key="r.key">
-          <button class="px-3 py-1.5 text-xs font-medium transition"
-                  :class="range === r.key && !custom ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-slate-200'"
-                  @click="setRange(r.key)" x-text="r.label"></button>
-        </template>
-        <button class="px-3 py-1.5 text-xs font-medium transition"
-                :class="custom ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-slate-200'"
-                @click="custom = true">Custom</button>
-      </div>
-      <!-- step through history, as on the Cloud view; ‹ stops at the oldest stored sample -->
+    <div class="flex items-center justify-between gap-2 flex-wrap">
+      <select class="form-control form-control-sm" style="width:auto" aria-label="Period"
+              :value="custom ? 'custom' : range" @change="setPeriod($event.target.value)">
+        <option value="24h">24 hours</option>
+        <option value="3d">3 days</option>
+        <option value="7d">7 days</option>
+        <option value="30d">30 days</option>
+        <option value="custom">Custom</option>
+      </select>
+      <!-- step through history; ‹ stops at the oldest stored sample -->
       <div class="inline-flex items-center gap-1">
         <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="stepWindow(-1)" :disabled="loading || atOldest"
                 aria-label="Earlier" :title="atOldest ? 'No stored history before this' : 'Earlier'">‹</button>
+        <input type="date" class="form-control form-control-sm" style="width:auto" aria-label="Day" :value="endDay"
+               :min="firstTs ? toSiteLocal(firstTs).slice(0, 10) : null" :max="today" @change="jumpTo($event.target.value)">
         <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="stepWindow(1)" :disabled="loading || atToday" aria-label="Later" title="Later">›</button>
         <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="goToday()" :disabled="loading || atToday" title="Back to now">Today</button>
-      </div>
-      <!-- chart type -->
-      <div class="inline-flex rounded-lg overflow-hidden border" style="border-color:var(--border)">
-        <button class="px-3 py-1.5 text-xs font-medium transition"
-                :class="chartType === 'line' ? 'bg-slate-700 text-slate-100' : 'text-slate-400'"
-                @click="chartType = 'line'; render()">Line</button>
-        <button class="px-3 py-1.5 text-xs font-medium transition"
-                :class="chartType === 'area' ? 'bg-slate-700 text-slate-100' : 'text-slate-400'"
-                @click="chartType = 'area'; render()">Area</button>
       </div>
     </div>
 
@@ -80,17 +71,34 @@
       <span class="text-[11px] text-slate-500" x-text="'Times in ' + zoneLabel"></span>
     </div>
 
-    <!-- metric toggles -->
-    <div class="flex flex-wrap gap-2">
-      <template x-for="m in metricDefs" :key="m.key">
-        <button class="chip inline-flex items-center gap-1.5 transition"
-                :class="metrics[m.key] ? '' : 'opacity-40'"
-                :style="metrics[m.key] ? 'background:' + m.color + '22;color:' + m.color : ''"
-                @click="toggleMetric(m.key)">
-          <span class="w-2 h-2 rounded-full" :style="'background:' + m.color"></span>
-          <span x-text="m.label"></span>
-        </button>
-      </template>
+    <div x-show="!series.length && !loading" class="text-sm text-slate-500 py-16 text-center">
+      No samples in this range.
+    </div>
+    <div class="relative" style="height:380px" x-show="series.length || loading">
+      <canvas x-ref="canvas"></canvas>
+    </div>
+    <p class="text-[11px] text-slate-500" x-show="series.length" x-text="caption"></p>
+
+    <div class="flex items-start justify-between gap-2 flex-wrap">
+      <div class="flex flex-wrap gap-2">
+        <template x-for="m in metricDefs" :key="m.key">
+          <button class="chip inline-flex items-center gap-1.5 transition"
+                  :class="metrics[m.key] ? '' : 'opacity-40'"
+                  :style="metrics[m.key] ? 'background:' + m.color + '22;color:' + m.color : ''"
+                  @click="toggleMetric(m.key)">
+            <span class="w-2 h-2 rounded-full" :style="'background:' + m.color"></span>
+            <span x-text="m.label"></span>
+          </button>
+        </template>
+      </div>
+      <div class="inline-flex rounded-lg overflow-hidden border" style="border-color:var(--border)">
+        <button class="px-3 py-1.5 text-xs font-medium transition"
+                :class="chartType === 'line' ? 'bg-slate-700 text-slate-100' : 'text-slate-400'"
+                @click="chartType = 'line'; render()">Line</button>
+        <button class="px-3 py-1.5 text-xs font-medium transition"
+                :class="chartType === 'area' ? 'bg-slate-700 text-slate-100' : 'text-slate-400'"
+                @click="chartType = 'area'; render()">Area</button>
+      </div>
     </div>
   </div>
 
@@ -102,18 +110,6 @@
         <div class="text-lg font-semibold tabular-nums" style="color:var(--text-primary)" x-text="s.value"></div>
       </div>
     </template>
-  </div>
-
-  <!-- Chart -->
-  <div class="card">
-    <div x-show="!series.length && !loading" class="text-sm text-slate-500 py-16 text-center">
-      No samples in this range.
-    </div>
-    <div class="relative" style="height:380px" x-show="series.length || loading">
-      <canvas x-ref="canvas"></canvas>
-    </div>
-    <p class="text-[11px] text-slate-500 mt-2" x-show="series.length"
-       x-text="caption"></p>
   </div>
 
 </div>
