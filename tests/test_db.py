@@ -51,7 +51,8 @@ def test_prune_deletes_old_rows():
     _seed(s, 1_000_000)
     info_before = s.info()
     assert info_before["count"] == 10
-    deleted = s.prune(0, 1_000_000 + 9 * 60 + 1)   # retention 0 days → all older
+    # retention 1 day, a day after the last sample → all older (0 now means Forever, #540)
+    deleted = s.prune(1, 1_000_000 + 86400 + 9 * 60 + 1)
     assert deleted == 10
     assert s.info()["count"] == 0
     s.close()
