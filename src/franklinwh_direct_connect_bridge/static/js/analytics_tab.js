@@ -319,17 +319,18 @@ function analyticsTab() {
     },
     /** Local: Chart.js's own readout at the slot holding the picked time. */
     showLocalAt() {
-      const c = this._chart;
+      const c = this._chart && Alpine.raw(this._chart);   // Chart.js breaks behind Alpine's proxy
       if (!c) return;
       if (!this.timeMode || !this.atTime) { c.setActiveElements([]); c.tooltip.setActiveElements([], { x: 0, y: 0 }); c.update(); return; }
       const [h, m] = this.atTime.split(':').map(Number);
       const ts = this.window.start + h * 3600 + m * 60;
       const active = [];
+      const series = Alpine.raw(this.series);
       c.data.datasets.forEach((d, di) => {
         let best = -1, gap = Infinity;
         d.data.forEach((p, i) => {
           if (p.y == null) return;
-          const g = this.energyMode ? (this.series[i] && this.series[i].ts <= ts && ts < this.series[i].end ? 0 : Infinity) : Math.abs(p.x - ts);
+          const g = this.energyMode ? (series[i] && series[i].ts <= ts && ts < series[i].end ? 0 : Infinity) : Math.abs(p.x - ts);
           if (g < gap) { gap = g; best = i; }
         });
         if (best >= 0 && gap <= (this.energyMode ? 0 : 300)) active.push({ datasetIndex: di, index: best });
