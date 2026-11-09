@@ -56,7 +56,7 @@ def test_local_uses_the_cloud_views_layout():
     # right, chips and Line | Area under the chart; the period picker is the top row's.
     assert 'type="date"' in LOCAL and 'jumpTo($event.target.value)' in LOCAL
     assert LOCAL.index("toggleMetric(") > LOCAL.index('x-ref="canvas"')
-    assert LOCAL.index("setChartType('area')") > LOCAL.index('x-ref="canvas"')
+    # Line | Area | Bars moved to the top row (owner, 2026-11-10)
 
 
 def test_local_dates_follow_the_browsers_own_format():
@@ -67,7 +67,7 @@ def test_local_dates_follow_the_browsers_own_format():
 def test_local_offers_line_area_and_bars_like_cloud_and_remembers_it():
     # Owner, 2026-11-09: "there is no bar charts" on Local; the same choices as Cloud.
     for k in ("line", "area", "bars"):
-        assert f"setChartType('{k}')" in LOCAL
+        assert f"setChartType('{k}')" in HTML
     assert "chartType === 'bars'" in JS and "fwh-analytics-style" in JS
     # SoC stays a line on its own % axis whatever the style
     ds = JS[JS.index("const datasets ="):][:900]

@@ -64,11 +64,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   or year like Cloud; 24 hours, 3 days, 7 days, 30 days and Custom are gone. **Local |
   Cloud**, **Export ▾** (CSV, JSON) and **Refresh** are on the same row. Cloud panel
   franklinwh-ha-cloud-analytics 0.1.6 (the host's picker).
+- **Analytics: Line | Area | Bars at the top** (owner): one chart-style choice in the top
+  row, right after the time span, serving Local and Cloud (remembered in this browser);
+  it is no longer under each chart. franklinwh-ha-cloud-analytics 0.1.11.
 - **Analytics → Cloud: the cloud's other fields as chips** (owner): every other field with
   data for the shown period gets a chip that starts off: home from solar, grid and battery;
   battery charged from solar and grid; export from solar and battery; and on a day, each
   5-minute flow. Empty fields (V2L, solar sub-meters) get no chip; **Export ▾ → JSON** keeps
-  every array the cloud returned. franklinwh-ha-cloud-analytics 0.1.10.
+  every array the cloud returned.
 - **Analytics: Local and Cloud charts match in size and scale, and Cloud shows SoC**
   (owner): both charts are 380 px tall, and Local's kW/kWh axis uses Cloud's rule (zero
   always shown, four even steps), so the same data reads the same in both. Cloud's Day

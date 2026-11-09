@@ -5,15 +5,29 @@
     <p class="text-sm text-slate-500" x-text="source === 'cloud' ? 'Energy history from the FranklinWH cloud.' : 'Power &amp; state history from the bridge\'s own store.'"></p>
   </div>
 
-  <!-- One row for both sources (owner, 2026-11-09): the time span, then Local | Cloud
-       (#215), Export ▾ and Refresh; each serves whichever source is shown. -->
+  <!-- One row for both sources (owner, 2026-11-09): the time span and Line | Area | Bars
+       (2026-11-10), then Local | Cloud (#215), Export ▾ and Refresh; each serves whichever
+       source is shown. -->
   <div class="flex items-center justify-between gap-2 flex-wrap">
+    <div class="flex items-center gap-2 flex-wrap">
     <select class="form-control form-control-sm" style="width:auto" aria-label="Time span"
             :value="period" @change="setPeriod($event.target.value)">
       <template x-for="p in periods" :key="p[0]">
         <option :value="p[0]" x-text="p[1]" :selected="p[0] === period"></option>
       </template>
     </select>
+      <div class="inline-flex rounded-lg overflow-hidden border" style="border-color:var(--border)" role="group" aria-label="Chart style">
+        <button class="px-3 py-1.5 text-xs font-medium transition"
+                :class="chartType === 'line' ? 'bg-slate-700 text-slate-100' : 'text-slate-400'"
+                @click="setChartType('line')">Line</button>
+        <button class="px-3 py-1.5 text-xs font-medium transition"
+                :class="chartType === 'area' ? 'bg-slate-700 text-slate-100' : 'text-slate-400'"
+                @click="setChartType('area')">Area</button>
+        <button class="px-3 py-1.5 text-xs font-medium transition"
+                :class="chartType === 'bars' ? 'bg-slate-700 text-slate-100' : 'text-slate-400'"
+                @click="setChartType('bars')">Bars</button>
+      </div>
+    </div>
     <div class="flex items-center gap-2 flex-wrap">
       <div class="inline-flex rounded-lg overflow-hidden border" style="border-color:var(--border)" role="tablist" aria-label="Source">
         <button class="px-4 py-1.5 text-sm font-semibold transition" role="tab" :aria-selected="source === 'local'"
@@ -83,17 +97,6 @@
             <span x-text="m.label"></span>
           </button>
         </template>
-      </div>
-      <div class="inline-flex rounded-lg overflow-hidden border" style="border-color:var(--border)">
-        <button class="px-3 py-1.5 text-xs font-medium transition"
-                :class="chartType === 'line' ? 'bg-slate-700 text-slate-100' : 'text-slate-400'"
-                @click="setChartType('line')">Line</button>
-        <button class="px-3 py-1.5 text-xs font-medium transition"
-                :class="chartType === 'area' ? 'bg-slate-700 text-slate-100' : 'text-slate-400'"
-                @click="setChartType('area')">Area</button>
-        <button class="px-3 py-1.5 text-xs font-medium transition"
-                :class="chartType === 'bars' ? 'bg-slate-700 text-slate-100' : 'text-slate-400'"
-                @click="setChartType('bars')">Bars</button>
       </div>
     </div>
   </div>
