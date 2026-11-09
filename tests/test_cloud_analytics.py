@@ -145,3 +145,12 @@ def test_the_cloud_account_link_shows_only_while_the_account_is_not_usable():
     # Owner, 2026-11-09: the credentials prompt only when they are not present.
     line = TAB[:TAB.index("openCloudSettings()")].rsplit("<p ", 1)[1]
     assert 'x-show="!$store.app.cloudAvailable"' in line
+
+
+def test_export_and_refresh_serve_whichever_source_is_shown():
+    # Owner, 2026-11-09: Cloud gets CSV and JSON export like Local, in the same place.
+    head = TAB[:TAB.index('aria-label="Source"')]
+    assert "exportData('csv')" in head and "exportData('json')" in head
+    assert 'x-show="source === \'local\'">\n      <button class="btn btn-secondary btn-sm" @click="exportData' not in TAB
+    body = JS[JS.index("exportData(fmt) {"):][:300]
+    assert "this.source === 'cloud'" in body and "this._cloud.exportData(fmt)" in body

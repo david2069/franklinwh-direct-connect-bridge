@@ -56,7 +56,11 @@ show or hide each series; **Line | Area** picks the style.
 ### Local or Cloud
 
 The **Local | Cloud** switch under the Analytics title picks the source, and the page says
-which one it is showing. Cloud needs the FranklinWH cloud account: while it is missing or
+which one it is showing. **Export CSV**, **JSON** and **Refresh** at the top of Analytics work on whichever source
+is shown. For Cloud, the export is the shown period (`fwh-cloud-<period>-<date>.csv`) with
+every series the cloud returned, including any hidden with its chip.
+
+Cloud needs the FranklinWH cloud account: while it is missing or
 refused, a **Cloud account** link at the top of the Cloud view opens Settings → Integrations →
 **FranklinWH Cloud API**. **Local** is the bridge's own record, above. **Cloud** shows the
 FranklinWH cloud's energy history for the gateway picked in the top bar:
