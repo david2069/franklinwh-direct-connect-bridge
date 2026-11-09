@@ -30,7 +30,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   the custom range can't be set before it. `GET /api/metrics` returns `first_ts`. Local now
   has the Cloud view's layout: a period dropdown (24 hours, 3 days, 7 days, 30 days, Custom,
   remembered in this browser), **‹ day › Today** on the right with a day picker, and the
-  chips and **Line | Area** under the chart; its dates are in the browser's own format.
+  chips and **Line | Area | Bars** under the chart (remembered; SoC stays a line); its dates
+  are in the browser's own format.
 - **Notifications when the bridge starts, restarts or stops**, under a new trigger
   **Bridge started / restarted / stopped** (on by default), like the Energipays bridge (#528). A
   start after a clean stop says it restarted, how long it was down and, after an update, the

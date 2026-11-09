@@ -94,10 +94,13 @@
       <div class="inline-flex rounded-lg overflow-hidden border" style="border-color:var(--border)">
         <button class="px-3 py-1.5 text-xs font-medium transition"
                 :class="chartType === 'line' ? 'bg-slate-700 text-slate-100' : 'text-slate-400'"
-                @click="chartType = 'line'; render()">Line</button>
+                @click="setChartType('line')">Line</button>
         <button class="px-3 py-1.5 text-xs font-medium transition"
                 :class="chartType === 'area' ? 'bg-slate-700 text-slate-100' : 'text-slate-400'"
-                @click="chartType = 'area'; render()">Area</button>
+                @click="setChartType('area')">Area</button>
+        <button class="px-3 py-1.5 text-xs font-medium transition"
+                :class="chartType === 'bars' ? 'bg-slate-700 text-slate-100' : 'text-slate-400'"
+                @click="setChartType('bars')">Bars</button>
       </div>
     </div>
   </div>

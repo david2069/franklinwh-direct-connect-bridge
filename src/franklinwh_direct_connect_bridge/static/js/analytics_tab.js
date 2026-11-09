@@ -37,7 +37,8 @@ function analyticsTab() {
     customEnd: '',
     shiftS: 0,            // a preset window moved back from now by ‹ (seconds)
     firstTs: null,        // the oldest stored sample for this gateway (epoch s)
-    chartType: 'area',
+    // line | area | bars, remembered in this browser like the Cloud view's style
+    chartType: (() => { try { const t = localStorage.getItem('fwh-analytics-style'); return ['line', 'area', 'bars'].includes(t) ? t : 'area'; } catch (e) { return 'area'; } })(),
     series: [],
     bucketS: null,        // the server's bucket size for the loaded series
     win: null,            // the {start, end} the loaded series was asked for
@@ -203,6 +204,11 @@ function analyticsTab() {
       this.custom = true;
       this.load();
     },
+    setChartType(t) {
+      this.chartType = t;
+      try { localStorage.setItem('fwh-analytics-style', t); } catch (e) { /* private mode */ }
+      this.render();
+    },
     toggleMetric(k) { this.metrics[k] = !this.metrics[k]; this.render(); },
 
     async load() {
@@ -254,7 +260,11 @@ function analyticsTab() {
         const w = this.win || this.window;
         const { step, ticks } = this.ticksFor(w.start, w.end);
         const self = this;
+        // Bars draw each bucket's power as a bar; SoC (its own % axis) stays a line.
+        const bars = this.chartType === 'bars';
         const datasets = this.metricDefs.filter(m => this.metrics[m.key]).map(m => ({
+          type: bars && !m.pct ? 'bar' : 'line',
+          order: m.pct ? 0 : 1,
           label: m.label,
           data: this.pointsFor(m.key),
           borderColor: m.color,

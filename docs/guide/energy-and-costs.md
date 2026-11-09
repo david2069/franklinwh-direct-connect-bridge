@@ -53,7 +53,8 @@ pick a day, or press **Today**. **‹ ›** step the shown window back or forwar
 length, the day picker moves it to end on that day, and **Today** comes back to now. **‹** stops at the oldest stored sample;
 the caption under the chart says where the history starts ("history from …"), and the
 custom range can't start before it. The chips (SoC, Grid, Solar, Battery, Home, Generator)
-under the chart show or hide each series; **Line | Area** beside them picks the style.
+under the chart show or hide each series; **Line | Area | Bars** beside them picks the style
+(SoC, on its own % axis, stays a line).
 Dates are in your browser's own format.
 
 ### Local or Cloud
