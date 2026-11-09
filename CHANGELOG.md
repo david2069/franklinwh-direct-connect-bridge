@@ -56,6 +56,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   notification goes out after any battery dispatch the bridge holds is
   released, and before notifications shut down, waiting at most 3 s (Home Assistant stops
   an add-on after 10 s).
+- **Energy flow: hover or tap a flow to see what it carried** (#543): on the Dashboard card
+  and in Analytics → Flow, a label such as "Solar → Battery 321.7 kWh" appears over the
+  flow, which stays bright while the others dim. Keyboard focus shows it too.
 
 ### Changed
 - **Analytics: one top row and the same periods for Local and Cloud** (owner). The time span

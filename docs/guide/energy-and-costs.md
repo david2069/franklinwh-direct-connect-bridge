@@ -160,6 +160,10 @@ how many days of samples the bridge holds ("Local · 12 days of data"); if the c
 answer, it falls back to Local. In Week, Month and Year the date picker shows the period's
 first day. **In Analytics** opens the same period in Analytics → Flow.
 
+Hover over a flow, or tap it on a touch screen, to see what it carried, e.g.
+"Solar → Battery 321.7 kWh"; the other flows dim while it shows. Tapping outside the flows
+puts the label away.
+
 **Be clear about what this is.** The gateway reports *node* totals — how much solar, how
 much import — and never the arcs between them. The bridge reconstructs the arcs from its
 own power samples by a merit-order split. It is a well-founded estimate, not a meter
@@ -169,7 +173,7 @@ the numbers should be read accordingly.
 
 ### In Analytics: Flow
 
-**Flow** in the top row of Analytics (Line | Area | Bars | **Flow**) draws the same diagram
+**Flow** in Analytics' **Chart ▾** menu draws the same diagram
 for the time span and day picked there (a day, a week, a month, a year or lifetime), from
 either source:
 
