@@ -64,6 +64,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   or year like Cloud; 24 hours, 3 days, 7 days, 30 days and Custom are gone. **Local |
   Cloud**, **Export ▾** (CSV, JSON) and **Refresh** are on the same row. Cloud panel
   franklinwh-ha-cloud-analytics 0.1.6 (the host's picker).
+- **Analytics: Local and Cloud charts match in size and scale, and Cloud shows SoC**
+  (owner): both charts are 380 px tall, and Local's kW/kWh axis uses Cloud's rule (zero
+  always shown, four even steps), so the same data reads the same in both. Cloud's Day
+  (5-min) and Day (hourly) draw the battery's state of charge on a 0–100 % axis at the right,
+  as Local does. The `cloud` extra pins franklinwh-ha-cloud-analytics 0.1.9.
 - **Analytics → Local shows what Cloud shows** (owner): Day (5-min) is power in **kW** (it
   was W); Day (hourly), Week, Month, Year and Lifetime are **kWh** per hour, day, month or
   year with Cloud's six series (home, solar, battery discharged and charged, grid imported

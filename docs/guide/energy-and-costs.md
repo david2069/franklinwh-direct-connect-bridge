@@ -90,7 +90,9 @@ under the chart (SoC, Grid, Solar, Battery, Home, Generator for a day; Cloud's s
 the kWh periods) show or hide each series;
 **Line | Area | Bars** beside them picks the style (SoC, on its own % axis, stays a line);
 until one is picked, a day draws lines and the kWh periods bars, as Cloud does. Dates are in
-your browser's own format.
+your browser's own format. Local and Cloud charts are the same height, and Local's kW or kWh axis
+is scaled as Cloud's (zero always shown, four even steps), so the same data looks the same in
+both.
 
 ### Local or Cloud
 
@@ -106,8 +108,8 @@ FranklinWH cloud's energy history for the gateway picked in the top bar:
 
 | Period | Chart |
 |---|---|
-| Day (5-min) | home, solar, battery and grid power in kW, as lines |
-| Day (hourly) | each hour's kWh, as bars |
+| Day (5-min) | home, solar, battery and grid power in kW, as lines, and SoC on a % axis |
+| Day (hourly) | each hour's kWh, as bars, and the hour's average SoC |
 | Week, Month | each day's kWh, as bars |
 | Year | each month's kWh |
 | Lifetime | each year's kWh |
