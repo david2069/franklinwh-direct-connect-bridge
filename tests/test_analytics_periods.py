@@ -36,7 +36,7 @@ def test_the_cloud_panel_takes_the_shared_picker():
 def test_local_steps_by_calendar_period_on_the_sites_clock():
     # A day, a Monday-to-Sunday week, a month and a year in the site zone, as Cloud does.
     body = JS[JS.index("function analyticsPeriodWindow("):][:2000]
-    for p in ("'day5'", "'dayhour'", "'week'", "'month'", "'year'", "'lifetime'"):
+    for p in ("'day5'", "'week'", "'month'", "'year'", "'lifetime'"):   # dayhour: hourly
         assert p in body
     assert "getUTCDay()" in body                      # weeks start on Monday
     assert "bucket: 300" in body and "bucket: 3600" in body
