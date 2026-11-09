@@ -68,6 +68,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   Cloud alike and remembered in this browser, with **Dark background** and **Light
   background** presets and **Reset to defaults**. SoC's default is now magenta (#d946ef);
   it was a green close to Battery discharged.
+- **Analytics: Colours and Time in sight** (#543): the legend, Local and Cloud, ends in a
+  **Colours** button (the Chart ▾ → Colours… dialog), and Day (5-min) and Day (hourly) show
+  a **Time** button beside the date that opens the calendar at its Time row; the picked time
+  shows on that button rather than on the date.
 
 ### Changed
 - **Analytics: one top row and the same periods for Local and Cloud** (owner). The time span

@@ -24,7 +24,7 @@ def test_minutes_snap_to_the_five_minute_slots():
 
 
 def test_the_time_shows_on_the_date_button_and_opens_both_readouts():
-    assert "this.atTime" in JS[JS.index("get periodLabel()"):][:700]
+    assert "this.atTime" not in JS[JS.index("get periodLabel()"):][:700]   # on the Time button now
     assert "showAt(" in JS and "showLocalAt()" in JS
     body = JS[JS.index("showLocalAt() {"):][:1500]
     assert "tooltip.setActiveElements" in body and "setActiveElements" in body
