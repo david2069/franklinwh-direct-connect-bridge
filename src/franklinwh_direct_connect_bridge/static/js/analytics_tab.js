@@ -354,7 +354,6 @@ function analyticsTab() {
       if (this.period === 'year') return String(y);
       if (this.period === 'month') return f({ month: 'long', year: 'numeric' });
       const day = f({ day: 'numeric', month: 'short', year: 'numeric' });
-      if (this.timeMode && this.atTime) return day + ' · ' + this.atTime;
       return this.period === 'week' ? 'Week of ' + day : day;
     },
     /** The picker takes a time on the Day views (owner, 2026-11-10), not on Flow. */

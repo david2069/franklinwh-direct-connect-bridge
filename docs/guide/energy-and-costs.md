@@ -75,7 +75,7 @@ Local and Cloud share one layout. The top row has the time span (Day (5-min), Da
 Week, Month, Year or Lifetime; one choice for both sources, remembered in this browser) and
 **Chart ▾**, one choice for both: Line, Area, Bars, **Bars stacked** (each slot's sources
 piled above zero and its uses below) or Flow; Analytics opens on the last one picked, then **Local | Cloud**, **Export ▾** and
-**Refresh**. **Chart ▾ → Colours…** sets a colour for each series (Local's Battery and Grid
+**Refresh**. **Chart ▾ → Colours…** (or **Colours** at the end of the legend) sets a colour for each series (Local's Battery and Grid
 take Battery discharged's and Grid exported's), for Local and Cloud alike and remembered in
 this browser; **Dark background** and **Light background** are ready-made sets, and
 **Reset to defaults** brings back the original colours (SoC in magenta, apart from the
@@ -84,8 +84,8 @@ period (a day, a Monday-to-Sunday week, a month or a year on the site's calendar
 period button (9 Nov 2026, Week of 2 Nov 2026, October 2026, 2026) opens a calendar of days,
 months or years to pick from, and **Today** comes back to the current one. On Day (5-min) and Day (hourly) the calendar also has a
 **Time** row: an hour, and on Day (5-min) a minute in 5-minute steps. The chart then opens
-with its readout (every value at that time) there, on Local and Cloud, and the date button
-shows the time; **Clear** takes it away. **‹** stops at the oldest stored sample;
+with its readout (every value at that time) there, on Local and Cloud. The **Time** button
+beside the date opens the calendar too and shows the picked time; **Clear** takes it away. **‹** stops at the oldest stored sample;
 the caption under the chart says where the history starts ("history from …").
 
 Local shows the same quantity as Cloud: Day (5-min) is power in **kW** (5-minute averages), and Day (hourly), Week, Month, Year and Lifetime are **kWh** per hour, day,
