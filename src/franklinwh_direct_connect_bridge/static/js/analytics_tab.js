@@ -47,6 +47,35 @@ function analyticsStepDay(period, day, dir) {
   return new Date(t).toISOString().slice(0, 10);
 }
 
+/** Where each kWh slot starts and ends: hours for Day (hourly), days for Week and Month,
+ *  months for Year, years for Lifetime; epoch seconds on the site's calendar. */
+function analyticsSlotEdges(period, win, offMin, now) {
+  const at = (y, m, d, h) => Date.UTC(y, m, d, h || 0) / 1000 - offMin * 60;
+  const f = new Date((win.start + offMin * 60) * 1000);
+  const y = f.getUTCFullYear(), m = f.getUTCMonth(), d = f.getUTCDate();
+  const out = [];
+  if (period === 'lifetime') {
+    for (let yy = y; !out.length || out[out.length - 1] <= now; yy++) out.push(at(yy, 0, 1));
+    return out;
+  }
+  for (let i = 0; ; i++) {
+    const t = period === 'dayhour' ? at(y, m, d, i) : period === 'year' ? at(y, m + i, 1) : at(y, m, d + i);
+    out.push(t);
+    if (t >= win.end) return out;
+  }
+}
+
+/** Cloud's series for the kWh periods, in Cloud's colours; charge and export below zero. */
+const ANALYTICS_ENERGY = [
+  { key: 'home', label: 'Home', color: '#5b8def' },
+  { key: 'solar', label: 'Solar', color: '#e8b100' },
+  { key: 'battery_discharge', label: 'Battery discharged', color: '#2fae6b' },
+  { key: 'battery_charge', label: 'Battery charged', color: '#7fd1a3', below: true },
+  { key: 'grid_import', label: 'Grid imported', color: '#d1453b' },
+  { key: 'grid_export', label: 'Grid exported', color: '#8a94a3', below: true },
+  { key: 'soc', label: 'SoC', color: '#34d399', pct: true },
+];
+
 function analyticsTab() {
   return {
     periods: (window.FWHCloudAnalytics && FWHCloudAnalytics.PERIODS) || ANALYTICS_PERIODS,
@@ -58,15 +87,18 @@ function analyticsTab() {
       { key: 'load_w', label: 'Home', color: '#a78bfa' },
       { key: 'generator_w', label: 'Generator', color: '#94a3b8' },
     ],
-    metrics: { soc: true, grid_w: true, solar_w: true, battery_w: true, load_w: true, generator_w: false },
+    metrics: { soc: true, grid_w: true, solar_w: true, battery_w: true, load_w: true, generator_w: false,
+               home: true, solar: true, battery_discharge: true, battery_charge: true, grid_import: true, grid_export: true },
     // the period, one for Local and Cloud, remembered in this browser
     period: (() => { try { const p = localStorage.getItem('fwh-analytics-period'); return ANALYTICS_PERIODS.some(x => x[0] === p) ? p : 'day5'; } catch (e) { return 'day5'; } })(),
     day: null,            // the site day the shown period holds ('YYYY-MM-DD'); null = today
     firstTs: null,        // the oldest stored sample for this gateway (epoch s)
     // line | area | bars, remembered in this browser like the Cloud view's style
-    chartType: (() => { try { const t = localStorage.getItem('fwh-analytics-style'); return ['line', 'area', 'bars'].includes(t) ? t : 'area'; } catch (e) { return 'area'; } })(),
+    // unset: lines for Day (5-min), bars for the kWh periods, as the Cloud view does
+    style: (() => { try { const t = localStorage.getItem('fwh-analytics-style'); return ['line', 'area', 'bars'].includes(t) ? t : null; } catch (e) { return null; } })(),
     series: [],
-    bucketS: null,        // the server's bucket size for the loaded series
+    bucketS: null,        // the server's bucket size for the loaded series (power only)
+    coverage: null,       // kWh periods: the share of the period with samples
     win: null,            // the {start, end} the loaded series was asked for
     loading: false,
     _chart: null,
@@ -173,23 +205,47 @@ function analyticsTab() {
       return this.firstTs != null && this.window.start <= this.firstTs;
     },
     setChartType(t) {
-      this.chartType = t;
+      this.style = t;
       try { localStorage.setItem('fwh-analytics-style', t); } catch (e) { /* private mode */ }
       this.render();
     },
     toggleMetric(k) { this.metrics[k] = !this.metrics[k]; this.render(); },
+    /** Day (5-min) is power in kW; the other periods are kWh per hour, day, month or year,
+     *  with Cloud's series, as the Cloud view shows them (owner, 2026-11-09). */
+    get energyMode() { return this.period !== 'day5'; },
+    get chips() { return this.energyMode ? ANALYTICS_ENERGY : this.metricDefs; },
+    get chartType() { return this.style || (this.energyMode ? 'bars' : 'line'); },
+    get unit() { return this.energyMode ? 'kWh' : 'kW'; },
 
     async load() {
       this.loading = true;
       try {
         const w = this.window;
-        const url = `api/metrics?start=${w.start}&end=${w.end}`
-          + (w.bucket ? `&bucket=${w.bucket}` : `&points=${w.points}`) + this.$store.app.gwQuery('&');
-        const d = await (await fetch(url)).json();
-        this.series = (d && d.series) || [];
-        this.bucketS = (d && d.bucket_s) || null;
-        this.firstTs = (d && d.first_ts) || null;
-        this.win = w;
+        if (this.energyMode) {
+          const edges = analyticsSlotEdges(this.period, w, this.offMin, Math.floor(Date.now() / 1000));
+          const d = await (await fetch(`api/metrics/energy?edges=${edges.join(',')}`
+            + this.$store.app.gwQuery('&'))).json();
+          // one row per slot that has samples: its start and end, each series' kWh, avg SoC
+          this.series = ((d && d.starts) || []).map((t, i) => {
+            const p = { ts: t, end: edges[i + 1], soc: d.soc[i] };
+            for (const k in d.series) p[k] = d.series[k][i];
+            return p;
+          }).filter(p => p.solar != null);
+          this.coverage = d ? d.coverage : null;
+          this.bucketS = null;
+          this.firstTs = (d && d.first_ts) || null;
+          this.win = { start: edges[0], end: edges[edges.length - 1] };
+          // Lifetime starts at the oldest sample, known only after the first read
+          if (this.period === 'lifetime' && this.firstTs && this.firstTs < edges[0]) { this.load(); return; }
+        } else {
+          const url = `api/metrics?start=${w.start}&end=${w.end}`
+            + (w.bucket ? `&bucket=${w.bucket}` : `&points=${w.points}`) + this.$store.app.gwQuery('&');
+          const d = await (await fetch(url)).json();
+          this.series = (d && d.series) || [];
+          this.bucketS = (d && d.bucket_s) || null;
+          this.firstTs = (d && d.first_ts) || null;
+          this.win = w;
+        }
         this.render();
       } catch (e) {
         this.series = [];
@@ -200,12 +256,19 @@ function analyticsTab() {
     /** Points for one metric, with a null wherever samples are missing, so the line breaks
      *  instead of being drawn straight across the gap. */
     pointsFor(key) {
+      const def = this.chips.find(m => m.key === key) || {};
+      // kWh: one point mid-slot; power: kW (SoC stays %)
+      if (this.energyMode) {
+        return this.series.map(p => ({ x: (p.ts + p.end) / 2,
+          y: p[key] == null ? null : def.below ? -p[key] : p[key] }));
+      }
+      const scale = def.pct ? 1 : 1000;
       const out = [];
       const gap = (this.bucketS || 60) * 2.5;
       let prev = null;
       for (const p of this.series) {
         if (prev != null && p.ts - prev > gap) out.push({ x: prev + (this.bucketS || 60), y: null });
-        out.push({ x: p.ts, y: p[key] == null ? null : p[key] });
+        out.push({ x: p.ts, y: p[key] == null ? null : p[key] / scale });
         prev = p.ts;
       }
       return out;
@@ -243,7 +306,7 @@ function analyticsTab() {
         const self = this;
         // Bars draw each bucket's power as a bar; SoC (its own % axis) stays a line.
         const bars = this.chartType === 'bars';
-        const datasets = this.metricDefs.filter(m => this.metrics[m.key]).map(m => ({
+        const datasets = this.chips.filter(m => this.metrics[m.key]).map(m => ({
           type: bars && !m.pct ? 'bar' : 'line',
           order: m.pct ? 0 : 1,
           label: m.label,
@@ -266,7 +329,13 @@ function analyticsTab() {
               legend: { display: false },
               tooltip: {
                 enabled: true,
-                callbacks: { title: (items) => items.length ? self.stamp(items[0].parsed.x) : '' },
+                callbacks: {
+                  title: (items) => !items.length ? ''
+                    : self.energyMode ? self.slotLabel(self.series[items[0].dataIndex]) : self.stamp(items[0].parsed.x),
+                  label: (it) => it.parsed.y == null ? null : `${it.dataset.label}: `
+                    + (it.dataset.yAxisID === 'y1' ? it.parsed.y + ' %'
+                      : Math.abs(it.parsed.y).toFixed(Math.abs(it.parsed.y) >= 100 ? 0 : 2) + ' ' + self.unit),
+                },
               },
             },
             scales: {
@@ -286,7 +355,7 @@ function analyticsTab() {
                 },
                 grid: { color: 'rgba(148,163,184,.08)' },
               },
-              y: { position: 'left', title: { display: true, text: 'W', color: '#64748b' },
+              y: { position: 'left', title: { display: true, text: self.unit, color: '#64748b' },
                    ticks: { color: '#64748b', font: { size: 10 } },
                    grid: { color: 'rgba(148,163,184,.08)' } },
               y1: { position: 'right', min: 0, max: 100,
@@ -300,10 +369,32 @@ function analyticsTab() {
       });
     },
 
+    /** A kWh slot's name in the readout: the hour, the day, the month or the year. */
+    slotLabel(p) {
+      if (!p) return '';
+      if (this.period === 'dayhour') return this.stamp(p.ts) + '–' + this.hhmm(p.end);
+      if (this.period === 'week' || this.period === 'month') {
+        return new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+          .format(this.siteDate(p.ts));
+      }
+      if (this.period === 'year') {
+        return new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(this.siteDate(p.ts));
+      }
+      return String(this.siteDate(p.ts).getUTCFullYear());
+    },
+
     /** What the chart actually shows: samples, bucket, first → last, and the zone. */
     get caption() {
       const s = this.series;
       if (!s.length) return '';
+      if (this.energyMode) {
+        const noun = { dayhour: 'hour', week: 'day', month: 'day', year: 'month', lifetime: 'year' }[this.period];
+        let txt = `kWh per ${noun}, summed from this bridge's power samples (an estimate, not a meter)`
+          + (this.coverage != null ? ` · samples for ${Math.round(this.coverage * 100)}% of the period` : '')
+          + ` · ${this.zoneLabel}`;
+        if (this.firstTs) txt += ` · history from ${this.dayLabel(this.firstTs, true)}`;
+        return txt;
+      }
       const b = this.bucketS;
       const bucket = !b ? '' : b < 3600 ? ` · ${Math.round(b / 60)}-min buckets` : ` · ${+(b / 3600).toFixed(1)}-h buckets`;
       let txt = `${s.length} points${bucket} · data ${this.stamp(s[0].ts)} → ${this.stamp(s[s.length - 1].ts)}`
@@ -317,6 +408,16 @@ function analyticsTab() {
     get stats() {
       const s = this.series;
       if (!s.length) return [];
+      if (this.energyMode) {
+        const sum = (k) => s.reduce((t, p) => t + (p[k] || 0), 0);
+        const kwh = (v) => (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + ' kWh';
+        return [
+          { label: 'Solar', value: kwh(sum('solar')) },
+          { label: 'Home', value: kwh(sum('home')) },
+          { label: 'Grid imported', value: kwh(sum('grid_import')) },
+          { label: 'Grid exported', value: kwh(sum('grid_export')) },
+        ];
+      }
       const nums = (k) => s.map(p => p[k]).filter(v => typeof v === 'number');
       const avg = (a) => a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : null;
       const socs = nums('soc');

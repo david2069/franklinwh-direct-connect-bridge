@@ -6846,6 +6846,58 @@ def create_app() -> FastAPI:
             },
         }
 
+    @app.get("/api/metrics/energy")
+    def api_metrics_energy(
+        edges: str = Query(..., description="slot boundaries, epoch seconds, comma-separated"),
+        gateway: str = Depends(_gateway_q),
+    ):
+        """kWh per slot (an hour, day, month or year on the site's calendar; the page sends
+        the boundaries), as Cloud shows it: home, solar, battery charged and discharged,
+        grid imported and exported, plus each slot's average SoC. Summed from the power
+        samples the same way as Energy Flow, so an estimate, not a meter. A slot with no
+        samples is null, never 0."""
+        import bisect
+        try:
+            e = [int(x) for x in edges.split(",")]
+        except ValueError:
+            raise HTTPException(400, "edges must be epoch seconds") from None
+        if not 2 <= len(e) <= 400 or any(b <= a for a, b in zip(e, e[1:])):
+            raise HTTPException(400, "edges: 2 to 400 increasing times")
+        keys = ("home", "solar", "battery_discharge", "battery_charge", "grid_import", "grid_export")
+        n = len(e) - 1
+        series = {k: [None] * n for k in keys}
+        soc: list = [None] * n
+        out = {"unit": "kWh", "starts": e[:-1], "series": series, "soc": soc, "coverage": 0.0,
+               "first_ts": None}
+        store = db.get_store(get_settings())
+        if store is None:
+            return out
+        gw_key = _metrics_gw_key(gateway)
+        out["first_ts"] = store.first_ts(gw_key)
+        end = min(e[-1], int(time.time()))
+        if end <= e[0]:
+            return out
+        bucket = db.history_bucket(e[0], max(60, (end - e[0]) // 20000))
+        rows = store.query(e[0], end, bucket, gateway=gw_key)
+        slots: list[list[dict]] = [[] for _ in range(n)]
+        for r in rows:
+            i = bisect.bisect_right(e, r["ts"]) - 1
+            if 0 <= i < n:
+                slots[i].append({**r, "home_w": r.get("load_w")})
+        covered = 0.0
+        for i, rs in enumerate(slots):
+            if not rs:
+                continue
+            flows = _eflow.integrate(rs + [{**rs[-1], "ts": min(e[i + 1], rs[-1]["ts"] + bucket)}])
+            covered += flows["covered_s"]
+            nodes = _eflow.node_totals(flows)
+            for k in keys:
+                series[k][i] = nodes[k]
+            vals = [r["soc"] for r in rs if r.get("soc") is not None]
+            soc[i] = round(sum(vals) / len(vals), 1) if vals else None
+        out["coverage"] = round(covered / (end - e[0]), 3)            # of the time so far
+        return out
+
     @app.get("/api/solar/forecast")
     def api_solar_forecast(force: bool = Query(False)):
         """Weather + PV production forecast from Open-Meteo, scaled to the configured

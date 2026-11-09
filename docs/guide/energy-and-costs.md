@@ -77,12 +77,20 @@ then **Local | Cloud**, **Export ▾** and **Refresh**. In the chart card, step 
 pick a day, or press **Today**: **‹ ›** move by the period (a day, a Monday-to-Sunday week, a
 month or a year on the site's calendar), the day picker shows the period that holds that
 day, and **Today** comes back to the current one. **‹** stops at the oldest stored sample;
-the caption under the chart says where the history starts ("history from …"). Local reads
-Day (5-min) in 5-minute buckets, Day (hourly), Week and Month hourly, and Year and Lifetime
-in about 400 buckets; a period older than the stored history is shown empty. The chips
-(SoC, Grid, Solar, Battery, Home, Generator) under the chart show or hide each series;
-**Line | Area | Bars** beside them picks the style (SoC, on its own % axis, stays a line).
-Dates are in your browser's own format.
+the caption under the chart says where the history starts ("history from …").
+
+Local shows the same quantity as Cloud: Day (5-min) is power in **kW** (5-minute averages), and Day (hourly), Week, Month, Year and Lifetime are **kWh** per hour, day,
+month or year with Cloud's series (home, solar, battery discharged and charged, grid
+imported and exported; charge and export below zero) plus the average SoC. Local's kWh are
+summed from the bridge's power samples, as Energy Flow does, so they are an estimate, not a
+meter; the caption says what share of the period has samples, and a slot with none is
+left empty. The strip under the chart shows the period's totals. A period older than the
+stored history is shown empty. The chips
+under the chart (SoC, Grid, Solar, Battery, Home, Generator for a day; Cloud's series for
+the kWh periods) show or hide each series;
+**Line | Area | Bars** beside them picks the style (SoC, on its own % axis, stays a line);
+until one is picked, a day draws lines and the kWh periods bars, as Cloud does. Dates are in
+your browser's own format.
 
 ### Local or Cloud
 
