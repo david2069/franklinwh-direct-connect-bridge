@@ -114,6 +114,12 @@ FranklinWH cloud's energy history for the gateway picked in the top bar:
 | Year | each month's kWh |
 | Lifetime | each year's kWh |
 
+The cloud's other fields with data for the period get their own chips, which start off:
+home from solar, grid and battery; battery charged from solar and grid; export from solar and
+battery; and on a day, each 5-minute flow (solar → home, grid → battery, …). They take their
+source's colour, dashed or lighter. Fields with no data (V2L, solar sub-meters) get no chip,
+but **Export ▾ → JSON** includes every array the cloud returned.
+
 Pick the period from the time span in the top row, then step with **‹ ›**, choose a date, or press
 **Today** to come back to the current period; Week starts on
 its Monday, and Month and Year on the 1st. Battery discharge and grid import are drawn
