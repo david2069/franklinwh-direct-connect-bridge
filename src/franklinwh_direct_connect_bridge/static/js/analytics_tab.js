@@ -114,6 +114,7 @@ function analyticsTab() {
     // the styled date picker: open, and the day its calendar shows
     pickerOpen: false,
     pickerCursor: null,
+    atTime: null,         // Day views: the picker's time ('HH:MM'); the readout opens there
     // Flow (#543): the period's arcs in kWh, where they came from, and what went wrong
     flow: null,
     flowNote: '',
@@ -295,7 +296,49 @@ function analyticsTab() {
       if (this.period === 'year') return String(y);
       if (this.period === 'month') return f({ month: 'long', year: 'numeric' });
       const day = f({ day: 'numeric', month: 'short', year: 'numeric' });
+      if (this.timeMode && this.atTime) return day + ' · ' + this.atTime;
       return this.period === 'week' ? 'Week of ' + day : day;
+    },
+    /** The picker takes a time on the Day views (owner, 2026-11-10), not on Flow. */
+    get timeMode() { return (this.period === 'day5' || this.period === 'dayhour') && this.chartType !== 'flow'; },
+    get pickerHours() { return Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')); },
+    /** Day (5-min): the minute snaps to the 5-minute slots. */
+    get pickerMinutes() { return Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0')); },
+    get atHour() { return this.atTime ? this.atTime.slice(0, 2) : ''; },
+    get atMinute() { return this.atTime && this.period === 'day5' ? this.atTime.slice(3) : '00'; },
+    /** A time picked: Day (hourly) snaps to the hour; '' clears it. */
+    setAtTime(h, m) {
+      this.atTime = h === '' ? null : `${h}:${this.period === 'day5' ? m || '00' : '00'}`;
+      this.showAtTime();
+    },
+    /** The readout at the picked time, on whichever chart is shown. */
+    showAtTime() {
+      const t = this.timeMode ? this.atTime : null;
+      if (this.source === 'cloud') { if (this._cloud && this._cloud.showAt) this._cloud.showAt(t); }
+      else this.showLocalAt();
+    },
+    /** Local: Chart.js's own readout at the slot holding the picked time. */
+    showLocalAt() {
+      const c = this._chart && Alpine.raw(this._chart);   // Chart.js breaks behind Alpine's proxy
+      if (!c) return;
+      if (!this.timeMode || !this.atTime) { c.setActiveElements([]); c.tooltip.setActiveElements([], { x: 0, y: 0 }); c.update(); return; }
+      const [h, m] = this.atTime.split(':').map(Number);
+      const ts = this.window.start + h * 3600 + m * 60;
+      const active = [];
+      const series = Alpine.raw(this.series);
+      c.data.datasets.forEach((d, di) => {
+        let best = -1, gap = Infinity;
+        d.data.forEach((p, i) => {
+          if (p.y == null) return;
+          const g = this.energyMode ? (series[i] && series[i].ts <= ts && ts < series[i].end ? 0 : Infinity) : Math.abs(p.x - ts);
+          if (g < gap) { gap = g; best = i; }
+        });
+        if (best >= 0 && gap <= (this.energyMode ? 0 : 300)) active.push({ datasetIndex: di, index: best });
+      });
+      const a = c.chartArea;
+      c.setActiveElements(active);
+      c.tooltip.setActiveElements(active, { x: c.scales.x.getPixelForValue(ts), y: a.top + (a.bottom - a.top) / 3 });
+      c.update();
     },
     get pickerMode() { return this.period === 'year' ? 'years' : this.period === 'month' ? 'months' : 'days'; },
     openPicker() { this.pickerCursor = this.startDay; this.pickerOpen = !this.pickerOpen; },
@@ -356,6 +399,7 @@ function analyticsTab() {
       if (this.source === 'cloud') {
         if (!this._cloud) this.mountCloud();
         else this._cloud.setPeriod(this.period, this.startDay);
+        this.showAtTime();      // the package opens it again once the period has loaded
         return;
       }
       this.loading = true;
@@ -530,6 +574,7 @@ function analyticsTab() {
         };
         if (this._chart) this._chart.destroy();
         this._chart = new Chart(el, cfg);
+        if (this.timeMode && this.atTime) this.showLocalAt();
       });
     },
 

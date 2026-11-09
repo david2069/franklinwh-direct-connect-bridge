@@ -675,6 +675,16 @@ select.form-control:not([multiple]):not([size]) {
 .sankey-arc { transition: fill-opacity .15s; }
 .sankey-arc:hover,
 .sankey-arc:focus { fill-opacity: .75; outline: none; }
+.sankey-svg.has-active .sankey-arc:not(.is-active) { fill-opacity: .2; }
+.sankey-arc.is-active { fill-opacity: .8; }
+.sankey-tip {
+  position: absolute; z-index: 5; pointer-events: none; white-space: nowrap;
+  background: var(--surface-1); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 8px; font-size: 12px; font-variant-numeric: tabular-nums;
+  box-shadow: 0 4px 12px rgba(0,0,0,.25);
+}
+.sankey-tip b { font-weight: 600; margin-right: 4px; }
 .sankey-label { font-size: 11px; font-weight: 600; fill: var(--text-primary); }
 .sankey-value { font-size: 10px; fill: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .sankey-empty {

@@ -56,6 +56,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   notification goes out after any battery dispatch the bridge holds is
   released, and before notifications shut down, waiting at most 3 s (Home Assistant stops
   an add-on after 10 s).
+- **Energy flow: hover or tap a flow to see what it carried** (#543): on the Dashboard card
+  and in Analytics → Flow, a label such as "Solar → Battery 321.7 kWh" appears over the
+  flow, which stays bright while the others dim. Keyboard focus shows it too.
+- **Analytics: a time in the date picker on the Day views** (#543): on Day (5-min) the
+  calendar takes an hour and minute (in 5-minute steps), on Day (hourly) an hour; the chart,
+  Local or Cloud, then opens with its readout at that time, and the date button shows it
+  ("9 Nov 2026 · 14:30"). **Clear** takes it away. franklinwh-ha-cloud-analytics 0.1.20.
 
 ### Changed
 - **Analytics: one top row and the same periods for Local and Cloud** (owner). The time span
@@ -79,7 +86,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   (every few bars from the first, under the bar). Cloud's chips look like
   Local's, and its detailed metrics (solar → battery, export from solar, …) are ticked under
   **Details ▾** (it scrolls, and follows the dark theme) instead of being a row of chips.
-  franklinwh-ha-cloud-analytics 0.1.19.
+  franklinwh-ha-cloud-analytics 0.1.20.
 - **Analytics → Flow: the Energy Flow Sankey for any period, Local or Cloud** (#543): a
   fourth chart type, **Flow**, beside Line | Area | Bars, draws the Sankey for the shown
   time span and day (Day to Lifetime). Local is this bridge's estimate with its coverage;
