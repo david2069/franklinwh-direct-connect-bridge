@@ -72,7 +72,7 @@ def test_the_page_reads_kwh_slots_and_shows_kw_for_a_day():
     assert "get energyMode() { return this.period !== 'day5'; }" in JS
     assert "get unit() { return this.energyMode ? 'kWh' : 'kW'; }" in JS
     assert "text: self.unit" in JS and "text: 'W'" not in JS
-    assert "p[key] / scale" in JS                    # power in kW, SoC stays %
+    assert "p[key]) / scale" in JS                    # power in kW, SoC stays %
     for k in ("battery_discharge", "battery_charge", "grid_import", "grid_export"):
         assert f"key: '{k}'" in JS
     assert 'x-for="m in chips"' in HTML

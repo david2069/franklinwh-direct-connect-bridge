@@ -73,11 +73,12 @@ goes back further than the aGate's.
 
 Local and Cloud share one layout. The top row has the time span (Day (5-min), Day (hourly),
 Week, Month, Year or Lifetime; one choice for both sources, remembered in this browser) and
-**Line | Area | Bars** (also one choice for both),
-then **Local | Cloud**, **Export ▾** and **Refresh**. In the chart card, step with **‹ ›**,
-pick a day, or press **Today**: **‹ ›** move by the period (a day, a Monday-to-Sunday week, a
-month or a year on the site's calendar), the day picker shows the period that holds that
-day, and **Today** comes back to the current one. **‹** stops at the oldest stored sample;
+**Line | Area | Bars | Flow** (also one choice for both; with Bars, **Stack** piles each
+slot's sources above zero and its uses below), then **Local | Cloud**, **Export ▾** and
+**Refresh**. Under it, one date picker serves Local, Cloud and Flow: **‹ ›** move by the
+period (a day, a Monday-to-Sunday week, a month or a year on the site's calendar), the
+period button (9 Nov 2026, Week of 2 Nov 2026, October 2026, 2026) opens a calendar of days,
+months or years to pick from, and **Today** comes back to the current one. **‹** stops at the oldest stored sample;
 the caption under the chart says where the history starts ("history from …").
 
 Local shows the same quantity as Cloud: Day (5-min) is power in **kW** (5-minute averages), and Day (hourly), Week, Month, Year and Lifetime are **kWh** per hour, day,
@@ -115,7 +116,8 @@ FranklinWH cloud's energy history for the gateway picked in the top bar:
 | Year | each month's kWh |
 | Lifetime | each year's kWh |
 
-The cloud's other fields with data for the period get their own chips, which start off:
+The cloud's other fields with data for the period are listed under **Details ▾**, after the
+chips; tick one to give it a chip (remembered):
 home from solar, grid and battery; battery charged from solar and grid; export from solar and
 battery; and on a day, each 5-minute flow (solar → home, grid → battery, …). They take their
 source's colour, dashed or lighter. Fields with no data (V2L, solar sub-meters) get no chip,

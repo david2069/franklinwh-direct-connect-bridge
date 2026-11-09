@@ -31,6 +31,12 @@
                 title="Energy Flow: where the period's energy came from and went"
                 @click="setChartType('flow')">Flow</button>
       </div>
+      <button class="btn btn-secondary btn-sm inline-flex items-center gap-1" x-show="chartType === 'bars'" x-cloak
+              aria-label="Stacked bars" :aria-pressed="stacked" @click="setStacked(!stacked)"
+              :class="stacked ? 'bg-slate-700 text-slate-100' : ''"
+              title="Stacked: where the energy came from above zero, where it went below">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 2h4v5H3zM3 9h4v5H3zM9 5h4v3H9zM9 10h4v4H9z"/></svg>Stack
+      </button>
     </div>
     <div class="flex items-center gap-2 flex-wrap">
       <div class="inline-flex rounded-lg overflow-hidden border" style="border-color:var(--border)" role="tablist" aria-label="Source">
@@ -60,6 +66,60 @@
     </div>
   </div>
 
+  <!-- One date picker for Local, Cloud and Flow (owner, 2026-11-10): ‹ period › Today, a
+       styled calendar (days, months or years) rather than the browser's own date input. -->
+  <div class="flex items-center justify-end gap-1 flex-wrap" x-show="period !== 'lifetime'">
+    <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="stepWindow(-1)" :disabled="loading || atOldest"
+            aria-label="Earlier" :title="atOldest ? 'No stored history before this' : 'Earlier'">‹</button>
+    <div class="relative" @click.outside="pickerOpen = false" @keydown.escape.window="pickerOpen = false">
+      <button class="btn btn-secondary btn-sm inline-flex items-center gap-1.5 min-w-[9.5rem] justify-center" aria-label="Pick a date"
+              aria-haspopup="dialog" :aria-expanded="pickerOpen" @click="openPicker()">
+        <svg class="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+        <span x-text="periodLabel"></span>
+      </button>
+      <div x-show="pickerOpen" x-cloak role="dialog" aria-label="Pick a date"
+           class="absolute right-0 mt-1 z-40 w-72 rounded-xl border shadow-xl p-3 space-y-2"
+           style="background:var(--surface-1);border-color:var(--border)">
+        <div class="flex items-center justify-between">
+          <button class="btn btn-secondary btn-sm" @click="pickerStep(-1)" aria-label="Earlier in the calendar">‹</button>
+          <span class="text-sm font-semibold" style="color:var(--text-primary)" x-text="pickerTitle"></span>
+          <button class="btn btn-secondary btn-sm disabled:opacity-40" @click="pickerStep(1)" :disabled="pickerAtEnd" aria-label="Later in the calendar">›</button>
+        </div>
+        <template x-if="pickerMode === 'days'">
+          <div class="grid grid-cols-7 gap-0.5 text-center text-xs">
+            <template x-for="w in ['Mo','Tu','We','Th','Fr','Sa','Su']" :key="w"><span class="py-1 text-slate-500" x-text="w"></span></template>
+            <template x-for="c in pickerDays" :key="c.iso">
+              <button class="py-1.5 rounded-md transition disabled:opacity-25 disabled:cursor-default"
+                      :class="c.sel ? 'bg-emerald-500/25 text-emerald-300 font-semibold' : (c.inMonth ? 'hover:bg-white/[0.08]' : 'opacity-50 hover:bg-white/[0.08]')"
+                      :style="c.today && !c.sel ? 'outline:1px solid var(--border)' : ''"
+                      :disabled="c.off" @click="pick(c.iso)" :aria-label="c.iso" x-text="c.d"></button>
+            </template>
+          </div>
+        </template>
+        <template x-if="pickerMode === 'months'">
+          <div class="grid grid-cols-3 gap-1 text-sm">
+            <template x-for="m in pickerMonths" :key="m.iso">
+              <button class="py-2 rounded-md transition disabled:opacity-25 disabled:cursor-default"
+                      :class="m.sel ? 'bg-emerald-500/25 text-emerald-300 font-semibold' : 'hover:bg-white/[0.08]'"
+                      :disabled="m.off" @click="pick(m.iso)" x-text="m.label"></button>
+            </template>
+          </div>
+        </template>
+        <template x-if="pickerMode === 'years'">
+          <div class="grid grid-cols-3 gap-1 text-sm">
+            <template x-for="y in pickerYears" :key="y.iso">
+              <button class="py-2 rounded-md transition disabled:opacity-25 disabled:cursor-default"
+                      :class="y.sel ? 'bg-emerald-500/25 text-emerald-300 font-semibold' : 'hover:bg-white/[0.08]'"
+                      :disabled="y.off" @click="pick(y.iso)" x-text="y.label"></button>
+            </template>
+          </div>
+        </template>
+      </div>
+    </div>
+    <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="stepWindow(1)" :disabled="loading || atToday" aria-label="Later" title="Later">›</button>
+    <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="goToday()" :disabled="loading || atToday" title="Back to today">Today</button>
+  </div>
+
   <!-- Cloud: the shared panel draws its dates and chart; the period comes from the top row. -->
   <div class="card" x-show="source === 'cloud' && chartType !== 'flow'" x-cloak>
     <!-- Only while the cloud account is missing or refused; hidden once it works. -->
@@ -72,14 +132,6 @@
   <div class="card space-y-3" x-show="chartType === 'flow'" x-cloak>
     <p class="text-sm" style="color:var(--text-secondary)" x-show="source === 'cloud' && !$store.app.cloudAvailable">Cloud account:
       <button class="underline" style="color:var(--accent, #34d399)" @click="openCloudSettings()">Settings → Integrations → FranklinWH Cloud API</button></p>
-    <div class="flex items-center justify-end gap-1 flex-wrap" x-show="period !== 'lifetime'">
-      <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="stepWindow(-1)" :disabled="loading || atOldest"
-              aria-label="Earlier" :title="atOldest ? 'No stored history before this' : 'Earlier'">‹</button>
-      <input type="date" class="form-control form-control-sm" style="width:auto" aria-label="Day" :value="startDay"
-             :max="today" @change="jumpTo($event.target.value)">
-      <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="stepWindow(1)" :disabled="loading || atToday" aria-label="Later" title="Later">›</button>
-      <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="goToday()" :disabled="loading || atToday" title="Back to today">Today</button>
-    </div>
     <p class="text-sm py-10 text-center" style="color:var(--text-secondary)" x-show="flowErr" x-text="flowErr"></p>
     <div class="fwh-sankey" x-ref="flow" x-show="!flowErr" style="min-height:380px"></div>
     <template x-if="flow && !flowErr">
@@ -102,18 +154,8 @@
   </div>
 
   <div class="space-y-4" x-show="source === 'local' && chartType !== 'flow'">
-  <!-- One card, laid out as the Cloud view (owner, 2026-11-09): ‹ day › Today; the chart;
-       the chips and Line | Area | Bars under it. -->
+  <!-- One card, laid out as the Cloud view (owner, 2026-11-09): the chart, the chips under it. -->
   <div class="card space-y-3">
-    <!-- step by the period; ‹ stops at the oldest stored sample -->
-    <div class="flex items-center justify-end gap-1 flex-wrap" x-show="period !== 'lifetime'">
-      <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="stepWindow(-1)" :disabled="loading || atOldest"
-              aria-label="Earlier" :title="atOldest ? 'No stored history before this' : 'Earlier'">‹</button>
-      <input type="date" class="form-control form-control-sm" style="width:auto" aria-label="Day" :value="startDay"
-             :min="firstTs ? toSiteLocal(firstTs).slice(0, 10) : null" :max="today" @change="jumpTo($event.target.value)">
-      <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="stepWindow(1)" :disabled="loading || atToday" aria-label="Later" title="Later">›</button>
-      <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="goToday()" :disabled="loading || atToday" title="Back to today">Today</button>
-    </div>
 
     <div x-show="!series.length && !loading" class="text-sm text-slate-500 py-16 text-center">
       No samples in this period.

@@ -40,7 +40,8 @@ def test_the_cloud_panel_takes_the_shared_picker():
     m = JS[JS.index("FWHCloudAnalytics.mount("):][:400]
     assert "periodPicker: false" in m and "period: this.period" in m
     body = JS[JS.index("setPeriod(v) {"):][:500]
-    assert "this._cloud.setPeriod(v)" in body and "this.load()" in body
+    assert "this.load()" in body                                    # load() hands Cloud its period
+    assert "this._cloud.setPeriod(this.period, this.startDay)" in JS
 
 
 def test_local_steps_by_calendar_period_on_the_sites_clock():

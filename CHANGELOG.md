@@ -64,12 +64,21 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   or year like Cloud; 24 hours, 3 days, 7 days, 30 days and Custom are gone. **Local |
   Cloud**, **Export ▾** (CSV, JSON) and **Refresh** are on the same row. Cloud panel
   franklinwh-ha-cloud-analytics 0.1.6 (the host's picker).
+- **Analytics: one styled date picker, Stack for both, Details ▾ for Cloud** (owner): the
+  browser's own date input (a different size on each card) is replaced by one picker above
+  Local, Cloud and Flow: **‹ period › Today**, where the period button (9 Nov 2026, Week
+  of 2 Nov 2026, October 2026, 2026) opens a calendar of days, months or years; it offers
+  nothing after today, nor, on Local, before the oldest sample. **Stack** sits beside Line
+  | Area | Bars | Flow when Bars is picked and stacks Local's bars too (sources above zero,
+  home, charging and export below). Cloud's chips look like Local's, and its detailed
+  metrics (solar → battery, export from solar, …) are ticked under **Details ▾** instead of
+  being a row of chips. franklinwh-ha-cloud-analytics 0.1.15.
 - **Analytics → Flow: the Energy Flow Sankey for any period, Local or Cloud** (#543): a
   fourth chart type, **Flow**, beside Line | Area | Bars, draws the Sankey for the shown
   time span and day (Day to Lifetime). Local is this bridge's estimate with its coverage;
   Cloud is the FranklinWH cloud's own metered breakdown. The period's totals are under the
   diagram, and **Export ▾** downloads them. `GET /api/energy/flow` takes spans up to 10
-  years and returns `first_ts`. franklinwh-ha-cloud-analytics 0.1.12 (`flows`).
+  years and returns `first_ts`.
 - **Dashboard → Energy Flow says where its data comes from** (#543): signed in to the
   cloud, the card shows the cloud's metered breakdown with a cloud icon; otherwise this
   bridge's estimate with a slashed cloud and "Local · N days of data" (Local again if the

@@ -108,6 +108,11 @@ function analyticsTab() {
     // line | area | bars | flow, remembered in this browser like the Cloud view's style
     // unset: lines for Day (5-min), bars for the kWh periods, as the Cloud view does
     style: (() => { try { const t = localStorage.getItem('fwh-analytics-style'); return ['line', 'area', 'bars', 'flow'].includes(t) ? t : null; } catch (e) { return null; } })(),
+    // Stacked bars (owner, 2026-11-10): sources above zero, uses below; Local and Cloud
+    stacked: (() => { try { return localStorage.getItem('fwh-analytics-stacked') === '1'; } catch (e) { return false; } })(),
+    // the styled date picker: open, and the day its calendar shows
+    pickerOpen: false,
+    pickerCursor: null,
     // Flow (#543): the period's arcs in kWh, where they came from, and what went wrong
     flow: null,
     flowNote: '',
@@ -132,8 +137,8 @@ function analyticsTab() {
         if (this.chartType === 'flow') this.loadFlow();
         else if (this.source === 'cloud') { if (this._cloud) this._cloud.reload(); } else this.load();
       });
-      lazyTab(this, 'analytics', () => (this.chartType === 'flow' ? this.loadFlow()
-        : this.source === 'cloud' ? this.mountCloud() : this.load()));
+      lazyTab(this, 'analytics', () => this.load());
+
       // The Dashboard's Energy Flow card opens its period here (#543).
       window.addEventListener('fwh-analytics-flow', (e) => {
         const d = e.detail || {};
@@ -156,8 +161,7 @@ function analyticsTab() {
     setSource(src) {
       this.source = src;
       try { localStorage.setItem('fwh-analytics-source', src); } catch (e) { /* private mode */ }
-      if (this.chartType === 'flow') { this.loadFlow(); return; }
-      if (src === 'cloud') { this.mountCloud(); if (this._cloud) this._cloud.setPeriod(this.period); } else this.load();
+      this.load();
     },
 
     /** Settings → Integrations, scrolled to the FranklinWH Cloud API card. */
@@ -175,6 +179,8 @@ function analyticsTab() {
         periodPicker: false, period: this.period,        // the picker at the top serves both
         height: 380,                                      // as tall as the Local chart
         styleControl: false, style: this.style,           // Line | Area | Bars at the top serves both
+        stackControl: false, stacked: this.stacked,       // and Stack
+        navControl: false, date: this.startDay,           // and the date picker
       });
     },
 
@@ -222,8 +228,7 @@ function analyticsTab() {
     setPeriod(v) {
       this.period = v;
       try { localStorage.setItem('fwh-analytics-period', v); } catch (e) { /* private mode */ }
-      if (this.source === 'cloud' && this._cloud) this._cloud.setPeriod(v);
-      if (this.chartType === 'flow' || this.source === 'local') this.load();
+      this.load();
     },
     /** The day picker: the period that holds that day. */
     jumpTo(day) {
@@ -253,7 +258,6 @@ function analyticsTab() {
       try { localStorage.setItem('fwh-analytics-style', t); } catch (e) { /* private mode */ }
       if (this._cloud && t !== 'flow') this._cloud.setStyle(t);
       if (t === 'flow') this.loadFlow();
-      else if (wasFlow && this.source === 'cloud') { this.mountCloud(); if (this._cloud) { this._cloud.setStyle(t); this._cloud.setPeriod(this.period); } }
       else if (wasFlow) this.load();
       else this.render();
     },
@@ -265,8 +269,85 @@ function analyticsTab() {
     get chartType() { return this.style || (this.energyMode ? 'bars' : 'line'); },
     get unit() { return this.energyMode ? 'kWh' : 'kW'; },
 
+    setStacked(on) {
+      this.stacked = on;
+      try { localStorage.setItem('fwh-analytics-stacked', on ? '1' : '0'); } catch (e) { /* private mode */ }
+      if (this._cloud) this._cloud.setStacked(on);
+      this.render();
+    },
+
+    // ---- the date picker ------------------------------------------------------------
+    /** The shown period, as the button says it: 9 Nov 2026, Week of 2 Nov 2026, October
+     *  2026, 2026 (in the browser's own format). */
+    get periodLabel() {
+      const [y, m, d] = this.startDay.split('-').map(Number), at = new Date(Date.UTC(y, m - 1, d));
+      const f = (o) => new Intl.DateTimeFormat(undefined, Object.assign({ timeZone: 'UTC' }, o)).format(at);
+      if (this.period === 'year') return String(y);
+      if (this.period === 'month') return f({ month: 'long', year: 'numeric' });
+      const day = f({ day: 'numeric', month: 'short', year: 'numeric' });
+      return this.period === 'week' ? 'Week of ' + day : day;
+    },
+    get pickerMode() { return this.period === 'year' ? 'years' : this.period === 'month' ? 'months' : 'days'; },
+    openPicker() { this.pickerCursor = this.startDay; this.pickerOpen = !this.pickerOpen; },
+    /** The oldest day there is: this bridge's first sample; the cloud's history is its own. */
+    get minDay() { return this.source === 'local' && this.firstTs ? this.toSiteLocal(this.firstTs).slice(0, 10) : null; },
+    get pickerTitle() {
+      const [y, m] = (this.pickerCursor || this.startDay).split('-').map(Number);
+      if (this.pickerMode === 'years') return `${y - 8} – ${y + 3}`;
+      if (this.pickerMode === 'months') return String(y);
+      return new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, 1)));
+    },
+    /** ‹ › inside the calendar: a month, a year, or twelve years. */
+    pickerStep(dir) {
+      const [y, m] = (this.pickerCursor || this.startDay).split('-').map(Number);
+      const t = this.pickerMode === 'days' ? Date.UTC(y, m - 1 + dir, 1)
+        : Date.UTC(y + dir * (this.pickerMode === 'years' ? 12 : 1), 0, 1);
+      this.pickerCursor = new Date(t).toISOString().slice(0, 10);
+    },
+    get pickerAtEnd() {
+      const c = this.pickerCursor || this.startDay;
+      return this.pickerMode === 'days' ? c.slice(0, 7) >= this.today.slice(0, 7)
+        : this.pickerMode === 'months' ? c.slice(0, 4) >= this.today.slice(0, 4) : +c.slice(0, 4) + 3 >= +this.today.slice(0, 4);
+    },
+    /** Six Monday-to-Sunday weeks around the cursor's month; a week period marks its week. */
+    get pickerDays() {
+      const [y, m] = (this.pickerCursor || this.startDay).split('-').map(Number);
+      const first = Date.UTC(y, m - 1, 1), lead = (new Date(first).getUTCDay() + 6) % 7;
+      const minDay = this.minDay, sel = this.startDay;
+      const weekEnd = analyticsStepDay('week', sel, 1);
+      return Array.from({ length: 42 }, (_, i) => {
+        const iso = new Date(first + (i - lead) * 86400000).toISOString().slice(0, 10);
+        return { iso, d: +iso.slice(8), inMonth: +iso.slice(5, 7) === m, today: iso === this.today,
+                 off: iso > this.today || (minDay != null && iso < minDay),
+                 sel: this.period === 'week' ? iso >= sel && iso < weekEnd : iso === sel };
+      });
+    },
+    get pickerMonths() {
+      const y = +(this.pickerCursor || this.startDay).slice(0, 4), minDay = this.minDay;
+      return Array.from({ length: 12 }, (_, i) => {
+        const iso = `${y}-${String(i + 1).padStart(2, '0')}-01`;
+        return { iso, label: new Intl.DateTimeFormat(undefined, { month: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(y, i, 1))),
+                 off: iso > this.today || (minDay != null && iso.slice(0, 7) < minDay.slice(0, 7)), sel: iso === this.startDay };
+      });
+    },
+    get pickerYears() {
+      const y = +(this.pickerCursor || this.startDay).slice(0, 4), minDay = this.minDay;
+      return Array.from({ length: 12 }, (_, i) => {
+        const yy = y - 8 + i, iso = `${yy}-01-01`;
+        return { iso, label: String(yy), off: iso > this.today || (minDay != null && String(yy) < minDay.slice(0, 4)),
+                 sel: iso === this.startDay };
+      });
+    },
+    pick(iso) { this.pickerOpen = false; this.jumpTo(iso); },
+
     async load() {
       if (this.chartType === 'flow') return this.loadFlow();
+      // Cloud: the shared panel reads the period and day picked here, in one read
+      if (this.source === 'cloud') {
+        if (!this._cloud) this.mountCloud();
+        else this._cloud.setPeriod(this.period, this.startDay);
+        return;
+      }
       this.loading = true;
       try {
         const w = this.window;
@@ -306,10 +387,12 @@ function analyticsTab() {
      *  instead of being drawn straight across the gap. */
     pointsFor(key) {
       const def = this.chips.find(m => m.key === key) || {};
+      // Stacked bars are a balance, as Cloud draws them: home is a use, so below zero
+      const below = def.below || (this.stacked && this.chartType === 'bars' && (key === 'home' || key === 'load_w'));
       // kWh: one point mid-slot; power: kW (SoC stays %)
       if (this.energyMode) {
         return this.series.map(p => ({ x: (p.ts + p.end) / 2,
-          y: p[key] == null ? null : def.below ? -p[key] : p[key] }));
+          y: p[key] == null ? null : below ? -p[key] : p[key] }));
       }
       const scale = def.pct ? 1 : 1000;
       const out = [];
@@ -317,7 +400,7 @@ function analyticsTab() {
       let prev = null;
       for (const p of this.series) {
         if (prev != null && p.ts - prev > gap) out.push({ x: prev + (this.bucketS || 60), y: null });
-        out.push({ x: p.ts, y: p[key] == null ? null : p[key] / scale });
+        out.push({ x: p.ts, y: p[key] == null ? null : (below ? -p[key] : p[key]) / scale });
         prev = p.ts;
       }
       return out;
@@ -354,7 +437,7 @@ function analyticsTab() {
         const { step, ticks } = this.ticksFor(w.start, w.end, max);
         const self = this;
         // Bars draw each bucket's power as a bar; SoC (its own % axis) stays a line.
-        const bars = this.chartType === 'bars';
+        const bars = this.chartType === 'bars', stack = bars && this.stacked;
         const datasets = this.chips.filter(m => this.metrics[m.key]).map(m => ({
           type: bars && !m.pct ? 'bar' : 'line',
           order: m.pct ? 0 : 1,
@@ -368,7 +451,15 @@ function analyticsTab() {
           tension: 0,          // straight between samples: smoothing invented shapes (#145)
           spanGaps: false,     // a missing stretch stays a gap
         }));
-        const yr = analyticsYRange(datasets.filter(d => d.yAxisID === 'y').flatMap(d => d.data.map(p => p.y)));
+        const onY = datasets.filter(d => d.yAxisID === 'y');
+        // stacked: the range is each slot's pile above zero and below it
+        const sums = {};
+        if (stack) onY.forEach(d => d.data.forEach(p => {
+          if (p.y == null) return;
+          const s = sums[p.x] || (sums[p.x] = [0, 0]);
+          s[p.y > 0 ? 0 : 1] += p.y;
+        }));
+        const yr = analyticsYRange(stack ? Object.values(sums).flat() : onY.flatMap(d => d.data.map(p => p.y)));
         const cfg = {
           type: 'line',
           data: { datasets },
@@ -390,7 +481,7 @@ function analyticsTab() {
             },
             scales: {
               x: {
-                type: 'linear', min: w.start, max: w.end,
+                type: 'linear', min: w.start, max: w.end, stacked: stack,
                 afterBuildTicks: (axis) => { axis.ticks = ticks.map(v => ({ value: v })); },
                 ticks: {
                   color: '#64748b', font: { size: 10 }, maxRotation: 0, autoSkip: false,
@@ -406,7 +497,7 @@ function analyticsTab() {
                 grid: { color: 'rgba(148,163,184,.08)' },
               },
               y: { position: 'left', title: { display: true, text: self.unit, color: '#64748b' },
-                   min: yr.min, max: yr.max,
+                   min: yr.min, max: yr.max, stacked: stack,
                    ticks: { color: '#64748b', font: { size: 10 }, stepSize: yr.step },
                    grid: { color: 'rgba(148,163,184,.08)' } },
               y1: { position: 'right', min: 0, max: 100,
