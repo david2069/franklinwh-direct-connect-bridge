@@ -74,10 +74,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   charging and export below). Cloud's chart is drawn
   like Local's (rotated kWh title, a green SoC % axis in tens, a solid SoC line, vertical
   grid lines), with its note under the chart where Local's is and no ↻ of its own (Refresh at
-  the top serves both), and Local's Day (5-min) takes Cloud's colours. Cloud's chips look like
+  the top serves both), and Local's Day (5-min) takes Cloud's colours. The two plots line up:
+  Cloud keeps its SoC % axis for every period, and Local labels its kWh bars as Cloud does
+  (every few bars from the first, under the bar). Cloud's chips look like
   Local's, and its detailed metrics (solar → battery, export from solar, …) are ticked under
   **Details ▾** (it scrolls, and follows the dark theme) instead of being a row of chips.
-  franklinwh-ha-cloud-analytics 0.1.18.
+  franklinwh-ha-cloud-analytics 0.1.19.
 - **Analytics → Flow: the Energy Flow Sankey for any period, Local or Cloud** (#543): a
   fourth chart type, **Flow**, beside Line | Area | Bars, draws the Sankey for the shown
   time span and day (Day to Lifetime). Local is this bridge's estimate with its coverage;
