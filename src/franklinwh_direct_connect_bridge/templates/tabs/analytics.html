@@ -36,6 +36,8 @@
               <span class="w-3 text-emerald-400" x-text="chartType === 'bars' && stacked ? '✓' : ''"></span>Bars stacked</button>
             <button role="menuitemradio" :aria-checked="chartType === 'flow'" class="w-full text-left px-3 py-2 text-xs hover:bg-white/[0.06] transition flex items-center gap-2" style="color:var(--text-primary)" title="Energy Flow: where the energy of the period came from and went" @click="open = false; setChartType('flow')">
               <span class="w-3 text-emerald-400" x-text="chartType === 'flow' ? '✓' : ''"></span>Flow</button>
+            <button role="menuitem" class="w-full text-left px-3 py-2 text-xs hover:bg-white/[0.06] transition flex items-center gap-2 border-t" style="color:var(--text-primary);border-color:var(--border)" title="A colour for each series, Local and Cloud" @click="open = false; coloursOpen = true">
+              <span class="w-3"></span>Colours…</button>
         </div>
       </div>
     </div>
@@ -186,9 +188,9 @@
         <template x-for="m in chips" :key="m.key">
           <button class="chip inline-flex items-center gap-1.5 transition"
                   :class="metrics[m.key] ? '' : 'opacity-40'"
-                  :style="metrics[m.key] ? 'background:' + m.color + '22;color:' + m.color : ''"
+                  :style="metrics[m.key] ? 'background:' + colourOf(m.key) + '22;color:' + colourOf(m.key) : ''"
                   @click="toggleMetric(m.key)">
-            <span class="w-2 h-2 rounded-full" :style="'background:' + m.color"></span>
+            <span class="w-2 h-2 rounded-full" :style="'background:' + colourOf(m.key)"></span>
             <span x-text="m.label"></span>
           </button>
         </template>
@@ -207,5 +209,34 @@
   </div>
 
 </div>
+
+  <!-- Colours (owner, 2026-11-10): one colour per series for Local and Cloud, remembered in
+       this browser; presets for a dark or light background, and the defaults. -->
+  <div x-show="coloursOpen" x-cloak role="dialog" aria-modal="true" aria-label="Chart colours"
+       @click.self="coloursOpen = false" @keydown.escape.window="coloursOpen = false"
+       class="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
+       style="z-index:60;background:rgba(0,0,0,.6)">
+    <div class="card w-full sm:max-w-sm max-h-[90dvh] overflow-y-auto space-y-3" style="padding:16px">
+      <div class="flex items-center justify-between gap-2">
+        <h4 class="text-base font-semibold" style="color:var(--text-primary)">Chart colours</h4>
+        <button type="button" class="btn btn-secondary btn-sm" aria-label="Close" @click="coloursOpen = false">&times;</button>
+      </div>
+      <p class="text-xs text-slate-500">For Local and Cloud, remembered in this browser.</p>
+      <div class="space-y-1">
+        <template x-for="r in colourRows" :key="r[0]">
+          <label class="flex items-center gap-3 py-1 cursor-pointer">
+            <input type="color" class="fwh-swatch" :value="colours[r[0]]" :aria-label="r[1]"
+                   @input="setColour(r[0], $event.target.value)">
+            <span class="text-sm" style="color:var(--text-primary)" x-text="r[1]"></span>
+          </label>
+        </template>
+      </div>
+      <div class="flex flex-wrap gap-2 pt-2 border-t" style="border-color:var(--border)">
+        <button type="button" class="btn btn-secondary btn-sm" @click="useColourPreset('dark')">Dark background</button>
+        <button type="button" class="btn btn-secondary btn-sm" @click="useColourPreset('light')">Light background</button>
+        <button type="button" class="btn btn-secondary btn-sm ml-auto" @click="resetColours()">Reset to defaults</button>
+      </div>
+    </div>
+  </div>
 
 </div>

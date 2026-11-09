@@ -77,28 +77,53 @@ function analyticsYRange(values) {
   return { min: Math.floor(lo / step) * step, max: Math.ceil(hi / step) * step, step };
 }
 
-/** Cloud's series for the kWh periods, in Cloud's colours; charge and export below zero. */
+/** Cloud's series for the kWh periods; charge and export below zero. */
 const ANALYTICS_ENERGY = [
-  { key: 'home', label: 'Home', color: '#5b8def' },
-  { key: 'solar', label: 'Solar', color: '#e8b100' },
-  { key: 'battery_discharge', label: 'Battery discharged', color: '#2fae6b' },
-  { key: 'battery_charge', label: 'Battery charged', color: '#7fd1a3', below: true },
-  { key: 'grid_import', label: 'Grid imported', color: '#d1453b' },
-  { key: 'grid_export', label: 'Grid exported', color: '#8a94a3', below: true },
-  { key: 'soc', label: 'SoC', color: '#34d399', pct: true },
+  { key: 'home', label: 'Home' },
+  { key: 'solar', label: 'Solar' },
+  { key: 'battery_discharge', label: 'Battery discharged' },
+  { key: 'battery_charge', label: 'Battery charged', below: true },
+  { key: 'grid_import', label: 'Grid imported' },
+  { key: 'grid_export', label: 'Grid exported', below: true },
+  { key: 'soc', label: 'SoC', pct: true },
 ];
+
+/** One colour per series for Local and Cloud (owner, 2026-11-10): the defaults (Cloud's,
+ * with SoC apart from the battery's greens) and presets for a dark or light background. */
+const ANALYTICS_COLOURS = {
+  defaults: { home: '#5b8def', solar: '#e8b100', battery_discharge: '#2fae6b', battery_charge: '#7fd1a3',
+              grid_import: '#d1453b', grid_export: '#8a94a3', soc: '#d946ef', generator: '#9b6bd6' },
+  dark: { home: '#60a5fa', solar: '#facc15', battery_discharge: '#22c55e', battery_charge: '#86efac',
+          grid_import: '#f87171', grid_export: '#94a3b8', soc: '#e879f9', generator: '#c4b5fd' },
+  light: { home: '#2563eb', solar: '#ca8a04', battery_discharge: '#15803d', battery_charge: '#4ade80',
+           grid_import: '#dc2626', grid_export: '#64748b', soc: '#c026d3', generator: '#7c3aed' },
+};
+/** The colours dialog's rows; Local's power series share Cloud's. */
+const ANALYTICS_COLOUR_ROWS = [
+  ['home', 'Home'], ['solar', 'Solar'], ['battery_discharge', 'Battery discharged (Local: Battery)'],
+  ['battery_charge', 'Battery charged'], ['grid_import', 'Grid imported'],
+  ['grid_export', 'Grid exported (Local: Grid)'], ['soc', 'SoC'], ['generator', 'Generator'],
+];
+const ANALYTICS_COLOUR_OF = { load_w: 'home', solar_w: 'solar', battery_w: 'battery_discharge',
+                              grid_w: 'grid_export', generator_w: 'generator' };
+/** The shared panel's tokens for each colour. */
+const ANALYTICS_CLOUD_VARS = {
+  home: ['--ca-home'], solar: ['--ca-solar'], battery_discharge: ['--ca-battery', '--ca-battery_discharge'],
+  battery_charge: ['--ca-battery_charge'], grid_import: ['--ca-grid_import'],
+  grid_export: ['--ca-grid', '--ca-grid_export'], soc: ['--ca-soc'], generator: ['--ca-generator'],
+};
 
 function analyticsTab() {
   return {
     periods: (window.FWHCloudAnalytics && FWHCloudAnalytics.PERIODS) || ANALYTICS_PERIODS,
     metricDefs: [
-      { key: 'soc', label: 'SoC', color: '#34d399', pct: true },
-      // Cloud's colours, so a day looks the same from either source (owner, 2026-11-10)
-      { key: 'grid_w', label: 'Grid', color: '#8a94a3' },
-      { key: 'solar_w', label: 'Solar', color: '#e8b100' },
-      { key: 'battery_w', label: 'Battery', color: '#2fae6b' },
-      { key: 'load_w', label: 'Home', color: '#5b8def' },
-      { key: 'generator_w', label: 'Generator', color: '#9b6bd6' },
+      { key: 'soc', label: 'SoC', pct: true },
+      // Cloud's colours (colourOf), so a day looks the same from either source (owner, 2026-11-10)
+      { key: 'grid_w', label: 'Grid' },
+      { key: 'solar_w', label: 'Solar' },
+      { key: 'battery_w', label: 'Battery' },
+      { key: 'load_w', label: 'Home' },
+      { key: 'generator_w', label: 'Generator' },
     ],
     metrics: { soc: true, grid_w: true, solar_w: true, battery_w: true, load_w: true, generator_w: false,
                home: true, solar: true, battery_discharge: true, battery_charge: true, grid_import: true, grid_export: true },
@@ -114,6 +139,13 @@ function analyticsTab() {
     // the styled date picker: open, and the day its calendar shows
     pickerOpen: false,
     pickerCursor: null,
+    // the series colours, remembered in this browser; the dialog that picks them
+    colours: (() => {
+      try { return Object.assign({}, ANALYTICS_COLOURS.defaults, JSON.parse(localStorage.getItem('fwh-analytics-colours') || '{}')); }
+      catch (e) { return Object.assign({}, ANALYTICS_COLOURS.defaults); }
+    })(),
+    colourRows: ANALYTICS_COLOUR_ROWS,
+    coloursOpen: false,
     atTime: null,         // Day views: the picker's time ('HH:MM'); the readout opens there
     // Flow (#543): the period's arcs in kWh, where they came from, and what went wrong
     flow: null,
@@ -186,6 +218,7 @@ function analyticsTab() {
         refreshControl: false, statusBelow: true,         // Refresh at the top; the note under the chart, as Local's
         socAxis: 'always',                                // the SoC axis every period, so the plots line up
       });
+      this.applyCloudColours();
     },
 
     // ---- site-zone helpers ------------------------------------------------------------
@@ -269,6 +302,31 @@ function analyticsTab() {
     /** Day (5-min) is power in kW; the other periods are kWh per hour, day, month or year,
      *  with Cloud's series, as the Cloud view shows them (owner, 2026-11-09). */
     get energyMode() { return this.period !== 'day5'; },
+    colourOf(key) { return this.colours[ANALYTICS_COLOUR_OF[key] || key] || '#8a94a3'; },
+    setColour(key, v) { this.colours[key] = v; this.saveColours(); },
+    /** Dark or Light background: the preset's colours, remembered as the viewer's own. */
+    useColourPreset(name) { this.colours = Object.assign({}, ANALYTICS_COLOURS[name]); this.saveColours(); },
+    resetColours() {
+      this.colours = Object.assign({}, ANALYTICS_COLOURS.defaults);
+      try { localStorage.removeItem('fwh-analytics-colours'); } catch (e) { /* private mode */ }
+      this.applyColours();
+    },
+    saveColours() {
+      try { localStorage.setItem('fwh-analytics-colours', JSON.stringify(this.colours)); } catch (e) { /* private mode */ }
+      this.applyColours();
+    },
+    applyColours() {
+      this.applyCloudColours();
+      if (this.source === 'local' && this.chartType !== 'flow' && this.series.length) this.render();
+    },
+    /** Cloud: the shared panel reads its series colours from --ca-* tokens. */
+    applyCloudColours() {
+      const el = this.$refs.cloud;
+      if (!el) return;
+      for (const k in ANALYTICS_CLOUD_VARS) {
+        for (const v of ANALYTICS_CLOUD_VARS[k]) el.style.setProperty(v, this.colours[k]);
+      }
+    },
     get chips() { return this.energyMode ? ANALYTICS_ENERGY : this.metricDefs; },
     get chartType() { return this.style || (this.energyMode ? 'bars' : 'line'); },
     get unit() { return this.energyMode ? 'kWh' : 'kW'; },
@@ -507,8 +565,8 @@ function analyticsTab() {
           order: m.pct ? 0 : 1,
           label: m.label,
           data: this.pointsFor(m.key),
-          borderColor: m.color,
-          backgroundColor: this.chartType === 'area' ? m.color + '26' : m.color,
+          borderColor: this.colourOf(m.key),
+          backgroundColor: this.chartType === 'area' ? this.colourOf(m.key) + '26' : this.colourOf(m.key),
           fill: this.chartType === 'area' && !m.pct,
           yAxisID: m.pct ? 'y1' : 'y',
           borderWidth: 1.5, pointRadius: 0,
@@ -567,8 +625,8 @@ function analyticsTab() {
                    ticks: { color: '#64748b', font: { size: 10 }, stepSize: yr.step },
                    grid: { color: 'rgba(148,163,184,.08)' } },
               y1: { position: 'right', min: 0, max: 100,
-                    title: { display: true, text: 'SoC %', color: '#34d399' },
-                    ticks: { color: '#34d399', font: { size: 10 } }, grid: { drawOnChartArea: false } },
+                    title: { display: true, text: 'SoC %', color: self.colourOf('soc') },
+                    ticks: { color: self.colourOf('soc'), font: { size: 10 } }, grid: { drawOnChartArea: false } },
             },
           },
         };

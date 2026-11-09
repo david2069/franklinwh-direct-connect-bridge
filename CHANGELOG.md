@@ -63,6 +63,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   calendar takes an hour and minute (in 5-minute steps), on Day (hourly) an hour; the chart,
   Local or Cloud, then opens with its readout at that time, and the date button shows it
   ("9 Nov 2026 · 14:30"). **Clear** takes it away. franklinwh-ha-cloud-analytics 0.1.20.
+- **Analytics: Chart ▾ → Colours…** (#543): a colour for each series (Home, Solar, Battery
+  discharged and charged, Grid imported and exported, SoC, Generator), used by Local and
+  Cloud alike and remembered in this browser, with **Dark background** and **Light
+  background** presets and **Reset to defaults**. SoC's default is now magenta (#d946ef);
+  it was a green close to Battery discharged.
 
 ### Changed
 - **Analytics: one top row and the same periods for Local and Cloud** (owner). The time span

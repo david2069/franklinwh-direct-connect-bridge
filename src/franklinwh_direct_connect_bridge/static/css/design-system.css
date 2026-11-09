@@ -669,6 +669,13 @@ select.form-control:not([multiple]):not([size]) {
   }
 }
 
+/* Analytics → Chart ▾ → Colours…: a round swatch instead of the browser's colour box */
+.fwh-swatch { width: 28px; height: 28px; padding: 0; border: 1px solid var(--border); border-radius: 50%;
+  background: none; cursor: pointer; flex: none; -webkit-appearance: none; appearance: none; }
+.fwh-swatch::-webkit-color-swatch-wrapper { padding: 0; }
+.fwh-swatch::-webkit-color-swatch { border: none; border-radius: 50%; }
+.fwh-swatch::-moz-color-swatch { border: none; border-radius: 50%; }
+
 /* ── Energy-flow Sankey (rendered by static/js/sankey.js) ─────────────── */
 .fwh-sankey { width: 100%; }
 .sankey-svg { display: block; width: 100%; overflow: visible; }
