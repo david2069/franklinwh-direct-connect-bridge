@@ -64,6 +64,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   or year like Cloud; 24 hours, 3 days, 7 days, 30 days and Custom are gone. **Local |
   Cloud**, **Export ▾** (CSV, JSON) and **Refresh** are on the same row. Cloud panel
   franklinwh-ha-cloud-analytics 0.1.6 (the host's picker).
+- **Analytics → Local shows what Cloud shows** (owner): Day (5-min) is power in **kW** (it
+  was W); Day (hourly), Week, Month, Year and Lifetime are **kWh** per hour, day, month or
+  year with Cloud's six series (home, solar, battery discharged and charged, grid imported
+  and exported; charge and export below zero) and SoC, summed from the bridge's power
+  samples as Energy Flow does: an estimate, with the share of the period that has samples.
+  A slot with no samples is empty, never 0. The strip under the chart shows the period's
+  kWh totals. Until a style is picked, a day draws lines and the kWh periods bars, as Cloud
+  does. New `GET /api/metrics/energy?edges=`.
 - **The off-grid notification says why:** "user requested" (someone asked for off-grid) or
   "grid outage" (no request was made), the same words as the top bar, or "reason unknown"
   when that wasn't read. Before, every off-grid message read the same (#528).

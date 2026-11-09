@@ -74,7 +74,7 @@
 
     <div class="flex items-start justify-between gap-2 flex-wrap">
       <div class="flex flex-wrap gap-2">
-        <template x-for="m in metricDefs" :key="m.key">
+        <template x-for="m in chips" :key="m.key">
           <button class="chip inline-flex items-center gap-1.5 transition"
                   :class="metrics[m.key] ? '' : 'opacity-40'"
                   :style="metrics[m.key] ? 'background:' + m.color + '22;color:' + m.color : ''"
