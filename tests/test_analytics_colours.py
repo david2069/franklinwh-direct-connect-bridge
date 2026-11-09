@@ -44,7 +44,7 @@ def test_colours_are_remembered_and_reach_both_charts():
 
 
 def test_the_dialog_has_a_picker_per_series_presets_and_reset():
-    assert 'aria-label="Chart colours"' in HTML and 'type="color"' in HTML
+    assert 'aria-label="Chart colours"' in HTML and "colourPalette" in HTML   # a styled palette since 2026-11-10
     for b in ("Dark background", "Light background", "Reset to defaults"):
         assert b in HTML
     assert "Colours…" in HTML                           # opened from the Chart ▾ menu
