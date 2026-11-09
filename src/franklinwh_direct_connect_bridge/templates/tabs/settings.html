@@ -1446,6 +1446,8 @@
     </div>
     <p class="text-xs text-slate-500" x-show="history.info.locked?.enabled || history.info.locked?.retention_days" x-cloak>
       Set for this install (<span x-text="[history.info.locked?.enabled && 'METRICS_ENABLED', history.info.locked?.retention_days && 'METRICS_RETENTION_DAYS'].filter(Boolean).join(', ')"></span>, an environment variable or add-on option), so it is changed there, not here.</p>
+    <p class="text-xs text-slate-500" x-show="history.info.full_resolution_days" x-cloak
+       x-text="'Full resolution for the last ' + history.info.full_resolution_days + ' days; older samples are kept as 5-minute averages, with each value\'s min and max.'"></p>
     <p class="text-xs text-slate-500" x-text="historySize()"></p>
     <p class="text-xs text-slate-500" x-show="history.info.is_ha_addon" x-cloak>
       In Home Assistant, the recorder also keeps the values this bridge publishes over MQTT, so this is a second copy of them. It stays on because the bridge's own charts read only this one.</p>
@@ -1654,7 +1656,8 @@
       <div>
         <div class="text-sm" style="color:var(--text-primary)">Database storage</div>
         <div class="text-xs text-slate-500">
-          <span class="font-mono" x-text="admin.storage.db_human || '–'"></span>
+          <span class="font-mono" x-text="admin.storage.total_human || admin.storage.db_human || '–'"></span>
+          <span x-show="admin.storage.total_human" x-text="' on disk (database ' + (admin.storage.db_human || '–') + ' · WAL ' + (admin.storage.wal_human || '0 B') + ' · SHM ' + (admin.storage.shm_human || '0 B') + ')'"></span>
           <span x-show="admin.storage.freelist_count" class="text-slate-600"
                 x-text="' · ' + admin.storage.freelist_count + ' free pages'"></span>
         </div>
@@ -1671,6 +1674,7 @@
           <tr class="text-slate-500 text-left">
             <th class="py-1 pr-3 font-medium">Table</th>
             <th class="py-1 pr-3 font-medium text-right">Rows</th>
+            <th class="py-1 pr-3 font-medium text-right">Size</th>
             <th class="py-1 font-medium text-right">Span</th>
           </tr>
         </thead>
@@ -1679,6 +1683,7 @@
             <tr class="border-t border-white/[0.05]">
               <td class="py-1 pr-3 font-mono text-slate-400" x-text="t.name"></td>
               <td class="py-1 pr-3 text-right font-mono tabular-nums" x-text="(t.rows ?? 0).toLocaleString()"></td>
+              <td class="py-1 pr-3 text-right font-mono tabular-nums text-slate-500" x-text="t.bytes_human || '–'"></td>
               <td class="py-1 text-right font-mono text-slate-500"
                   x-text="t.span_days != null ? t.span_days + ' d' : '–'"></td>
             </tr>

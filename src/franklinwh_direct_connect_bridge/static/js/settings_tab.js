@@ -1229,10 +1229,14 @@ function settingsTab() {
       const i = this.history.info;
       if (i.db_bytes == null) return '';
       const mb = (i.db_bytes / 1048576).toFixed(1);
-      const [lo, hi] = i.mb_per_day || [0.35, 0.7];
-      const days = i.retention_days;
-      const total = days ? ` — about ${Math.round(lo * days)}–${Math.round(hi * days)} MB per gateway when full` : ' — with Forever it keeps growing';
-      return `Database ${mb} MB now. Grows about ${lo}–${hi} MB a day per gateway${total}.`;
+      const g = i.growth || {};
+      if (!g.measured) return `Database ${mb} MB now. How fast it grows shows once it has recorded for a while.`;
+      // measured here: full resolution for the first days, then 5-minute rows
+      const days = i.retention_days, full = i.full_resolution_days || 10;
+      const whenFull = Math.round(g.recent_mb_day * Math.min(days || full, full)
+                                  + g.older_mb_day * Math.max(0, days - full));
+      const total = days ? ` About ${whenFull} MB per gateway when full.` : ' With Forever it keeps growing at the older-day rate.';
+      return `Database ${mb} MB now. Per gateway, the last ${full} days take about ${g.recent_mb_day} MB a day and older days about ${g.older_mb_day} MB a day (measured here).${total}`;
     },
 
     /** Persist ONE whitelisted setting immediately (auto-save). Everything the

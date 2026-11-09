@@ -18,10 +18,25 @@ to trust them.
 | Application log | the newest **50,000** rows |
 | Hourly link-health buckets | 90 days |
 
-A year of samples at a 30-second poll is about **130 MB** — the measurement recorded in
-the code is 0.35 MB per day, rising to roughly 0.67 with the tariff-tier column. Keeping
-a year locally is deliberate: it removes the only reason the gateway's own history (about
-105 days) looked like the longer record.
+**Full resolution for the last 10 days, then 5-minute rows.** Every poll is kept as it was
+read for 10 days (Home Assistant's recorder keeps 10 by default too). After that, each
+gateway's samples become one row per 5 minutes: each value's average, with its min and max
+and the sample count, the last mode and the last tariff-tier counters. Energy over those 5
+minutes is unchanged, so the charts and Energy Costs read the same totals. Once an hour the
+bridge deletes what is past **Keep for**, then makes the 5-minute rows, and logs both, for
+example: `Local history: 2880 samples older than 10 days kept as 288 five-minute rows (full
+resolution for the last 10 days)`.
+
+**How much disk it takes is measured, not assumed.** The Local history card shows, per
+gateway, what the last 10 days take a day and what older days take a day, from this
+database. On a test install polling every 30 seconds that was about 8 MB a day for the
+last 10 days (each poll keeps every number it read) and about 0.4 MB a day older, so two
+years come to roughly 350 MB per gateway. Keeping a year or more locally is deliberate: it
+removes the only reason the gateway's own history (about 105 days) looked like the longer
+record.
+
+Settings → Admin → **Database storage** shows the space on disk with the WAL and SHM files
+counted, and each table's rows, size and time span.
 
 ### Choosing how long it is kept, or turning it off
 

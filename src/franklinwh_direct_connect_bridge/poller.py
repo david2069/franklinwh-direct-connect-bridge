@@ -16,7 +16,7 @@ from . import alerts
 from . import client
 from . import providers
 from .config import Settings, metrics_active
-from .db import get_store
+from .db import get_store, maybe_maintain
 from .notify import Notifier, transitions
 from . import notify_engine
 from . import workers as _workers
@@ -525,11 +525,10 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                                 summ.get("tou_tiers"), summ)
                             inserts += 1
                             if inserts % 20 == 0:
-                                deleted = await asyncio.to_thread(
-                                    store.prune, settings.metrics_retention_days,
-                                    int(time.time()))
-                                if deleted > 0:
-                                    log.info("[%s] pruned %d old metric rows", gw.id, deleted)
+                                # hourly per database: delete past retention, then keep
+                                # samples older than 10 days as 5-minute rows (#540); it logs
+                                await asyncio.to_thread(
+                                    maybe_maintain, store, settings.metrics_retention_days)
                         except Exception as e:  # noqa: BLE001
                             log.warning("[%s] metrics write failed: %s", gw.id, e)
 

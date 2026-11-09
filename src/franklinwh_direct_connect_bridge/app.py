@@ -6778,7 +6778,8 @@ def create_app() -> FastAPI:
             end = int(time.time())
             start = end - RANGE_SECONDS.get(range, RANGE_SECONDS["6h"])
             span_key = range
-        b = _resolve_bucket(span_key, start, end, bucket, points)
+        # past 10 days only 5-minute rows are kept (#540): never read those finer
+        b = db.history_bucket(start, _resolve_bucket(span_key, start, end, bucket, points))
         store = db.get_store(get_settings())
         if store is None:
             return {"enabled": False, "series": [], "count": 0}
@@ -6824,7 +6825,8 @@ def create_app() -> FastAPI:
         store = db.get_store(get_settings())
         rows: list[dict] = []
         if store is not None and query_end > span_start:
-            bucket = max(_MIN_BUCKET_S, int((query_end - span_start) / _TARGET_BUCKETS))
+            bucket = db.history_bucket(int(span_start),
+                                       max(_MIN_BUCKET_S, int((query_end - span_start) / _TARGET_BUCKETS)))
             raw = store.query(int(span_start), int(query_end), bucket, gateway=_metrics_gw_key(gateway))
             # The decomposition speaks `home_w`; our column is `load_w`.
             rows = [{**r, "home_w": r.get("load_w")} for r in raw]
@@ -6907,8 +6909,10 @@ def create_app() -> FastAPI:
                "retention_choices": list(RETENTION_CHOICES),
                "locked": {"enabled": env_locked("metrics_enabled"),
                           "retention_days": env_locked("metrics_retention_days")},
-               # measured per gateway at a 30 s poll: 0.35 MB a day, about 0.7 with tiers
-               "mb_per_day": [0.35, 0.7],
+               # measured from this database, per gateway
+               "growth": store.growth(int(time.time())) if store is not None else {},
+               # full resolution this long, then 5-minute rows (about a tenth as many)
+               "full_resolution_days": db.POLL_RAW_DAYS,
                "is_ha_addon": environment.IS_HA_ADDON}
         if store is not None:
             out.update(store.info())
@@ -7013,6 +7017,11 @@ def create_app() -> FastAPI:
             return {"enabled": False}
         stats = store.storage_stats()
         stats["db_human"] = _human_bytes(stats.get("db_bytes"))
+        # the -wal/-shm files are part of what the database takes on disk (#540)
+        for k in ("wal", "shm", "total"):
+            stats[f"{k}_human"] = _human_bytes(stats.get(f"{k}_bytes"))
+        for t in stats.get("tables") or []:
+            t["bytes_human"] = _human_bytes(t.get("bytes")) if t.get("bytes") is not None else None
         stats["retention_days"] = s.metrics_retention_days
         stats["backups"] = _list_backups()
         return stats
