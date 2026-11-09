@@ -69,7 +69,7 @@ HTML = (ROOT / "templates" / "tabs" / "analytics.html").read_text()
 
 def test_the_page_reads_kwh_slots_and_shows_kw_for_a_day():
     assert "api/metrics/energy?edges=" in JS and "function analyticsSlotEdges(" in JS
-    assert "get energyMode() { return this.period !== 'day5'; }" in JS
+    assert "get energyMode() { return this.kind !== 'day5'; }" in JS     # Custom: the period its length matches
     assert "get unit() { return this.energyMode ? 'kWh' : 'kW'; }" in JS
     assert "text: self.unit" in JS and "text: 'W'" not in JS
     assert "p[key]) / scale" in JS                    # power in kW, SoC stays %
