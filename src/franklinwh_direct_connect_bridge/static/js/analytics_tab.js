@@ -63,14 +63,14 @@ function analyticsStepDay(period, day, dir) {
 function analyticsSlotEdges(period, win, offMin, now) {
   const at = (y, m, d, h) => Date.UTC(y, m, d, h || 0) / 1000 - offMin * 60;
   const f = new Date((win.start + offMin * 60) * 1000);
-  const y = f.getUTCFullYear(), m = f.getUTCMonth(), d = f.getUTCDate();
+  const y = f.getUTCFullYear(), m = f.getUTCMonth(), d = f.getUTCDate(), h0 = f.getUTCHours();
   const out = [];
   if (period === 'lifetime') {
     for (let yy = y; !out.length || out[out.length - 1] <= now; yy++) out.push(at(yy, 0, 1));
     return out;
   }
   for (let i = 0; ; i++) {
-    const t = period === 'dayhour' ? at(y, m, d, i) : period === 'year' ? at(y, m + i, 1) : at(y, m, d + i);
+    const t = period === 'dayhour' ? at(y, m, d, h0 + i) : period === 'year' ? at(y, m + i, 1) : at(y, m, d + i);
     out.push(t);
     if (t >= win.end) return out;
   }
