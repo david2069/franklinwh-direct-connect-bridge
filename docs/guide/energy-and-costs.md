@@ -47,11 +47,15 @@ Longer-horizon charts over the stored samples — power, battery, energy — wit
 selectable range. This is the bridge's own record, so it survives a gateway reboot and
 goes back further than the aGate's.
 
-**‹ ›** step the shown window back or forward by its own length (24h, 3d, 7d, 30d or the
-custom range) and **Today** comes back to now. **‹** stops at the oldest stored sample;
+Local and Cloud share one layout. Pick the period from the dropdown (24 hours, 3 days,
+7 days, 30 days or Custom; it is remembered in this browser), then step with **‹ ›**,
+pick a day, or press **Today**. **‹ ›** step the shown window back or forward by its own
+length, the day picker moves it to end on that day, and **Today** comes back to now. **‹** stops at the oldest stored sample;
 the caption under the chart says where the history starts ("history from …"), and the
 custom range can't start before it. The chips (SoC, Grid, Solar, Battery, Home, Generator)
-show or hide each series; **Line | Area** picks the style.
+under the chart show or hide each series; **Line | Area | Bars** beside them picks the style
+(SoC, on its own % axis, stays a line).
+Dates are in your browser's own format.
 
 ### Local or Cloud
 

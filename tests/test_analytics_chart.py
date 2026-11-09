@@ -20,7 +20,8 @@ def test_no_smoothing_and_gaps_kept():
 
 
 def test_custom_range_takes_date_and_time():
-    assert HTML.count('type="datetime-local"') == 2 and 'type="date"' not in HTML
+    # the custom range is date-and-time; the one date input is the day picker (owner 2026-11-09)
+    assert HTML.count('type="datetime-local"') == 2 and HTML.count('type="date"') == 1
 
 
 def test_export_uses_the_shown_window():
@@ -44,3 +45,34 @@ def test_stepping_stops_at_the_oldest_stored_sample():
     body = JS[JS.index("get atOldest()"):][:200]
     assert "this.firstTs" in body and "this.window.start" in body
     assert "history from" in HTML or "history from" in JS
+
+
+
+LOCAL = HTML[HTML.index("x-show=\"source === 'local'\""):]
+
+
+def test_local_uses_the_cloud_views_layout():
+    # Owner, 2026-11-09: Local and Cloud share one layout (Cloud's): a period dropdown,
+    # ‹ day › Today on the right, chips and Line | Area under the chart.
+    assert '<select' in LOCAL and 'aria-label="Period"' in LOCAL and 'x-for="r in ranges"' not in LOCAL
+    for v in ("24h", "3d", "7d", "30d", "custom"):
+        assert f'<option value="{v}"' in LOCAL
+    assert 'type="date"' in LOCAL and 'jumpTo($event.target.value)' in LOCAL
+    assert LOCAL.index("toggleMetric(") > LOCAL.index('x-ref="canvas"')
+    assert LOCAL.index("setChartType('area')") > LOCAL.index('x-ref="canvas"')
+    assert "fwh-analytics-range" in JS
+
+
+def test_local_dates_follow_the_browsers_own_format():
+    body = JS[JS.index("dayLabel(ts, year) {"):][:200]
+    assert "Intl.DateTimeFormat(undefined" in body and "timeZone: 'UTC'" in body
+
+
+def test_local_offers_line_area_and_bars_like_cloud_and_remembers_it():
+    # Owner, 2026-11-09: "there is no bar charts" on Local; the same choices as Cloud.
+    for k in ("line", "area", "bars"):
+        assert f"setChartType('{k}')" in LOCAL
+    assert "chartType === 'bars'" in JS and "fwh-analytics-style" in JS
+    # SoC stays a line on its own % axis whatever the style
+    ds = JS[JS.index("const datasets ="):][:900]
+    assert "m.pct" in ds and "'bar'" in ds
