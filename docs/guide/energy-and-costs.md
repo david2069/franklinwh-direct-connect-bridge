@@ -78,7 +78,10 @@ piled above zero and its uses below) or Flow; Analytics opens on the last one pi
 **Refresh**. Under it, one date picker serves Local, Cloud and Flow: **‹ ›** move by the
 period (a day, a Monday-to-Sunday week, a month or a year on the site's calendar), the
 period button (9 Nov 2026, Week of 2 Nov 2026, October 2026, 2026) opens a calendar of days,
-months or years to pick from, and **Today** comes back to the current one. **‹** stops at the oldest stored sample;
+months or years to pick from, and **Today** comes back to the current one. On Day (5-min) and Day (hourly) the calendar also has a
+**Time** row: an hour, and on Day (5-min) a minute in 5-minute steps. The chart then opens
+with its readout (every value at that time) there, on Local and Cloud, and the date button
+shows the time; **Clear** takes it away. **‹** stops at the oldest stored sample;
 the caption under the chart says where the history starts ("history from …").
 
 Local shows the same quantity as Cloud: Day (5-min) is power in **kW** (5-minute averages), and Day (hourly), Week, Month, Year and Lifetime are **kWh** per hour, day,

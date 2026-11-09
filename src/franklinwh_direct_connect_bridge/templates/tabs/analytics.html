@@ -97,6 +97,21 @@
             </template>
           </div>
         </template>
+        <!-- Day views: a time, snapped to the 5-minute or hourly slot; the readout opens there -->
+        <div x-show="timeMode" class="flex items-center gap-2 pt-2 border-t" style="border-color:var(--border)">
+          <span class="text-xs text-slate-500">Time</span>
+          <select class="form-control form-control-sm" style="width:auto" aria-label="Hour"
+                  :value="atHour" @change="setAtTime($event.target.value, atMinute)">
+            <option value="" :selected="!atTime">—</option>
+            <template x-for="h in pickerHours" :key="h"><option :value="h" x-text="h" :selected="h === atHour"></option></template>
+          </select>
+          <span x-show="period === 'day5'" class="text-slate-500">:</span>
+          <select x-show="period === 'day5'" class="form-control form-control-sm" style="width:auto" aria-label="Minute"
+                  :value="atMinute" :disabled="!atTime" @change="setAtTime(atHour, $event.target.value)">
+            <template x-for="m in pickerMinutes" :key="m"><option :value="m" x-text="m" :selected="m === atMinute"></option></template>
+          </select>
+          <button x-show="atTime" class="btn btn-secondary btn-sm ml-auto" @click="setAtTime('')" aria-label="Clear the time">Clear</button>
+        </div>
         <template x-if="pickerMode === 'months'">
           <div class="grid grid-cols-3 gap-1 text-sm">
             <template x-for="m in pickerMonths" :key="m.iso">
