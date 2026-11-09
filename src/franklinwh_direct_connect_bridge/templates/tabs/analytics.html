@@ -5,10 +5,11 @@
       <h1 class="text-xl font-semibold" style="color:var(--text-primary)">Analytics <a :href="$store.app.guideUrl('energy-and-costs/#analytics')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></h1>
       <p class="text-sm text-slate-500" x-text="source === 'cloud' ? 'Energy history from the FranklinWH cloud.' : 'Power &amp; state history from the bridge\'s own store.'"></p>
     </div>
-    <div class="flex items-center gap-2" x-show="source === 'local'">
+    <!-- the same buttons for both sources: they export or reload whichever is shown -->
+    <div class="flex items-center gap-2">
       <button class="btn btn-secondary btn-sm" @click="exportData('csv')">Export CSV</button>
       <button class="btn btn-secondary btn-sm" @click="exportData('json')">JSON</button>
-      <button class="btn btn-secondary btn-sm" @click="load()" :disabled="loading">
+      <button class="btn btn-secondary btn-sm" @click="refresh()" :disabled="loading">
         <span x-text="loading ? '…' : 'Refresh'"></span>
       </button>
     </div>

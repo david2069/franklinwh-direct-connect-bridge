@@ -143,6 +143,7 @@ function analyticsTab() {
     },
 
     setRange(k) { this.range = k; this.custom = false; this.shiftS = 0; this.load(); },
+    refresh() { if (this.source === 'cloud') { if (this._cloud) this._cloud.reload(); } else this.load(); },
     /** ‹ / ›: the window before or after this one, the same length. */
     stepWindow(dir) {
       const w = this.window, span = w.end - w.start;
@@ -308,6 +309,8 @@ function analyticsTab() {
     },
 
     exportData(fmt) {
+      // Cloud: the shared panel downloads the period it shows.
+      if (this.source === 'cloud') { if (this._cloud) this._cloud.exportData(fmt); return; }
       // The same window the chart shows, not "the last N hours" (#145).
       const w = this.win || this.window;
       window.location = `api/admin/metrics/export?fmt=${fmt}&start=${w.start}&end=${w.end}`
