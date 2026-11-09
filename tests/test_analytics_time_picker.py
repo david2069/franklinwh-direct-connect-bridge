@@ -15,7 +15,8 @@ def test_the_picker_has_a_time_row_on_the_day_views_only():
     assert "'day5'" in body and "'dayhour'" in body and "'flow'" in body
     assert 'x-show="timeMode"' in HTML
     assert 'aria-label="Hour"' in HTML and 'aria-label="Minute"' in HTML
-    assert "pickerMinutes" in HTML and "x-show=\"period === 'day5'\"" in HTML
+    assert "pickerMinutes" in HTML and 'x-show="gridMinutes"' in HTML        # a styled grid since the custom range
+    assert "this.period === 'day5'" in JS[JS.index('get gridMinutes()'):][:200]
 
 
 def test_minutes_snap_to_the_five_minute_slots():
@@ -31,4 +32,4 @@ def test_the_time_shows_on_the_date_button_and_opens_both_readouts():
 
 
 def test_the_cloud_extra_has_show_at():
-    assert "franklinwh-ha-cloud-analytics==0.1.20" in (ROOT / "pyproject.toml").read_text()
+    assert "franklinwh-ha-cloud-analytics==0.1.23" in (ROOT / "pyproject.toml").read_text()

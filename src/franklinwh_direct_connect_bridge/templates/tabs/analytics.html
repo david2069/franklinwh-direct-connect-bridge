@@ -70,12 +70,13 @@
   </div>
 
   <!-- One date picker for Local, Cloud and Flow (owner, 2026-11-10): ‹ period › Today, a
-       styled calendar (days, months or years) rather than the browser's own date input. -->
+       styled calendar (days, months or years) rather than the browser's own date input.
+       Custom: From → To, each a day and a time from the same calendar and time grid. -->
   <div class="flex items-center justify-end gap-1 flex-wrap" x-show="period !== 'lifetime'">
-    <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="stepWindow(-1)" :disabled="loading || atOldest"
+    <button x-show="period !== 'custom'" class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="stepWindow(-1)" :disabled="loading || atOldest"
             aria-label="Earlier" :title="atOldest ? 'No stored history before this' : 'Earlier'">‹</button>
     <div class="relative flex items-center gap-1" @click.outside="pickerOpen = false" @keydown.escape.window="pickerOpen = false">
-      <button class="btn btn-secondary btn-sm inline-flex items-center gap-1.5 min-w-[9.5rem] justify-center" aria-label="Pick a date"
+      <button x-show="period !== 'custom'" class="btn btn-secondary btn-sm inline-flex items-center gap-1.5 min-w-[9.5rem] justify-center" aria-label="Pick a date"
               aria-haspopup="dialog" :aria-expanded="pickerOpen" @click="openPicker()">
         <svg class="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
         <span x-text="periodLabel"></span>
@@ -87,9 +88,21 @@
         <svg class="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 7v5l3 2"/></svg>
         <span x-text="atTime || 'Time'"></span>
       </button>
+      <template x-if="period === 'custom'">
+        <div class="flex items-center gap-1 flex-wrap justify-end" x-show="period === 'custom'">
+          <button class="btn btn-secondary btn-sm inline-flex items-center gap-1.5" aria-label="From" aria-haspopup="dialog"
+                  :aria-expanded="pickerOpen && pickerFor === 'from'" @click="openRange('from')">
+            <span class="text-slate-500">From</span><span x-text="rangeLabel(rangeOrDefault.from)"></span></button>
+          <span class="text-slate-500" aria-hidden="true">→</span>
+          <button class="btn btn-secondary btn-sm inline-flex items-center gap-1.5" aria-label="To" aria-haspopup="dialog"
+                  :aria-expanded="pickerOpen && pickerFor === 'to'" @click="openRange('to')">
+            <span class="text-slate-500">To</span><span x-text="rangeLabel(rangeOrDefault.to)"></span></button>
+        </div>
+      </template>
       <div x-show="pickerOpen" x-cloak role="dialog" aria-label="Pick a date"
            class="absolute right-0 mt-1 z-40 w-72 rounded-xl border shadow-xl p-3 space-y-2"
            style="background:var(--surface-1);border-color:var(--border)">
+        <p x-show="pickerFor !== 'period'" class="text-xs font-semibold" style="color:var(--text-primary)" x-text="pickerFor === 'from' ? 'From' : 'To (not included)'"></p>
         <div class="flex items-center justify-between">
           <button class="btn btn-secondary btn-sm" @click="pickerStep(-1)" aria-label="Earlier in the calendar">‹</button>
           <span class="text-sm font-semibold" style="color:var(--text-primary)" x-text="pickerTitle"></span>
@@ -106,20 +119,32 @@
             </template>
           </div>
         </template>
-        <!-- Day views: a time, snapped to the 5-minute or hourly slot; the readout opens there -->
-        <div x-show="timeMode" class="flex items-center gap-2 pt-2 border-t" style="border-color:var(--border)">
-          <span class="text-xs text-slate-500">Time</span>
-          <select class="form-control form-control-sm" style="width:auto" aria-label="Hour"
-                  :value="atHour" @change="setAtTime($event.target.value, atMinute)">
-            <option value="" :selected="!atTime">—</option>
-            <template x-for="h in pickerHours" :key="h"><option :value="h" x-text="h" :selected="h === atHour"></option></template>
-          </select>
-          <span x-show="period === 'day5'" class="text-slate-500">:</span>
-          <select x-show="period === 'day5'" class="form-control form-control-sm" style="width:auto" aria-label="Minute"
-                  :value="atMinute" :disabled="!atTime" @change="setAtTime(atHour, $event.target.value)">
-            <template x-for="m in pickerMinutes" :key="m"><option :value="m" x-text="m" :selected="m === atMinute"></option></template>
-          </select>
-          <button x-show="atTime" class="btn btn-secondary btn-sm ml-auto" @click="setAtTime('')" aria-label="Clear the time">Clear</button>
+        <!-- The time, from a styled grid (owner, 2026-11-10): the Day views' readout time
+             (hourly snaps to the hour), or From / To's; minutes in 5-minute steps -->
+        <div x-show="(timeMode && pickerFor === 'period') || pickerFor !== 'period'" class="pt-2 border-t space-y-1.5" style="border-color:var(--border)">
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-slate-500">Time <span class="font-mono" style="color:var(--text-primary)"
+                  x-text="gridHour ? gridHour + ':' + gridMinute : '—'"></span></span>
+            <button x-show="pickerFor === 'period' && atTime" class="btn btn-secondary btn-sm" @click="setAtTime('')" aria-label="Clear the time">Clear</button>
+          </div>
+          <div class="grid grid-cols-6 gap-0.5 text-center text-xs font-mono" role="group" aria-label="Hour">
+            <template x-for="h in pickerHours" :key="h">
+              <button class="py-1 rounded-md transition" :aria-pressed="String(h === gridHour)"
+                      :class="h === gridHour ? 'bg-emerald-500/25 text-emerald-300 font-semibold' : 'hover:bg-white/[0.08]'"
+                      @click="pickHour(h)" x-text="h"></button>
+            </template>
+          </div>
+          <div x-show="gridMinutes" class="grid grid-cols-6 gap-0.5 text-center text-xs font-mono" role="group" aria-label="Minute">
+            <template x-for="m in pickerMinutes" :key="m">
+              <button class="py-1 rounded-md transition" :aria-pressed="String(m === gridMinute)"
+                      :class="m === gridMinute ? 'bg-emerald-500/25 text-emerald-300 font-semibold' : 'hover:bg-white/[0.08]'"
+                      @click="pickMinute(m)" x-text="':' + m"></button>
+            </template>
+          </div>
+          <div x-show="pickerFor !== 'period'" class="flex items-center justify-end gap-2 pt-1">
+            <span x-show="rangeErr" class="text-xs mr-auto" style="color:var(--danger, #f87171)" x-text="rangeErr"></span>
+            <button class="btn btn-primary btn-sm" @click="applyRange()">Apply</button>
+          </div>
         </div>
         <template x-if="pickerMode === 'months'">
           <div class="grid grid-cols-3 gap-1 text-sm">
@@ -141,8 +166,8 @@
         </template>
       </div>
     </div>
-    <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="stepWindow(1)" :disabled="loading || atToday" aria-label="Later" title="Later">›</button>
-    <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="goToday()" :disabled="loading || atToday" title="Back to today">Today</button>
+    <button x-show="period !== 'custom'" class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="stepWindow(1)" :disabled="loading || atToday" aria-label="Later" title="Later">›</button>
+    <button x-show="period !== 'custom'" class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="goToday()" :disabled="loading || atToday" title="Back to today">Today</button>
   </div>
 
   <!-- Cloud: the shared panel draws its dates and chart; the period comes from the top row. -->

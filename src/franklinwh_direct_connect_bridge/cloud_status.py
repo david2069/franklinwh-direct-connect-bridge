@@ -236,6 +236,26 @@ def read_energy(email: str, password: str, gateway: str | None, period: str, on,
     return asyncio.run(_run())
 
 
+def read_range(email: str, password: str, gateway: str | None, start, end, today,
+               refresh: bool = False) -> dict:
+    """The franklinwh-ha-cloud-analytics payload for the site-local range ``start`` to
+    ``end`` (a custom range, owner 2026-11-10): the package reads the days, months or years
+    it needs through the same cache as :func:`read_energy`. Raises on any failure."""
+    import asyncio
+
+    import franklinwh_ha_cloud_analytics as ca
+    global _ENERGY_CACHE
+    if _ENERGY_CACHE is None or refresh:
+        _ENERGY_CACHE = ca.Cache()
+
+    async def _run():
+        async with await _client_for(email, password, gateway, "analytics") as cloud:
+            return await ca.fetch_range(cloud, start, end, today=today, cache=_ENERGY_CACHE,
+                                        key=(gateway or "").upper())
+
+    return asyncio.run(_run())
+
+
 def _programme_label(prog) -> str | None:
     """Best-effort programme/partner name from get_programme_info(). The shape VARIES: a list
     (of strings or dicts), OR a single DICT (the VPP programme object with

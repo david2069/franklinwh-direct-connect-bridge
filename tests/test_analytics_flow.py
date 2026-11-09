@@ -31,7 +31,7 @@ def test_the_flow_card_replaces_both_charts_and_steps_like_them():
 def test_flows_come_from_this_bridge_or_the_cloud():
     body = JS[JS.index("async loadFlow("):][:2500]
     assert "api/energy/flow?start=" in body                          # Local: the estimate
-    assert "api/analytics/cloud?period=" in body and ".flows" in body   # Cloud: metered
+    assert "api/analytics/cloud?${what}" in body and "`period=${this.period}" in body and ".flows" in body   # Cloud: metered
     assert "FWHSankey.render(" in JS and "height: 380" in JS[JS.index("drawFlow() {"):][:400]
     assert "if (this.chartType === 'flow') return this.loadFlow(" in JS
 
