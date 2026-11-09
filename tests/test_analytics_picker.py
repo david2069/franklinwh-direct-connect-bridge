@@ -60,9 +60,10 @@ def test_cloud_has_no_refresh_of_its_own_and_its_note_sits_under_the_chart():
 
 
 def test_local_day_uses_clouds_colours():
-    defs = JS[JS.index("metricDefs:"):][:900]
-    for key, colour in (("grid_w", "#8a94a3"), ("solar_w", "#e8b100"), ("battery_w", "#2fae6b"), ("load_w", "#5b8def")):
-        assert f"key: '{key}'" in defs and colour in defs[defs.index(f"key: '{key}'"):][:80]
+    # since the colours dialog (2026-11-10): Local's series take Cloud's entries in one palette
+    of = JS[JS.index("const ANALYTICS_COLOUR_OF"):][:300]
+    for key, cloud in (("grid_w", "grid_export"), ("solar_w", "solar"), ("battery_w", "battery_discharge"), ("load_w", "home")):
+        assert f"{key}: '{cloud}'" in of
 
 
 def test_the_cloud_panel_takes_this_pages_theme():
