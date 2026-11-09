@@ -105,9 +105,14 @@ function analyticsTab() {
     period: (() => { try { const p = localStorage.getItem('fwh-analytics-period'); return ANALYTICS_PERIODS.some(x => x[0] === p) ? p : 'day5'; } catch (e) { return 'day5'; } })(),
     day: null,            // the site day the shown period holds ('YYYY-MM-DD'); null = today
     firstTs: null,        // the oldest stored sample for this gateway (epoch s)
-    // line | area | bars, remembered in this browser like the Cloud view's style
+    // line | area | bars | flow, remembered in this browser like the Cloud view's style
     // unset: lines for Day (5-min), bars for the kWh periods, as the Cloud view does
-    style: (() => { try { const t = localStorage.getItem('fwh-analytics-style'); return ['line', 'area', 'bars'].includes(t) ? t : null; } catch (e) { return null; } })(),
+    style: (() => { try { const t = localStorage.getItem('fwh-analytics-style'); return ['line', 'area', 'bars', 'flow'].includes(t) ? t : null; } catch (e) { return null; } })(),
+    // Flow (#543): the period's arcs in kWh, where they came from, and what went wrong
+    flow: null,
+    flowNote: '',
+    flowWarn: false,
+    flowErr: '',
     series: [],
     bucketS: null,        // the server's bucket size for the loaded series (power only)
     coverage: null,       // kWh periods: the share of the period with samples
@@ -124,14 +129,25 @@ function analyticsTab() {
       this.$watch('$store.app.siteTzOffsetMin', () => { if (this.win && this.source === 'local') this.load(); });
       this.$watch('$store.app.selectedGateway', () => {
         if (this.$store.app.activeTab !== 'analytics') return;
-        if (this.source === 'cloud') { if (this._cloud) this._cloud.reload(); } else this.load();
+        if (this.chartType === 'flow') this.loadFlow();
+        else if (this.source === 'cloud') { if (this._cloud) this._cloud.reload(); } else this.load();
       });
-      lazyTab(this, 'analytics', () => (this.source === 'cloud' ? this.mountCloud() : this.load()));
+      lazyTab(this, 'analytics', () => (this.chartType === 'flow' ? this.loadFlow()
+        : this.source === 'cloud' ? this.mountCloud() : this.load()));
+      // the Sankey is laid out from its width: draw it again when that changes
+      if (window.ResizeObserver && this.$refs.flow) {
+        let last = 0;
+        new ResizeObserver((e) => {
+          const w = Math.round(e[0].contentRect.width);
+          if (w && Math.abs(w - last) > 12) { last = w; this.drawFlow(); }
+        }).observe(this.$refs.flow);
+      }
     },
 
     setSource(src) {
       this.source = src;
       try { localStorage.setItem('fwh-analytics-source', src); } catch (e) { /* private mode */ }
+      if (this.chartType === 'flow') { this.loadFlow(); return; }
       if (src === 'cloud') { this.mountCloud(); if (this._cloud) this._cloud.setPeriod(this.period); } else this.load();
     },
 
@@ -197,7 +213,8 @@ function analyticsTab() {
     setPeriod(v) {
       this.period = v;
       try { localStorage.setItem('fwh-analytics-period', v); } catch (e) { /* private mode */ }
-      if (this.source === 'cloud') { if (this._cloud) this._cloud.setPeriod(v); } else this.load();
+      if (this.source === 'cloud' && this._cloud) this._cloud.setPeriod(v);
+      if (this.chartType === 'flow' || this.source === 'local') this.load();
     },
     /** The day picker: the period that holds that day. */
     jumpTo(day) {
@@ -205,7 +222,10 @@ function analyticsTab() {
       this.day = day > this.today ? null : day;
       this.load();
     },
-    refresh() { if (this.source === 'cloud') { if (this._cloud) this._cloud.reload(); } else this.load(); },
+    refresh() {
+      if (this.chartType === 'flow') this.loadFlow(true);
+      else if (this.source === 'cloud') { if (this._cloud) this._cloud.reload(); } else this.load();
+    },
     /** ‹ / ›: the day, week, month or year before or after this one. */
     stepWindow(dir) {
       const d = analyticsStepDay(this.period, this.startDay, dir);
@@ -215,14 +235,18 @@ function analyticsTab() {
     /** Back to the period that holds today. */
     goToday() { this.day = null; this.load(); },
     get atToday() { return this.window.end > Math.floor(Date.now() / 1000); },
-    get atOldest() {
-      return this.firstTs != null && this.window.start <= this.firstTs;
+    get atOldest() {     // this bridge's history; the cloud's goes further back
+      return this.source === 'local' && this.firstTs != null && this.window.start <= this.firstTs;
     },
     setChartType(t) {
+      const wasFlow = this.chartType === 'flow';
       this.style = t;
       try { localStorage.setItem('fwh-analytics-style', t); } catch (e) { /* private mode */ }
-      if (this._cloud) this._cloud.setStyle(t);
-      this.render();
+      if (this._cloud && t !== 'flow') this._cloud.setStyle(t);
+      if (t === 'flow') this.loadFlow();
+      else if (wasFlow && this.source === 'cloud') { this.mountCloud(); if (this._cloud) { this._cloud.setStyle(t); this._cloud.setPeriod(this.period); } }
+      else if (wasFlow) this.load();
+      else this.render();
     },
     toggleMetric(k) { this.metrics[k] = !this.metrics[k]; this.render(); },
     /** Day (5-min) is power in kW; the other periods are kWh per hour, day, month or year,
@@ -233,6 +257,7 @@ function analyticsTab() {
     get unit() { return this.energyMode ? 'kWh' : 'kW'; },
 
     async load() {
+      if (this.chartType === 'flow') return this.loadFlow();
       this.loading = true;
       try {
         const w = this.window;
@@ -448,7 +473,76 @@ function analyticsTab() {
       ];
     },
 
+    /** Flow (#543): the period's arcs, from this bridge's samples (an estimate) or from the
+     *  cloud's own breakdown (metered). */
+    async loadFlow(refresh) {
+      this.loading = true; this.flowErr = '';
+      try {
+        const w = this.window;
+        if (this.source === 'cloud') {
+          const d = await (await fetch(`api/analytics/cloud?period=${this.period}&date=${this.startDay}`
+            + (refresh ? '&refresh=1' : '') + this.$store.app.gwQuery('&'))).json();
+          this.flowWarn = false;
+          if (d.error) { this.flow = null; this.flowErr = d.error; }
+          else if (!d.flows) { this.flow = null; this.flowErr = 'The cloud has no flow breakdown for this period.'; }
+          else { this.flow = d.flows; this.flowNote = 'Metered by the FranklinWH cloud.'; }
+        } else {
+          const d = await (await fetch(`api/energy/flow?start=${w.start}&end=${w.end}`
+            + this.$store.app.gwQuery('&'))).json();
+          this.firstTs = d.first_ts || null;
+          // Lifetime starts at the oldest sample, known only after the first read
+          if (this.period === 'lifetime' && this.firstTs && this.firstTs < w.start) { await this.loadFlow(); return; }
+          const q = d.quality || {}, pct = Math.round((q.coverage || 0) * 100);
+          this.flow = q.samples ? d.flows : null;
+          this.flowWarn = !!q.samples && pct < 95;
+          if (!q.samples) this.flowErr = 'No samples recorded by this bridge for this period.';
+          this.flowNote = this.flowWarn ? `Partial data: this bridge recorded ${pct}% of this period. An estimate from its power samples, not a meter.`
+            : 'Estimated from this bridge\'s power samples, not a meter.';
+        }
+      } catch (e) {
+        this.flow = null; this.flowErr = 'Energy flow unavailable: ' + e.message;
+      } finally { this.loading = false; }
+      this.$nextTick(() => this.drawFlow());
+    },
+    drawFlow() {
+      const el = this.$refs.flow;
+      if (!el || this.chartType !== 'flow') return;
+      if (!this.flow || !window.FWHSankey) { el.innerHTML = ''; return; }
+      window.FWHSankey.render(el, this.flow, { height: 380 });     // as tall as the charts
+    },
+    /** The node totals under the Sankey, from its arcs. */
+    get flowNodes() {
+      const f = this.flow || {}, g = (k) => Number(f[k]) || 0;
+      return {
+        solar: g('solar_to_home') + g('solar_to_battery') + g('solar_to_grid'),
+        home: g('solar_to_home') + g('battery_to_home') + g('grid_to_home'),
+        battery_charge: g('solar_to_battery') + g('grid_to_battery'),
+        battery_discharge: g('battery_to_home') + g('battery_to_grid'),
+        grid_import: g('grid_to_home') + g('grid_to_battery'),
+        grid_export: g('solar_to_grid') + g('battery_to_grid'),
+      };
+    },
+    kwh(v) { const n = Number(v) || 0; return `${n.toFixed(n >= 10 ? 1 : 2)} kWh`; },
+
+    /** Flow: the period's totals, each arc and node in kWh. */
+    exportFlow(fmt) {
+      {
+        if (!this.flow) return;
+        const name = `fwh-flow-${this.source}-${this.period}` + (this.period === 'lifetime' ? '' : `-${this.startDay}`) + `.${fmt}`;
+        const body = fmt === 'json'
+          ? JSON.stringify({ source: this.source, period: this.period, start: this.startDay, unit: 'kWh',
+                             flows: this.flow, nodes: this.flowNodes, note: this.flowNote }, null, 2)
+          : 'item,kWh\n' + Object.entries(this.flow).concat(Object.entries(this.flowNodes))
+              .map(([k, v]) => `${k},${v}`).join('\n') + '\n';
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([body], { type: (fmt === 'json' ? 'application/json' : 'text/csv') + ';charset=utf-8' }));
+        a.download = name; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      }
+    },
+
     exportData(fmt) {
+      if (this.chartType === 'flow') return this.exportFlow(fmt);
       // Cloud: the shared panel downloads the period it shows.
       if (this.source === 'cloud') { if (this._cloud) this._cloud.exportData(fmt); return; }
       // The same window the chart shows, not "the last N hours" (#145).

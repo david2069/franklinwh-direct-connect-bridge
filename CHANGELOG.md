@@ -64,9 +64,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   or year like Cloud; 24 hours, 3 days, 7 days, 30 days and Custom are gone. **Local |
   Cloud**, **Export ▾** (CSV, JSON) and **Refresh** are on the same row. Cloud panel
   franklinwh-ha-cloud-analytics 0.1.6 (the host's picker).
+- **Analytics → Flow: the Energy Flow Sankey for any period, Local or Cloud** (#543): a
+  fourth chart type, **Flow**, beside Line | Area | Bars, draws the Sankey for the shown
+  time span and day (Day to Lifetime). Local is this bridge's estimate with its coverage;
+  Cloud is the FranklinWH cloud's own metered breakdown. The period's totals are under the
+  diagram, and **Export ▾** downloads them. `GET /api/energy/flow` takes spans up to 10
+  years and returns `first_ts`. franklinwh-ha-cloud-analytics 0.1.12 (`flows`).
 - **Analytics: Line | Area | Bars at the top** (owner): one chart-style choice in the top
   row, right after the time span, serving Local and Cloud (remembered in this browser);
-  it is no longer under each chart. franklinwh-ha-cloud-analytics 0.1.11.
+  it is no longer under each chart.
 - **Analytics → Cloud: the cloud's other fields as chips** (owner): every other field with
   data for the shown period gets a chip that starts off: home from solar, grid and battery;
   battery charged from solar and grid; export from solar and battery; and on a day, each

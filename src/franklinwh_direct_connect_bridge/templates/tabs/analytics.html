@@ -26,6 +26,10 @@
         <button class="px-3 py-1.5 text-xs font-medium transition"
                 :class="chartType === 'bars' ? 'bg-slate-700 text-slate-100' : 'text-slate-400'"
                 @click="setChartType('bars')">Bars</button>
+        <button class="px-3 py-1.5 text-xs font-medium transition border-l" style="border-color:var(--border)"
+                :class="chartType === 'flow' ? 'bg-slate-700 text-slate-100' : 'text-slate-400'"
+                title="Energy Flow: where the period's energy came from and went"
+                @click="setChartType('flow')">Flow</button>
       </div>
     </div>
     <div class="flex items-center gap-2 flex-wrap">
@@ -57,14 +61,47 @@
   </div>
 
   <!-- Cloud: the shared panel draws its dates and chart; the period comes from the top row. -->
-  <div class="card" x-show="source === 'cloud'" x-cloak>
+  <div class="card" x-show="source === 'cloud' && chartType !== 'flow'" x-cloak>
     <!-- Only while the cloud account is missing or refused; hidden once it works. -->
     <p class="text-sm mb-3" style="color:var(--text-secondary)" x-show="!$store.app.cloudAvailable">Cloud account:
       <button class="underline" style="color:var(--accent, #34d399)" @click="openCloudSettings()">Settings → Integrations → FranklinWH Cloud API</button></p>
     <div x-ref="cloud"></div>
   </div>
 
-  <div class="space-y-4" x-show="source === 'local'">
+  <!-- Flow (#543): the Energy Flow Sankey for the shown period, from Local or Cloud. -->
+  <div class="card space-y-3" x-show="chartType === 'flow'" x-cloak>
+    <p class="text-sm" style="color:var(--text-secondary)" x-show="source === 'cloud' && !$store.app.cloudAvailable">Cloud account:
+      <button class="underline" style="color:var(--accent, #34d399)" @click="openCloudSettings()">Settings → Integrations → FranklinWH Cloud API</button></p>
+    <div class="flex items-center justify-end gap-1 flex-wrap" x-show="period !== 'lifetime'">
+      <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="stepWindow(-1)" :disabled="loading || atOldest"
+              aria-label="Earlier" :title="atOldest ? 'No stored history before this' : 'Earlier'">‹</button>
+      <input type="date" class="form-control form-control-sm" style="width:auto" aria-label="Day" :value="startDay"
+             :max="today" @change="jumpTo($event.target.value)">
+      <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="stepWindow(1)" :disabled="loading || atToday" aria-label="Later" title="Later">›</button>
+      <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="goToday()" :disabled="loading || atToday" title="Back to today">Today</button>
+    </div>
+    <p class="text-sm py-10 text-center" style="color:var(--text-secondary)" x-show="flowErr" x-text="flowErr"></p>
+    <div class="fwh-sankey" x-ref="flow" x-show="!flowErr" style="min-height:380px"></div>
+    <template x-if="flow && !flowErr">
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-xs">
+      <div class="flex justify-between gap-2"><span style="color:var(--solar,#f59e0b)">Solar</span>
+        <span class="font-mono" style="color:var(--text-secondary)" x-text="kwh(flowNodes.solar)"></span></div>
+      <div class="flex justify-between gap-2"><span style="color:var(--accent,#22d3ee)">Home</span>
+        <span class="font-mono" style="color:var(--text-secondary)" x-text="kwh(flowNodes.home)"></span></div>
+      <div class="flex justify-between gap-2"><span style="color:var(--ok,#34d399)">Charged</span>
+        <span class="font-mono" style="color:var(--text-secondary)" x-text="kwh(flowNodes.battery_charge)"></span></div>
+      <div class="flex justify-between gap-2"><span style="color:var(--ok,#34d399)">Discharged</span>
+        <span class="font-mono" style="color:var(--text-secondary)" x-text="kwh(flowNodes.battery_discharge)"></span></div>
+      <div class="flex justify-between gap-2"><span style="color:var(--violet,#a78bfa)">Export</span>
+        <span class="font-mono" style="color:var(--text-secondary)" x-text="kwh(flowNodes.grid_export)"></span></div>
+      <div class="flex justify-between gap-2"><span style="color:var(--danger,#f87171)">Import</span>
+        <span class="font-mono" style="color:var(--text-secondary)" x-text="kwh(flowNodes.grid_import)"></span></div>
+    </div>
+    </template>
+    <p class="text-[0.65rem]" :class="flowWarn ? 'text-amber-400' : 'text-slate-500'" x-show="!flowErr" x-text="flowNote"></p>
+  </div>
+
+  <div class="space-y-4" x-show="source === 'local' && chartType !== 'flow'">
   <!-- One card, laid out as the Cloud view (owner, 2026-11-09): ‹ day › Today; the chart;
        the chips and Line | Area | Bars under it. -->
   <div class="card space-y-3">

@@ -158,6 +158,20 @@ reading. The response carries a `quality.coverage` figure saying how much of the
 actually had samples, and the UI surfaces it; a low coverage means a gap in polling, and
 the numbers should be read accordingly.
 
+### In Analytics: Flow
+
+**Flow** in the top row of Analytics (Line | Area | Bars | **Flow**) draws the same diagram
+for the time span and day picked there (a day, a week, a month, a year or lifetime), from
+either source:
+
+- **Local**: the estimate above, from this bridge's samples, with its coverage.
+- **Cloud**: the FranklinWH cloud's own breakdown of where the energy went (home from solar,
+  battery charged from solar, export from the battery, …), metered rather than estimated;
+  for a day, its 5-minute flows added up.
+
+The totals under the diagram are the period's, and **Export ▾** downloads them (each arc
+and node in kWh) as CSV or JSON.
+
 ---
 
 ## Energy Costs

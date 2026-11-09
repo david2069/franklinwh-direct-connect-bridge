@@ -21,7 +21,9 @@ def test_no_smoothing_and_gaps_kept():
 
 def test_one_date_input_and_no_custom_range():
     # Owner, 2026-11-09: Local takes Cloud's periods; Custom is gone, the day picker stays.
-    assert 'type="datetime-local"' not in HTML and HTML.count('type="date"') == 1
+    # one day picker per card: Local's and, since #543, Flow's
+    assert 'type="datetime-local"' not in HTML and LOCAL.count('type="date"') == 1
+    assert HTML.count('type="date"') == 2
 
 
 def test_export_uses_the_shown_window():
@@ -48,7 +50,7 @@ def test_stepping_stops_at_the_oldest_stored_sample():
 
 
 
-LOCAL = HTML[HTML.index("x-show=\"source === 'local'\""):]
+LOCAL = HTML[HTML.index("x-show=\"source === 'local' && chartType !== 'flow'\""):]
 
 
 def test_local_uses_the_cloud_views_layout():
