@@ -139,6 +139,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   when that wasn't read. Before, every off-grid message read the same (#528).
 
 ### Fixed
+- **Analytics → Colours couldn't be closed on an iPad** (#543): the browser's own colour
+  picker opened over the dialog and hid its ×. Each series now opens a palette of colours
+  (and a hex field) inside the dialog, which ends in **Done**.
 - **The guide said Local history is off by default on the add-on with MQTT**; it has been on
   everywhere since 0.4.10 (#136). The guide and Settings now say so (#540).
 

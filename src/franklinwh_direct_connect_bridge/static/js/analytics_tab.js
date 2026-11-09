@@ -109,6 +109,13 @@ const ANALYTICS_COLOURS = {
   light: { home: '#2563eb', solar: '#ca8a04', battery_discharge: '#15803d', battery_charge: '#4ade80',
            grid_import: '#dc2626', grid_export: '#64748b', soc: '#c026d3', generator: '#7c3aed' },
 };
+/** The colours dialog's palette (owner, 2026-11-10: the browser's own picker covered the
+ *  dialog on iPadOS): bright and deep tones that read on dark and light backgrounds. */
+const ANALYTICS_PALETTE = [
+  '#ef4444', '#f97316', '#f59e0b', '#eab308', '#e8b100', '#84cc16', '#22c55e', '#2fae6b',
+  '#10b981', '#7fd1a3', '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6', '#5b8def', '#6366f1',
+  '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#d1453b', '#94a3b8', '#64748b',
+];
 /** The colours dialog's rows; Local's power series share Cloud's. */
 const ANALYTICS_COLOUR_ROWS = [
   ['home', 'Home'], ['solar', 'Solar'], ['battery_discharge', 'Battery discharged (Local: Battery)'],
@@ -165,6 +172,8 @@ function analyticsTab() {
     })(),
     colourRows: ANALYTICS_COLOUR_ROWS,
     coloursOpen: false,
+    colourPalette: ANALYTICS_PALETTE,
+    colourEdit: null,     // the series whose palette is open in the dialog
     atTime: null,         // Day views: the picker's time ('HH:MM'); the readout opens there
     // Flow (#543): the period's arcs in kWh, where they came from, and what went wrong
     flow: null,
@@ -370,6 +379,12 @@ function analyticsTab() {
     get energyMode() { return this.kind !== 'day5'; },
     colourOf(key) { return this.colours[ANALYTICS_COLOUR_OF[key] || key] || '#8a94a3'; },
     setColour(key, v) { this.colours[key] = v; this.saveColours(); },
+    /** A colour typed as #rrggbb; anything else is left until it is one. */
+    setColourHex(key, v) {
+      v = (v || '').trim();
+      if (!v.startsWith('#')) v = '#' + v;
+      if (/^#[0-9a-f]{6}$/i.test(v)) this.setColour(key, v.toLowerCase());
+    },
     /** Dark or Light background: the preset's colours, remembered as the viewer's own. */
     useColourPreset(name) { this.colours = Object.assign({}, ANALYTICS_COLOURS[name]); this.saveColours(); },
     resetColours() {

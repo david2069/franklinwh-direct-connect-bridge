@@ -75,7 +75,7 @@ Local and Cloud share one layout. The top row has the time span (Day (5-min), Da
 Week, Month, Year or Lifetime; one choice for both sources, remembered in this browser) and
 **Chart ▾**, one choice for both: Line, Area, Bars, **Bars stacked** (each slot's sources
 piled above zero and its uses below) or Flow; Analytics opens on the last one picked, then **Local | Cloud**, **Export ▾** and
-**Refresh**. **Chart ▾ → Colours…** (or **Colours** at the end of the legend) sets a colour for each series (Local's Battery and Grid
+**Refresh**. **Chart ▾ → Colours…** (or **Colours** at the end of the legend) sets a colour for each series: tap one for a palette (or type a hex colour), then **Done** (Local's Battery and Grid
 take Battery discharged's and Grid exported's), for Local and Cloud alike and remembered in
 this browser; **Dark background** and **Light background** are ready-made sets, and
 **Reset to defaults** brings back the original colours (SoC in magenta, apart from the

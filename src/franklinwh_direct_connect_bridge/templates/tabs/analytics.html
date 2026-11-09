@@ -263,18 +263,38 @@
       </div>
       <p class="text-xs text-slate-500">For Local and Cloud, remembered in this browser.</p>
       <div class="space-y-1">
+        <!-- a styled palette per series, inside the dialog (owner, 2026-11-10: the browser's
+             own picker covered the dialog on iPadOS and couldn't be closed) -->
         <template x-for="r in colourRows" :key="r[0]">
-          <label class="flex items-center gap-3 py-1 cursor-pointer">
-            <input type="color" class="fwh-swatch" :value="colours[r[0]]" :aria-label="r[1]"
-                   @input="setColour(r[0], $event.target.value)">
-            <span class="text-sm" style="color:var(--text-primary)" x-text="r[1]"></span>
-          </label>
+          <div>
+            <button type="button" class="w-full flex items-center gap-3 py-1 text-left" :aria-expanded="String(colourEdit === r[0])"
+                    @click="colourEdit = colourEdit === r[0] ? null : r[0]">
+              <span class="fwh-swatch" :style="'background:' + colours[r[0]]"></span>
+              <span class="text-sm flex-1" style="color:var(--text-primary)" x-text="r[1]"></span>
+              <span class="text-xs font-mono text-slate-500" x-text="colours[r[0]]"></span>
+            </button>
+            <div x-show="colourEdit === r[0]" class="pl-10 pb-2 space-y-2">
+              <div class="grid grid-cols-8 gap-1.5" role="group" :aria-label="'Colours for ' + r[1]">
+                <template x-for="c in colourPalette" :key="c">
+                  <button type="button" class="fwh-swatch" :style="'background:' + c + (c === colours[r[0]] ? ';outline:2px solid var(--text-primary);outline-offset:2px' : '')"
+                          :aria-label="c" :aria-pressed="String(c === colours[r[0]])" @click="setColour(r[0], c)"></button>
+                </template>
+              </div>
+              <label class="flex items-center gap-2 text-xs text-slate-500">Hex
+                <input type="text" inputmode="text" maxlength="7" class="form-control form-control-sm font-mono" style="width:7rem"
+                       :value="colours[r[0]]" @change="setColourHex(r[0], $event.target.value)" :aria-label="r[1] + ' as hex'">
+              </label>
+            </div>
+          </div>
         </template>
       </div>
       <div class="flex flex-wrap gap-2 pt-2 border-t" style="border-color:var(--border)">
         <button type="button" class="btn btn-secondary btn-sm" @click="useColourPreset('dark')">Dark background</button>
         <button type="button" class="btn btn-secondary btn-sm" @click="useColourPreset('light')">Light background</button>
         <button type="button" class="btn btn-secondary btn-sm ml-auto" @click="resetColours()">Reset to defaults</button>
+      </div>
+      <div class="flex justify-end">
+        <button type="button" class="btn btn-primary btn-sm" @click="coloursOpen = false; colourEdit = null">Done</button>
       </div>
     </div>
   </div>
