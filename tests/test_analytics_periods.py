@@ -18,12 +18,22 @@ def test_one_time_span_picker_at_the_top_with_clouds_periods():
 
 
 def test_the_top_row_is_time_span_then_source_export_and_refresh():
-    i = [TOP.index(s) for s in ('aria-label="Time span"', 'aria-label="Source"',
+    i = [TOP.index(s) for s in ('aria-label="Time span"', 'aria-label="Chart style"', 'aria-label="Source"',
                                  'aria-label="Export"', "@click=\"refresh()\"")]
     assert i == sorted(i)
     menu = TOP[TOP.index('aria-label="Export"'):][:1500]
     assert "exportData('csv')" in menu and "exportData('json')" in menu
     assert "@click.outside" in TOP
+
+
+def test_one_chart_style_at_the_top_after_the_time_span_for_both_sources():
+    # Owner, 2026-11-10: "the chart type on the top right after the time span".
+    assert HTML.count("setChartType('bars')") == 1 and "setChartType('bars')" in TOP
+    assert TOP.index('aria-label="Chart style"') > TOP.index('aria-label="Time span"')
+    m = JS[JS.index("FWHCloudAnalytics.mount("):][:500]
+    assert "styleControl: false" in m and "style: this.style" in m
+    body = JS[JS.index("setChartType(t) {"):][:400]
+    assert "this._cloud.setStyle(t)" in body
 
 
 def test_the_cloud_panel_takes_the_shared_picker():

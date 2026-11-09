@@ -149,6 +149,7 @@ function analyticsTab() {
         params: () => ({ gateway: this.$store.app.selectedGateway || '' }),
         periodPicker: false, period: this.period,        // the picker at the top serves both
         height: 380,                                      // as tall as the Local chart
+        styleControl: false, style: this.style,           // Line | Area | Bars at the top serves both
       });
     },
 
@@ -220,6 +221,7 @@ function analyticsTab() {
     setChartType(t) {
       this.style = t;
       try { localStorage.setItem('fwh-analytics-style', t); } catch (e) { /* private mode */ }
+      if (this._cloud) this._cloud.setStyle(t);
       this.render();
     },
     toggleMetric(k) { this.metrics[k] = !this.metrics[k]; this.render(); },

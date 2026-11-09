@@ -72,7 +72,8 @@ selectable range. This is the bridge's own record, so it survives a gateway rebo
 goes back further than the aGate's.
 
 Local and Cloud share one layout. The top row has the time span (Day (5-min), Day (hourly),
-Week, Month, Year or Lifetime; one choice for both sources, remembered in this browser),
+Week, Month, Year or Lifetime; one choice for both sources, remembered in this browser) and
+**Line | Area | Bars** (also one choice for both),
 then **Local | Cloud**, **Export ▾** and **Refresh**. In the chart card, step with **‹ ›**,
 pick a day, or press **Today**: **‹ ›** move by the period (a day, a Monday-to-Sunday week, a
 month or a year on the site's calendar), the day picker shows the period that holds that
@@ -88,7 +89,7 @@ left empty. The strip under the chart shows the period's totals. A period older 
 stored history is shown empty. The chips
 under the chart (SoC, Grid, Solar, Battery, Home, Generator for a day; Cloud's series for
 the kWh periods) show or hide each series;
-**Line | Area | Bars** beside them picks the style (SoC, on its own % axis, stays a line);
+**Line | Area | Bars** at the top picks the style (SoC, on its own % axis, stays a line);
 until one is picked, a day draws lines and the kWh periods bars, as Cloud does. Dates are in
 your browser's own format. Local and Cloud charts are the same height, and Local's kW or kWh axis
 is scaled as Cloud's (zero always shown, four even steps), so the same data looks the same in
@@ -129,7 +130,7 @@ than read as a total. **(inferred)** marks a value the cloud's field is only nam
 never checked. A generator that never ran is left out.
 
 Under the chart, a chip per series shows or hides it, and the chart rescales to what is
-shown. **Line | Area | Bars** picks the style for any period (a day starts as lines, the
+shown. **Line | Area | Bars** at the top picks the style for any period (a day starts as lines, the
 longer periods as bars). Hover, or tap on a phone, anywhere on the chart for every shown
 value at that time. Dates are shown in your browser's own format (5 Nov in
 Australia, Nov 5 in the US); times are 24-hour, on the site's clock. With Bars, the
