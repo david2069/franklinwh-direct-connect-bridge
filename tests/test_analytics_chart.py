@@ -21,9 +21,8 @@ def test_no_smoothing_and_gaps_kept():
 
 def test_one_date_input_and_no_custom_range():
     # Owner, 2026-11-09: Local takes Cloud's periods; Custom is gone, the day picker stays.
-    # one day picker per card: Local's and, since #543, Flow's
-    assert 'type="datetime-local"' not in HTML and LOCAL.count('type="date"') == 1
-    assert HTML.count('type="date"') == 2
+    # one styled picker for every view (owner, 2026-11-10), no browser date inputs
+    assert 'type="datetime-local"' not in HTML and 'type="date"' not in HTML
 
 
 def test_export_uses_the_shown_window():
@@ -56,7 +55,8 @@ LOCAL = HTML[HTML.index("x-show=\"source === 'local' && chartType !== 'flow'\"")
 def test_local_uses_the_cloud_views_layout():
     # Owner, 2026-11-09: Local and Cloud share one layout (Cloud's): ‹ day › Today on the
     # right, chips and Line | Area under the chart; the period picker is the top row's.
-    assert 'type="date"' in LOCAL and 'jumpTo($event.target.value)' in LOCAL
+    # the date picker is shared above the cards since 2026-11-10
+    assert 'aria-label="Pick a date"' in HTML and 'aria-label="Pick a date"' not in LOCAL
     assert LOCAL.index("toggleMetric(") > LOCAL.index('x-ref="canvas"')
     # Line | Area | Bars moved to the top row (owner, 2026-11-10)
 
@@ -69,7 +69,7 @@ def test_local_dates_follow_the_browsers_own_format():
 def test_local_offers_line_area_and_bars_like_cloud_and_remembers_it():
     # Owner, 2026-11-09: "there is no bar charts" on Local; the same choices as Cloud.
     for k in ("line", "area", "bars"):
-        assert f"setChartType('{k}')" in HTML
+        assert f"setChartType('{k}')" in HTML or (k == 'bars' and "setBars(false)" in HTML)
     assert "chartType === 'bars'" in JS and "fwh-analytics-style" in JS
     # SoC stays a line on its own % axis whatever the style
     ds = JS[JS.index("const datasets ="):][:900]

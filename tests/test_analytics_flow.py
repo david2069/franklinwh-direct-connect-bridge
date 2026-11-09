@@ -15,14 +15,14 @@ TOP = HTML[:HTML.index('x-ref="cloud"')]
 
 
 def test_flow_is_a_fourth_chart_type_in_the_top_row():
-    seg = TOP[TOP.index('aria-label="Chart style"'):][:1500]
+    seg = TOP[TOP.index('aria-label="Chart style"'):][:6000]
     assert "setChartType('flow')" in seg and ">Flow<" in seg
     assert "['line', 'area', 'bars', 'flow']" in JS               # remembered like the others
 
 
 def test_the_flow_card_replaces_both_charts_and_steps_like_them():
     card = HTML[HTML.index("<!-- Flow (#543)"):HTML.index("x-show=\"source === 'local' && chartType !== 'flow'\"")]
-    assert "chartType === 'flow'" in card and "stepWindow(-1)" in card and "goToday()" in card
+    assert "chartType === 'flow'" in card                           # dates: the shared picker above
     assert "x-show=\"source === 'cloud' && chartType !== 'flow'\"" in HTML
     assert "x-show=\"source === 'local' && chartType !== 'flow'\"" in HTML
     assert "flowNote" in card                                       # says where the flows come from
