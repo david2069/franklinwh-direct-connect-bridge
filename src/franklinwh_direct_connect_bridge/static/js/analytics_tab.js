@@ -65,6 +65,18 @@ function analyticsSlotEdges(period, win, offMin, now) {
   }
 }
 
+/** The power/energy axis as the Cloud view draws it: zero always shown, four nice steps
+ *  (1, 2, 5 × 10ⁿ) from min(0, data) to max(0, data), so both charts get the same scale. */
+function analyticsYRange(values) {
+  const nice = (x) => { const p = Math.pow(10, Math.floor(Math.log10(x))); const m = x / p;
+    return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p; };
+  const v = values.filter(x => x != null && isFinite(x));
+  let hi = Math.max(0, ...v), lo = Math.min(0, ...v);
+  if (hi === lo) hi = lo + 1;
+  const step = nice((hi - lo) / 4);
+  return { min: Math.floor(lo / step) * step, max: Math.ceil(hi / step) * step, step };
+}
+
 /** Cloud's series for the kWh periods, in Cloud's colours; charge and export below zero. */
 const ANALYTICS_ENERGY = [
   { key: 'home', label: 'Home', color: '#5b8def' },
@@ -136,6 +148,7 @@ function analyticsTab() {
         endpoint: 'api/analytics/cloud',
         params: () => ({ gateway: this.$store.app.selectedGateway || '' }),
         periodPicker: false, period: this.period,        // the picker at the top serves both
+        height: 380,                                      // as tall as the Local chart
       });
     },
 
@@ -319,6 +332,7 @@ function analyticsTab() {
           tension: 0,          // straight between samples: smoothing invented shapes (#145)
           spanGaps: false,     // a missing stretch stays a gap
         }));
+        const yr = analyticsYRange(datasets.filter(d => d.yAxisID === 'y').flatMap(d => d.data.map(p => p.y)));
         const cfg = {
           type: 'line',
           data: { datasets },
@@ -356,7 +370,8 @@ function analyticsTab() {
                 grid: { color: 'rgba(148,163,184,.08)' },
               },
               y: { position: 'left', title: { display: true, text: self.unit, color: '#64748b' },
-                   ticks: { color: '#64748b', font: { size: 10 } },
+                   min: yr.min, max: yr.max,
+                   ticks: { color: '#64748b', font: { size: 10 }, stepSize: yr.step },
                    grid: { color: 'rgba(148,163,184,.08)' } },
               y1: { position: 'right', min: 0, max: 100,
                     title: { display: true, text: 'SoC %', color: '#34d399' },
