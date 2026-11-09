@@ -58,6 +58,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   an add-on after 10 s).
 
 ### Changed
+- **Analytics: one top row and the same periods for Local and Cloud** (owner). The time span
+  picker sits at the top for both sources with Cloud's periods: Day (5-min), Day (hourly),
+  Week, Month, Year and Lifetime. Local now steps by site day, Monday-to-Sunday week, month
+  or year like Cloud; 24 hours, 3 days, 7 days, 30 days and Custom are gone. **Local |
+  Cloud**, **Export ▾** (CSV, JSON) and **Refresh** are on the same row. Cloud panel
+  franklinwh-ha-cloud-analytics 0.1.6 (the host's picker).
 - **The off-grid notification says why:** "user requested" (someone asked for off-grid) or
   "grid outage" (no request was made), the same words as the top bar, or "reason unknown"
   when that wasn't read. Before, every off-grid message read the same (#528).

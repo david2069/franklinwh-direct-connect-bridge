@@ -71,20 +71,23 @@ Longer-horizon charts over the stored samples — power, battery, energy — wit
 selectable range. This is the bridge's own record, so it survives a gateway reboot and
 goes back further than the aGate's.
 
-Local and Cloud share one layout. Pick the period from the dropdown (24 hours, 3 days,
-7 days, 30 days or Custom; it is remembered in this browser), then step with **‹ ›**,
-pick a day, or press **Today**. **‹ ›** step the shown window back or forward by its own
-length, the day picker moves it to end on that day, and **Today** comes back to now. **‹** stops at the oldest stored sample;
-the caption under the chart says where the history starts ("history from …"), and the
-custom range can't start before it. The chips (SoC, Grid, Solar, Battery, Home, Generator)
-under the chart show or hide each series; **Line | Area | Bars** beside them picks the style
-(SoC, on its own % axis, stays a line).
+Local and Cloud share one layout. The top row has the time span (Day (5-min), Day (hourly),
+Week, Month, Year or Lifetime; one choice for both sources, remembered in this browser),
+then **Local | Cloud**, **Export ▾** and **Refresh**. In the chart card, step with **‹ ›**,
+pick a day, or press **Today**: **‹ ›** move by the period (a day, a Monday-to-Sunday week, a
+month or a year on the site's calendar), the day picker shows the period that holds that
+day, and **Today** comes back to the current one. **‹** stops at the oldest stored sample;
+the caption under the chart says where the history starts ("history from …"). Local reads
+Day (5-min) in 5-minute buckets, Day (hourly), Week and Month hourly, and Year and Lifetime
+in about 400 buckets; a period older than the stored history is shown empty. The chips
+(SoC, Grid, Solar, Battery, Home, Generator) under the chart show or hide each series;
+**Line | Area | Bars** beside them picks the style (SoC, on its own % axis, stays a line).
 Dates are in your browser's own format.
 
 ### Local or Cloud
 
-The **Local | Cloud** switch under the Analytics title picks the source, and the page says
-which one it is showing. **Export CSV**, **JSON** and **Refresh** at the top of Analytics work on whichever source
+The **Local | Cloud** switch in the top row picks the source, and the page says which one
+it is showing. **Export ▾** (CSV or JSON) and **Refresh** beside it work on whichever source
 is shown. For Cloud, the export is the shown period (`fwh-cloud-<period>-<date>.csv`) with
 every series the cloud returned, including any hidden with its chip.
 
@@ -101,7 +104,7 @@ FranklinWH cloud's energy history for the gateway picked in the top bar:
 | Year | each month's kWh |
 | Lifetime | each year's kWh |
 
-Pick the period from the dropdown, then step with **‹ ›**, choose a date, or press
+Pick the period from the time span in the top row, then step with **‹ ›**, choose a date, or press
 **Today** to come back to the current period; Week starts on
 its Monday, and Month and Year on the 1st. Battery discharge and grid import are drawn
 above zero, battery charge and grid export below. A period with no data is left empty,

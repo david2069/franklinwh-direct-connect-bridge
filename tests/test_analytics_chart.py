@@ -19,9 +19,9 @@ def test_no_smoothing_and_gaps_kept():
     assert "tension: 0," in JS and "spanGaps: false" in JS
 
 
-def test_custom_range_takes_date_and_time():
-    # the custom range is date-and-time; the one date input is the day picker (owner 2026-11-09)
-    assert HTML.count('type="datetime-local"') == 2 and HTML.count('type="date"') == 1
+def test_one_date_input_and_no_custom_range():
+    # Owner, 2026-11-09: Local takes Cloud's periods; Custom is gone, the day picker stays.
+    assert 'type="datetime-local"' not in HTML and HTML.count('type="date"') == 1
 
 
 def test_export_uses_the_shown_window():
@@ -52,15 +52,11 @@ LOCAL = HTML[HTML.index("x-show=\"source === 'local'\""):]
 
 
 def test_local_uses_the_cloud_views_layout():
-    # Owner, 2026-11-09: Local and Cloud share one layout (Cloud's): a period dropdown,
-    # ‹ day › Today on the right, chips and Line | Area under the chart.
-    assert '<select' in LOCAL and 'aria-label="Period"' in LOCAL and 'x-for="r in ranges"' not in LOCAL
-    for v in ("24h", "3d", "7d", "30d", "custom"):
-        assert f'<option value="{v}"' in LOCAL
+    # Owner, 2026-11-09: Local and Cloud share one layout (Cloud's): ‹ day › Today on the
+    # right, chips and Line | Area under the chart; the period picker is the top row's.
     assert 'type="date"' in LOCAL and 'jumpTo($event.target.value)' in LOCAL
     assert LOCAL.index("toggleMetric(") > LOCAL.index('x-ref="canvas"')
     assert LOCAL.index("setChartType('area')") > LOCAL.index('x-ref="canvas"')
-    assert "fwh-analytics-range" in JS
 
 
 def test_local_dates_follow_the_browsers_own_format():
