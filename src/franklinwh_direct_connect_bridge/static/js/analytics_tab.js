@@ -1,7 +1,8 @@
 /**
  * Analytics tab — power & state history from the bridge's SQLite store (/api/metrics).
- * Range presets + a custom date-and-time range, multi-metric selection, line/area, a stats
- * strip, and CSV/JSON export (via /api/admin/metrics/export). Chart.js is bundled globally.
+ * The Cloud view's periods (one picker for both, owner 2026-11-09) stepped by site day,
+ * week, month or year; multi-metric selection, line/area/bars, a stats strip, and CSV/JSON
+ * export (via /api/admin/metrics/export). Chart.js is bundled globally.
  *
  * Time handling (#144, #145): every time on this tab is in the SELECTED gateway's site
  * zone ($store.app.siteTzOffsetMin, read from the aGate), falling back to the browser's
@@ -13,14 +14,42 @@
 /** Tick steps the time axis may use, in seconds (all divide a day, or are whole days). */
 const ANALYTICS_STEPS = [900, 1800, 3600, 7200, 10800, 21600, 43200, 86400, 172800, 604800];
 
+/** The Cloud view's periods, used for Local too (the shared panel's own list once loaded). */
+const ANALYTICS_PERIODS =
+  [['day5', 'Day (5-min)'], ['dayhour', 'Day (hourly)'], ['week', 'Week'], ['month', 'Month'],
+   ['year', 'Year'], ['lifetime', 'Lifetime']];
+
+/** The window a period covers on the site's calendar, as the Cloud view reads it: the day
+ *  of `day` ('YYYY-MM-DD'), its Monday-to-Monday week, its month or its year; lifetime is
+ *  the oldest stored sample to now. Epoch seconds, plus how finely to read it. */
+function analyticsPeriodWindow(period, day, offMin, now, firstTs) {
+  if (period === 'lifetime') return { start: Math.min(firstTs || now - 86400, now - 3600), end: now, points: 400 };
+  let [y, mo, d] = day.split('-').map(Number);
+  mo -= 1;
+  if (period === 'week') d -= (new Date(Date.UTC(y, mo, d)).getUTCDay() + 6) % 7;
+  if (period === 'month' || period === 'year') d = 1;
+  if (period === 'year') mo = 0;
+  const at = (yy, mm, dd) => Date.UTC(yy, mm, dd) / 1000 - offMin * 60;     // site midnight
+  const start = at(y, mo, d);
+  const end = period === 'year' ? at(y + 1, 0, 1) : period === 'month' ? at(y, mo + 1, 1)
+    : at(y, mo, d + (period === 'week' ? 7 : 1));
+  const read = period === 'day5' ? { bucket: 300 }
+    : period === 'year' ? { points: 400 } : { bucket: 3600 };
+  return Object.assign({ start, end }, read);
+}
+
+/** The same period one step earlier (dir -1) or later (+1), as a site day. */
+function analyticsStepDay(period, day, dir) {
+  const [y, mo, d] = day.split('-').map(Number);
+  const t = period === 'year' ? Date.UTC(y + dir, 0, 1)
+    : period === 'month' ? Date.UTC(y, mo - 1 + dir, 1)
+    : Date.UTC(y, mo - 1, d + dir * (period === 'week' ? 7 : 1));
+  return new Date(t).toISOString().slice(0, 10);
+}
+
 function analyticsTab() {
   return {
-    ranges: [
-      { key: '24h', label: '24h', hours: 24 },
-      { key: '3d', label: '3d', hours: 72 },
-      { key: '7d', label: '7d', hours: 168 },
-      { key: '30d', label: '30d', hours: 720 },
-    ],
+    periods: (window.FWHCloudAnalytics && FWHCloudAnalytics.PERIODS) || ANALYTICS_PERIODS,
     metricDefs: [
       { key: 'soc', label: 'SoC', color: '#34d399', pct: true },
       { key: 'grid_w', label: 'Grid', color: '#f87171' },
@@ -30,12 +59,9 @@ function analyticsTab() {
       { key: 'generator_w', label: 'Generator', color: '#94a3b8' },
     ],
     metrics: { soc: true, grid_w: true, solar_w: true, battery_w: true, load_w: true, generator_w: false },
-    // the period, remembered in this browser like the Cloud view's
-    range: (() => { try { const r = localStorage.getItem('fwh-analytics-range'); return ['24h', '3d', '7d', '30d'].includes(r) ? r : '24h'; } catch (e) { return '24h'; } })(),
-    custom: false,
-    customStart: '',      // 'YYYY-MM-DDTHH:MM', site wall-clock
-    customEnd: '',
-    shiftS: 0,            // a preset window moved back from now by ‹ (seconds)
+    // the period, one for Local and Cloud, remembered in this browser
+    period: (() => { try { const p = localStorage.getItem('fwh-analytics-period'); return ANALYTICS_PERIODS.some(x => x[0] === p) ? p : 'day5'; } catch (e) { return 'day5'; } })(),
+    day: null,            // the site day the shown period holds ('YYYY-MM-DD'); null = today
     firstTs: null,        // the oldest stored sample for this gateway (epoch s)
     // line | area | bars, remembered in this browser like the Cloud view's style
     chartType: (() => { try { const t = localStorage.getItem('fwh-analytics-style'); return ['line', 'area', 'bars'].includes(t) ? t : 'area'; } catch (e) { return 'area'; } })(),
@@ -49,14 +75,9 @@ function analyticsTab() {
     _cloud: null,
 
     init() {
-      this.resetCustom();
-      // A zone that arrives (or changes with the gateway) after the first draw re-labels it.
-      this.$watch('$store.app.siteTzOffsetMin', () => {
-        // Defaults set before the zone arrived were in the browser's zone: redo them,
-        // unless a custom range is in use.
-        if (!this.custom) this.resetCustom();
-        this.render();
-      });
+      // A zone that arrives (or changes with the gateway) after the first draw moves the
+      // site's midnights: read the period again.
+      this.$watch('$store.app.siteTzOffsetMin', () => { if (this.win && this.source === 'local') this.load(); });
       this.$watch('$store.app.selectedGateway', () => {
         if (this.$store.app.activeTab !== 'analytics') return;
         if (this.source === 'cloud') { if (this._cloud) this._cloud.reload(); } else this.load();
@@ -67,7 +88,7 @@ function analyticsTab() {
     setSource(src) {
       this.source = src;
       try { localStorage.setItem('fwh-analytics-source', src); } catch (e) { /* private mode */ }
-      if (src === 'cloud') this.mountCloud(); else this.load();
+      if (src === 'cloud') { this.mountCloud(); if (this._cloud) this._cloud.setPeriod(this.period); } else this.load();
     },
 
     /** Settings → Integrations, scrolled to the FranklinWH Cloud API card. */
@@ -82,6 +103,7 @@ function analyticsTab() {
       this._cloud = FWHCloudAnalytics.mount(this.$refs.cloud, {
         endpoint: 'api/analytics/cloud',
         params: () => ({ gateway: this.$store.app.selectedGateway || '' }),
+        periodPicker: false, period: this.period,        // the picker at the top serves both
       });
     },
 
@@ -112,97 +134,43 @@ function analyticsTab() {
         year ? { year: 'numeric' } : {})).format(this.siteDate(ts));
     },
     stamp(ts) { return this.dayLabel(ts) + ' ' + this.hhmm(ts); },
-
-    /** Custom range defaults: today 00:00 → now, in the site zone. */
-    resetCustom() {
-      const now = Math.floor(Date.now() / 1000);
-      const today = this.toSiteLocal(now).slice(0, 10);
-      this.customStart = today + 'T00:00';
-      this.customEnd = this.toSiteLocal(now);
+    monthLabel(ts, year) {
+      return new Intl.DateTimeFormat(undefined, Object.assign({ month: 'short', timeZone: 'UTC' },
+        year ? { year: '2-digit' } : {})).format(this.siteDate(ts));
     },
 
-    get rangeHours() {
-      const w = this.window;
-      return Math.max(1, Math.round((w.end - w.start) / 3600));
-    },
-    get rangeLabel() {
-      if (this.custom) {
-        const w = this.window;
-        return this.stamp(w.start) + ' → ' + this.stamp(w.end);
-      }
-      return (this.ranges.find(r => r.key === this.range) || this.ranges[0]).label;
-    },
-    get customValid() {
-      const s = this.fromSiteLocal(this.customStart), e = this.fromSiteLocal(this.customEnd);
-      return isFinite(s) && isFinite(e) && e > s;
-    },
-    get window() {
-      const now = Math.floor(Date.now() / 1000);
-      if (this.custom && this.customValid) {
-        return { start: this.fromSiteLocal(this.customStart), end: this.fromSiteLocal(this.customEnd) };
-      }
-      const h = (this.ranges.find(r => r.key === this.range) || this.ranges[0]).hours;
-      return { start: now - this.shiftS - h * 3600, end: now - this.shiftS };
-    },
-
-    setRange(k) {
-      this.range = k; this.custom = false; this.shiftS = 0;
-      try { localStorage.setItem('fwh-analytics-range', k); } catch (e) { /* private mode */ }
-      this.load();
-    },
-    /** The period dropdown: a preset, or Custom (which starts from the window shown). */
-    setPeriod(v) {
-      if (v !== 'custom') { this.setRange(v); return; }
-      const w = this.window;
-      this.customStart = this.toSiteLocal(w.start);
-      this.customEnd = this.toSiteLocal(w.end);
-      this.custom = true;
-    },
-    /** The site day the shown window ends on, for the day picker. */
-    get endDay() { return this.toSiteLocal(this.window.end - 1).slice(0, 10); },
     get today() { return this.toSiteLocal(Math.floor(Date.now() / 1000)).slice(0, 10); },
-    /** The day picker: the same-length window, ending at the end of that day (or now). */
+    get window() {
+      return analyticsPeriodWindow(this.period, this.day || this.today, this.offMin,
+        Math.floor(Date.now() / 1000), this.firstTs);
+    },
+    /** The first day of the shown period, for the day picker (as the Cloud view shows it). */
+    get startDay() { return this.toSiteLocal(this.window.start).slice(0, 10); },
+
+    /** The time span picker: one for both views. */
+    setPeriod(v) {
+      this.period = v;
+      try { localStorage.setItem('fwh-analytics-period', v); } catch (e) { /* private mode */ }
+      if (this.source === 'cloud') { if (this._cloud) this._cloud.setPeriod(v); } else this.load();
+    },
+    /** The day picker: the period that holds that day. */
     jumpTo(day) {
       if (!day) return;
-      const now = Math.floor(Date.now() / 1000), w = this.window, span = w.end - w.start;
-      const end = Math.min(now, this.fromSiteLocal(day + 'T00:00') + 86400);
-      if (this.custom) {
-        this.customStart = this.toSiteLocal(end - span);
-        this.customEnd = this.toSiteLocal(end);
-      } else {
-        this.shiftS = Math.max(0, now - end);
-      }
+      this.day = day > this.today ? null : day;
       this.load();
     },
     refresh() { if (this.source === 'cloud') { if (this._cloud) this._cloud.reload(); } else this.load(); },
-    /** ‹ / ›: the window before or after this one, the same length. */
+    /** ‹ / ›: the day, week, month or year before or after this one. */
     stepWindow(dir) {
-      const w = this.window, span = w.end - w.start;
-      if (this.custom) {
-        const now = Math.floor(Date.now() / 1000);
-        const end = Math.min(now, w.end + dir * span);
-        this.customStart = this.toSiteLocal(end - span);
-        this.customEnd = this.toSiteLocal(end);
-      } else {
-        this.shiftS = Math.max(0, this.shiftS - dir * span);
-      }
+      const d = analyticsStepDay(this.period, this.startDay, dir);
+      this.day = d > this.today ? null : d;
       this.load();
     },
-    /** Back to the window that ends now. */
-    goToday() { this.custom = false; this.shiftS = 0; this.load(); },
-    get atToday() {
-      return this.custom ? this.window.end >= Math.floor(Date.now() / 1000) - 120 : this.shiftS === 0;
-    },
+    /** Back to the period that holds today. */
+    goToday() { this.day = null; this.load(); },
+    get atToday() { return this.window.end > Math.floor(Date.now() / 1000); },
     get atOldest() {
       return this.firstTs != null && this.window.start <= this.firstTs;
-    },
-    applyCustom() {
-      if (!this.customValid) {
-        this.$store.app.toast('"To" must be after "From"', 'error');
-        return;
-      }
-      this.custom = true;
-      this.load();
     },
     setChartType(t) {
       this.chartType = t;
@@ -215,8 +183,8 @@ function analyticsTab() {
       this.loading = true;
       try {
         const w = this.window;
-        const url = `api/metrics?start=${w.start}&end=${w.end}&points=400`
-          + this.$store.app.gwQuery('&');
+        const url = `api/metrics?start=${w.start}&end=${w.end}`
+          + (w.bucket ? `&bucket=${w.bucket}` : `&points=${w.points}`) + this.$store.app.gwQuery('&');
         const d = await (await fetch(url)).json();
         this.series = (d && d.series) || [];
         this.bucketS = (d && d.bucket_s) || null;
@@ -243,12 +211,24 @@ function analyticsTab() {
       return out;
     },
 
-    /** Tick positions aligned to the site's clock (00:00, 06:00, …), at most ~8. */
-    ticksFor(start, end) {
+    /** Tick positions aligned to the site's clock (00:00, 06:00, …), at most `max` (fewer
+     *  on a phone, so the labels don't run together). */
+    ticksFor(start, end, max = 8) {
       const span = Math.max(1, end - start);
-      const step = ANALYTICS_STEPS.find(s => span / s <= 8) || ANALYTICS_STEPS[ANALYTICS_STEPS.length - 1];
       const off = this.offMin * 60;
       const out = [];
+      if (span > 62 * 86400) {
+        // a year or more: ticks on the 1st of every one, two, three … months
+        const s = this.siteDate(start), e = this.siteDate(end);
+        const months = (e.getUTCFullYear() - s.getUTCFullYear()) * 12 + e.getUTCMonth() - s.getUTCMonth() + 1;
+        const k = Math.max(1, Math.ceil(months / max));
+        for (let i = 0; i <= months; i += k) {
+          const t = Date.UTC(s.getUTCFullYear(), s.getUTCMonth() + i, 1) / 1000 - off;
+          if (t >= start && t <= end) out.push(t);
+        }
+        return { step: 2592000, ticks: out };
+      }
+      const step = ANALYTICS_STEPS.find(s => span / s <= max) || ANALYTICS_STEPS[ANALYTICS_STEPS.length - 1];
       for (let t = Math.ceil((start + off) / step) * step - off; t <= end; t += step) out.push(t);
       return { step, ticks: out };
     },
@@ -258,7 +238,8 @@ function analyticsTab() {
         const el = this.$refs.canvas;
         if (!el || !window.Chart) return;
         const w = this.win || this.window;
-        const { step, ticks } = this.ticksFor(w.start, w.end);
+        const max = Math.max(3, Math.min(8, Math.floor((el.parentElement.clientWidth || 800) / 80)));
+        const { step, ticks } = this.ticksFor(w.start, w.end, max);
         const self = this;
         // Bars draw each bucket's power as a bar; SoC (its own % axis) stays a line.
         const bars = this.chartType === 'bars';
@@ -297,6 +278,7 @@ function analyticsTab() {
                   // HH:MM, with the short date on a second line where the day changes;
                   // whole-day steps show the date only.
                   callback: (v, i) => {
+                    if (step >= 2592000) return self.monthLabel(v, w.end - w.start > 400 * 86400);
                     if (step >= 86400) return self.dayLabel(v);
                     const newDay = i === 0 || self.dayLabel(ticks[i - 1]) !== self.dayLabel(v);
                     return newDay ? [self.hhmm(v), self.dayLabel(v)] : self.hhmm(v);

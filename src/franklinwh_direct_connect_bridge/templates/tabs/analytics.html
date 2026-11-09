@@ -1,32 +1,48 @@
 <div x-data="analyticsTab()" class="space-y-4 max-w-6xl">
 
-  <div class="flex items-center justify-between gap-3 flex-wrap">
-    <div>
-      <h1 class="text-xl font-semibold" style="color:var(--text-primary)">Analytics <a :href="$store.app.guideUrl('energy-and-costs/#analytics')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></h1>
-      <p class="text-sm text-slate-500" x-text="source === 'cloud' ? 'Energy history from the FranklinWH cloud.' : 'Power &amp; state history from the bridge\'s own store.'"></p>
-    </div>
-    <!-- the same buttons for both sources: they export or reload whichever is shown -->
-    <div class="flex items-center gap-2">
-      <button class="btn btn-secondary btn-sm" @click="exportData('csv')">Export CSV</button>
-      <button class="btn btn-secondary btn-sm" @click="exportData('json')">JSON</button>
+  <div>
+    <h1 class="text-xl font-semibold" style="color:var(--text-primary)">Analytics <a :href="$store.app.guideUrl('energy-and-costs/#analytics')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></h1>
+    <p class="text-sm text-slate-500" x-text="source === 'cloud' ? 'Energy history from the FranklinWH cloud.' : 'Power &amp; state history from the bridge\'s own store.'"></p>
+  </div>
+
+  <!-- One row for both sources (owner, 2026-11-09): the time span, then Local | Cloud
+       (#215), Export ▾ and Refresh; each serves whichever source is shown. -->
+  <div class="flex items-center justify-between gap-2 flex-wrap">
+    <select class="form-control form-control-sm" style="width:auto" aria-label="Time span"
+            :value="period" @change="setPeriod($event.target.value)">
+      <template x-for="p in periods" :key="p[0]">
+        <option :value="p[0]" x-text="p[1]" :selected="p[0] === period"></option>
+      </template>
+    </select>
+    <div class="flex items-center gap-2 flex-wrap">
+      <div class="inline-flex rounded-lg overflow-hidden border" style="border-color:var(--border)" role="tablist" aria-label="Source">
+        <button class="px-4 py-1.5 text-sm font-semibold transition" role="tab" :aria-selected="source === 'local'"
+                :class="source === 'local' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-slate-200'"
+                @click="setSource('local')">Local</button>
+        <button class="px-4 py-1.5 text-sm font-semibold transition border-l" style="border-color:var(--border)" role="tab" :aria-selected="source === 'cloud'"
+                :class="source === 'cloud' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-slate-200'"
+                @click="setSource('cloud')">Cloud</button>
+      </div>
+      <div class="relative inline-block" x-data="{ open: false }" @click.outside="open = false">
+        <button class="btn btn-secondary btn-sm inline-flex items-center gap-1" aria-label="Export" aria-haspopup="menu"
+                :aria-expanded="open" @click="open = !open">Export
+          <svg class="w-3 h-3 opacity-70" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div x-show="open" x-cloak role="menu" class="absolute right-0 mt-1 w-28 rounded-lg border shadow-xl z-40 overflow-hidden"
+             style="background:var(--surface-1);border-color:var(--border)">
+          <button role="menuitem" class="w-full text-left px-3 py-2 text-xs hover:bg-white/[0.06] transition" style="color:var(--text-primary)"
+                  @click="open = false; exportData('csv')">CSV</button>
+          <button role="menuitem" class="w-full text-left px-3 py-2 text-xs hover:bg-white/[0.06] transition border-t" style="color:var(--text-primary);border-color:var(--border)"
+                  @click="open = false; exportData('json')">JSON</button>
+        </div>
+      </div>
       <button class="btn btn-secondary btn-sm" @click="refresh()" :disabled="loading">
         <span x-text="loading ? '…' : 'Refresh'"></span>
       </button>
     </div>
   </div>
 
-  <!-- Local: this bridge's own samples. Cloud: the FranklinWH cloud's history (#215).
-       Its own row, full size, so it is not lost in the header. -->
-  <div class="inline-flex rounded-lg overflow-hidden border" style="border-color:var(--border)" role="tablist" aria-label="Source">
-    <button class="px-5 py-2 text-sm font-semibold transition" role="tab" :aria-selected="source === 'local'"
-            :class="source === 'local' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-slate-200'"
-            @click="setSource('local')">Local</button>
-    <button class="px-5 py-2 text-sm font-semibold transition border-l" style="border-color:var(--border)" role="tab" :aria-selected="source === 'cloud'"
-            :class="source === 'cloud' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-slate-200'"
-            @click="setSource('cloud')">Cloud</button>
-  </div>
-
-  <!-- Cloud: the shared panel draws its own period, dates and chart. -->
+  <!-- Cloud: the shared panel draws its dates and chart; the period comes from the top row. -->
   <div class="card" x-show="source === 'cloud'" x-cloak>
     <!-- Only while the cloud account is missing or refused; hidden once it works. -->
     <p class="text-sm mb-3" style="color:var(--text-secondary)" x-show="!$store.app.cloudAvailable">Cloud account:
@@ -35,44 +51,21 @@
   </div>
 
   <div class="space-y-4" x-show="source === 'local'">
-  <!-- One card, laid out as the Cloud view (owner, 2026-11-09): the period dropdown, then
-       ‹ day › Today; the chart; the chips and Line | Area under it. -->
+  <!-- One card, laid out as the Cloud view (owner, 2026-11-09): ‹ day › Today; the chart;
+       the chips and Line | Area | Bars under it. -->
   <div class="card space-y-3">
-    <div class="flex items-center justify-between gap-2 flex-wrap">
-      <select class="form-control form-control-sm" style="width:auto" aria-label="Period"
-              :value="custom ? 'custom' : range" @change="setPeriod($event.target.value)">
-        <option value="24h">24 hours</option>
-        <option value="3d">3 days</option>
-        <option value="7d">7 days</option>
-        <option value="30d">30 days</option>
-        <option value="custom">Custom</option>
-      </select>
-      <!-- step through history; ‹ stops at the oldest stored sample -->
-      <div class="inline-flex items-center gap-1">
-        <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="stepWindow(-1)" :disabled="loading || atOldest"
-                aria-label="Earlier" :title="atOldest ? 'No stored history before this' : 'Earlier'">‹</button>
-        <input type="date" class="form-control form-control-sm" style="width:auto" aria-label="Day" :value="endDay"
-               :min="firstTs ? toSiteLocal(firstTs).slice(0, 10) : null" :max="today" @change="jumpTo($event.target.value)">
-        <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="stepWindow(1)" :disabled="loading || atToday" aria-label="Later" title="Later">›</button>
-        <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="goToday()" :disabled="loading || atToday" title="Back to now">Today</button>
-      </div>
-    </div>
-
-    <!-- custom date range -->
-    <div x-show="custom" x-cloak class="flex items-center gap-2 flex-wrap">
-      <label class="text-xs text-slate-500">From
-        <input type="datetime-local" step="60" class="form-control form-control-sm ml-1" x-model="customStart"
-               :min="firstTs ? toSiteLocal(firstTs) : null" :max="toSiteLocal(Math.floor(Date.now() / 1000))"></label>
-      <label class="text-xs text-slate-500">To
-        <input type="datetime-local" step="60" class="form-control form-control-sm ml-1" x-model="customEnd"
-               :min="firstTs ? toSiteLocal(firstTs) : null" :max="toSiteLocal(Math.floor(Date.now() / 1000))"></label>
-      <button class="btn btn-secondary btn-sm" @click="applyCustom()">Apply</button>
-      <button class="btn btn-ghost btn-sm" @click="resetCustom()" title="Today 00:00 to now">Today</button>
-      <span class="text-[11px] text-slate-500" x-text="'Times in ' + zoneLabel"></span>
+    <!-- step by the period; ‹ stops at the oldest stored sample -->
+    <div class="flex items-center justify-end gap-1 flex-wrap" x-show="period !== 'lifetime'">
+      <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="stepWindow(-1)" :disabled="loading || atOldest"
+              aria-label="Earlier" :title="atOldest ? 'No stored history before this' : 'Earlier'">‹</button>
+      <input type="date" class="form-control form-control-sm" style="width:auto" aria-label="Day" :value="startDay"
+             :min="firstTs ? toSiteLocal(firstTs).slice(0, 10) : null" :max="today" @change="jumpTo($event.target.value)">
+      <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="stepWindow(1)" :disabled="loading || atToday" aria-label="Later" title="Later">›</button>
+      <button class="btn btn-secondary btn-sm disabled:opacity-40 disabled:cursor-default" @click="goToday()" :disabled="loading || atToday" title="Back to today">Today</button>
     </div>
 
     <div x-show="!series.length && !loading" class="text-sm text-slate-500 py-16 text-center">
-      No samples in this range.
+      No samples in this period.
     </div>
     <div class="relative" style="height:380px" x-show="series.length || loading">
       <canvas x-ref="canvas"></canvas>

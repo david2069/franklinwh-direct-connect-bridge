@@ -134,8 +134,9 @@ def test_the_cloud_view_links_to_the_cloud_account_card():
     assert "@fwh-open-settings.window" in SETTINGS
 
 
-def test_the_local_cloud_switch_is_its_own_row_and_full_size():
-    # Owner, 2026-11-09: the switch was too small and lost in the middle of the header.
+def test_the_local_cloud_switch_is_full_size_under_the_heading():
+    # Owner, 2026-11-09: the switch was too small and lost in the middle of the header; it
+    # now sits in the top row beside Export (test_analytics_periods.py).
     sw = TAB[TAB.index('aria-label="Source"') - 300:][:1200]
     assert "text-xs" not in sw and "text-sm" in sw
     assert TAB.index('aria-label="Source"') > TAB.index("</h1>")
@@ -149,7 +150,7 @@ def test_the_cloud_account_link_shows_only_while_the_account_is_not_usable():
 
 def test_export_and_refresh_serve_whichever_source_is_shown():
     # Owner, 2026-11-09: Cloud gets CSV and JSON export like Local, in the same place.
-    head = TAB[:TAB.index('aria-label="Source"')]
+    head = TAB[:TAB.index('x-ref="cloud"')]
     assert "exportData('csv')" in head and "exportData('json')" in head
     assert 'x-show="source === \'local\'">\n      <button class="btn btn-secondary btn-sm" @click="exportData' not in TAB
     body = JS[JS.index("exportData(fmt) {"):][:300]
