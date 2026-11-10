@@ -1,0 +1,14 @@
+build_from:
+  aarch64: "ghcr.io/home-assistant/aarch64-base-python:3.12-alpine3.20"
+  amd64:   "ghcr.io/home-assistant/amd64-base-python:3.12-alpine3.20"
+
+labels:
+  io.hass.name: "FranklinWH Direct Connect Bridge"
+  io.hass.description: "REST + MQTT bridge and web UI for the FranklinWH aGate over the Direct Connect local API"
+  io.hass.arch: "{arch}"
+  io.hass.type: "addon"
+  io.hass.version: "{version}"
+  maintainer: "David Hona <david.hona@gmail.com>"
+  org.opencontainers.image.title: "FranklinWH Direct Connect Bridge"
+  org.opencontainers.image.source: "https://github.com/david2069/franklinwh-direct-connect-bridge"
+  org.opencontainers.image.licenses: "MIT"

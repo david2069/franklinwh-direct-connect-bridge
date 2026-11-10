@@ -1,0 +1,178 @@
+site_name: FranklinWH Direct Connect Bridge
+site_description: Unofficial local REST + MQTT bridge and web UI for the FranklinWH aGate (Direct Connect)
+site_url: https://david2069.github.io/franklinwh-direct-connect-bridge
+repo_url: https://github.com/david2069/franklinwh-direct-connect-bridge
+repo_name: david2069/franklinwh-direct-connect-bridge
+
+# Same theme as the other FranklinWH docs (franklinwh-cloud mkdocs.yml), so the sites
+# read as one family.
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.code.annotate
+  icon:
+    repo: fontawesome/brands/github
+
+# docs/guide/README.md is kept only so GitHub links to it still work; the guide's index
+# is docs/guide/index.md.
+exclude_docs: |
+  guide/README.md
+
+plugins:
+  - search
+  # The old (Jekyll, repo-root) site served these pages under /docs/...; keep those links working.
+  - redirects:
+      redirect_maps:
+        docs/guide/tour.md: guide/tour.md
+        docs/guide/home-assistant.md: guide/home-assistant.md
+        docs/guide/scheduler.md: guide/scheduler/index.md
+        docs/guide/scheduler-troubleshooting.md: guide/scheduler/dependencies.md
+        # The Scheduler page became a section (docs/guide/scheduler/). guide/scheduler.md and
+        # guide/scheduler/index.md share the URL /guide/scheduler/, so only the troubleshooting
+        # page needs a redirect. Old #anchors keep working: the new pages carry stubs for them.
+        guide/scheduler-troubleshooting.md: guide/scheduler/dependencies.md
+        docs/guide/control.md: guide/control.md
+        docs/guide/energy-and-costs.md: guide/energy-and-costs.md
+        docs/guide/multi-gateway.md: guide/multi-gateway.md
+        docs/guide/README.md: guide/index.md
+        docs/API_COMPARISON.md: API_COMPARISON.md
+        docs/BRIDGE_BASELINE.md: BRIDGE_BASELINE.md
+        docs/CONNECTION_DESIGN.md: CONNECTION_DESIGN.md
+        docs/HA_CONTROL_GAP.md: HA_CONTROL_GAP.md
+        docs/HA_HISTORY.md: HA_HISTORY.md
+        docs/IN_FLIGHT.md: IN_FLIGHT.md
+        docs/LOCAL_ONLY_CAPABILITIES.md: LOCAL_ONLY_CAPABILITIES.md
+        docs/METRICS_GAP_ANALYSIS.md: METRICS_GAP_ANALYSIS.md
+        docs/MODBUS_EXPORT_CONTROL.md: MODBUS_EXPORT_CONTROL.md
+        docs/MODBUS_STATES.md: MODBUS_STATES.md
+        docs/MODBUS_SUSPEND_PLAN.md: MODBUS_SUSPEND_PLAN.md
+        docs/MODBUS_VIA_REST_DESIGN.md: MODBUS_VIA_REST_DESIGN.md
+        docs/MQTT_CONTROLS_PLAN.md: MQTT_CONTROLS_PLAN.md
+        docs/MULTI_GATEWAY_AND_HA_PLAN.md: MULTI_GATEWAY_AND_HA_PLAN.md
+        docs/OBSERVABILITY_COVERAGE.md: OBSERVABILITY_COVERAGE.md
+        docs/OFFGRID_DESIGN.md: OFFGRID_DESIGN.md
+        docs/OFFGRID_PV_LIMIT_TEST.md: OFFGRID_PV_LIMIT_TEST.md
+        docs/PARITY_GAP.md: PARITY_GAP.md
+        docs/RATERUDDER_LIBRARY_PLAN.md: RATERUDDER_LIBRARY_PLAN.md
+        docs/RUNTIME_DESIGN.md: RUNTIME_DESIGN.md
+        docs/RUN_STATUS_AND_MODE.md: RUN_STATUS_AND_MODE.md
+        docs/SMART_CIRCUITS_DESIGN.md: SMART_CIRCUITS_DESIGN.md
+        docs/TEST_POLICY.md: TEST_POLICY.md
+        docs/TIMEZONES.md: TIMEZONES.md
+        docs/USER_GUIDE.md: USER_GUIDE.md
+        docs/VALUE_SOURCES_DESIGN.md: VALUE_SOURCES_DESIGN.md
+        docs/WHAT_THE_ENGINE_IS.md: WHAT_THE_ENGINE_IS.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  # docs/index.md includes the repository's LICENSE (the in-app "Full terms") with
+  # --8<--, so the published copy cannot drift from the file. base_path is the repo root.
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
+  - pymdownx.mark
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - User guide:
+      - guide/index.md
+      - guide/installing.md
+      - guide/tour.md
+      - guide/control.md
+      - guide/battery-dispatch.md
+      - guide/generator.md
+      - Scheduler:
+          - guide/scheduler/index.md
+          - guide/scheduler/concepts.md
+          - guide/scheduler/triggers.md
+          - guide/scheduler/conditions.md
+          - guide/scheduler/actions.md
+          - guide/scheduler/targets.md
+          - guide/scheduler/exit-and-conflicts.md
+          - guide/scheduler/priorities.md
+          - guide/scheduler/outcomes.md
+          - guide/scheduler/restarts-and-clock.md
+          - guide/scheduler/dependencies.md
+          - guide/scheduler/examples.md
+      - guide/home-assistant.md
+      - guide/ha-setup-and-notifications.md
+      - guide/phone-and-remote-access.md
+      - guide/security.md
+      - guide/multi-gateway.md
+      - guide/energy-and-costs.md
+      - USER_GUIDE.md
+  - Developers Guide:
+      - developers/index.md
+      - developers/rest-api.md
+      - developers/api-endpoints.md
+      - developers/web-ui.md
+      - developers/mqtt.md
+      - developers/reading-home-assistant.md
+      - developers/scheduler-integration.md
+      - Scheduler test plan: dev/scheduler-test-plan.md
+      - Scheduler parity: dev/scheduler-parity.md
+      - Polling inventory: dev/polling-inventory.md
+  - Policies & plans:
+      - TEST_POLICY.md
+      - PARITY_GAP.md
+      - MQTT_CONTROLS_PLAN.md
+      - HA_CONTROL_GAP.md
+  - Design notes:
+      - API_COMPARISON.md
+      - BRIDGE_BASELINE.md
+      - CONNECTION_DESIGN.md
+      - HA_HISTORY.md
+      - IN_FLIGHT.md
+      - LOCAL_ONLY_CAPABILITIES.md
+      - METRICS_GAP_ANALYSIS.md
+      - MODBUS_EXPORT_CONTROL.md
+      - MODBUS_STATES.md
+      - MODBUS_SUSPEND_PLAN.md
+      - MODBUS_VIA_REST_DESIGN.md
+      - MULTI_GATEWAY_AND_HA_PLAN.md
+      - OBSERVABILITY_COVERAGE.md
+      - OFFGRID_DESIGN.md
+      - OFFGRID_PV_LIMIT_TEST.md
+      - RATERUDDER_LIBRARY_PLAN.md
+      - RUNTIME_DESIGN.md
+      - RUN_STATUS_AND_MODE.md
+      - SMART_CIRCUITS_DESIGN.md
+      - TIMEZONES.md
+      - VALUE_SOURCES_DESIGN.md
+      - WHAT_THE_ENGINE_IS.md

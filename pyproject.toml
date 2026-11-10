@@ -1,0 +1,65 @@
+# franklinwh-direct-connect-bridge — HA add-on + standalone REST/MQTT bridge for the
+# FranklinWH LOCAL API. Depends on the franklinwh-direct-connect-api library; NO hybrid.
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "franklinwh-direct-connect-bridge"
+version = "0.5.20.54"
+description = "Home Assistant add-on / REST + MQTT bridge for the FranklinWH aGate local (sendMqtt) API"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "david2069", email = "david.hona@gmail.com"}]
+
+dependencies = [
+    # >=0.5 for the emulator's explicit site timezone (tz_offset_hours), its live 1202
+    # clock and the 1702 install profile. The Home Assistant add-on installs this from
+    # PyPI, so an unpinned dependency served 0.4.0 and adding a mock gateway failed
+    # with TypeError (2026-10-15). mockgw degrades rather than failing now, but the
+    # pin is what actually makes the feature available.
+    "franklinwh-direct-connect-api>=0.6",
+    # Pinned (#219): an unpinned >=0.9 put every new library release into users' builds
+    # untested (0.9.6 and 0.10.0 in two days). 0.9.6 is the version G2 ran on (0.5.9,
+    # reference aGate, 2026-10-18). Move the pin only after G0 + G1 (+ G2 for force paths).
+    "franklinwh-modbus==0.13.0",      # direct-Modbus WSet force control (Battery Control widget)
+    # The System view overlay (#428), shared with the Modbus Bridge. Pinned like the other
+    # shared packages; move it only after G0 + G1.
+    "franklinwh-system-view==0.2.4",
+    "franklinwh-ha-notify==0.1.4",    # actionable HA notifications (#374)
+    "fastapi>=0.111",
+    "uvicorn>=0.29",
+    "jinja2>=3.1",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "paho-mqtt>=2.0",
+    "croniter>=2.0",          # cron trigger type (lazy import; gated on availability)
+    "cryptography>=42",       # the HTTPS port's self-signed certificate (#457)
+    "argon2-cffi>=23.1",      # account passwords, argon2id (#457)
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0", "httpx>=0.27"]
+# Cloud transport. Optional on purpose: without it the app runs local-only and every
+# cloud-backed capability reports available=false / "library not installed" (see
+# GET /api/providers). Declared here so `pip install -e ".[cloud]"` reproduces what
+# the Docker image builds from wheels/ — previously this dep was implicit and a dev
+# install silently lost reserve-SoC write.
+# Pinned (#254): an open range put each release into the image untested. 0.6.0 adds the
+# typed login errors, resolve_gateway and Client.aclose() that the bridge now relies on.
+cloud = ["franklinwh-cloud==0.6.5"]
+
+[project.scripts]
+franklinwh-direct-connect-bridge = "franklinwh_direct_connect_bridge.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# The whole web UI, subfolders included (#487): "static/*" took only top-level files, so a
+# pip install had no css/, js/, tabs/ or partials/ and its main page failed.
+franklinwh_direct_connect_bridge = ["static/**/*", "templates/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

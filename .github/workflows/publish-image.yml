@@ -1,0 +1,88 @@
+name: Publish add-on image
+# Builds the Home Assistant add-on image for each arch in config.yaml and pushes it to GHCR
+# as ghcr.io/david2069/{arch}-franklinwh-direct-connect-bridge:<config.yaml version> (#243).
+#
+# Run by hand, BEFORE the release PR merges: once main's config.yaml names a version, every
+# install and update pulls that tag, so it must already exist. A tag that exists is never
+# overwritten, so the image tested on the HAOS VM is the image users get.
+#
+# The bundled docs are not built here: a Supervisor build of the add-on never had them either
+# (docs_site/ holds only .gitkeep), and the in-app guide falls back to the published site.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch or commit to build (e.g. release/0.5.12)"
+        required: true
+      push:
+        description: "Push to GHCR (false = build only)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: aarch64
+            platform: linux/arm64
+          - arch: amd64
+            platform: linux/amd64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Read version, image and base
+        id: meta
+        run: |
+          version=$(sed -n 's/^version: "\(.*\)"/\1/p' config.yaml)
+          base=$(sed -n "s/^  ${{ matrix.arch }}: *\"\(.*\)\"/\1/p" build.yaml)
+          image="ghcr.io/david2069/${{ matrix.arch }}-franklinwh-direct-connect-bridge"
+          test -n "$version" && test -n "$base" || { echo "version or base missing"; exit 1; }
+          grep -q "^  - ${{ matrix.arch }}$" config.yaml || { echo "${{ matrix.arch }} not in config.yaml arch"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse --short=10 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Refuse to overwrite a published version
+        if: ${{ inputs.push }}
+        run: |
+          if docker manifest inspect "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}" >/dev/null 2>&1; then
+            echo "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }} already exists; bump the version instead"
+            exit 1
+          fi
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: ${{ inputs.push }}
+          build-args: |
+            BUILD_FROM=${{ steps.meta.outputs.base }}
+            SOURCE_SHA=${{ steps.meta.outputs.sha }}
+          tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}
+          labels: |
+            io.hass.name=FranklinWH Direct Connect Bridge
+            io.hass.description=REST + MQTT bridge and web UI for the FranklinWH aGate over the Direct Connect local API
+            io.hass.arch=${{ matrix.arch }}
+            io.hass.type=addon
+            io.hass.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.source=https://github.com/david2069/franklinwh-direct-connect-bridge
+            org.opencontainers.image.licenses=MIT

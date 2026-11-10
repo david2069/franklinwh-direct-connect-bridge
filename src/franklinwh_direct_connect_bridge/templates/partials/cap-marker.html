@@ -1,0 +1,11 @@
+{#- Guarded capability marker. Pass kind ('modbus'|'cloud') + label via {% with %}.
+    Green when the subsystem is configured/enabled/reachable; amber "needs <label>" with a
+    how-to-enable tooltip otherwise. Reads $store.app.capState(kind) = {ok, hint}. -#}
+<span class="chip inline-flex items-center gap-1" style="font-size:.6rem"
+      :class="$store.app.capState('{{ kind }}').ok ? 'ok' : 'warn'"
+      :title="$store.app.capState('{{ kind }}').hint">
+  <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+    {% if kind == 'cloud' %}<path stroke-linecap="round" stroke-linejoin="round" d="M7 18a4 4 0 01-.5-7.97A5 5 0 0116.9 8.5 3.5 3.5 0 0116.5 18H7z"/>{% else %}<rect x="3.5" y="6" width="17" height="12" rx="1.5"/><path stroke-linecap="round" d="M8 10v4M12 10v4M16 10v4"/>{% endif %}
+  </svg>
+  <span x-text="($store.app.capState('{{ kind }}').ok ? '' : 'needs ') + '{{ label }}'"></span>
+</span>

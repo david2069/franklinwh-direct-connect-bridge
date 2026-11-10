@@ -1,0 +1,3432 @@
+"""Schedule engine — time windows that run local actions and HA actions.
+
+Modelled on the Modbus Bridge's Schedule & Automations page, with one honest
+difference recorded up front:
+
+  **Force charge / discharge / standby are SunSpec/Modbus controls with no
+  Direct-Connect equivalent.** They are offered here only when the bridge's own
+  direct-Modbus path (``battery_control``, the proven ``franklinwh-modbus`` library)
+  is reachable — the same path the dashboard Battery Control widget uses, independent
+  of the modbus-bridge service. When Modbus is unreachable the action is listed with
+  the reason rather than firing blind. Everything else — operating mode, smart
+  circuits, off-grid — runs over the local channel and is hardware-verified. A
+  reserve-SoC action is offered only when a cloud provider is configured, because
+  the local write does not work (see BACKLOG RESEARCH-RESERVE-SOC).
+
+Offering a control that silently does nothing is worse than not offering it, so
+unavailable actions are listed with the reason instead of being hidden or faked.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import datetime as dt
+import logging
+import fnmatch
+import re
+import time
+from typing import Any
+
+from franklinwh_ha_notify import NO, REPLY, YES, Answer, Button, Event, Target
+
+from . import actionable
+from . import alerts
+from . import site_time
+from . import state as _state
+from . import ha_instances
+from . import resilience
+
+
+log = logging.getLogger(__name__)
+#: Local actions that are hardware-verified. Anything not here is not offered.
+ACTIONS: dict[str, dict[str, Any]] = {
+    "set_mode": {
+        "label": "Set operating mode",
+        "params": ["mode"],           # tou | self | backup, or a programme id
+        "note": "1727 opt:3 — verified.",
+    },
+    "smart_circuit": {
+        "label": "Smart circuit on/off",
+        "params": ["circuit", "on"],
+        "note": "1409 full-block RMW with read-back — verified 2026-08-08.",
+    },
+    "offgrid": {
+        "label": "Go off-grid / reconnect",
+        "params": ["on", "soc"],
+        "note": "1723 — consequential; confirm before enabling a schedule that uses it.",
+    },
+    "reserve_soc": {
+        "label": "Set reserve SoC",
+        "params": ["mode", "soc"],
+        "requires_provider": "cloud",
+        "note": "No local write path exists; needs cloud credentials.",
+    },
+    "notify": {
+        "label": "Notify (Home Assistant)",
+        "params": ["device_id", "title", "message"],
+        "note": "Sends through a configured notification device.",
+    },
+    "force": {
+        "label": "Force charge / discharge / standby",
+        "params": ["direction", "power", "unit", "target_soc"],
+        "requires": "modbus",
+        "note": "Direct Modbus/SunSpec WSet. Runs for the schedule window and "
+                "auto-releases at window end; enforces target SoC if set.",
+    },
+}
+
+#: Deliberately absent, with the reason — see the module docstring.
+UNAVAILABLE: dict[str, str] = {
+    # Force charge/discharge/standby moved OUT of here — the direct-Modbus path
+    # (battery_control) now provides them, offered when Modbus is reachable.
+    "smart_circuit_schedule": "the gateway accepts and discards schedule writes",
+}
+
+#: The gate's operators — ported from the Modbus bridge so a condition authored
+#: there evaluates identically here. Simple comparisons, plus inclusive ranges,
+#: numeric membership, verbatim name lists, and case-insensitive wildcards.
+OPERATORS: tuple[str, ...] = (
+    "<", "<=", "==", "!=", ">=", ">", "between",
+    "in", "not_in", "matchlist", "not_matchlist", "like", "not_like",
+)
+#: Ops whose RHS is a raw member-list / pattern, so the Value|Lookup toggle is
+#: meaningless and hidden for them.
+TEXT_RHS_OPERATORS: frozenset[str] = frozenset(
+    {"in", "not_in", "matchlist", "not_matchlist", "like", "not_like"})
+
+MATCH_ALL = "all"
+MATCH_ANY = "any"
+
+
+def _coerce_number(v: Any) -> float | None:
+    """A number, or None. Bools are NOT numbers — True must not read as 1 in a
+    numeric comparison, or ``mode == 1`` style bugs creep in."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    try:
+        return float(str(v).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _eq(a: Any, b: Any) -> bool:
+    """Equality that compares numerically when both sides are numbers, exactly
+    for bools, and case-insensitively for names/enums otherwise."""
+    if isinstance(a, bool) or isinstance(b, bool):
+        return a == b
+    na, nb = _coerce_number(a), _coerce_number(b)
+    if na is not None and nb is not None:
+        return na == nb
+    return str(a).casefold() == str(b).casefold()
+
+
+def _as_ranges(spec: Any) -> list[tuple[float, float]]:
+    """Members for ``in``/``not_in``: a scalar becomes a point range; ``a-b`` or
+    ``a..b`` (en/em dash accepted) becomes an inclusive range, order-independent.
+    Non-numeric members drop out; an empty result matches nothing."""
+    toks = list(spec) if isinstance(spec, (list, tuple)) \
+        else re.split(r"[,;\n]", str(spec or ""))
+    out: list[tuple[float, float]] = []
+    for tok in toks:
+        s = str(tok).strip()
+        if not s:
+            continue
+        m = re.match(r"^(-?\d+(?:\.\d+)?)\s*(?:\.\.|[-–—])\s*(-?\d+(?:\.\d+)?)$", s)
+        if m:
+            lo, hi = float(m.group(1)), float(m.group(2))
+            out.append((min(lo, hi), max(lo, hi)))
+        else:
+            n = _coerce_number(s)
+            if n is not None:
+                out.append((n, n))
+    return out
+
+
+def _text_members(spec: Any) -> list[str]:
+    """Members for ``matchlist``: verbatim names, case-folded, no range parsing
+    (so ``Self-Consumption`` stays one name)."""
+    toks = list(spec) if isinstance(spec, (list, tuple)) \
+        else re.split(r"[,;\n]", str(spec or ""))
+    return [str(t).strip().casefold() for t in toks if str(t).strip()]
+
+
+def _like(live: Any, pattern: Any) -> bool:
+    """Case-insensitive wildcard: ``*``/``%`` = many, ``?``/``_`` = one. A pattern
+    with no wildcard falls back to a substring test."""
+    p = str(pattern).replace("%", "*").replace("_", "?").casefold()
+    text = str(live).casefold()
+    if any(c in p for c in "*?"):
+        return fnmatch.fnmatch(text, p)
+    return p in text
+
+
+def _apply_op(op: str, live: Any, value: Any, value2: Any = None) -> bool:
+    """One leaf comparison. A missing/None live value is FALSE for EVERY operator
+    (including ``!=``): a scheduler must never act on data it does not have."""
+    if live is None:
+        return False
+    if op == "==":
+        return _eq(live, value)
+    if op == "!=":
+        return not _eq(live, value)
+    if op in ("<", "<=", ">", ">="):
+        lv, rv = _coerce_number(live), _coerce_number(value)
+        if lv is None or rv is None:
+            return False
+        return {"<": lv < rv, "<=": lv <= rv, ">": lv > rv, ">=": lv >= rv}[op]
+    if op == "between":
+        lv, rv, rv2 = _coerce_number(live), _coerce_number(value), _coerce_number(value2)
+        if lv is None or rv is None or rv2 is None:
+            return False
+        lo, hi = sorted((rv, rv2))
+        return lo <= lv <= hi
+    if op in ("in", "not_in"):
+        lv = _coerce_number(live)
+        hit = lv is not None and any(lo <= lv <= hi for lo, hi in _as_ranges(value))
+        return hit if op == "in" else not hit
+    if op in ("matchlist", "not_matchlist"):
+        hit = str(live).casefold() in _text_members(value)
+        return hit if op == "matchlist" else not hit
+    if op in ("like", "not_like"):
+        hit = _like(live, value)
+        return hit if op == "like" else not hit
+    return False
+
+_VAR = re.compile(r"%([a-zA-Z0-9_.]+)%")
+
+
+def substitute(text: str, snapshot: dict) -> str:
+    """Replace ``%sensor.id%`` with live values.
+
+    An unreadable value renders as ``?`` rather than blocking the message: a
+    notification that arrives with one field missing is far more useful than one
+    that never arrives because a sensor was briefly unavailable.
+    """
+    def repl(m: re.Match) -> str:
+        val = snapshot.get(m.group(1))
+        return "?" if val is None else str(val)
+    return _VAR.sub(repl, text or "")
+
+
+def _is_tree(node: dict) -> bool:
+    """A node is a GROUP if it carries nested conditions (or a match), else a
+    leaf ROW. Matches the Modbus bridge's shape so trees port verbatim."""
+    return "conditions" in node or "match" in node
+
+
+def _eval_node(node: dict, snapshot: dict, trace: list | None) -> bool:
+    if _is_tree(node):
+        return _eval_tree(node.get("conditions") or [], snapshot,
+                          node.get("match", MATCH_ALL), trace)
+    op = node.get("op", "==")
+    live = snapshot.get(node.get("sensor"))
+    if node.get("value_kind") == "sensor":
+        # Lookup: compare to another sensor's live value; an absent RHS fails
+        # closed exactly like an absent LHS.
+        resolved = snapshot.get(node.get("value_sensor"))
+        result = False if resolved is None else _apply_op(op, live, resolved)
+    else:
+        resolved = node.get("value")
+        result = _apply_op(op, live, resolved, node.get("value2"))
+    if trace is not None:
+        row = {"sensor": node.get("sensor"), "op": op, "value": resolved,
+               "live_value": live, "result": result}
+        if node.get("value_kind") == "sensor":
+            row["value_kind"] = "sensor"
+            row["value_sensor"] = node.get("value_sensor")
+        if op == "between":
+            row["value2"] = node.get("value2")
+        if "cid" in node:
+            row["cid"] = node["cid"]
+        trace.append(row)
+    return result
+
+
+def _eval_tree(nodes: list[dict], snapshot: dict, match: str,
+               trace: list | None) -> bool:
+    # No short-circuit: every leaf is visited so Test Verification gets a full
+    # trace. Vacuous truth — empty ALL is True, empty ANY is False.
+    results = [_eval_node(n, snapshot, trace) for n in nodes]
+    if str(match).lower() == MATCH_ANY:
+        return any(results)
+    return all(results)
+
+
+def evaluate(rows: list[dict], snapshot: dict, match: str = "all",
+             trace: list | None = None) -> bool:
+    """Evaluate a condition tree against the live snapshot.
+
+    Rows may nest into ALL/ANY groups; a flat list behaves exactly as before, so
+    existing schedules are unaffected. A missing sensor (LHS or Lookup RHS) is
+    FALSE — an absent reading must never fire an action. Pass ``trace`` (a list)
+    to collect one entry per leaf for Test Verification.
+    """
+    if not rows:
+        return True
+    return _eval_tree(rows, snapshot, match, trace)
+
+
+def _minutes(hhmm: str) -> int | None:
+    try:
+        h, m = str(hhmm).split(":")[:2]
+        return int(h) * 60 + int(m)
+    except (ValueError, AttributeError):
+        return None
+
+
+def _window_end_ts(entry: dict, now: dt.datetime) -> float:
+    """Epoch seconds of THIS window's close (fire_at + duration on now's date; a window
+    that wraps past midnight ends the next day). Used to persist a dispatch's deadline."""
+    start_min = _minutes(entry.get("fire_at", "")) or 0
+    dur = int(entry.get("duration_min") or 0)
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return (midnight + dt.timedelta(minutes=start_min + dur)).timestamp()
+
+
+#: The trigger types offered in the editor. Everything except interval/cron/always
+#: resolves to one or more daily time windows (gated by the calendar restrictions).
+TRIGGER_TYPES: tuple[str, ...] = (
+    "window", "once", "daily", "weekly", "interval", "monthly", "cron", "always",
+)
+
+
+def cron_available() -> bool:
+    try:
+        import croniter  # noqa: F401
+        return True
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
+def _windows_for(entry: dict) -> list[tuple[int, int]]:
+    """Daily time window(s) as (start_min, duration_min). The 'window' trigger uses the
+    user's list of start→end pairs (wrap past midnight ok); every other daily-family
+    trigger is a single fire_at + duration window."""
+    if (entry.get("trigger_type") or "daily") == "window":
+        out: list[tuple[int, int]] = []
+        empty = False
+        for w in entry.get("windows") or []:
+            s, e = _minutes(w.get("start", "")), _minutes(w.get("end", ""))
+            if s is None or e is None:
+                continue
+            if s == e:              # start = end is an empty window, not 24 h (#198)
+                empty = True
+                continue
+            out.append((s, (e - s) if e > s else (e + 24 * 60 - s)))   # wrap
+        if out or empty:
+            return out
+    s = _minutes(entry.get("fire_at", "")) or 0
+    return [(s, int(entry.get("duration_min") or 0))]
+
+
+def _cur_inside(cur: int, start: int, dur: int) -> bool:
+    """Is minute-of-day ``cur`` inside a window of ``dur`` minutes from ``start``?"""
+    if dur <= 0:
+        return cur == start
+    end = start + dur
+    if end <= 24 * 60:
+        return start <= cur < end
+    return cur >= start or cur < end - 24 * 60                  # wraps past midnight
+
+
+def _occ_date(now: dt.datetime, start: int, dur: int, cur: int) -> dt.date:
+    """The date a currently-open window OPENED on (its post-midnight tail belongs to the
+    previous day)."""
+    if dur > 0 and (start + dur) > 24 * 60 and cur < start and cur < (start + dur - 24 * 60):
+        return now.date() - dt.timedelta(days=1)
+    return now.date()
+
+
+def _interval_window(entry: dict, now: dt.datetime):
+    iv = int(entry.get("interval_min") or 0)
+    if iv <= 0:
+        return ("outside", None, None, now.date())
+    dur = int(entry.get("duration_min") or 0)
+    win = dur if dur > 0 else 1
+    anchor_min = _minutes(entry.get("anchor", "")) or 0
+    anchor_dt = now.replace(hour=0, minute=0, second=0, microsecond=0) + dt.timedelta(minutes=anchor_min)
+    if now < anchor_dt:
+        anchor_dt -= dt.timedelta(days=1)
+    k = int((now - anchor_dt).total_seconds() // 60 // iv)
+    slot = anchor_dt + dt.timedelta(minutes=k * iv)
+    if (now - slot).total_seconds() / 60 < win:
+        end = (slot + dt.timedelta(minutes=win)).timestamp()
+        return ("inside", f"iv:{int(slot.timestamp())}", end, slot.date())
+    return ("outside", None, None, now.date())
+
+
+def _cron_window(entry: dict, now: dt.datetime):
+    expr = (entry.get("cron") or "").strip()
+    if not expr:
+        return ("outside", None, None, now.date())
+    try:
+        from croniter import croniter
+        if not croniter.is_valid(expr):
+            return ("outside", None, None, now.date())
+        prev = croniter(expr, now).get_prev(dt.datetime)
+    except Exception:                                          # noqa: BLE001
+        return ("outside", None, None, now.date())
+    dur = int(entry.get("duration_min") or 0)
+    win = dur if dur > 0 else 1
+    if (now - prev).total_seconds() / 60 < win:
+        end = (prev + dt.timedelta(minutes=win)).timestamp()
+        return ("inside", f"cr:{int(prev.timestamp())}", end, prev.date())
+    return ("outside", None, None, now.date())
+
+
+def window_now(entry: dict, now: dt.datetime):
+    """Is a window open at ``now``? Returns ``(state, key, window_end_ts, occ_date)``
+    where ``state`` is 'inside'|'outside', ``key`` uniquely identifies the occurrence
+    (for the fire-once guard), ``window_end_ts`` is the window's close epoch (None if
+    open-ended), and ``occ_date`` is the date the occurrence belongs to.
+
+    'always' has no time window (it is gated purely by entry conditions, handled in the
+    tick); it reports 'inside' here so the tick can drive it from the conditions."""
+    tt = entry.get("trigger_type") or "daily"
+    if tt == "always":
+        return ("inside", "always", None, now.date())
+    if tt == "interval":
+        return _interval_window(entry, now)
+    if tt == "cron":
+        return _cron_window(entry, now)
+    cur = now.hour * 60 + now.minute
+    for idx, (s, dur) in enumerate(_windows_for(entry)):
+        if _cur_inside(cur, s, dur):
+            d = _occ_date(now, s, dur, cur)
+            end = ((dt.datetime.combine(d, dt.time.min, now.tzinfo) + dt.timedelta(minutes=s + dur)).timestamp()
+                   if dur else None)
+            key = d.isoformat() if idx == 0 else f"{d.isoformat()}#{idx}"   # idx0 = legacy date key
+            return ("inside", key, end, d)
+    return ("outside", None, None, now.date())
+
+
+def window_state(entry: dict, now: dt.datetime) -> str:
+    """``before`` | ``inside`` | ``after`` for a daily entry.
+
+    Windows that cross midnight are handled: 22:00 for 300 minutes is inside at
+    01:00 the next day, which a naive start<=now<end comparison gets wrong.
+    """
+    start = _minutes(entry.get("fire_at", "")) or 0
+    dur = int(entry.get("duration_min") or 0)
+    cur = now.hour * 60 + now.minute
+    if dur <= 0:
+        return "inside" if cur == start else ("before" if cur < start else "after")
+    end = start + dur
+    if end <= 24 * 60:
+        return "inside" if start <= cur < end else ("before" if cur < start else "after")
+    # wraps past midnight
+    return "inside" if (cur >= start or cur < end - 24 * 60) else "before"
+
+
+def _window_anchor_date(entry: dict, now: dt.datetime) -> dt.date:
+    """The calendar date the CURRENT window occurrence started on. For a window that
+    wraps past midnight (e.g. 22:00 for 300 min), the post-midnight tail belongs to the
+    previous day — so recurrence is judged against the day the window opened, not the
+    day the clock happens to read."""
+    start = _minutes(entry.get("fire_at", "")) or 0
+    dur = int(entry.get("duration_min") or 0)
+    cur = now.hour * 60 + now.minute
+    if dur > 0 and (start + dur) > 24 * 60 and cur < start and cur < (start + dur - 24 * 60):
+        return now.date() - dt.timedelta(days=1)
+    return now.date()
+
+
+def _calendar_ok(entry: dict, d: dt.date) -> tuple[bool, str]:
+    """Does the entry's recurrence permit firing on date ``d``? Every recurrence field is
+    a RESTRICTION; absent/empty means 'no restriction' (fires every day, as before).
+    Returns ``(ok, reason)``.
+
+    The exception is a trigger whose restriction IS the trigger (#198): Weekly with no days,
+    Monthly with no day of month and One-off with no date never fire, rather than every day."""
+    tt = entry.get("trigger_type") or "daily"
+    if tt == "weekly" and not entry.get("days"):
+        return False, "weekly with no days of the week"
+    if tt == "monthly" and not entry.get("day_of_month"):
+        return False, "monthly with no day of the month"
+    if tt == "once" and not entry.get("start_date"):
+        return False, "one-off with no date"
+    sd, ed = entry.get("start_date"), entry.get("end_date")
+    if sd:
+        try:
+            if d < dt.date.fromisoformat(sd):
+                return False, f"before start date {sd}"
+        except ValueError:
+            pass
+    if ed:
+        try:
+            if d > dt.date.fromisoformat(ed):
+                return False, f"after end date {ed}"
+        except ValueError:
+            pass
+    days = entry.get("days") or []
+    if days and d.weekday() not in days:
+        return False, "not one of its days of the week"
+    months = entry.get("months") or []
+    if months and d.month not in months:
+        return False, "not one of its months"
+    dom = entry.get("day_of_month")
+    if dom:
+        import calendar as _cal
+        last = _cal.monthrange(d.year, d.month)[1]
+        if d.day != min(int(dom), last):          # clamp: 31 -> 30/28 at month end
+            return False, "not its day of the month"
+    return True, "recurrence ok"
+
+
+def next_fire_ts(entry: dict, now: dt.datetime, last_fired_day: str | None = None):
+    """Epoch seconds of the next time this entry's WINDOW opens per its recurrence
+    (runtime conditions aside). None if disabled, or never within a year (e.g. past
+    its end_date). Searches up to 366 days ahead."""
+    if not entry.get("enabled"):
+        return None
+    tt = entry.get("trigger_type") or "daily"
+    if tt == "always":
+        return None                                        # continuous; no scheduled fire
+    if tt == "interval":
+        iv = int(entry.get("interval_min") or 0)
+        if iv <= 0:
+            return None
+        anchor_min = _minutes(entry.get("anchor", "")) or 0
+        anchor_dt = now.replace(hour=0, minute=0, second=0, microsecond=0) + dt.timedelta(minutes=anchor_min)
+        if now < anchor_dt:
+            anchor_dt -= dt.timedelta(days=1)
+        k = int((now - anchor_dt).total_seconds() // 60 // iv) + 1
+        # The series restarts at the anchor every day (_interval_window), so the next slot
+        # is never later than tomorrow's anchor. Without this, 24 h or more showed
+        # anchor + N while the engine fired at the anchor (#208).
+        return min(anchor_dt + dt.timedelta(minutes=k * iv),
+                   anchor_dt + dt.timedelta(days=1)).timestamp()
+    if tt == "cron":
+        try:
+            from croniter import croniter
+            expr = (entry.get("cron") or "").strip()
+            if croniter.is_valid(expr):
+                return croniter(expr, now).get_next(dt.datetime).timestamp()
+        except Exception:                                  # noqa: BLE001
+            pass
+        return None
+    # daily-family: earliest upcoming window start over the next year.
+    wins = _windows_for(entry)
+    for i in range(0, 367):
+        d = now.date() + dt.timedelta(days=i)
+        if not _calendar_ok(entry, d)[0]:
+            continue
+        best = None
+        for idx, (s_min, dur) in enumerate(wins):
+            fire_dt = dt.datetime.combine(d, dt.time.min, now.tzinfo) + dt.timedelta(minutes=s_min)
+            key = d.isoformat() if idx == 0 else f"{d.isoformat()}#{idx}"
+            if i == 0:
+                if last_fired_day == key:
+                    continue
+                end = fire_dt + dt.timedelta(minutes=dur) if dur else fire_dt
+                if now >= end:
+                    continue
+            if best is None or fire_dt < best:
+                best = fire_dt
+        if best is not None:
+            return best.timestamp()
+    return None
+
+
+def active_now(entry: dict, now: dt.datetime, last_fired_day: str | None = None) -> bool:
+    """A proxy for 'running now': enabled, inside the current window, and already fired
+    this occurrence. 'always' is continuous (determined at tick time) -> reported False
+    here. (Runtime conditions/dispatch state aside.)"""
+    if not entry.get("enabled"):
+        return False
+    if (entry.get("trigger_type") or "daily") == "always":
+        return False
+    state, key, _end, occ_date = window_now(entry, now)
+    if state != "inside" or not _calendar_ok(entry, occ_date)[0]:
+        return False
+    return last_fired_day == key
+
+
+def due(entry: dict, now: dt.datetime, snapshot: dict,
+        last_fired_day: str | None) -> tuple[bool, str]:
+    """Should this entry fire now? Returns ``(fire, reason)``.
+
+    The reason is returned whether or not it fires, so the UI can say *why* an
+    entry did nothing — the usual complaint about schedulers.
+    """
+    if not entry.get("enabled"):
+        return False, "disabled"
+    state, key, _end, occ_date = window_now(entry, now)
+    if state != "inside":
+        return False, "outside its window"
+    cal_ok, cal_reason = _calendar_ok(entry, occ_date)
+    if not cal_ok:
+        return False, cal_reason
+    # Fire once per occurrence (a date for daily-family, a slot/cron ts otherwise). The
+    # 'always' trigger has no occurrence — its rising edge is handled in the tick.
+    if (entry.get("trigger_type") or "daily") != "always" and last_fired_day == key:
+        return False, "already fired this occurrence"
+    if not evaluate(entry.get("conditions") or [],
+                    snapshot, entry.get("match", "all")):
+        return False, "entry conditions not met"
+    return True, "conditions met"
+
+
+EXPORT_TYPE = "franklinwh-local-schedules"
+EXPORT_VERSION = 1
+
+#: The two price sources for the cheap-charge / high-export Ask templates (#463):
+#: (id prefix, name, question label, sensor, threshold, unit). The user's tariff rates are
+#: $/kWh, so their defaults are the wholesale ones (5 and 50 c/kWh) written in $/kWh.
+_ASK_CHEAP = (
+    ("spot", "wholesale price", "Wholesale price", "tariff.spot_price", 5, "c/kWh"),
+    ("tariff", "tariff import rate", "Import rate", "tariff.buy_rate", 0.05, "$/kWh"),
+)
+_ASK_HIGH = (
+    ("spot", "wholesale price", "Wholesale price", "tariff.spot_price", 50, "c/kWh"),
+    ("tariff", "tariff feed-in rate", "Feed-in rate", "tariff.sell_rate", 0.50, "$/kWh"),
+)
+
+#: Built-in schedule templates. Every action here is hardware-verified on the
+#: local channel — no force-charge presets, because the local protocol cannot do
+#: that (see UNAVAILABLE). A preset is loaded into the editor, not fired blind.
+PRESETS: list[dict[str, Any]] = [
+    {"id": "self_consumption", "name": "Self-Consumption all day",
+     "description": "Switch to Self-Consumption at midnight.",
+     "spec": {"fire_at": "00:00", "duration_min": 0,
+              "action": {"kind": "set_mode", "mode": "self"}}},
+    {"id": "tou_evening", "name": "Time-of-Use in the evening",
+     "description": "Switch to Time-of-Use at 15:00 for the peak window.",
+     "spec": {"fire_at": "15:00", "duration_min": 0,
+              "action": {"kind": "set_mode", "mode": "tou"}}},
+    {"id": "backup_storm", "name": "Emergency Backup (storm)",
+     "description": "Switch to Emergency Backup — hold charge for an outage.",
+     "spec": {"fire_at": "18:00", "duration_min": 0,
+              "action": {"kind": "set_mode", "mode": "backup"}}},
+    {"id": "circuit_evening_off", "name": "Turn a circuit off overnight",
+     "description": "Smart circuit 1 off at 23:00. Change the circuit to suit.",
+     "spec": {"fire_at": "23:00", "duration_min": 0,
+              "action": {"kind": "smart_circuit", "circuit": 1, "on": False}}},
+    {"id": "low_soc_alert", "name": "Low battery alert (notify only)",
+     "description": "Notify when SoC drops below 20% — no battery action.",
+     "spec": {"fire_at": "00:00", "duration_min": 1439, "match": "all",
+              "conditions": [{"sensor": "battery.soc_pct", "op": "<", "value": 20}],
+              "action": {"kind": ""},
+              "ha_actions": [{"device_id": "", "title": "FranklinWH",
+                              "message": "Battery low: %battery.soc_pct%%"}]}},
+    {"id": "peak_window_notify", "name": "Peak window — notify start & end",
+     "description": "During the 16:00–21:00 peak, notify when it starts and ends, "
+                    "with the live SoC. No battery action — pure awareness.",
+     "spec": {"fire_at": "16:00", "duration_min": 300, "action": {"kind": ""},
+              "ha_actions": [{"device_id": "", "when": "both", "title": "Peak window",
+                              "message": "Peak %mode.name% — SoC %battery.soc_pct%%, "
+                                         "grid %grid.power_w%W"}]}},
+    {"id": "tou_if_charged", "name": "Time-of-Use at peak (only if charged)",
+     "description": "Switch to Time-of-Use at 16:00 — but only if SoC is above 50%, so "
+                    "a near-empty battery is left in Self-Consumption. Shows a condition gate.",
+     "spec": {"fire_at": "16:00", "duration_min": 0, "match": "all",
+              "conditions": [{"sensor": "battery.soc_pct", "op": ">", "value": 50}],
+              "action": {"kind": "set_mode", "mode": "tou"}}},
+
+    # ── Dispatch templates (require Modbus — force charge/discharge via M704 WSet). Ported
+    #    from the Modbus bridge's grid-programme presets. Loaded into the editor for review;
+    #    the force auto-releases at the window's end and honours the target-SoC guard. ──
+    {"id": "peak_shave", "name": "Peak shaving (discharge at peak)", "requires": "modbus",
+     "description": "Force-discharge across the 16:00–21:00 peak to cover the home from "
+                    "battery — but only while SoC is above 30%, holding a 20% floor.",
+     "spec": {"fire_at": "16:00", "duration_min": 300, "match": "all",
+              "conditions": [{"sensor": "battery.soc_pct", "op": ">", "value": 30}],
+              "action": {"kind": "force", "direction": "discharge", "unit": "pct",
+                         "power": 100, "target_soc": 20}}},
+    {"id": "export_bonus", "name": "Battery Bonus export (evening)", "requires": "modbus",
+     "description": "Force-discharge to the grid during an evening bonus window when the "
+                    "battery is well charged (SoC ≥ 50%), holding a 30% floor.",
+     "spec": {"fire_at": "18:00", "duration_min": 180, "match": "all",
+              "conditions": [{"sensor": "battery.soc_pct", "op": ">=", "value": 50}],
+              "action": {"kind": "force", "direction": "discharge", "unit": "pct",
+                         "power": 100, "target_soc": 30}}},
+    {"id": "solar_sponge", "name": "Solar sponge (charge midday)", "requires": "modbus",
+     "description": "Force-charge from midday solar (11:00–15:00) while there's headroom "
+                    "(SoC < 80%), soaking up excess PV before the evening.",
+     "spec": {"fire_at": "11:00", "duration_min": 240, "match": "all",
+              "conditions": [{"sensor": "battery.soc_pct", "op": "<", "value": 80}],
+              "action": {"kind": "force", "direction": "charge", "unit": "pct",
+                         "power": 100, "target_soc": 100}}},
+    {"id": "offpeak_charge", "name": "Off-peak charge (overnight)", "requires": "modbus",
+     "description": "Force-charge overnight (01:00–06:00) on cheap tariff, but only if the "
+                    "battery is below 50%, topping up to a 90% target.",
+     "spec": {"fire_at": "01:00", "duration_min": 300, "match": "all",
+              "conditions": [{"sensor": "battery.soc_pct", "op": "<", "value": 50}],
+              "action": {"kind": "force", "direction": "charge", "unit": "pct",
+                         "power": 100, "target_soc": 90}}},
+
+    # ── Ask templates (#463): watched continuously ('always' fires once as the conditions
+    #    become true), and each asks before acting — 5 min to reply, no reply skips. The
+    #    threshold is the condition's value, edited like any other. ──
+    {"id": "offgrid_user_ask", "name": "Off-grid (user requested) for 30 min — ask",
+     "description": "After 30 minutes of a requested (simulated) off-grid, ask whether to go "
+                    "back on-grid.",
+     "spec": {"trigger_type": "always", "fire_at": "00:00", "duration_min": 0, "match": "all",
+              "conditions": [{"sensor": "grid.offgrid_reason", "op": "==",
+                              "value": "user requested"},
+                             {"sensor": "grid.offgrid_min", "op": ">=", "value": 30}],
+              "action": {"kind": "offgrid", "on": False},
+              "ask": {"question": "Off-grid (%grid.offgrid_reason%) for %grid.offgrid_min% "
+                                  "min, battery %battery.soc_pct%%. Go back on-grid?",
+                      "timeout_min": 5, "if_no_reply": "skip",
+                      "choices": [{"label": "Go back on-grid", "then": "run"},
+                                  {"label": "Stay off-grid", "then": "skip"}]}}},
+    {"id": "offgrid_outage_ask", "name": "Off-grid (grid outage) for 30 min — notify",
+     "description": "After 30 minutes of a grid outage, send a question to acknowledge. "
+                    "No battery action.",
+     "spec": {"trigger_type": "always", "fire_at": "00:00", "duration_min": 0, "match": "all",
+              "conditions": [{"sensor": "grid.offgrid_reason", "op": "==",
+                              "value": "grid outage"},
+                             {"sensor": "grid.offgrid_min", "op": ">=", "value": 30}],
+              "action": {"kind": ""},
+              "ask": {"question": "Grid outage: off-grid for %grid.offgrid_min% min, "
+                                  "battery %battery.soc_pct%%.",
+                      "timeout_min": 5, "if_no_reply": "skip",
+                      "choices": [{"label": "Acknowledge", "then": "run"},
+                                  {"label": "Dismiss", "then": "skip"}]}}},
+    *[{"id": f"{key}_low_charge_ask", "name": f"Cheap {what} — ask to charge",
+       "requires": "modbus",
+       "description": f"When {sensor} is {low} {unit} or less, ask whether to force-charge "
+                      "from the grid to 90%. Released when the price rises.",
+       "spec": {"trigger_type": "always", "fire_at": "00:00", "duration_min": 0,
+                "match": "all",
+                "conditions": [{"sensor": sensor, "op": "<=", "value": low}],
+                "action": {"kind": "force", "direction": "charge", "unit": "pct",
+                           "power": 100, "target_soc": 90},
+                "ask": {"question": f"{label} is %{sensor}% {unit}, battery "
+                                    "%battery.soc_pct%%. Charge from the grid?",
+                        "timeout_min": 5, "if_no_reply": "skip",
+                        "choices": [{"label": "Charge", "then": "run"},
+                                    {"label": "Not now", "then": "skip"}]}}}
+      for key, what, label, sensor, low, unit in _ASK_CHEAP],
+    # High price exports only while SoC is at or above the Automation Constant
+    # const.min_discharge_soc (default 20%), and holds that same 20% as the floor.
+    *[{"id": f"{key}_high_export_ask", "name": f"High {what} — ask to export",
+       "requires": "modbus",
+       "description": f"When {sensor} is {high} {unit} or more and SoC is at or above the "
+                      "minimum discharge SoC (Automation Constants), ask whether to "
+                      "force-discharge to the grid, holding a 20% floor. Released when the "
+                      "price falls.",
+       "spec": {"trigger_type": "always", "fire_at": "00:00", "duration_min": 0,
+                "match": "all",
+                "conditions": [{"sensor": sensor, "op": ">=", "value": high},
+                               {"sensor": "battery.soc_pct", "op": ">=",
+                                "value_kind": "sensor",
+                                "value_sensor": "const.min_discharge_soc"}],
+                "action": {"kind": "force", "direction": "discharge", "unit": "pct",
+                           "power": 100, "target_soc": 20},
+                "ask": {"question": f"{label} is %{sensor}% {unit}, battery "
+                                    "%battery.soc_pct%%. Export from the battery?",
+                        "timeout_min": 5, "if_no_reply": "skip",
+                        "choices": [{"label": "Export", "then": "run"},
+                                    {"label": "Hold", "then": "skip"}]}}}
+      for key, what, label, sensor, high, unit in _ASK_HIGH],
+    # Demand window: Self-Consumption while it lasts, only while SoC is at or above
+    # const.demand_charge_min_soc (default 30%), then the mode that was active before it is
+    # put back (restore_on_exit, BR-50: captured before the write, kept with the run).
+    {"id": "demand_window_ask", "name": "Demand charge window — ask to self-consume",
+     "description": "When the tariff's peak-demand window starts and SoC is at or above the "
+                    "demand-charge minimum SoC (Automation Constants), ask whether to switch "
+                    "to Self-Consumption. The previous mode is put back when the window ends "
+                    "or SoC falls below the minimum.",
+     "spec": {"trigger_type": "always", "fire_at": "00:00", "duration_min": 0, "match": "all",
+              "restore_on_exit": True,
+              "conditions": [{"sensor": "tariff.demand_window_active", "op": "==",
+                              "value": 1},
+                             {"sensor": "battery.soc_pct", "op": ">=",
+                              "value_kind": "sensor",
+                              "value_sensor": "const.demand_charge_min_soc"}],
+              "action": {"kind": "set_mode", "mode": "self"},
+              "ask": {"question": "Demand charge window: home %load.power_w% W, battery "
+                                  "%battery.soc_pct%%. Switch to Self-Consumption for the "
+                                  "window?",
+                      "timeout_min": 5, "if_no_reply": "skip",
+                      "choices": [{"label": "Self-consume", "then": "run"},
+                                  {"label": "Leave it", "then": "skip"}]}}},
+    {"id": "bonus_window_ask", "name": "Battery export bonus — ask to export",
+     "requires": "modbus",
+     "description": "When the tariff's battery-export-bonus window starts, ask whether to "
+                    "force-discharge to the grid, holding a 30% floor. Released when the "
+                    "window ends.",
+     "spec": {"trigger_type": "always", "fire_at": "00:00", "duration_min": 0, "match": "all",
+              "conditions": [{"sensor": "tariff.bonus_window_active", "op": "==",
+                              "value": 1}],
+              "action": {"kind": "force", "direction": "discharge", "unit": "pct",
+                         "power": 100, "target_soc": 30},
+              "ask": {"question": "Battery export bonus window: battery %battery.soc_pct%%. "
+                                  "Export now?",
+                      "timeout_min": 5, "if_no_reply": "skip",
+                      "choices": [{"label": "Export", "then": "run"},
+                                  {"label": "Hold", "then": "skip"}]}}},
+]
+
+
+def preset(preset_id: str) -> dict | None:
+    return next((p for p in PRESETS if p["id"] == preset_id), None)
+
+
+#: Fields carried across an export/import — the whole spec plus name/enabled.
+_PORTABLE_KEYS = ("name", "enabled", "fire_at", "duration_min", "match",
+                  "entry_hold_s", "gateway_id", "gateway_scope", "restore_on_exit",
+                  "conditions", "exit_conditions",
+                  "exit_match", "action", "ha_actions",
+                  "days", "months", "day_of_month", "start_date", "end_date", "priority", "conflict",
+                  "trigger_type", "windows", "interval_min", "anchor", "cron", "ask")
+
+
+def portable(entry: dict) -> dict[str, Any]:
+    """A schedule reduced to what travels — no ids, no last_fired state."""
+    return {k: entry.get(k) for k in _PORTABLE_KEYS if k in entry}
+
+
+# ── cross-bridge import: the Modbus bridge's "franklinwh-automations" bundle ───
+#: The Modbus/other bridge's export type we can read + map to our schema.
+IMPORT_TYPE_AUTOMATIONS = "franklinwh-automations"
+
+#: Modbus action string → our (kind, direction) for the force family.
+_AUTOMATION_FORCE = {
+    "force_charge": "charge", "force_discharge": "discharge", "force_standby": "standby",
+}
+
+
+def _map_conditions(nodes) -> list:
+    """Map a foreign condition list (leaves + nested ALL/ANY groups) to ours. Match words
+    are lower-cased; leaves keep sensor/op/value/value2 verbatim (unknown sensors are
+    flagged, not dropped, by validate_import)."""
+    out = []
+    for n in nodes or []:
+        if not isinstance(n, dict):
+            continue
+        if "conditions" in n or "match" in n:            # nested group
+            out.append({
+                "match": str(n.get("match", "all")).lower(),
+                "conditions": _map_conditions(n.get("conditions")),
+            })
+        else:                                            # leaf comparison
+            leaf = {"sensor": n.get("sensor"), "op": n.get("op"), "value": n.get("value")}
+            if "value2" in n:
+                leaf["value2"] = n.get("value2")
+            out.append(leaf)
+    return out
+
+
+def _map_automation_action(act, params: dict) -> dict:
+    """Map a foreign action (string kind + params) to our action object."""
+    params = params or {}
+    a = (act or "").lower()
+    if a in _AUTOMATION_FORCE:
+        unit = "pct" if params.get("power_pct") is not None else "w"
+        return {"kind": "force", "direction": _AUTOMATION_FORCE[a], "unit": unit,
+                "power": params.get("power_pct") if unit == "pct" else params.get("power_w") or 0,
+                "target_soc": params.get("target_soc") or 0}
+    if a in ("set_mode", "mode"):
+        return {"kind": "set_mode", "mode": params.get("mode") or params.get("value") or "self"}
+    if a in ("reserve_self", "reserve_tou"):
+        return {"kind": "reserve_soc", "mode": "self" if a == "reserve_self" else "tou",
+                "soc": params.get("pct") if params.get("pct") is not None else params.get("soc") or 0}
+    # release / none / unknown → no direct action (the window/exit handles release)
+    return {"kind": ""}
+
+
+#: Foreign trigger_kind → our trigger_type (unknowns fall through to daily).
+_AUTOMATION_TRIGGER = {
+    "daily": "daily", "always": "always", "window": "window", "interval": "interval",
+    "weekly": "weekly", "monthly": "monthly", "cron": "cron", "once": "once",
+}
+
+
+def _map_automation_entry(e: dict) -> dict:
+    """One ``franklinwh-automations`` entry → our portable schedule schema."""
+    spec = e.get("trigger_spec") or {}
+    tt = _AUTOMATION_TRIGGER.get((e.get("trigger_kind") or "daily").lower(), "daily")
+    when = e.get("when_spec") or {}
+    ec = e.get("entry_conditions") or {}
+    xc = e.get("exit_conditions") or None
+    dur_s = e.get("duration_s")
+    tgt = e.get("target_id")
+    out = {
+        "name": e.get("name") or "(imported)",
+        "enabled": bool(e.get("enabled")),
+        "action": _map_automation_action(e.get("action"), e.get("params")),
+        "trigger_type": tt,
+        "fire_at": spec.get("time_of_day") or "18:00",
+        "interval_min": spec.get("minutes") or spec.get("interval_min") or 30,
+        "cron": spec.get("cron") or "0 3 * * *",
+        "anchor": spec.get("anchor") or "",
+        "duration_min": int(round(dur_s / 60)) if isinstance(dur_s, (int, float)) else 90,
+        "match": str(ec.get("match", "all")).lower(),
+        "conditions": _map_conditions(ec.get("conditions")),
+        "exit_match": str((xc or {}).get("match", "all")).lower(),
+        "exit_conditions": _map_conditions((xc or {}).get("conditions")) if xc else [],
+        "days": when.get("days") or [],
+        "windows": when.get("windows") or [],
+        "entry_hold_s": e.get("entry_hold_s") or 0,
+        "priority": e.get("priority") or 0,
+        "conflict": e.get("conflict") or "override",
+        # gateway: a foreign "default"/gateway target → our default gateway ("")
+        "gateway_id": "" if (e.get("target_type") != "gateway" or tgt in (None, "default")) else tgt,
+        # HA actions share the {instance_id, entity_id, service, data, when} shape already.
+        "ha_actions": [h for h in (e.get("ha_actions") or []) if isinstance(h, dict)],
+    }
+    return out
+
+
+def import_entries(bundle_type: str | None, entries: list) -> list:
+    """Normalise a bundle's entries to OUR schema. Our own type (or none) passes through;
+    the Modbus/other ``franklinwh-automations`` type is mapped field-by-field. Returns the
+    entries ready for :func:`validate_import` / create."""
+    if bundle_type == IMPORT_TYPE_AUTOMATIONS:
+        return [_map_automation_entry(e) for e in (entries or []) if isinstance(e, dict)]
+    return list(entries or [])
+
+
+# ── reverse: OUR schema → the Modbus bridge's franklinwh-automations bundle ────
+_FORCE_ACTION_REV = {"charge": "force_charge", "discharge": "force_discharge",
+                     "standby": "force_standby"}
+
+
+def _to_automation_action(action) -> tuple:
+    """Our action object → (action string, params) for franklinwh-automations."""
+    a = action or {}
+    kind = a.get("kind")
+    if kind == "force":
+        act = _FORCE_ACTION_REV.get((a.get("direction") or "").lower(), "none")
+        params: dict = {}
+        if (a.get("unit") or "pct") == "pct":
+            params["power_pct"] = a.get("power")
+        else:
+            params["power_w"] = a.get("power")
+        if a.get("target_soc"):
+            params["target_soc"] = a.get("target_soc")
+        return act, params
+    if kind == "set_mode":
+        return "set_mode", {"mode": a.get("mode")}
+    if kind == "reserve_soc":
+        return ("reserve_self" if a.get("mode") == "self" else "reserve_tou"), {"pct": a.get("soc")}
+    if not kind:
+        return "none", {}
+    # local-only actions (smart_circuit / offgrid / notify) have no Modbus equivalent —
+    # keep the kind + its params so nothing is silently dropped (the far side flags it).
+    return kind, {k: v for k, v in a.items() if k != "kind"}
+
+
+def _to_automation_conditions(nodes) -> list:
+    out = []
+    for n in nodes or []:
+        if not isinstance(n, dict):
+            continue
+        if "conditions" in n or "match" in n:
+            out.append({"match": str(n.get("match", "all")).upper(),
+                        "conditions": _to_automation_conditions(n.get("conditions"))})
+        else:
+            leaf = {"sensor": n.get("sensor"), "op": n.get("op"), "value": n.get("value")}
+            if "value2" in n:
+                leaf["value2"] = n.get("value2")
+            out.append(leaf)
+    return out
+
+
+def to_automations(entry: dict) -> dict:
+    """One of OUR schedules → a ``franklinwh-automations`` entry (inverse of the import)."""
+    act, params = _to_automation_action(entry.get("action"))
+    tt = entry.get("trigger_type") or "daily"
+    spec: dict = {}
+    if tt in ("daily", "window", "weekly", "monthly", "once"):
+        spec["time_of_day"] = entry.get("fire_at") or "18:00"
+    if tt == "interval":
+        spec["minutes"] = entry.get("interval_min") or 30
+    if tt == "cron":
+        spec["cron"] = entry.get("cron") or "0 3 * * *"
+    xconds = entry.get("exit_conditions") or []
+    dur = entry.get("duration_min")
+    gid = entry.get("gateway_id")
+    return {
+        "name": entry.get("name") or "",
+        "action": act, "params": params,
+        "target_type": "gateway", "target_id": gid or "default",
+        "enabled": bool(entry.get("enabled")),
+        "trigger_kind": tt, "trigger_spec": spec,
+        "when_spec": {"days": entry.get("days") or [], "windows": entry.get("windows") or []},
+        "entry_conditions": {"match": str(entry.get("match", "all")).upper(),
+                             "conditions": _to_automation_conditions(entry.get("conditions"))},
+        "exit_conditions": ({"match": str(entry.get("exit_match", "all")).upper(),
+                             "conditions": _to_automation_conditions(xconds)} if xconds else None),
+        "duration_s": int(dur * 60) if isinstance(dur, (int, float)) else None,
+        "entry_hold_s": entry.get("entry_hold_s") or 0,
+        "priority": entry.get("priority") or 0,
+        "conflict": entry.get("conflict") or "defer",
+        "ha_actions": entry.get("ha_actions") or [],
+    }
+
+
+def validate_spec(entry: dict) -> list[str]:
+    """What makes a schedule unable to run as written, as readable errors. Empty = valid.
+
+    Used on save and on import, so a schedule that would fire when the user expects nothing
+    (or never fire when they expect it to) is refused up front rather than "fixed" (#198)."""
+    errors: list[str] = []
+    tt = entry.get("trigger_type") or "daily"
+    if tt not in TRIGGER_TYPES:
+        errors.append(f"unknown trigger_type '{tt}'")
+    if tt == "weekly" and not entry.get("days"):
+        errors.append("weekly needs at least one day of the week")
+    if tt == "monthly" and not entry.get("day_of_month"):
+        errors.append("monthly needs a day of the month")
+    if tt == "once" and not entry.get("start_date"):
+        errors.append("one-off needs a date")
+    if tt == "window":
+        wins = entry.get("windows") or []
+        if not wins:
+            errors.append("recurring windows needs at least one window")
+        for i, w in enumerate(wins, 1):
+            w = w if isinstance(w, dict) else {}
+            s, e = _minutes(w.get("start", "")), _minutes(w.get("end", ""))
+            if s is None or e is None:
+                errors.append(f"window {i}: start and end must be HH:MM")
+            elif s == e:
+                errors.append(f"window {i}: start and end are the same time")
+    # The rest of what the engine would otherwise discover only at run time (#202).
+    if tt in ("daily", "weekly", "monthly", "once") and not _HHMM.match(str(entry.get("fire_at", ""))):
+        errors.append(f"fire_at '{entry.get('fire_at')}' is not HH:MM")
+    for k in ("duration_min", "entry_hold_s"):
+        if not _is_int(entry.get(k, 0), lo=0):
+            errors.append(f"{k} must be a whole number of 0 or more")
+    if any(not _is_int(d, 0, 6) for d in entry.get("days") or []):
+        errors.append("days must be 0 (Mon) to 6 (Sun)")
+    if any(not _is_int(m, 1, 12) for m in entry.get("months") or []):
+        errors.append("months must be 1 to 12")
+    if entry.get("day_of_month") is not None and not _is_int(entry["day_of_month"], 1, 31):
+        errors.append("day_of_month must be 1 to 31")
+    dates = {}
+    for dk in ("start_date", "end_date"):
+        if entry.get(dk):
+            try:
+                dates[dk] = dt.date.fromisoformat(str(entry[dk]))
+            except ValueError:
+                errors.append(f"{dk} '{entry[dk]}' is not YYYY-MM-DD")
+    if len(dates) == 2 and dates["end_date"] < dates["start_date"]:
+        errors.append("end_date is before start_date")
+    if tt == "interval":
+        if not _is_int(entry.get("interval_min"), lo=1):
+            errors.append("interval_min must be 1 or more")
+        if entry.get("anchor") and not _HHMM.match(str(entry["anchor"])):
+            errors.append(f"anchor '{entry['anchor']}' is not HH:MM")
+    if tt == "cron":
+        expr = str(entry.get("cron") or "").strip()
+        if not cron_available():
+            errors.append("custom cron needs the croniter package, which is not installed")
+        else:
+            from croniter import croniter
+            if not expr or not croniter.is_valid(expr):
+                errors.append(f"cron '{expr}' is not a valid cron expression")
+    for label, key in (("condition", "conditions"), ("exit condition", "exit_conditions")):
+        errors += _condition_errors(entry.get(key) or [], label)
+    errors += _action_errors(entry.get("action") or {})
+    errors += _ask_errors(entry.get("ask") or {})
+    errors += _ask_window_errors(entry)
+    for i, ha in enumerate(entry.get("ha_actions") or [], 1):
+        errors += [f"HA action {i}: {e}" for e in _ha_action_errors(ha)]
+    return errors
+
+
+_HHMM = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
+
+
+def _is_int(v: Any, lo: int | None = None, hi: int | None = None) -> bool:
+    if isinstance(v, bool) or not isinstance(v, int):
+        return False
+    return (lo is None or v >= lo) and (hi is None or v <= hi)
+
+
+def _num(v: Any) -> float | None:
+    return None if v in (None, "") else _coerce_number(v)
+
+
+def _condition_errors(nodes: Any, label: str) -> list[str]:
+    """A condition tree the evaluator can read: known operators, a sensor on every row,
+    a second value for ``between``, a sensor to look up for a Lookup row."""
+    if not isinstance(nodes, list):
+        return [f"{label}s must be a list"]
+    out: list[str] = []
+    for n in nodes:
+        if not isinstance(n, dict):
+            out.append(f"{label} {n!r} is not an object")
+        elif _is_tree(n):
+            if str(n.get("match", MATCH_ALL)).lower() not in (MATCH_ALL, MATCH_ANY):
+                out.append(f"{label} group match '{n.get('match')}' is not all or any")
+            out += _condition_errors(n.get("conditions") or [], label)
+        else:
+            op = n.get("op", "==")
+            if not n.get("sensor"):
+                out.append(f"{label} has no sensor")
+            if op not in OPERATORS:
+                out.append(f"{label} operator '{op}' is not one of {', '.join(OPERATORS)}")
+            if n.get("value_kind") == "sensor":
+                if not n.get("value_sensor"):
+                    out.append(f"{label} on {n.get('sensor')} looks up no sensor")
+            elif op == "between" and n.get("value2") in (None, ""):
+                out.append(f"{label} on {n.get('sensor')}: between needs two values")
+    return out
+
+
+def _action_errors(action: dict) -> list[str]:
+    """The parameters each action needs, checked before it is saved rather than when it
+    fails at run time (#202)."""
+    if not isinstance(action, dict):
+        return ["action must be an object"]
+    kind = action.get("kind") or ""
+    if not kind:
+        return []
+    if kind not in ACTIONS:
+        return [f"unknown action '{kind}'"
+                + (f" — {UNAVAILABLE[kind]}" if kind in UNAVAILABLE else "")]
+    out: list[str] = []
+    if kind == "set_mode" and not str(action.get("mode") or "").strip():
+        out.append("set_mode needs a mode")
+    if kind in ("smart_circuit", "offgrid"):
+        try:
+            on_value(action.get("on"))
+        except ValueError as e:
+            out.append(f"{kind}: {e}")
+    if kind == "smart_circuit":
+        c = _num(action.get("circuit"))
+        if c is None or c < 1 or c != int(c):
+            out.append("smart_circuit needs a circuit number")
+    if kind == "notify" and not action.get("device_id"):
+        out.append("notify needs a device")
+    if kind == "force":
+        direction = (action.get("direction") or "").lower()
+        unit = (action.get("unit") or "pct").lower()
+        if direction not in _FORCE_SLUG:
+            out.append(f"force direction '{direction}' is not charge, discharge or standby")
+        if unit not in ("pct", "w", "kw"):
+            out.append(f"force unit '{unit}' is not pct, w or kw")
+        if direction in ("charge", "discharge"):
+            p = _num(action.get("power"))
+            if p is None:
+                out.append(f"force {direction} needs a power")
+            elif p < 0 or (unit == "pct" and p > 100):
+                out.append(f"force power {action.get('power')} is out of range")
+    for k in ("target_soc", "soc"):
+        v = _num(action.get(k))
+        if action.get(k) not in (None, "") and (v is None or not 0 <= v <= 100):
+            out.append(f"{k} must be 0 to 100")
+    return out
+
+
+def _run_window_min(entry: dict) -> int | None:
+    """How long one run of ``entry`` stays open, in minutes; None when it has no time
+    window ('always': its conditions are the window). A duration of 0 runs only in its
+    start minute, so it counts as 1; a 'window' schedule is bounded by its shortest window."""
+    tt = entry.get("trigger_type") or "daily"
+    if tt == "always":
+        return None
+    if tt == "window":
+        lens = [dur for _s, dur in _windows_for(entry)]
+        return min(lens) if lens else None
+    dur = entry.get("duration_min") or 0
+    return dur if _is_int(dur, lo=1) else 1
+
+
+def _ask_window_errors(entry: dict) -> list[str]:
+    """The Ask's wait must fit the schedule's window: a reply after the window closes
+    never runs the action. Checked on save only, so saved schedules keep running."""
+    ask = entry.get("ask")
+    if not isinstance(ask, dict) or not ask or not _is_int(ask.get("timeout_min"), lo=1):
+        return []
+    win = _run_window_min(entry)
+    if win is None or ask["timeout_min"] <= win:
+        return []
+    return [f"ask before continuing: the wait ({ask['timeout_min']} min) is longer than the "
+            f"schedule's window ({win} min); a reply after the window closes cannot run it"]
+
+
+def _ask_errors(ask: Any) -> list[str]:
+    """The "Ask before continuing" step: empty means the schedule has none."""
+    if not isinstance(ask, dict):
+        return ["ask must be an object"]
+    if not ask:
+        return []
+    out: list[str] = []
+    if not str(ask.get("question") or "").strip():
+        out.append("ask before continuing needs a question")
+    if not _is_int(ask.get("timeout_min"), lo=1):
+        out.append("ask before continuing: the wait must be 1 minute or more")
+    if ask.get("if_no_reply") not in ("continue", "skip"):
+        out.append("ask before continuing: if no reply must be continue or skip")
+    choices = ask.get("choices") or []
+    if not isinstance(choices, list):
+        return out + ["ask before continuing: choices must be a list"]
+    if choices and not 2 <= len(choices) <= ASK_MAX_CHOICES:
+        out.append(f"ask before continuing: give 2 to {ASK_MAX_CHOICES} choices")
+    labels = []
+    for i, c in enumerate(choices, 1):
+        if not isinstance(c, dict):
+            out.append(f"ask before continuing: choice {i} must be an object")
+            continue
+        label = str(c.get("label") or "").strip()
+        if not label:
+            out.append(f"ask before continuing: choice {i} needs a label")
+        labels.append(label.casefold())
+        if c.get("then") not in ("run", "skip"):
+            out.append(f"ask before continuing: choice {i} must run or skip the action")
+    if len(set(labels)) < len(labels):
+        out.append("ask before continuing: each choice needs its own label")
+    if sum(1 for c in choices if isinstance(c, dict) and c.get("reply")) > 1:
+        out.append("ask before continuing: only one choice can take a text reply")
+    if "send_to" in ask:
+        from . import notify_engine
+        try:
+            notify_engine.valid_target(ask["send_to"])
+        except ValueError as e:
+            out.append(f"ask before continuing: send to: {e}")
+    return out
+
+
+def _ha_action_errors(ha: Any) -> list[str]:
+    if not isinstance(ha, dict):
+        return ["is not an object"]
+    out: list[str] = []
+    if (ha.get("when") or "fire") not in ("fire", "exit", "both"):
+        out.append(f"when '{ha.get('when')}' is not fire, exit or both")
+    if ha.get("ha_kind") == "service":
+        for k in ("instance_id", "domain", "service"):
+            if not str(ha.get(k) or "").strip():
+                out.append(f"service call needs {k}")
+        data = ha.get("data")
+        if isinstance(data, str) and data.strip():
+            import json as _json
+            try:
+                _json.loads(data)
+            except ValueError:
+                out.append("data is not valid JSON")
+    elif not ha.get("device_id"):
+        out.append("notify needs a device")
+    guard = ha.get("guard")
+    if guard:
+        nodes = [guard] if not (isinstance(guard, dict) and "conditions" in guard) \
+            else guard.get("conditions") or []
+        out += _condition_errors(nodes, "guard")
+    return out
+
+
+def known_sensor_ids() -> set[str]:
+    """Every built-in sensor id the editor offers (HA entities are ``ha:…`` on top)."""
+    return {i for group in (SENSORS, SOLAR_SENSORS, TARIFF_SENSORS, BILLING_WINDOW_SENSORS,
+                            DEMAND_SENSORS, ENERGY_SENSORS, BONUS_SENSORS,
+                            EXPORT_CHARGE_SENSORS, FIXED_SENSORS, SYSTEM_SENSORS,
+                            CONST_SENSORS, DERIVED_SENSORS, ASK_SENSORS) for i, _ in group}
+
+
+def _sensor_ids_in(nodes: Any) -> list[str]:
+    out: list[str] = []
+    for n in nodes if isinstance(nodes, list) else []:
+        if isinstance(n, dict):
+            if _is_tree(n):
+                out += _sensor_ids_in(n.get("conditions") or [])
+            else:
+                out += [s for s in (n.get("sensor"), n.get("value_sensor")) if s]
+    return out
+
+
+def validate_import(entry: dict, *, gateway_ids: set, device_ids: set,
+                    exposed_ha: set | None = None) -> dict:
+    """Check one imported entry. Returns ``{name, ok, errors, warnings}`` — never
+    raises, so a whole bundle is reported at once rather than failing on the first
+    bad row."""
+    errors: list[str] = []
+    warnings: list[str] = []
+    name = entry.get("name") or "(unnamed)"
+    if not entry.get("name"):
+        errors.append("missing name")
+
+    at = entry.get("fire_at", "")
+    if not re.match(r"^([01]?\d|2[0-3]):[0-5]\d$", str(at)):
+        errors.append(f"fire_at '{at}' is not HH:MM")
+
+    # validate_spec checks the dates again for every trigger; keep one message each.
+    errors += [e for e in validate_spec(entry) if e not in errors and "fire_at" not in e]
+
+    # A sensor this bridge does not know reads as missing, so its condition never passes.
+    # Flagged, not refused: an HA entity can be exposed after the import (CND-02, CND-35).
+    known = known_sensor_ids()
+    for sid in dict.fromkeys(_sensor_ids_in(entry.get("conditions"))
+                             + _sensor_ids_in(entry.get("exit_conditions"))):
+        if sid.startswith("ha:"):
+            if exposed_ha is not None and sid.split(":", 1)[1] not in exposed_ha:
+                warnings.append(f"HA entity '{sid}' is not exposed — its conditions read "
+                                f"as missing until it is")
+        elif sid not in known:
+            warnings.append(f"unknown sensor '{sid}' — its conditions will never pass")
+
+    gid = entry.get("gateway_id")
+    if gid and gid not in gateway_ids:
+        warnings.append(f"gateway '{gid}' not found — will run on the gateway you import into")
+
+    for ha in entry.get("ha_actions") or []:
+        did = ha.get("device_id")
+        if did and did not in device_ids:
+            warnings.append(f"notify device '{did}' not found — set it after import")
+
+    return {"name": name, "ok": not errors, "errors": errors, "warnings": warnings}
+
+
+def timeline_segments(entries: list[dict], now: dt.datetime) -> dict[str, Any]:
+    """A day's windows per ENABLED entry, as minutes-from-midnight, for the
+    24-hour bar. Handles windows that wrap past midnight (end <= start)."""
+    segments = []
+    for e in entries:
+        if not e.get("enabled"):
+            continue
+        tt = e.get("trigger_type") or "daily"
+        if tt in ("interval", "cron", "always"):    # no fixed daily window to draw
+            continue
+        if not _calendar_ok(e, now.date())[0]:      # not scheduled to run today
+            continue
+        for (start, dur) in _windows_for(e):
+            end = start + dur if dur > 0 else start
+            segments.append({
+                "schedule_id": e["id"], "name": e["name"],
+                "action": (e.get("action") or {}).get("kind") or "notify-only",
+                "gateway_id": e.get("gateway_id") or "",
+                "start_min": start, "end_min": end % (24 * 60) if dur else start,
+                "wraps_midnight": dur > 0 and (start + dur) > 24 * 60,
+            })
+    return {"now_min": now.hour * 60 + now.minute, "segments": segments}
+
+
+#: grid.offgrid_reason text per client._off_grid_kind — the same source as the top-bar chip
+#: and HA's Grid Status (#463). One copy, shared with the off-grid notification.
+from .notify_engine import OFF_GRID_REASON as OFFGRID_REASON  # noqa: E402
+
+
+def off_grid_since(prev: float | None, off_grid: Any, now_ts: float) -> float | None:
+    """When the current off-grid period began, for ``grid.offgrid_min`` (#463).
+
+    Starts at the first poll that reads off-grid and clears on the first that reads on-grid.
+    A poll with no off-grid reading (None) keeps what was there. The bridge cannot see what
+    happened before it started: after a restart while already off-grid, the period counts
+    from the first poll that saw it, never from a guessed earlier time."""
+    if off_grid is None:
+        return prev
+    if not off_grid:
+        return None
+    return prev if prev is not None else now_ts
+
+
+def offgrid_min(state: dict, now_ts: float) -> int | None:
+    """Whole minutes of the current off-grid period (see off_grid_since); None on grid or
+    with no recorded start."""
+    since = (state or {}).get("off_grid_since")
+    if not (state or {}).get("off_grid") or since is None:
+        return None
+    return int(max(0.0, now_ts - float(since)) // 60)
+
+
+def snapshot_from_state(state: dict, power: dict | None = None,
+                        now_ts: float | None = None) -> dict[str, Any]:
+    """Flatten the poller's last state into the ``sensor.id`` namespace that
+    conditions and message variables both use — one vocabulary, not two."""
+    st = dict(state or {})
+    snap: dict[str, Any] = {
+        "battery.soc_pct": st.get("soc"),
+        "battery.power_w": st.get("battery_w"),
+        "grid.power_w": st.get("grid_w"),
+        "solar.power_w": st.get("solar_w"),
+        "load.power_w": st.get("load_w"),
+        "generator.power_w": st.get("generator_w"),
+        "mode.name": st.get("mode"),
+        # Run status BOTH ways, because a rule may reasonably want either: the number
+        # for an exact machine test (`status.run_status == 8`), or the label for a
+        # readable one (`status.run_status_desc == "Debug Mode"`) and for message
+        # substitution. Same value, two spellings — never a third enum of our own.
+        "status.run_status": st.get("run_status"),
+        "status.run_status_desc": st.get("run_status_desc"),
+        # Programme id. 9 means VPP; normal programmes use large arbitrary ids, so a
+        # rule must test `== 9` and never `!= 9` to mean "no programme".
+        "status.programme_id": st.get("programme_id"),
+        "bridge.latency_ms": st.get("latency_ms"),
+    }
+    # grid.connected is derived from the off-grid state, not from grid power: 0 W is a
+    # normal reading on grid, and `grid_w != 0` read it as disconnected (#206). No
+    # off-grid reading is no reading (None), never a guess.
+    og = st.get("off_grid")
+    snap["grid.connected"] = None if og is None else int(not og)
+    # Booleans as 1/0 so they compare with `== 1` like every other boolean sensor
+    # here, rather than needing a separate true/false vocabulary in the editor.
+    for key, src in (("status.vpp", "vpp"), ("status.off_grid", "off_grid"),
+                     ("status.debug", "debug")):
+        v = st.get(src)
+        snap[key] = None if v is None else int(bool(v))
+    # Why it is off-grid (#463): "user requested" (the aGate's simulated off-grid) or
+    # "grid outage"; "unknown" while off-grid with no reason read; None on grid.
+    snap["grid.offgrid_reason"] = (OFFGRID_REASON.get(st.get("off_grid_kind"), "unknown")
+                                   if og else None)
+    snap["grid.offgrid_min"] = offgrid_min(st, time.time() if now_ts is None else now_ts)
+    # state IS the summary power block (poller sets last_state = summary['power']), so the daily
+    # solar counter is here — available in the scheduler ENGINE tick too (where power is None).
+    snap["solar.today_kwh"] = st.get("kwh_sun")   # actual PV generated today
+    if power:
+        snap["run_status"] = power.get("run_status")
+    return snap
+
+
+def ha_sensor_id(instance_id: str, entity_id: str) -> str:
+    """The scheduler id for an exposed HA entity: ``ha:<instance>:<entity>``.
+
+    Same namespace the Modbus Bridge uses, so a condition can gate on a Home
+    Assistant value exactly as it does on a local one.
+    """
+    return f"ha:{instance_id}:{entity_id}"
+
+
+def _coerce(state: Any) -> Any:
+    """HA states are strings. Compare numerically when they look numeric, and map
+    on/off to 1/0 so a binary_sensor works in a `== 1` condition. ``unavailable``,
+    ``unknown`` and an empty state are NO reading (None), never 0: a 0 made
+    ``price < 10`` true while the sensor was down and fired a force (#167)."""
+    if state is None:
+        return None
+    if isinstance(state, str):
+        low = state.strip().lower()
+        if low in ("", "unavailable", "unknown", "none"):
+            return None
+        if low in ("on", "true", "open", "home"):
+            return 1
+        if low in ("off", "false", "closed", "away"):
+            return 0
+        try:
+            return float(state)
+        except ValueError:
+            return state
+    return state
+
+
+def ha_snapshot(store) -> dict[str, Any]:
+    """Live values for the EXPOSED HA entities, keyed ha:<instance>:<entity>.
+
+    Only exposed entities are read — a scheduler that pulled all 3,949 every tick
+    would hammer Home Assistant. Missing/unreachable ones, and ones whose state is
+    unavailable or unknown, are simply absent; an absent sensor counts as False in evaluate().
+    """
+    exposed = store.ha_exposed_ids()
+    if not exposed:
+        return {}
+    want = {e.split(":", 1)[0]: set() for e in exposed}
+    for e in exposed:
+        inst, eid = e.split(":", 1)
+        want.setdefault(inst, set()).add(eid)
+    out: dict[str, Any] = {}
+    for inst in store.ha_instances():
+        if not inst.get("enabled") or inst["id"] not in want:
+            continue
+        try:
+            for st in ha_instances.states(inst["base_url"], inst.get("token")):
+                eid = st.get("entity_id", "")
+                if eid in want[inst["id"]]:
+                    v = _coerce(st.get("state"))
+                    if v is not None:          # no reading → absent → its conditions are False
+                        out[ha_sensor_id(inst["id"], eid)] = v
+        except Exception:                                       # noqa: BLE001
+            continue
+    return out
+
+
+def ha_sensor_options(store) -> list[dict[str, Any]]:
+    """Exposed HA entities as scheduler sensor options, grouped by instance —
+    the picker the Modbus Bridge shows under 'HA Live: …'."""
+    exposed = store.ha_exposed_ids()
+    if not exposed:
+        return []
+    names = {i["id"]: i["name"] for i in store.ha_instances()}
+    out = []
+    for e in sorted(exposed):
+        inst, eid = e.split(":", 1)
+        out.append({"id": ha_sensor_id(inst, eid),
+                    "label": f"{names.get(inst, inst)}: {eid}",
+                    "group": names.get(inst, inst)})
+    return out
+
+
+SENSORS = [
+    ("battery.soc_pct", "Battery SoC (%)"),
+    ("battery.power_w", "Battery power (W)"),
+    ("grid.power_w", "Grid power (W)"),
+    ("grid.connected", "Grid connected"),
+    ("grid.offgrid_reason", "Off-grid reason (text: \"user requested\", \"grid outage\", "
+                            "\"unknown\")"),
+    ("grid.offgrid_min", "Off-grid for (minutes; counted from the first poll that saw it "
+                         "after a bridge restart)"),
+    ("solar.power_w", "Solar power (W)"),
+    ("load.power_w", "Home load (W)"),
+    ("generator.power_w", "Generator power (W)"),
+    ("mode.name", "Operating mode"),
+    ("status.run_status", "Run status (number: 0 Standby, 1 Charging, 2 Discharging, "
+                          "5-7 off-grid, 8 Debug, 9 VPP)"),
+    ("status.run_status_desc", "Run status (text: \"Discharging\", \"Debug Mode\", …)"),
+    ("status.vpp", "Under external control / VPP mode"),
+    ("status.off_grid", "Off-grid (islanded)"),
+    ("status.debug", "Debug Mode — FranklinWH remote support session"),
+    ("status.programme_id", "Programme id (9 = VPP; others are arbitrary ids)"),
+    ("bridge.latency_ms", "Round-trip latency (ms)"),
+]
+
+#: Weather + solar-forecast sensors (Open-Meteo), a separate group in the picker.
+SOLAR_SENSORS = [
+    ("weather.temp_c", "Weather: temperature (°C)"),
+    ("weather.condition", "Weather: condition"),
+    ("solar_forecast.today_kwh", "Solar forecast: today (kWh)"),
+    ("solar_forecast.today_peak_kw", "Solar forecast: today peak (kW)"),
+    ("solar_forecast.remaining_kwh", "Solar forecast: remaining today (kWh)"),
+    ("solar_forecast.tomorrow_kwh", "Solar forecast: tomorrow (kWh)"),
+    ("solar.today_kwh", "Solar generated today, actual (kWh)"),
+]
+
+#: User-defined automation constants (SoC parameters) — a separate "Automation
+#: Constants" group in the picker. Values live in the metrics store (see constants.py).
+CONST_SENSORS = [
+    ("const.min_discharge_soc", "Const: min discharge SoC (%)"),
+    ("const.max_charge_soc", "Const: max charge SoC (%)"),
+    ("const.demand_charge_min_soc", "Const: demand-charge min SoC (%)"),
+    ("const.default_operating_mode", "Const: default operating mode"),
+]
+
+
+def const_snapshot(store) -> dict[str, Any]:
+    """const.* values for the gate snapshot (empty/defaults when unset)."""
+    try:
+        from . import constants
+        return constants.snapshot(store)
+    except Exception:                                           # noqa: BLE001
+        return {}
+
+
+def ratings_snapshot(host: str | None) -> dict[str, Any]:
+    """Battery max charge/discharge (W) from Modbus SunSpec 702, cached ~1 h. Empty
+    when Modbus is disabled/unreachable — the at-max-rate ETA then falls back to the
+    battery_max_power_kw constant. Only Modbus can read the model-correct rating."""
+    if not host:
+        return {}
+    try:
+        from . import battery_control
+        chg, dis = battery_control.cached_ratings(host)
+        out: dict[str, Any] = {}
+        if chg is not None:
+            out["ratings.max_charge_w"] = chg
+        if dis is not None:
+            out["ratings.max_discharge_w"] = dis
+        return out
+    except Exception:                                           # noqa: BLE001
+        return {}
+
+
+#: Derived battery sensors — computed from live points + user constants (capacity +
+#: SoC targets), so a schedule can gate on stored energy / headroom / ETA without the
+#: user doing the arithmetic. All fail-closed (None) when an input is missing. Ported
+#: from the Modbus bridge. A separate "Derived Battery" group in the picker.
+DERIVED_SENSORS = [
+    ("battery.status", "Battery state (charging / discharging / standby)"),
+    ("battery.capacity_kwh", "Battery capacity (kWh)"),
+    ("battery.stored_kwh", "Battery stored energy (kWh)"),
+    ("battery.remaining_kwh", "Battery headroom to full (kWh)"),
+    ("battery.time_to_charge_now_min", "ETA to max-charge SoC at current rate (min)"),
+    ("battery.time_to_discharge_now_min", "ETA to min-discharge SoC at current rate (min)"),
+    ("battery.time_to_charge_min", "ETA to max-charge SoC at max rate (min)"),
+    ("battery.time_to_discharge_min", "ETA to min-discharge SoC at max rate (min)"),
+    ("solar_forecast.day_pct", "Solar tracker: % of today's forecast reached"),
+    ("solar_forecast.vs_expected_pct", "Solar tracker: % vs forecast-to-now (>100 ahead, <100 behind)"),
+]
+
+
+def _dnum(snap: dict, k: str) -> float | None:
+    v = snap.get(k)
+    try:
+        return float(v) if v is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _eta_now_min(cap, stored, target_soc, signed_w, *, charging: bool) -> float | None:
+    """Minutes to reach target_soc at the CURRENT battery power. signed_w < 0 is
+    charging, > 0 is discharging (local convention). None when not moving toward the
+    target (idle / wrong direction), 0.0 when already at/past it."""
+    if cap is None or stored is None or target_soc is None or signed_w is None:
+        return None
+    target_kwh = cap * target_soc / 100.0
+    if charging:
+        rate_kw = -signed_w / 1000.0
+        delta = target_kwh - stored
+    else:
+        rate_kw = signed_w / 1000.0
+        delta = stored - target_kwh
+    if rate_kw <= 0:
+        return None
+    if delta <= 0:
+        return 0.0
+    return round(delta / rate_kw * 60.0, 1)
+
+
+def _eta_min(cap, stored, target_soc, rate_w, *, charging: bool) -> float | None:
+    """Best-case minutes to reach target_soc at a constant rate_w (the max rate)."""
+    if cap is None or stored is None or target_soc is None or not rate_w:
+        return None
+    target_kwh = cap * target_soc / 100.0
+    delta = (target_kwh - stored) if charging else (stored - target_kwh)
+    if delta <= 0:
+        return 0.0
+    return round(delta / (rate_w / 1000.0) * 60.0, 1)
+
+
+def derived_snapshot(snap: dict) -> dict[str, Any]:
+    """battery.* derived fields from an already-built snapshot (needs battery.soc_pct,
+    battery.power_w, and the const.* capacity + SoC targets already merged in)."""
+    soc = _dnum(snap, "battery.soc_pct")
+    pw = _dnum(snap, "battery.power_w")                 # signed: <0 charging, >0 discharging
+    cap = _dnum(snap, "const.battery_capacity_kwh")
+    cap = cap if (cap and cap > 0) else None
+    stored = round(cap * soc / 100.0, 2) if (cap is not None and soc is not None) else None
+    out: dict[str, Any] = {
+        "battery.capacity_kwh": cap,
+        "battery.stored_kwh": stored,
+        "battery.remaining_kwh": (round(cap - stored, 2) if (cap is not None and stored is not None) else None),
+        "battery.time_to_charge_now_min": _eta_now_min(
+            cap, stored, _dnum(snap, "const.max_charge_soc"), pw, charging=True),
+        "battery.time_to_discharge_now_min": _eta_now_min(
+            cap, stored, _dnum(snap, "const.min_discharge_soc"), pw, charging=False),
+    }
+    # "at max rate" ETAs — Modbus 702 rate if available, else the battery_max_power_kw
+    # constant (kW → W). Direction-correct (separate charge/discharge when Modbus gives both).
+    fb = _dnum(snap, "const.battery_max_power_kw")
+    fb_w = fb * 1000.0 if (fb and fb > 0) else None
+    max_ch = _dnum(snap, "ratings.max_charge_w") or fb_w
+    max_dis = _dnum(snap, "ratings.max_discharge_w") or fb_w
+    out["battery.time_to_charge_min"] = _eta_min(
+        cap, stored, _dnum(snap, "const.max_charge_soc"), max_ch, charging=True)
+    out["battery.time_to_discharge_min"] = _eta_min(
+        cap, stored, _dnum(snap, "const.min_discharge_soc"), max_dis, charging=False)
+    if pw is not None:
+        out["battery.status"] = "charging" if pw < 0 else "discharging" if pw > 0 else "standby"
+    # Solar tracker: actual PV today vs the Open-Meteo forecast (both already in the snapshot).
+    actual = _dnum(snap, "solar.today_kwh")
+    fc_today = _dnum(snap, "solar_forecast.today_kwh")
+    fc_remaining = _dnum(snap, "solar_forecast.remaining_kwh")
+    if actual is not None and fc_today and fc_today > 0:
+        out["solar_forecast.day_pct"] = round(actual / fc_today * 100, 1)
+    expected = (fc_today - fc_remaining) if (fc_today is not None and fc_remaining is not None) else None
+    if actual is not None and expected and expected > 0:
+        out["solar_forecast.vs_expected_pct"] = round(actual / expected * 100, 1)
+    return out
+
+
+def nem_snapshot(settings) -> dict[str, Any]:
+    """Wholesale spot sensor from the AEMO NEM built-in — {tariff.spot_price} in c/kWh when a
+    nem_region is configured. Cached in aemo_nem (~4min); empty otherwise or on fetch failure."""
+    region = getattr(settings, "nem_region", "") or ""
+    if not region:
+        return {}
+    try:
+        from . import aemo_nem
+        sp = aemo_nem.spot_price(region)
+        return {"tariff.spot_price": sp.get("price_c_kwh")} if sp else {}
+    except Exception:                                          # noqa: BLE001
+        return {}
+
+
+def solar_snapshot(settings) -> dict[str, Any]:
+    """Weather/solar-forecast values for the gate snapshot. Empty when the location
+    is not configured or the fetch fails; cached ~15min, so cheap to call per tick."""
+    try:
+        lat = getattr(settings, "pv_latitude", None)
+        lon = getattr(settings, "pv_longitude", None)
+        if lat is None or lon is None:
+            return {}
+        from . import solar_forecast
+        fc = solar_forecast.forecast(lat, lon, kwp=settings.pv_kwp,
+                                     tilt=settings.pv_tilt, azimuth=settings.pv_azimuth)
+        return solar_forecast.sensors(fc)
+    except Exception:                                           # noqa: BLE001
+        return {}
+
+
+#: Tariff + utility sensors — the meter's rate plan (rate_model) + its utility's
+#: export/charge permissions. A separate "Tariff & Utility" group in the picker.
+def _ha_price_to_c_kwh(state_obj) -> float | None:
+    """Coerce an HA price entity's state to c/kWh. Auto-detects dollars: a
+    ``$/kWh`` unit (e.g. 0.28) is scaled x100 to cents; a ``c/kWh`` / ``¢/kWh``
+    (or unitless, Amber's native) value is taken as-is. Feed-in may be negative."""
+    try:
+        v = float(state_obj.get("state"))
+    except (TypeError, ValueError):
+        return None
+    unit = str((state_obj.get("attributes") or {}).get("unit_of_measurement") or "")
+    u = unit.lower()
+    if "$" in unit or u.startswith("aud") or "dollar" in u:
+        return round(v * 100.0, 4)          # $/kWh -> c/kWh
+    return round(v, 4)                       # already c/kWh (or Amber-native cents)
+
+
+def _ha_prices_c(store, ids) -> dict[str, float]:
+    """Read the given ``ha:<inst>:<eid>`` price entities -> {id: c/kWh}. Bounded to the
+    involved instances; unit-detected; never raises. Shared by the global HA price provider
+    and the per-tariff dynamic provider."""
+    want: dict[str, dict[str, str]] = {}
+    for sid in ids:
+        sid = (sid or "").strip()
+        if sid.startswith("ha:") and sid.count(":") >= 2:
+            _, inst, eid = sid.split(":", 2)
+            want.setdefault(inst, {})[eid] = sid
+    if not want:
+        return {}
+    resolved: dict[str, float] = {}
+    try:
+        insts = {i["id"]: i for i in store.ha_instances()}
+    except Exception:                                           # noqa: BLE001
+        return {}
+    for inst_id, eids in want.items():
+        inst = insts.get(inst_id)
+        if not inst or not inst.get("enabled"):
+            continue
+        try:
+            for st in ha_instances.states(inst["base_url"], inst.get("token")):
+                eid = st.get("entity_id", "")
+                if eid in eids:
+                    c = _ha_price_to_c_kwh(st)
+                    if c is not None:
+                        resolved[eids[eid]] = c
+        except Exception:                                       # noqa: BLE001
+            continue
+    return resolved
+
+
+def tariff_dynamic_provider(store, gateway_id) -> dict | None:
+    """The ACTIVE tariff's dynamic-pricing provider config, or None when the tariff is not
+    ``kind:dynamic``. Shape: {source:'nem', region:'NSW1'} or {source:'ha', buy_entity, feedin_entity}."""
+    try:
+        from . import billing
+        cfg = billing._billing_cfg(store, gateway_id)
+        pr = (cfg or {}).get("pricing") or {}
+        if pr.get("kind") == "dynamic":
+            return pr.get("dynamic") or {}
+    except Exception:                                           # noqa: BLE001
+        pass
+    return None
+
+
+def resolve_dynamic_price(dyn: dict, store) -> tuple:
+    """(buy_c_kwh, sell_c_kwh) for a dynamic provider config, or (None, None). NEM uses the
+    tariff's own region; HA uses the tariff's own buy/feed-in entities (sell falls back to buy)."""
+    src = (dyn or {}).get("source")
+    if src == "nem":
+        from . import aemo_nem
+        sp = aemo_nem.spot_price((dyn.get("region") or "").upper())
+        if sp:
+            return sp.get("price_c_kwh"), sp.get("price_c_kwh")
+    elif src == "ha":
+        buy_id = (dyn.get("buy_entity") or "").strip()
+        feed_id = (dyn.get("feedin_entity") or "").strip()
+        got = _ha_prices_c(store, [buy_id, feed_id])
+        buy = got.get(buy_id)
+        sell = got.get(feed_id)
+        if buy is not None:
+            return buy, (sell if sell is not None else buy)
+    return None, None
+
+
+def apply_dynamic_pricing(snapshot: dict, settings, store, gateway_id) -> dict | None:
+    """FEAT-BILLING-WHOLESALE (per-tariff): when the ACTIVE tariff is ``kind:dynamic``, resolve
+    the live price from THAT tariff's own provider (AusNEM region or HA entity), OVERRIDE the
+    tariff.spot_price/feed_in_price + buy_rate/sell_rate sensors (option B: an active dynamic
+    tariff wins over the global sensor source), and return the live ``{buy, sell}`` $/kWh for
+    billing. Returns None (static tariff) otherwise — the global nem/ha sensors then stand."""
+    dyn = tariff_dynamic_provider(store, gateway_id)
+    if not dyn:
+        return None
+    buy_c, sell_c = resolve_dynamic_price(dyn, store)
+    if buy_c is None:
+        return None
+    snapshot["tariff.spot_price"] = round(buy_c, 4)
+    if sell_c is not None:
+        snapshot["tariff.feed_in_price"] = round(sell_c, 4)
+    buy = buy_c / 100.0
+    sell = (sell_c / 100.0) if sell_c is not None else buy
+    snapshot["tariff.buy_rate"] = round(buy, 5)
+    snapshot["tariff.sell_rate"] = round(sell, 5)
+    return {"buy": buy, "sell": sell}
+
+
+def ha_price_snapshot(settings, store) -> dict[str, Any]:
+    """Dynamic-tariff price sensors sourced from a chosen HA entity — the second
+    wholesale provider (the first is the AusNEM built-in, see :func:`nem_snapshot`).
+
+    ``tariff_price_entity`` -> ``tariff.spot_price`` (buy, c/kWh);
+    ``tariff_feedin_entity`` -> ``tariff.feed_in_price`` (sell, c/kWh). Entities are
+    the scheduler ids ``ha:<instance>:<entity_id>``. Reads state+unit directly (so it
+    can unit-detect), bounded to the involved instances. Never raises; an absent or
+    unreachable entity is simply absent, and applied AFTER nem_snapshot so a
+    configured HA entity wins over NEM for the same sensor."""
+    price_id = (getattr(settings, "tariff_price_entity", "") or "").strip()
+    feed_id = (getattr(settings, "tariff_feedin_entity", "") or "").strip()
+    if not price_id and not feed_id:
+        return {}
+    resolved = _ha_prices_c(store, [price_id, feed_id])
+    out: dict[str, Any] = {}
+    if price_id in resolved:
+        out["tariff.spot_price"] = resolved[price_id]
+    if feed_id in resolved:
+        out["tariff.feed_in_price"] = resolved[feed_id]
+    return out
+
+
+TARIFF_SENSORS = [
+    ("tariff.spot_price", "Wholesale spot price (AEMO NEM or HA entity, c/kWh)"),
+    ("tariff.feed_in_price", "Dynamic feed-in price (HA entity, c/kWh)"),
+    ("tariff.buy_rate", "Tariff: import rate ($/kWh)"),
+    ("tariff.sell_rate", "Tariff: feed-in rate ($/kWh)"),
+    ("tariff.season", "Tariff: season"),
+    ("tariff.time_period", "Tariff: time period"),
+    ("tariff.tier", "Tariff: tier"),
+    ("tariff.import_billable", "Tariff: import billable"),
+    ("service.export_allowed", "Utility: export allowed"),
+    ("service.solar_export_allowed", "Utility: solar export allowed"),
+    ("service.battery_export_allowed", "Utility: battery export allowed"),
+    ("service.charging_allowed", "Utility: charging allowed"),
+    ("service.discharging_allowed", "Utility: discharging allowed"),
+    ("service.export_limit_kw", "Utility: export limit (kW)"),
+    ("service.plan_type", "Utility: plan type"),
+]
+
+
+#: Billing/tariff WINDOW sensors (Phase 1 of the billing engine) — is `now` inside the
+#: meter's tariff demand / bonus / export-charge / grid-import window. Informational
+#: (express-don't-enforce): None when a window is not configured. Group with Tariff.
+BILLING_WINDOW_SENSORS = [
+    ("tariff.demand_window_active", "Tariff: in peak-demand window"),
+    ("tariff.bonus_window_active", "Tariff: in battery-export-bonus window"),
+    ("tariff.export_charge_window_active", "Tariff: in export-charge window"),
+    ("tariff.import_window_active", "Tariff: in a declared grid-import window"),
+]
+
+
+#: Demand-charge sensors (billing Phase 2) — peak/interval grid-import demand + the
+#: demand charge to date, from the meter's tariff demand_window + rate. "Demand / Tariff".
+DEMAND_SENSORS = [
+    ("demand.peak_kw", "Demand: peak this period (kW)"),
+    ("demand.interval_kw", "Demand: current interval (kW, running)"),
+    ("demand.period_charge", "Demand: charge this period ($)"),
+]
+
+
+#: Energy cost sensors (billing Phase 3) — period import/export + $ integrated against
+#: the rate in force. Group "Energy".
+ENERGY_SENSORS = [
+    ("energy.period_import_kwh", "Energy: grid import this period (kWh)"),
+    ("energy.import_cost", "Energy: grid import cost this period ($)"),
+    ("energy.export_credit", "Energy: grid export credit this period ($)"),
+    ("energy.unpriced_import_kwh", "Energy: import the plan priced no rate for (kWh)"),
+    ("energy.unpriced_export_kwh", "Energy: export the plan priced no rate for (kWh)"),
+]
+
+#: Battery-export bonus (billing Phase 3). Group "Demand / Tariff".
+BONUS_SENSORS = [
+    ("bonus.export_kwh", "Bonus: export in the bonus window this period (kWh)"),
+    ("bonus.period_credit", "Bonus: battery-export credit this period ($)"),
+]
+
+#: Two-way / solar-sponge export CHARGE (billing Phase 3). Group "Tariff & Utility".
+EXPORT_CHARGE_SENSORS = [
+    ("tariff.export_charge_kwh", "Tariff: export-charge export this period (kWh)"),
+    ("tariff.export_charge_free_remaining", "Tariff: free export allowance remaining (kWh)"),
+    ("tariff.export_charge_net_kwh", "Tariff: chargeable export above free (kWh)"),
+    ("tariff.export_charge_cost", "Tariff: export charge this period ($)"),
+]
+
+#: Standing/fixed charges (billing Phase 4) — deterministic time accrual. Group "Fixed Charges".
+FIXED_SENSORS = [
+    ("fixed.daily_charge", "Fixed: charges per day ($)"),
+    ("fixed.accrued_period", "Fixed: accrued this period ($)"),
+    ("fixed.period_total", "Fixed: projected this period ($)"),
+    ("fixed.remaining", "Fixed: left to cover this period ($)"),
+    ("fixed.days_remaining", "Fixed: days left in billing period"),
+]
+
+#: System Setup / install profile (FEAT-SYSTEM-SETUP) — derived from the aGate + user
+#: override. Group "System Setup".
+SYSTEM_SENSORS = [
+    ("system.solar_type", "System: solar type (none/ac/dc/remote)"),
+    ("system.solar_kwp", "System: solar size (kWp)"),
+    ("system.generator_input", "System: generator input"),
+    ("system.grid_forming", "System: grid-forming"),
+    ("system.whole_home_backup", "System: whole-home backup"),
+    ("system.load_shedding", "System: load shedding"),
+    ("system.non_backup_loads", "System: non-backup loads panel"),
+    ("system.battery_label", "System: battery label"),
+    ("system.apower_model", "System: aPower model"),
+    ("system.v2l", "System: V2L (car switch) on"),
+]
+
+#: The answer to this run's "Ask before continuing" question (#374 P4): the label of the
+#: button tapped, or the text typed into a reply. Absent until someone answers, so a
+#: condition on it fails and a message shows ``?``.
+ASK_SENSORS = [
+    ("ask.answer", "Ask: answer (the button tapped, or the reply typed)"),
+]
+
+
+# ── Feature states (#471) ────────────────────────────────────────────────────
+#: The features a value or template can depend on. HA entities depend on their
+#: instance, keyed ``ha:<instance>`` on top of these.
+FEATURES = ("gateway", "modbus", "solar_forecast", "spot_price", "feed_in_price",
+            "tariff", "utility", "constants", "ask")
+
+_SETUP_SOLAR = "set your location in Settings → Integrations → Location & Solar"
+_SETUP_PRICE = "set it in Settings → Integrations → Dynamic price"
+_SETUP_TARIFF = "give the meter a tariff in Settings → Sites & Billing"
+_SETUP_UTILITY = "give the meter a utility in Settings → Sites & Billing"
+
+
+def sensor_feature(sid: str) -> str:
+    """The feature a value comes from. Values computed from the gateway's own
+    readings (derived battery, system setup) are ``gateway``."""
+    if sid.startswith("ha:"):
+        return "ha:" + sid.split(":")[1]
+    if sid in ("tariff.spot_price", "tariff.feed_in_price"):
+        return sid.split(".", 1)[1]
+    if sid.startswith(("weather.", "solar_forecast.")):
+        return "solar_forecast"
+    if sid.startswith("service."):
+        return "utility"
+    if sid.startswith(("tariff.", "demand.", "energy.", "bonus.", "fixed.")):
+        return "tariff"
+    if sid.startswith("const."):
+        return "constants"
+    if sid.startswith("ask."):
+        return "ask"
+    return "gateway"
+
+
+def _feature(state: str = "active", reason: str = "") -> dict[str, str]:
+    return {"state": state, "reason": reason}
+
+
+def feature_states(settings, store, gateway_id=None) -> dict[str, dict[str, str]]:
+    """Each feature's state — active, off, not_set_up or error — with a short reason.
+    Configuration only: it never fetches, so a feature that is set up but has no
+    reading right now is still active (its values show "no value")."""
+    from . import battery_control
+    out = {k: _feature() for k in FEATURES}
+    ok, why = battery_control.available()
+    if not ok:
+        out["modbus"] = (_feature("error", why) if "not installed" in why
+                         else _feature("off", "Modbus client off"))
+    if getattr(settings, "pv_latitude", None) is None or getattr(settings, "pv_longitude", None) is None:
+        out["solar_forecast"] = _feature("not_set_up", "solar forecast — " + _SETUP_SOLAR)
+    try:
+        instances = {i["id"]: i for i in (store.ha_instances() if store is not None else [])}
+    except Exception:                                           # noqa: BLE001
+        instances = {}
+    for iid, inst in instances.items():
+        out["ha:" + iid] = (_feature() if inst.get("enabled")
+                            else _feature("off", f"Home Assistant '{inst.get('name') or iid}' off"))
+
+    def _entity(eid: str) -> dict[str, str]:
+        if not eid.startswith("ha:"):
+            return _feature()
+        return out.get(sensor_feature(eid)) or _feature("not_set_up", "its Home Assistant instance is gone")
+
+    price = (getattr(settings, "tariff_price_entity", "") or "").strip()
+    if price:
+        out["spot_price"] = _entity(price)
+    elif not (getattr(settings, "nem_region", "") or ""):
+        out["spot_price"] = _feature("not_set_up", "wholesale price — " + _SETUP_PRICE)
+    feed = (getattr(settings, "tariff_feedin_entity", "") or "").strip()
+    out["feed_in_price"] = (_entity(feed) if feed
+                            else _feature("not_set_up", "feed-in price — " + _SETUP_PRICE))
+    meter = _meter_for_gateway(store, gateway_id) or {}
+    if not meter.get("tariff_id"):
+        out["tariff"] = _feature("not_set_up", "tariff — " + _SETUP_TARIFF)
+    if not meter.get("utility_id"):
+        out["utility"] = _feature("not_set_up", "utility — " + _SETUP_UTILITY)
+    return out
+
+
+def _inactive(feature: str, states: dict) -> str | None:
+    f = states.get(feature) or _feature("not_set_up", "its Home Assistant instance is gone")
+    if f["state"] == "active":
+        return None
+    word = {"off": "inactive", "not_set_up": "not set up"}.get(f["state"], f["state"])
+    return f"{word}: {f['reason']}"
+
+
+def sensor_inactive(sid: str, states: dict) -> str | None:
+    """Why a value can't be picked, e.g. ``inactive: Modbus client off``; None when its
+    feature works (even with no reading right now)."""
+    return _inactive(sensor_feature(sid), states)
+
+
+def template_features(preset: dict) -> list[str]:
+    """The features a template needs: Modbus when it says so, plus its conditions'."""
+    need = ["modbus"] if preset.get("requires") == "modbus" else []
+    for sid in _sensor_ids_in((preset.get("spec") or {}).get("conditions") or []):
+        f = sensor_feature(sid)
+        if f not in need and f not in ("gateway", "constants", "ask"):
+            need.append(f)
+    return need
+
+
+def template_inactive(preset: dict, states: dict) -> str | None:
+    """The first reason a template can't run, or None."""
+    for f in template_features(preset):
+        why = _inactive(f, states)
+        if why:
+            return why
+    return None
+
+
+def _in_window(win: Any, now: dt.datetime) -> bool:
+    """Is `now` inside a tariff window {months, days, start, end}? Empty months/days
+    = all. Same-day range or overnight wrap (start > end). Ported from the Modbus
+    bridge's billing window matcher; reuses rate_model._hhmm (minutes-since-midnight)."""
+    if not isinstance(win, dict):
+        return False
+    months = {int(m) for m in (win.get("months") or []) if 1 <= int(m) <= 12}
+    if months and now.month not in months:
+        return False
+    days = {int(d) for d in (win.get("days") or []) if 0 <= int(d) <= 6}
+    if days and now.weekday() not in days:
+        return False
+    from . import rate_model
+    hs, he = rate_model._hhmm(win.get("start")), rate_model._hhmm(win.get("end"))
+    if hs is None or he is None:
+        return True                                    # no time bound → whole day
+    cur = now.hour * 60 + now.minute
+    if hs <= he:
+        return hs <= cur < he
+    return cur >= hs or cur < he                        # overnight wrap
+
+
+def billing_snapshot(store, gateway_id=None, now: dt.datetime | None = None) -> dict[str, Any]:
+    """tariff.*_window_active for the gateway's meter's tariff. Empty when no tariff;
+    a given window is None when that tariff doesn't define it (so a gate on it fails
+    closed — the safe default). Windows: demand_window / bonus_window / charge_window
+    (JSON columns) + pricing.import_windows[]."""
+    now = now or dt.datetime.now().astimezone()
+    meter = _meter_for_gateway(store, gateway_id)
+    if not meter:
+        return {}
+    try:
+        tar = store.tariff(meter.get("tariff_id")) if meter.get("tariff_id") else None
+    except Exception:                                          # noqa: BLE001
+        tar = None
+    if not tar:
+        return {}
+    dw = tar.get("demand_window") if isinstance(tar.get("demand_window"), dict) else None
+    bw = tar.get("bonus_window") if isinstance(tar.get("bonus_window"), dict) else None
+    cw = tar.get("charge_window") if isinstance(tar.get("charge_window"), dict) else None
+    pricing = tar.get("pricing") if isinstance(tar.get("pricing"), dict) else {}
+    imports = [w for w in (pricing.get("import_windows") or []) if isinstance(w, dict)]
+    return {
+        "tariff.demand_window_active": (int(_in_window(dw, now)) if dw else None),
+        "tariff.bonus_window_active": (int(_in_window(bw, now)) if bw else None),
+        "tariff.export_charge_window_active": (int(_in_window(cw, now)) if cw else None),
+        "tariff.import_window_active": (int(any(_in_window(w, now) for w in imports)) if imports else None),
+    }
+
+
+def _meter_for_gateway(store, gateway_id):
+    """The meter a gateway connects to, else the (default site's) default meter."""
+    try:
+        if store is None:
+            return None
+        gw = store.gateway(gateway_id) if gateway_id else None
+        mid = (gw or {}).get("meter_id")
+        if mid:
+            return store.meter(mid)
+        meters = store.meters()
+        return next((m for m in meters if m.get("is_default")), (meters or [None])[0])
+    except Exception:                                           # noqa: BLE001
+        return None
+
+
+def tariff_snapshot(store, gateway_id=None, now: dt.datetime | None = None) -> dict[str, Any]:
+    """tariff.* + service.* for the gateway's meter's tariff + utility. Empty when
+    unconfigured — a sensor then reads None and a gate fails closed (never fires),
+    which is the safe default. Tiered pricing uses the first tier here (the billing
+    engine will later supply period-to-date use for exact tiering)."""
+    now = now or dt.datetime.now().astimezone()
+    meter = _meter_for_gateway(store, gateway_id)
+    if not meter:
+        return {}
+    out: dict[str, Any] = {}
+    try:
+        util = store.utility(meter.get("utility_id")) if meter.get("utility_id") else None
+        if util:
+            out.update({
+                "service.export_allowed": int(util.get("export_allowed", 1)),
+                "service.solar_export_allowed": int(util.get("solar_export_allowed", 1)),
+                "service.battery_export_allowed": int(util.get("battery_export_allowed", 1)),
+                "service.charging_allowed": int(util.get("charging_allowed", 1)),
+                "service.discharging_allowed": int(util.get("discharging_allowed", 1)),
+                "service.export_limit_kw": util.get("export_limit_kw"),
+                "service.plan_type": util.get("plan_type"),
+            })
+        tar = store.tariff(meter.get("tariff_id")) if meter.get("tariff_id") else None
+        if tar and isinstance(tar.get("pricing"), dict):
+            from . import rate_model
+            pr = tar["pricing"]
+            r = rate_model.resolve(pr.get("seasons"), now, default_rate=pr.get("default_rate"))
+            out.update({
+                "tariff.buy_rate": r.get("buy"),
+                "tariff.sell_rate": r.get("sell"),
+                "tariff.season": r.get("season"),
+                "tariff.time_period": r.get("time_period"),
+                "tariff.tier": r.get("tier"),
+                "tariff.import_billable": (int(r["billable"]) if r.get("billable") is not None else None),
+            })
+    except Exception:                                           # noqa: BLE001
+        pass
+    return out
+
+
+#: Force-dispatch direction -> Battery Command slug (direct-Modbus WSet).
+_FORCE_SLUG: dict[str, str] = {
+    "charge": "Force Charge", "discharge": "Force Discharge", "standby": "Force Standby",
+}
+
+
+def _force_dispatch(action: dict, *, host: str | None, window_min: int,
+                    gateway_id: str | None, store, dry_run: bool = False,
+                    release: bool = False, schedule_id: str | None = None,
+                    schedule_name: str | None = None, window_end_ts: float | None = None) -> str:
+    """Force charge/discharge/standby over the direct-Modbus path (battery_control) —
+    the same engine the dashboard widget uses, independent of the modbus-bridge.
+
+    The dispatch runs for the schedule WINDOW (``window_min``): the bridge's own
+    watchdog auto-releases at window end and also enforces ``target_soc`` (charge
+    stops at SoC>=target, discharge at SoC<=target), reading live SoC from this
+    gateway's last poll. ``release=True`` ends the dispatch, fired on the window's
+    exit edge as a safety net so a force never outlives its window. Never raises.
+    """
+    from . import battery_control
+    from . import state as _state
+    if not host:
+        return "force skipped: no gateway host to reach over Modbus"
+    if release:
+        out = battery_control.execute("Release", host=host, dry_run=dry_run)
+        if out.get("ok") and not dry_run and schedule_id and hasattr(store, "active_dispatches"):
+            for d in store.active_dispatches(host=host):
+                if d.get("schedule_id") == schedule_id:
+                    store.end_dispatch(d["id"], status="ended")
+        return f"force release{'' if out.get('ok') else ' failed'}: {out.get('result', '')}"
+    direction = (action.get("direction") or "").lower()
+    slug = _FORCE_SLUG.get(direction)
+    if not slug:
+        return f"force skipped: unknown direction '{direction}'"
+    unit = (action.get("unit") or "pct").lower()
+    # No power is not 0 W (#209): a charge or discharge with none set is refused, not sent.
+    if direction != "standby" and action.get("power") in (None, ""):
+        return f"force skipped: no power set for {direction}"
+    power = float(action.get("power") or 0)
+    if unit == "kw":
+        power_w, power_pct, mode = int(power * 1000), 100, "w"
+    elif unit == "w":
+        power_w, power_pct, mode = int(power), 100, "w"
+    else:                          # percent of the rated rate for the direction
+        power_w, power_pct, mode = 0, int(power), "pct"
+
+    def _soc():
+        try:
+            gw = _state.get_gateway(gateway_id) if gateway_id else None
+            return (getattr(gw, "last_state", {}) or {}).get("soc")
+        except Exception:                                       # noqa: BLE001
+            return None
+
+    def _log(status, detail):
+        try:
+            store.log_schedule_event("_batt", "Battery dispatch (schedule)", status, detail,
+                                     gateway_id=gateway_id or "")
+            # A clean end (watchdog duration/target, or supersede) closes the persisted
+            # row so the boot reconcile does not later see it as interrupted.
+            if status == "dispatch-end" and hasattr(store, "end_active_dispatches"):
+                store.end_active_dispatches(host=host, status="ended")
+        except Exception:                                       # noqa: BLE001
+            pass
+
+    tgt = int(action.get("target_soc") or 0)
+    out = battery_control.execute(
+        slug, host=host, power_w=power_w, power_pct=power_pct, power_mode=mode,
+        duration_s=int((window_min or 0) * 60), target_soc=tgt,
+        soc_getter=_soc, on_event=_log, dry_run=dry_run)
+    # Persist the in-flight dispatch so a bridge restart mid-window can be reconciled.
+    if out.get("ok") and not dry_run and hasattr(store, "record_dispatch"):
+        try:
+            import time as _t
+            # Signed magnitude for the reconcile: real watts in 'w' mode, the percent in
+            # 'pct' mode (power_mode records which). Sign carries the direction (charge>0,
+            # discharge<0) so the watchdog's target-SoC logic works either way.
+            mag = int(power_w if mode == "w" else power_pct)
+            signed = abs(mag) if direction == "charge" else -abs(mag) if direction == "discharge" else 0
+            store.record_dispatch(
+                schedule_id=schedule_id, name=schedule_name or "scheduled dispatch",
+                gateway_id=gateway_id, host=host, direction=direction, watts=signed,
+                power_mode=mode, target_soc=tgt, window_start_ts=_t.time(),
+                window_end_ts=window_end_ts)
+        except Exception:                                       # noqa: BLE001
+            pass
+    # A refusal (client off, path not ready) or a write the aGate rejected is a failed
+    # run, retried while the window is open, never "fired" (#191).
+    return f"force {direction}{'' if out.get('ok') else ' failed'}: {out.get('result', '')}"
+
+
+#: Which action kinds actually command the device. These go through
+#: resilience.call as WRITES, which means: bounded by a deadline, retried only
+#: while the fault looks transient, and NEVER retried once the outcome is
+#: UNKNOWN — a second force-charge after an ambiguous first one is how you
+#: dispatch twice (RUNTIME_DESIGN phase 3).
+DEVICE_WRITES = frozenset({"force", "set_mode", "smart_circuit", "offgrid"})
+
+
+def run_action_outcome(action: dict, *, settings, client, store, snapshot: dict,
+                       host: str | None = None, window_min: int = 0,
+                       gateway_id: str | None = None, dry_run: bool = False,
+                       schedule_id: str | None = None, schedule_name: str | None = None,
+                       window_end_ts: float | None = None,
+                       notifier=None) -> resilience.Outcome:
+    """Execute one action and return a structured :class:`resilience.Outcome`.
+
+    The string-returning :func:`run_action` is kept as a thin wrapper, but the
+    scheduler now decides on the VERDICT rather than on the words. It used to
+    infer success with ``"failed" not in result`` — so an action whose failure
+    text happened not to contain that substring was recorded as a success, and
+    an UNKNOWN write was indistinguishable from a clean one.
+    """
+    kind = (action or {}).get("kind") or ""
+    target = f"{gateway_id or host or '?'}"
+
+    def _skip(detail: str) -> resilience.Outcome:
+        """Preconditions unmet. Nothing was attempted, so this is not a failure
+        and must never be retried or alerted on."""
+        return resilience.Outcome(verdict=resilience.Verdict.SKIPPED, action=kind,
+                                  target=target, detail=detail)
+
+    def _classify(detail: str) -> resilience.Verdict:
+        """Read a verdict out of the body's text.
+
+        `_run_action_body` never raises — it catches and returns a failure STRING.
+        That contract is deliberate (one bad step must not kill a schedule), but it
+        means resilience.call sees a clean return for a failed write unless the text
+        is inspected as well. Missing this is exactly how a failure gets recorded as
+        a success, which is the defect phase 3 exists to remove.
+        """
+        low = str(detail).lower()
+        if " skipped" in low or low.startswith("unknown action"):
+            return resilience.Verdict.SKIPPED
+        if "failed" in low or "not confirmed" in low or "error" in low:
+            return resilience.Verdict.FAILED
+        return resilience.Verdict.OK
+
+    if kind in DEVICE_WRITES and not dry_run:
+        # The window is the deadline: retrying past the end of the window would
+        # dispatch into conditions the rule no longer describes.
+        policy = resilience.SCHEDULED
+        deadline = None
+        # Only a window end still ahead bounds the retries. Always and zero-duration
+        # schedules pass an end that is already past, which made it 1 second (#209);
+        # they keep the policy's own deadline instead.
+        if window_end_ts and float(window_end_ts) > time.time():
+            deadline = max(1.0, float(window_end_ts) - time.time())
+        def _attempt():
+            """Raise on a reported failure so resilience can classify and retry it;
+            return the text on success so the Outcome carries the same words the UI
+            has always shown."""
+            text = run_action(action, settings=settings, client=client,
+                              store=store, snapshot=snapshot, host=host,
+                              window_min=window_min, gateway_id=gateway_id,
+                              dry_run=dry_run, schedule_id=schedule_id,
+                              schedule_name=schedule_name,
+                              window_end_ts=window_end_ts)
+            if _classify(text) is resilience.Verdict.FAILED:
+                raise ConnectionError(text)      # transient by default, so it retries
+            return text
+
+        out = resilience.call(
+            _attempt, action=kind, target=target, policy=policy, write=True,
+            audit=_audit_action(store, schedule_id, schedule_name, gateway_id),
+            notifier=notifier, deadline_s=deadline)
+        # Carry the body's own words through, and honour a SKIPPED that came back
+        # as a clean return rather than being mistaken for a successful write.
+        if out.verdict is resilience.Verdict.OK and isinstance(out.value, str):
+            out.detail = out.value
+            if _classify(out.value) is resilience.Verdict.SKIPPED:
+                out.verdict = resilience.Verdict.SKIPPED
+        return out
+
+    # Everything else — notifications, HA service calls, dry runs, and the
+    # kinds that are refused outright — keeps the simple path. They command no
+    # hardware, so an ambiguous result has no safety consequence.
+    try:
+        detail = run_action(action, settings=settings, client=client, store=store,
+                            snapshot=snapshot, host=host, window_min=window_min,
+                            gateway_id=gateway_id, dry_run=dry_run,
+                            schedule_id=schedule_id, schedule_name=schedule_name,
+                            window_end_ts=window_end_ts)
+    except Exception as e:  # noqa: BLE001
+        return resilience.Outcome(verdict=resilience.Verdict.FAILED, action=kind,
+                                  target=target, error=f"{type(e).__name__}: {e}")
+    v = _classify(detail)
+    if v is resilience.Verdict.SKIPPED:
+        return _skip(str(detail))
+    return resilience.Outcome(verdict=v, action=kind, target=target, detail=str(detail))
+
+
+def _audit_action(store, schedule_id, schedule_name, gateway_id=None):
+    """An audit sink for resilience.call that writes to the schedule log. None when
+    there is nothing to write to, so a dry run or a unit test stays silent."""
+    if store is None or not schedule_id:
+        return None
+
+    def _audit(**kw) -> None:
+        try:
+            v = kw.get("verdict") or ""
+            status = v if v in ("unknown", "failed") else ("fired" if v == "ok" else "error")
+            store.log_schedule_event(
+                schedule_id, schedule_name or "", status,
+                kw.get("detail") or kw.get("error") or v, gateway_id=gateway_id or "")
+        except Exception:  # noqa: BLE001 — auditing must never break the call
+            pass
+    return _audit
+
+
+_ON_TRUE = frozenset({"true", "on", "1", "yes"})
+_ON_FALSE = frozenset({"false", "off", "0", "no"})
+
+
+def on_value(v: Any) -> bool:
+    """An On/Off action parameter as a real bool, read strictly (#188).
+
+    The editor's On/Off picker stores the TEXT "true"/"false", and ``bool("false")`` is
+    True: a schedule set to turn a smart circuit Off turned it On, and "reconnect to the
+    grid" went off-grid. Anything that is not clearly on or off raises, so the action is
+    refused rather than guessed — a device write must never default to a direction.
+    """
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)) and v in (0, 1):
+        return bool(v)
+    if isinstance(v, str):
+        t = v.strip().lower()
+        if t in _ON_TRUE:
+            return True
+        if t in _ON_FALSE:
+            return False
+    raise ValueError(f"'on' must be true or false, not {v!r}")
+
+
+def normalize_action(action: Any) -> Any:
+    """Store On/Off parameters as real booleans. Raises ValueError on an unreadable one."""
+    if isinstance(action, dict) and action.get("kind") in ("smart_circuit", "offgrid") \
+            and "on" in action:
+        return {**action, "on": on_value(action["on"])}
+    return action
+
+
+def run_action(action: dict, *, settings, client, store, snapshot: dict,
+               host: str | None = None, window_min: int = 0,
+               gateway_id: str | None = None, dry_run: bool = False,
+               schedule_id: str | None = None, schedule_name: str | None = None,
+               window_end_ts: float | None = None) -> str:
+    """String form, kept for callers and the UI. Prefer `run_action_outcome`.
+
+    Also the single seam the Outcome path goes through, so a caller (or a test) that
+    substitutes this function still controls both."""
+    return _run_action_body(action, settings=settings, client=client, store=store,
+                            snapshot=snapshot, host=host, window_min=window_min,
+                            gateway_id=gateway_id, dry_run=dry_run,
+                            schedule_id=schedule_id, schedule_name=schedule_name,
+                            window_end_ts=window_end_ts)
+
+
+def _run_action_body(action: dict, *, settings, client, store, snapshot: dict,
+                     host: str | None = None, window_min: int = 0,
+                     gateway_id: str | None = None, dry_run: bool = False,
+                     schedule_id: str | None = None, schedule_name: str | None = None,
+                     window_end_ts: float | None = None) -> str:
+    """Execute one action and return a human-readable outcome.
+
+    Never raises: a failing action must record WHY and let the rest of the
+    schedule continue, because a schedule that dies silently on one bad step is
+    worse than one that reports a partial run.
+    """
+    kind = (action or {}).get("kind")
+    try:
+        if kind == "force":
+            return _force_dispatch(action, host=host, window_min=window_min,
+                                   gateway_id=gateway_id, store=store, dry_run=dry_run,
+                                   schedule_id=schedule_id, schedule_name=schedule_name,
+                                   window_end_ts=window_end_ts)
+
+        if kind == "set_mode":
+            out = client.set_mode(settings, action["mode"], host=host)
+            return f"mode -> {action['mode']}: {'ok' if out.get('ok', True) else f'failed: {out}'}"
+
+        if kind == "smart_circuit":
+            on = on_value(action["on"])          # never bool("false") (#188)
+            out = client.set_smart_circuit(settings, int(action["circuit"]), on, host=host)
+            # result:0 means the frame parsed; only the read-back proves it applied.
+            return (f"circuit {action['circuit']} -> {'on' if on else 'off'}: "
+                    f"{'confirmed' if out.get('confirmed') else 'NOT confirmed'}")
+
+        if kind == "offgrid":
+            on = on_value(action["on"])          # never bool("false") (#188)
+            out = client.set_offgrid(settings, on, int(action.get("soc", 5)), host=host)
+            return f"offgrid {on}: {'ok' if out.get('ok') else f'failed: {out}'}"
+
+        if kind == "notify":
+            from . import actionable, notify_engine  # noqa: F401 — registers the event
+            dev = store.notify_device(action["device_id"])
+            if dev is None:
+                return "notify skipped: device no longer exists"
+            if not dev.get("enabled"):
+                return f"notify skipped: '{dev['alias']}' is switched off"
+            inst = store.ha_instance(dev["instance_id"])
+            if inst is None:
+                return f"notify skipped: '{dev['alias']}' has no HA instance"
+            # Through the one Notifier: the Push notifications switch applies (#171), the
+            # gateway is named (#361) and the send is recorded.
+            res = actionable.send(store, "schedule_notify", gateway=actionable.gateway_name(gateway_id),
+                                  device_ids=[dev["id"]],
+                                  title=substitute(action.get("title", ""), snapshot),
+                                  message=substitute(action.get("message", ""), snapshot))
+            if res is None:
+                return f"notify '{dev['alias']}': skipped: notifications have not started"
+            if not res.total:
+                why = ("notifications are off" if not actionable.notifier().enabled()
+                       else "its HA instance is switched off")
+                return f"notify '{dev['alias']}': skipped: {why}"
+            return (f"notify '{dev['alias']}': "
+                    f"{'sent' if res.delivered else res.deliveries[0].error}")
+
+        if kind == "ha_service":
+            from . import ha_instances
+            import json as _json
+            inst = store.ha_instance(action.get("instance_id"))
+            if inst is None:
+                return "service skipped: no HA instance selected"
+            domain = (action.get("domain") or "").strip()
+            service = (action.get("service") or "").strip()
+            if not domain or not service:
+                return "service skipped: domain and service are required"
+            data = action.get("data")
+            if isinstance(data, str):
+                try:
+                    data = _json.loads(data) if data.strip() else {}
+                except Exception:                               # noqa: BLE001
+                    return "service skipped: data is not valid JSON"
+            data = dict(data or {})
+            # %sensor.id% substitution in the entity id and any string data values.
+            ent = substitute(str(action.get("entity_id") or ""), snapshot).strip()
+            if ent:
+                data.setdefault("entity_id", ent)
+            for k, v in list(data.items()):
+                if isinstance(v, str):
+                    data[k] = substitute(v, snapshot)
+            res = ha_instances.call_service(inst["base_url"], inst.get("token"),
+                                            domain, service, data)
+            return (f"service {domain}.{service}: "
+                    f"{'ok' if res.get('ok') else res.get('error')}")
+
+        if kind == "reserve_soc":
+            return ("reserve_soc skipped: no local write path exists "
+                    "(see RESEARCH-RESERVE-SOC); needs a cloud provider")
+
+        if kind in UNAVAILABLE:
+            return f"{kind} skipped: {UNAVAILABLE[kind]}"
+        return f"unknown action '{kind}'"
+    except Exception as e:                                       # noqa: BLE001
+        return f"{kind} failed: {type(e).__name__}: {e}"
+
+
+def _last_fired(entry: dict, store, gateway_id: str | None, wkey: str | None) -> str | None:
+    """The occurrence this entry last settled, as ``due()`` reads it. A scope-"all" rule
+    is settled per gateway (#270): the schedule-wide ``last_fired_day`` is written by the
+    first gateway to fire, and would stop every other gateway's run of that occurrence."""
+    if not entry.get("_scope_all"):
+        return entry.get("last_fired_day")
+    try:
+        for o in store.occurrences_for(entry["id"]):
+            if (o.get("gateway_id") or "") == (gateway_id or "") \
+                    and o.get("occurrence_key") == wkey and o.get("status") in store.OCC_TERMINAL:
+                return wkey
+    except Exception:                                           # noqa: BLE001
+        return entry.get("last_fired_day")
+    return None
+
+
+def holds_dispatch(store, schedule_id: str, host: str | None) -> bool:
+    """True when this schedule's force is the active dispatch on ``host`` (#189). A newer
+    force on the same aGate supersedes the row, so a rule that was taken over holds
+    nothing. Never raises."""
+    try:
+        return any(d.get("schedule_id") == schedule_id
+                   for d in store.active_dispatches(host=host))
+    except Exception:                                           # noqa: BLE001
+        return False
+
+
+#: Dwell (entry_hold_s) timers — when conditions first met, keyed by
+#: "gateway:entry". In-memory: a restart restarts the hold, which is the safe
+#: direction (never fire earlier than the hold demands).
+_dwell_since: dict[str, dt.datetime] = {}
+
+#: Whether each entry's window was inside last tick, keyed "gateway:entry". Used
+#: to detect the closing edge so exit-tagged HA actions fire once when a window ends.
+_window_inside: dict[str, bool] = {}
+#: The occurrence key of the window that is currently open. At the exit edge the
+#: clock has usually moved past the window, so `window_now` no longer names the
+#: run that is ending — the key has to be remembered from when it opened.
+_window_key: dict[str, str] = {}
+
+#: Last day a "gated" audit line was logged per entry, so a window that is blocked
+#: by its conditions is recorded once (not every tick).
+_gated_day: dict[str, str] = {}
+
+
+def gate_reason(entry: dict, snapshot: dict) -> str:
+    """A human reason a gate did not pass — the first failing leaf with its live
+    value, e.g. ``battery.soc_pct < 20 (live=27.05)``. This is the audit detail."""
+    trace: list[dict] = []
+    evaluate(entry.get("conditions") or [], snapshot, entry.get("match", "all"), trace)
+    fails = [r for r in trace if not r.get("result")]
+    if not fails:
+        return "entry conditions not met"
+    def fmt(r: dict) -> str:
+        rhs = r.get("value")
+        if r.get("value_kind") == "sensor":
+            rhs = r.get("value_sensor")
+        elif r.get("op") == "between":
+            rhs = f"{r.get('value')}..{r.get('value2')}"
+        return f"{r.get('sensor')} {r.get('op')} {rhs} (live={r.get('live_value')})"
+    head = "; ".join(fmt(r) for r in fails[:2])
+    return head + ("" if len(fails) <= 2 else f"; +{len(fails) - 2} more")
+
+
+
+def _guard_ok(guard: dict | None, snapshot: dict) -> bool:
+    """An HA action's optional guard — run the action only if it currently holds.
+    ``guard`` is either a single leaf ({sensor,op,value}) or a {match,conditions}
+    tree; absent/empty means no guard (always run). Missing data fails closed."""
+    if not guard:
+        return True
+    if isinstance(guard, dict) and "conditions" in guard:
+        return evaluate(guard.get("conditions") or [], snapshot, guard.get("match", "all"))
+    return evaluate([guard], snapshot)
+
+
+def _fire_ha_phase(entry: dict, phase: str, *, settings, client, store,
+                   snapshot: dict, host: str | None) -> list[str]:
+    """Run the entry's HA actions tagged for this edge (``fire`` on entry / ``exit``
+    on window close; ``both`` runs on each), each gated by its own guard."""
+    out: list[str] = []
+    for ha in entry.get("ha_actions") or []:
+        if (ha.get("when") or "fire") not in (phase, "both"):
+            continue
+        if not _guard_ok(ha.get("guard"), snapshot):
+            continue
+        akind = "ha_service" if (ha.get("ha_kind") == "service") else "notify"
+        out.append(run_action({**ha, "kind": akind}, settings=settings,
+                              client=client, store=store, snapshot=snapshot, host=host))
+    return out
+
+
+def tick(*, settings, client, store, state: dict, host: str | None = None,
+         gateway_id: str | None = None, now: dt.datetime | None = None,
+         modbus_host: str | None = None) -> list[dict]:
+    """Evaluate every schedule once. Returns what happened, for the log and the UI.
+
+    Called from the poller loop, so it inherits the poll interval — a schedule
+    cannot react faster than the bridge reads the gateway, which is worth knowing
+    before relying on a short window. Every tick is one gateway's (#379): with no
+    ``gateway_id`` nothing is evaluated, never every schedule.
+    """
+    if not gateway_id:
+        return []
+    # The SITE's clock, not the container's. docs/TIMEZONES.md: a schedule rule is authored
+    # in site wall-clock. Aware, so every .timestamp() below converts correctly; falls back
+    # to container-local (also aware) when the gateway cannot be read, which is what this
+    # did everywhere before.
+    if now is None:
+        now, _ = site_time.now_site(settings, host)
+    snapshot = snapshot_from_state(state)
+    snapshot["grid.offgrid_min"] = offgrid_min(state, now.timestamp())   # on the tick's clock
+    snapshot.update(ha_snapshot(store))     # exposed HA entities are conditions too
+    snapshot.update(solar_snapshot(settings))   # weather + solar-forecast sensors
+    snapshot.update(nem_snapshot(settings))     # tariff.spot_price (AEMO NEM built-in)
+    snapshot.update(ha_price_snapshot(settings, store))   # HA price entity -> tariff.spot_price/feed_in_price (wins over NEM)
+    snapshot.update(tariff_snapshot(store, gateway_id, now))   # tariff.* + service.*
+    snapshot.update(billing_snapshot(store, gateway_id, now))   # tariff.*_window_active
+    from . import billing
+    _dyn = apply_dynamic_pricing(snapshot, settings, store, gateway_id)   # per-tariff wholesale override
+    snapshot.update(billing.billing_tick(store, gateway_id, snapshot.get("grid.power_w"),
+                                         now, dynamic_rate=_dyn))   # demand/energy/bonus/charge
+    snapshot.update(billing.fixed_snapshot(store, gateway_id, now))   # fixed.* (pure accrual)
+    try:
+        from . import system_setup
+        snapshot.update(system_setup.snapshot(store, settings, gateway_id, host))   # system.* (derived+override)
+    except Exception:  # noqa: BLE001
+        pass
+    snapshot.update(const_snapshot(store))   # const.* automation constants
+    # Modbus (SunSpec 702) target: an explicit modbus_host when the poller resolved one
+    # (empty string = skip, e.g. a mock with no Modbus); else fall back to host.
+    snapshot.update(ratings_snapshot(modbus_host if modbus_host is not None else host))   # ratings.* from Modbus 702 (cached)
+    snapshot.update(derived_snapshot(snapshot))   # battery.* derived (needs const.* + ratings.*)
+    fired: list[dict] = []
+    ready: list[dict] = []
+    # Debug monitor (#345): each enabled schedule's state as this tick decided it.
+    mon: dict[str, tuple[str, str]] = {}
+    seen: list[dict] = []
+    for entry in store.schedules():
+        # A schedule fires only on its own gateway's tick, so a battery action targets
+        # the right aGate. Every schedule names its gateway (#379); one that doesn't
+        # (saved before #379 and not yet bound at start-up) runs nowhere.
+        bound = entry.get("gateway_id") or ""
+        # "all" means every gateway evaluates this rule on its own tick, producing one
+        # run and one resource claim per gateway (BR-45). Only an exact "all" widens
+        # the scope — an unrecognised value falls through to the narrower behaviour.
+        scope_all = str(entry.get("gateway_scope") or "one").lower() == "all"
+        entry["_scope_all"] = scope_all
+        if not scope_all and bound != gateway_id:
+            continue
+        dkey = f"{gateway_id or ''}:{entry['id']}"
+        if entry.get("enabled"):
+            seen.append(entry)
+
+        # The window can close two ways: time (fire_at + duration elapses) OR an
+        # optional EXIT condition tree becoming true mid-window ("end early when…").
+        # The effective window is open only while time-inside AND the exit gate is
+        # not (yet) satisfied.
+        was_inside = _window_inside.get(dkey)
+        tt = entry.get("trigger_type") or "daily"
+        state, wkey, wend, occ_date = window_now(entry, now)
+        cal_ok = _calendar_ok(entry, occ_date)[0]
+        if tt == "always":
+            # No time window — the entry conditions ARE the window (continuous).
+            time_inside = bool(entry.get("enabled") and cal_ok and evaluate(
+                entry.get("conditions") or [], snapshot, entry.get("match", "all")))
+            # Each activation is its own occurrence (#190). The fixed key 'always' was
+            # finished by the first run, so no later rising edge ever fired again.
+            if time_inside:
+                wkey = (_window_key.get(dkey) if was_inside else None) \
+                    or f"always:{int(now.timestamp())}"
+        else:
+            time_inside = bool(entry.get("enabled") and cal_ok and state == "inside")
+        entry["_wkey"], entry["_wend"] = wkey, wend
+        if entry.get("ask") and time_inside:
+            _restore_ask(entry, store=store, gateway_id=gateway_id, wkey=wkey)
+        exit_conds = entry.get("exit_conditions") or []
+        exit_now = bool(exit_conds) and time_inside and evaluate(
+            exit_conds, {**snapshot, **_ask_answer(entry, gateway_id)},
+            entry.get("exit_match", "all"))
+        effective_inside = time_inside and not exit_now
+
+        # Exit edge: the window was open last tick and has now closed (time OR exit
+        # condition) — fire the exit-tagged HA actions once (guarded), regardless of
+        # whether the entry action ran, and release a force dispatch as a safety net.
+        if was_inside and not effective_inside:
+            exit_res = _fire_ha_phase(
+                entry, "exit", settings=settings, client=client, store=store,
+                snapshot={**snapshot, **run_context(entry, gateway_id=gateway_id,
+                                                    now=now, phase="exit")},
+                host=host)
+            # BR-50: put back what this rule overrode. Opt-in, because "leave it where
+            # the rule left it" is a legitimate intent and changing it under existing
+            # rules would be a silent behaviour change.
+            if entry.get("restore_on_exit"):
+                restored = _restore_prior(entry, store=store, settings=settings,
+                                          client=client, snapshot=snapshot, host=host,
+                                          gateway_id=gateway_id,
+                                          wkey=_window_key.get(dkey) or wkey)
+                if restored:
+                    exit_res.append(restored)
+            # Release only the force this rule holds (#189): never one it did not start
+            # (gated all window, or a refusal) or one another rule or client took over.
+            if ((entry.get("action") or {}).get("kind")) == "force":
+                if holds_dispatch(store, entry["id"], host):
+                    exit_res.append(_force_dispatch(
+                        entry["action"], host=host, window_min=0, gateway_id=gateway_id,
+                        store=store, release=True, schedule_id=entry["id"]))
+                else:
+                    exit_res.append("no release: this schedule did not hold the force")
+            why = ("exit condition met" if (time_inside and exit_now)
+                   else "window closed")
+            if exit_res or exit_now:
+                store.log_schedule_event(entry["id"], entry["name"], "exit",
+                                         (f"{why}: " + "; ".join(exit_res)) if exit_res else why,
+                                         gateway_id=gateway_id or "")
+        _window_inside[dkey] = effective_inside
+        if effective_inside:
+            _window_key[dkey] = wkey or now.date().isoformat()
+        else:
+            _window_key.pop(dkey, None)
+
+        ok, reason = due(entry, now, snapshot, _last_fired(entry, store, gateway_id, wkey))
+        # Do not START a dispatch that the exit gate says should already be closed.
+        if ok and exit_now:
+            ok, reason = False, "exit condition already holds"
+        # 'always' fires on the rising edge only, not every tick while its conditions hold.
+        if ok and tt == "always" and was_inside and not _asking(dkey, wkey):
+            ok, reason = False, "already active"
+        if not ok:
+            mon[entry["id"]] = _monitor_state(entry, reason, snapshot, effective_inside,
+                                              exit_now)
+            _dwell_since.pop(dkey, None)     # a failing/idle gate resets the hold
+            # Audit WHY it did nothing while its window is open — once per day.
+            if reason == "entry conditions not met":
+                day = now.date().isoformat()
+                if _gated_day.get(dkey) != day:
+                    _gated_day[dkey] = day
+                    store.log_schedule_event(entry["id"], entry["name"], "gated",
+                                             gate_reason(entry, snapshot),
+                                             gateway_id=gateway_id or "")
+            continue
+        # Duration hold: conditions must stay true continuously for entry_hold_s.
+        hold = int(entry.get("entry_hold_s") or 0)
+        if hold > 0:
+            started = _dwell_since.get(dkey)
+            if started is None:
+                started = _dwell_since[dkey] = now
+                store.log_schedule_event(
+                    entry["id"], entry["name"], "waiting",
+                    f"conditions met — holding {hold}s before firing",
+                    gateway_id=gateway_id or "")
+            if (now - started).total_seconds() < hold:
+                left = hold - int((now - started).total_seconds())
+                mon[entry["id"]] = ("holding", f"{left}s left of the {hold}s hold")
+                continue
+            _dwell_since.pop(dkey, None)
+        # Ready to fire — but hold for priority resolution (a higher-priority entry on
+        # the same target may pre-empt this one within this same tick).
+        mon[entry["id"]] = ("ready", "conditions met")
+        ready.append(entry)
+
+    # ── priority resolution ──────────────────────────────────────────────────
+    # Entries with a gateway ACTION contend for their target (gateway_id, or the
+    # default); the highest priority wins the target for the day, the rest are
+    # deferred. Notify-only entries never contend — they always fire.
+    contenders: dict[str, list[dict]] = {}
+    to_fire: list[dict] = []
+    for e in ready:
+        # An all-scope rule claims THIS tick's gateway, not the one it is nominally
+        # bound to — otherwise every gateway would contend for a single resource and
+        # all but one would be deferred against a battery they were never driving.
+        claim_gw = gateway_id if e.get("_scope_all") else (e.get("gateway_id") or gateway_id)
+        res = resource_for(e.get("action"), claim_gw)
+        if res:
+            e["_resource"] = res
+            contenders.setdefault(res, []).append(e)
+        else:
+            to_fire.append(e)                       # claims nothing: never contends
+    # A wildcard circuit claim overlaps every specific circuit on its gateway, so those
+    # groups are merged before a winner is picked — otherwise two rules that genuinely
+    # fight would each "win" their own group and both dispatch.
+    for key in sorted(contenders, key=lambda k: (not k.endswith(":*"), k)):
+        if key.endswith(":*"):
+            for other in [k for k in contenders if k != key and resources_contend(key, k)]:
+                contenders[key] += contenders.pop(other)
+    # (1) same-tick priority: one winner per target; the rest are skipped WITH A REASON.
+    winners: list[dict] = []
+    for tgt, group in contenders.items():
+        if len(group) > 1:
+            group.sort(key=winner_key)
+            top = group[0]
+            for loser in group[1:]:
+                detail = (f"deferred — '{top['name']}' (priority {int(top.get('priority') or 0)}) "
+                          f"holds {tgt.partition('/')[2] or tgt} this occurrence; this rule "
+                          f"is priority {int(loser.get('priority') or 0)}")
+                # Record it on the occurrence rather than only marking the day fired:
+                # "why didn't mine run" must be answerable from the run itself, and a
+                # loser is `skipped`, not `failed` — nothing went wrong, it was outranked.
+                _settle_loser(loser, store=store, gateway_id=gateway_id, now=now,
+                              reason=detail)
+                store.log_schedule_event(loser["id"], loser["name"], "deferred", detail,
+                                         gateway_id=gateway_id or "")
+                mon[loser["id"]] = ("skipped", detail)
+        winners.append(group[0])
+    # (2) conflict with an ACTIVE dispatch already held by ANOTHER schedule (a force
+    # dispatch from a previous tick still running). Only force actions hold control.
+    try:
+        active_owners = {d.get("schedule_id") for d in store.active_dispatches(host=host)}
+    except Exception:                                # noqa: BLE001
+        active_owners = set()
+    active_owners.discard(None)
+    for w in winners:
+        others = active_owners - {w["id"]}
+        if (w.get("action") or {}).get("kind") == "force" and others:
+            # Priority holds across ticks (#196): a running force is not taken over by a
+            # rule of lower priority, whatever its If busy setting.
+            holder = next((h for h in (store.schedule(o) for o in sorted(others))
+                           if h and int(h.get("priority") or 0) > int(w.get("priority") or 0)),
+                          None)
+            if holder is not None:
+                detail = (f"deferred — '{holder['name']}' (priority "
+                          f"{int(holder.get('priority') or 0)}) is running a force on this "
+                          f"battery; this rule is priority {int(w.get('priority') or 0)}")
+                _settle_loser(w, store=store, gateway_id=gateway_id, now=now, reason=detail)
+                store.log_schedule_event(w["id"], w["name"], "deferred", detail,
+                                         gateway_id=gateway_id or "")
+                mon[w["id"]] = ("skipped", detail)
+                continue
+            pol = (w.get("conflict") or "override").lower()
+            if pol == "defer":
+                # Settled on this gateway's run, so a scope-"all" rule defers per gateway.
+                _settle_loser(w, store=store, gateway_id=gateway_id, now=now,
+                              reason="deferred — the battery is already under another "
+                                     "dispatch (conflict=defer)")
+                store.log_schedule_event(w["id"], w["name"], "deferred",
+                    "deferred — the battery is already under another dispatch (conflict=defer)",
+                    gateway_id=gateway_id or "")
+                mon[w["id"]] = ("deferred", "the battery is already under another dispatch "
+                                            "(conflict=defer)")
+                continue
+            if pol == "wait":
+                store.log_schedule_event(w["id"], w["name"], "waiting",
+                    "waiting — battery busy with another dispatch (conflict=wait); will retry",
+                    gateway_id=gateway_id or "")
+                mon[w["id"]] = ("deferred", "waiting — the battery is busy with another "
+                                            "dispatch (conflict=wait)")
+                continue                             # not marked fired -> retries next tick
+            # override: fall through and take control
+        to_fire.append(w)
+
+    for entry in to_fire:
+        # Register the run BEFORE attempting it. This is what makes a failure that
+        # never produces a log line still visible afterwards: the row exists whether
+        # or not anything happens next, so "nothing in the history" stops meaning
+        # "we cannot tell".
+        occ = _claim_run(entry, store=store, gateway_id=gateway_id, now=now)
+        if occ is not None:
+            if occ.get("status") in store.OCC_TERMINAL:
+                mon[entry["id"]] = ("done", f"this occurrence is settled ({occ.get('status')})")
+                continue                       # already settled this occurrence
+            now_ts = now.timestamp()
+            if occ.get("status") == "failed" and not retry_due(occ, now_ts):
+                n = int(occ.get("attempts") or 0)
+                wait = retry_delay_s(n) - (now_ts - float(occ.get("last_attempt_ts") or now_ts))
+                mon[entry["id"]] = ("retrying", f"{n} attempt(s); last: "
+                                    f"{occ.get('reason') or 'failed'}; next try in {wait:.0f}s")
+                continue                       # backing off; the window is still open
+        if entry.get("ask"):
+            step, detail = _ask_step(entry, store=store, gateway_id=gateway_id, now=now,
+                                     snapshot=snapshot, occ=occ)
+            if step == "wait":
+                mon[entry["id"]] = ("holding", detail)
+                continue
+            if step == "skip":
+                if occ is not None:
+                    store.finish_occurrence(occ["id"], status="skipped", reason=detail)
+                store.mark_schedule_fired(entry["id"], entry.get("_wkey")
+                                          or now.date().isoformat(), detail)
+                mon[entry["id"]] = ("skipped", detail)
+                continue
+        if occ is not None:
+            now_ts = now.timestamp()
+            entry["_occ_id"] = occ["id"]
+            entry["_occ_attempts"] = int(occ.get("attempts") or 0) + 1
+            store.occurrence_attempt(occ["id"], now=now_ts)
+            # BR-50: capture BEFORE the write, and only on the first attempt — a retry
+            # would otherwise capture the value this rule itself just set, and "restore"
+            # the override instead of undoing it.
+            if entry.get("restore_on_exit") and not occ.get("prior_state"):
+                prior = capture_prior(entry.get("action"), snapshot)
+                if prior is not None:
+                    try:
+                        store.set_prior_state(occ["id"], prior)
+                    except Exception as e:  # noqa: BLE001
+                        log.warning("could not record the prior state for %s: %s",
+                                    entry.get("id"), e)
+        res = _fire_entry(entry, settings=settings, client=client, store=store,
+                          snapshot=snapshot, host=host, gateway_id=gateway_id, now=now)
+        if entry.get("ask"):
+            _asks[f"{gateway_id or ''}:{entry['id']}"]["open"] = False
+        fired.append(res)
+        mon[entry["id"]] = (("running", f"fired: {res.get('result')}") if res.get("ok")
+                            else ("retrying", f"attempt {int(entry.get('_occ_attempts') or 1)}"
+                                              f" failed: {res.get('result')}"))
+    _monitor_observe(seen, mon, snapshot=snapshot, gateway_id=gateway_id, now=now)
+    return fired
+
+
+def _monitor_state(entry: dict, reason: str, snapshot: dict, inside: bool,
+                   exit_now: bool) -> tuple[str, str]:
+    """Monitor state for a schedule that did not fire this tick (#345)."""
+    if reason == "entry conditions not met":
+        return "blocked", gate_reason(entry, snapshot)
+    if reason == "exit condition already holds":
+        return "blocked", reason
+    if reason in ("already fired this occurrence", "already active"):
+        if str(entry.get("last_result") or "").startswith("deferred"):
+            return "skipped", "deferred this occurrence: another rule or dispatch held the target"
+        if "skipped this run" in str(entry.get("last_result") or ""):
+            return "skipped", entry["last_result"]          # Ask before continuing (#374 P4)
+        if inside and not exit_now:
+            return "running", ("fired; the exit conditions are not met yet"
+                               if entry.get("exit_conditions") else "fired; the window is open")
+        return "done", "finished this occurrence"
+    return "idle", reason
+
+
+def _monitor_observe(seen: list[dict], mon: dict, *, snapshot: dict,
+                     gateway_id: str | None, now: dt.datetime) -> None:
+    """Write this tick's lines to the debug monitor. Never raises into the tick."""
+    try:
+        from . import sched_monitor
+        ts = now.timestamp()
+        for e in seen:
+            state, detail = mon.get(e["id"], ("idle", ""))
+            sched_monitor.record(gateway_id=gateway_id, entry=e, state=state,
+                                 detail=detail, snapshot=snapshot, now=ts)
+    except Exception as e:  # noqa: BLE001
+        log.debug("scheduler monitor failed: %s", e)
+
+
+#: What each action actually DRIVES. Exclusivity is per RESOURCE, not per gateway —
+#: the lesson the Modbus Bridge paid for and wrote down (RUNTIME_DESIGN §6.6): before
+#: this split, an entry that commanded nothing on the battery still held the gateway
+#: and "starved every schedule on that gateway while dispatching nothing itself".
+#:
+#: `force`, `set_mode` and `reserve_soc` are one resource because they are one
+#: behaviour — a mode change during a force dispatch is a genuine fight over the same
+#: battery. `offgrid` throws the transfer switch, which is different hardware.
+#: `smart_circuit` is scoped to the individual circuit, so two rules driving two
+#: different circuits do not contend at all.
+ACTION_RESOURCE: dict[str, str] = {
+    "force": "battery",
+    "set_mode": "battery",
+    "reserve_soc": "battery",
+    "offgrid": "grid",
+    "smart_circuit": "circuit",
+    "notify": "",            # commands nothing on the gateway; never contends
+}
+
+
+def resource_for(action: dict | None, gateway_id: str | None) -> str:
+    """The exclusive resource this action claims, or '' if it claims nothing.
+
+    An unrecognised kind claims a resource named after ITSELF rather than the battery:
+    a future action that drives something new must contend with its own kind, not
+    block the battery by default. Guessing wide here is what caused the starvation.
+    """
+    kind = (action or {}).get("kind") or ""
+    if not kind:
+        return ""
+    res = ACTION_RESOURCE.get(kind, f"other:{kind}")
+    if not res:
+        return ""
+    gw = gateway_id or "_default"
+    if res == "circuit":
+        circuit = (action or {}).get("circuit")
+        # No circuit named = we cannot tell which one, so claim them all rather than
+        # claim none; an unscoped circuit write is the broader claim, not the narrower.
+        res = f"circuit:{circuit}" if circuit not in (None, "") else "circuit:*"
+    return f"{gw}/{res}"
+
+
+def resources_contend(a: str, b: str) -> bool:
+    """Do two resource claims collide? Identical claims do; so does a wildcard
+    circuit claim against any specific circuit on the same gateway."""
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    ga, _, ra = a.partition("/")
+    gb, _, rb = b.partition("/")
+    if ga != gb:
+        return False
+    if ra.startswith("circuit:") and rb.startswith("circuit:"):
+        return ra.endswith(":*") or rb.endswith(":*")
+    return False
+
+
+#: Settings a rule can override and put back (BR-50). A value is captured at the
+#: moment of override and replayed at exit. Only the operating mode is here: it is the
+#: one overridable setting the poller's snapshot carries, so it is the one whose prior
+#: value can be read without an extra gateway round-trip at the worst possible moment.
+#: Smart circuits and off-grid are overridable too but are NOT in the snapshot — see
+#: FEAT-RESTORE-CIRCUIT-OFFGRID. `force` needs none of this: it auto-releases.
+RESTORABLE: dict[str, str] = {"set_mode": "mode.name"}
+
+
+def capture_prior(action: dict | None, snapshot: dict) -> dict | None:
+    """What this action is about to overwrite, or None if nothing restorable.
+
+    Captured BEFORE the write, from the live snapshot. A capture that cannot read the
+    old value returns None rather than a guess — restoring to a guessed setting is
+    worse than leaving the override in place, because it looks deliberate.
+    """
+    kind = (action or {}).get("kind") or ""
+    key = RESTORABLE.get(kind)
+    if not key:
+        return None
+    was = snapshot.get(key)
+    if was in (None, ""):
+        return None
+    return {"kind": kind, "key": key, "value": was}
+
+
+def _restore_prior(entry: dict, *, store, settings, client, snapshot: dict,
+                   host: str | None, gateway_id: str | None, wkey: str) -> str:
+    """Put back what this run overrode. Never raises — a failed restore is reported,
+    not propagated, or one stuck device would stop the whole exit path."""
+    try:
+        prior = store.prior_state(schedule_id=entry["id"],
+                                  gateway_id=gateway_id or "",
+                                  occurrence_key=wkey)
+    except Exception as e:  # noqa: BLE001
+        log.warning("could not read the prior state for %s: %s", entry.get("id"), e)
+        return ""
+    if not prior:
+        return ""
+    want = prior.get("value")
+    if snapshot.get(prior.get("key")) == want:
+        return ""                     # already back where it was; say nothing
+    try:
+        out = run_action({"kind": prior["kind"], "mode": want}, settings=settings,
+                         client=client, store=store, snapshot=snapshot, host=host,
+                         gateway_id=gateway_id, schedule_id=entry["id"],
+                         schedule_name=entry.get("name"))
+        return f"restored {prior['key']} -> {want} ({out})"
+    except Exception as e:  # noqa: BLE001
+        return f"could NOT restore {prior['key']} to {want}: {e}"
+
+
+def winner_key(entry: dict):
+    """Sort key for conflict resolution: highest priority, then OLDEST.
+
+    Tie-breaking on `created_at` rather than on name matters more than it looks. Sorting
+    by name meant renaming a rule could change which of two equal-priority rules won the
+    battery — a conflict resolved by a cosmetic edit. Age is stable, and it encodes the
+    right intent: a rule added later does not displace an established one (BR-46).
+    """
+    return (-int(entry.get("priority") or 0),
+            float(entry.get("created_at") or 0.0),
+            str(entry.get("id") or ""))
+
+
+def _settle_loser(entry: dict, *, store, gateway_id, now, reason: str) -> None:
+    """Close out a rule that lost a conflict: skipped, with the winner named.
+
+    The OCCURRENCE status is `skipped` — nothing malfunctioned, it was outranked, and
+    the state set has no `deferred`. The user-facing word stays "deferred" in the log
+    and in `last_result`, because that is what it has always been called here and
+    renaming it would churn vocabulary for no gain. Terminal for this occurrence, which
+    preserves the existing once-per-day behaviour while finally recording WHY.
+
+    Never raises.
+    """
+    try:
+        occ = _claim_run(entry, store=store, gateway_id=gateway_id, now=now)
+        if occ is not None and occ.get("status") not in store.OCC_TERMINAL:
+            store.finish_occurrence(occ["id"], status="skipped", reason=reason)
+        store.mark_schedule_fired(entry["id"], entry.get("_wkey")
+                                  or now.date().isoformat(), "deferred")
+    except Exception as e:  # noqa: BLE001
+        log.warning("could not record the skipped run for %s: %s", entry.get("id"), e)
+
+
+def _claim_run(entry: dict, *, store, gateway_id: str | None, now: dt.datetime):
+    """Record this run as expected, and return it. Never raises: a scheduler that
+    cannot write its queue must still dispatch, or a bookkeeping fault becomes an
+    outage."""
+    try:
+        wend = entry.get("_wend")
+        if wend is None:
+            wend = _window_end_ts(entry, now)
+        occ = store.claim_occurrence(
+            schedule_id=entry["id"], name=entry.get("name") or "",
+            gateway_id=gateway_id or "",
+            occurrence_key=entry.get("_wkey") or now.date().isoformat(),
+            due_ts=now.timestamp(), window_end_ts=wend, now=now.timestamp())
+        if occ is not None:
+            # `coalesce`: a backlog left by downtime collapses into this run rather
+            # than replaying window by window into conditions that have moved on.
+            for old in store.coalesce_occurrences(
+                    schedule_id=entry["id"], gateway_id=gateway_id or "",
+                    keep_id=occ["id"], keep_due_ts=float(occ["due_ts"]),
+                    now=now.timestamp()):
+                log.info("schedule %r: run %s coalesced into %s",
+                         entry.get("name"), old.get("occurrence_key"),
+                         occ.get("occurrence_key"))
+                try:
+                    store.log_schedule_event(
+                        entry["id"], entry.get("name") or "", "coalesced",
+                        f"run {old.get('occurrence_key')} was still open and was "
+                        f"collapsed into {occ.get('occurrence_key')}",
+                        gateway_id=gateway_id or "")
+                except Exception:  # noqa: BLE001
+                    pass
+        return occ
+    except Exception as e:  # noqa: BLE001
+        log.warning("could not record the run for %s: %s", entry.get("id"), e)
+        return None
+
+
+#: Retry backoff for a failed run, within its own window. The scheduler ticks every
+#: 15s, so retrying on every tick would hammer an unreachable gateway 360 times in a
+#: 90-minute window and fill the history with noise. Grows from half a minute to ten.
+RETRY_BASE_S = 30.0
+RETRY_CAP_S = 600.0
+
+
+def retry_delay_s(attempts: int) -> float:
+    """How long to wait after `attempts` failures before trying again."""
+    if attempts <= 0:
+        return 0.0
+    return min(RETRY_CAP_S, RETRY_BASE_S * (2 ** (attempts - 1)))
+
+
+def retry_due(occ: dict, now_ts: float) -> bool:
+    """Is a previously-failed run ready for another attempt?"""
+    last = occ.get("last_attempt_ts")
+    if not last:
+        return True
+    return (now_ts - float(last)) >= retry_delay_s(int(occ.get("attempts") or 0))
+
+
+def run_context(entry: dict, *, gateway_id: str | None, now: dt.datetime,
+                phase: str) -> dict[str, Any]:
+    """`%run.*%` / `%schedule.*%` variables for a templated message.
+
+    Sensor values alone cannot say what HAPPENED: "SoC is 38%" is not "the overnight
+    charge is on its third attempt". These live in the same `%name%` namespace as the
+    sensors, so a message mixes both without a second syntax to learn.
+    """
+    return {
+        "schedule.name": entry.get("name") or "",
+        "schedule.id": entry.get("id") or "",
+        "schedule.priority": int(entry.get("priority") or 0),
+        "schedule.action": (entry.get("action") or {}).get("kind") or "none",
+        "gateway.id": gateway_id or "",
+        "run.phase": phase,
+        "run.occurrence": entry.get("_wkey") or now.date().isoformat(),
+        "run.attempt": int(entry.get("_occ_attempts") or 1),
+        "run.at": now.strftime("%Y-%m-%d %H:%M"),
+        "run.resource": (entry.get("_resource") or "").partition("/")[2],
+        **_ask_answer(entry, gateway_id),
+    }
+
+
+def _fire_entry(entry: dict, *, settings, client, store, snapshot: dict,
+                host: str | None, gateway_id: str | None, now: dt.datetime) -> dict:
+    """Run one entry's gateway action + fire-phase HA actions, mark it fired, and log
+    the outcome. Returns the fired-record for the tick's return list."""
+    results: list[str] = []
+    action = entry.get("action") or {}
+    # The run's own context joins the sensor namespace for this entry only — a copy,
+    # so one rule's variables can never leak into the next rule's message.
+    snapshot = {**snapshot, **run_context(entry, gateway_id=gateway_id, now=now,
+                                          phase="fire")}
+    outcome: resilience.Outcome | None = None
+    if action.get("kind"):
+        outcome = run_action_outcome(
+            action, settings=settings, client=client, store=store, snapshot=snapshot,
+            host=host, window_min=int(entry.get("duration_min") or 0),
+            gateway_id=gateway_id, schedule_id=entry["id"], schedule_name=entry["name"],
+            window_end_ts=entry.get("_wend") if entry.get("_wend") is not None else _window_end_ts(entry, now))
+        results.append(outcome.detail or outcome.render())
+    results += _fire_ha_phase(entry, "fire", settings=settings, client=client,
+                              store=store, snapshot=snapshot, host=host)
+    summary = "; ".join(results) or "nothing to do"
+    # Decide on the VERDICT, not on the words. This used to be
+    # `"failed" not in r`, so an action whose failure text did not happen to
+    # contain that substring was recorded as a success — and an UNKNOWN write
+    # was indistinguishable from a clean one (RUNTIME_DESIGN phase 3).
+    ha_ok = all("failed" not in r and "NOT confirmed" not in r
+                for r in results[1 if outcome is not None else 0:])
+    if outcome is None:
+        ok_all, unknown = ha_ok, False
+    else:
+        unknown = outcome.verdict is resilience.Verdict.UNKNOWN
+        ok_all = ha_ok and outcome.verdict in (resilience.Verdict.OK,
+                                               resilience.Verdict.SKIPPED)
+
+    # Mark the occurrence fired ONLY on success. This is the fix for the defect that
+    # started this work: the old code called mark_schedule_fired unconditionally, and
+    # due() then refused to re-enter ("already fired this occurrence") — so a two-second
+    # Wi-Fi blip at the moment a window opened burned the whole occurrence silently.
+    # Leaving it unmarked is the entire retry mechanism: the next tick re-evaluates it,
+    # bounded by the window, and sweep_missed closes it out if the window shuts first.
+    occ_id = entry.get("_occ_id")
+    # UNKNOWN is never treated as a failure to retry: the write may have landed,
+    # and a retry would dispatch twice. It settles the occurrence and is reported
+    # LOUDER than a failure, because nobody can say what the battery is doing.
+    if unknown:
+        if occ_id is not None:
+            store.finish_occurrence(occ_id, status="unknown", reason=summary)
+        store.mark_schedule_fired(entry["id"], entry.get("_wkey")
+                                  or now.date().isoformat(), summary)
+        # Severity comes from the store's status map (LOG_SEVERITY), so the
+        # classification lives in one place rather than at every call site.
+        store.log_schedule_event(entry["id"], entry["name"], "unknown", summary,
+                                 gateway_id=gateway_id or "")
+        log.warning("[%s] schedule %r outcome UNKNOWN — the write may have landed; "
+                    "NOT retrying: %s", gateway_id or "-", entry.get("name"), summary)
+        return {"id": entry["id"], "name": entry["name"], "result": summary,
+                "ok": False, "unknown": True}
+    if ok_all:
+        store.mark_schedule_fired(
+            entry["id"], entry.get("_wkey") or now.date().isoformat(), summary)
+        if occ_id is not None:
+            store.finish_occurrence(occ_id, status="ok", outcome=summary)
+        store.log_schedule_event(entry["id"], entry["name"], "fired", summary,
+                                 gateway_id=gateway_id or "")
+    else:
+        if occ_id is not None:
+            store.finish_occurrence(occ_id, status="failed", reason=summary)
+        attempts = int(entry.get("_occ_attempts") or 1)
+        store.log_schedule_event(
+            entry["id"], entry["name"], "error",
+            f"{summary} — attempt {attempts}; retrying in "
+            f"{retry_delay_s(attempts):.0f}s while the window is open",
+            gateway_id=gateway_id or "")
+        # SCHEDULE_FAILED (#271). Retries inside the window merge into the same alert.
+        alerts.raise_event(
+            store, gateway_id, "SCHEDULE_FAILED",
+            f"Schedule '{entry['name']}' failed (attempt {attempts}): {summary}. "
+            "It is retried while its window is open.")
+    return {"id": entry["id"], "name": entry["name"], "result": summary,
+            "ok": ok_all}
+
+
+# ── "Ask before continuing" (#374 P4) ─────────────────────────────────────────
+ASK_EVENT = "schedule_ask"
+actionable.templates().register(Event(
+    ASK_EVENT, "{schedule} ({gateway})", "{question}", variables=("schedule", "question"),
+    description="A schedule's Ask before continuing step"))
+
+#: Most buttons a question can offer.
+ASK_MAX_CHOICES = 4
+
+#: The question asked for each schedule's current run, keyed like the window state
+#: (gateway:schedule). The answer's future runs on the Notifier's event loop; the tick only
+#: checks whether it is done, so a schedule waiting for a reply never holds up the others.
+#: ``open`` stays True until the answer has been acted on; ``answer`` is what
+#: ``ask.answer`` reads for the rest of the run.
+#:
+#: The question's request id and the decision are also kept on the run (the occurrence
+#: row), and the Notifier keeps its requests in the database, so after a restart a run
+#: still holding finds its question again (:func:`_reattach`) and a decided run is never
+#: decided twice (:func:`_restore_ask`).
+_asks: dict[str, dict] = {}
+
+
+def _asking(dkey: str, wkey: str | None) -> bool:
+    held = _asks.get(dkey)
+    return bool(held and held["wkey"] == wkey and held["open"])
+
+
+def _ask_answer(entry: dict, gateway_id: str | None) -> dict[str, Any]:
+    """``{"ask.answer": …}`` for this run of ``entry`` once its question is answered,
+    else empty. Read by the exit conditions, the HA action guards and message templates.
+    The run is the one now open, or the one whose window is closing on this tick."""
+    dkey = f"{gateway_id or ''}:{entry.get('id')}"
+    held = _asks.get(dkey)
+    if not held or held.get("answer") is None:
+        return {}
+    if held["wkey"] not in (entry.get("_wkey"), _window_key.get(dkey)):
+        return {}
+    return {"ask.answer": held["answer"]}
+
+
+def _ask_choices(ask: dict) -> list[dict]:
+    """The step's buttons as ``{verb, label, then, reply}``. Without its own choices the
+    question offers Yes (runs the action) and No (skips this run)."""
+    choices = ask.get("choices") or []
+    if not choices:
+        return [{"verb": YES, "label": "Yes", "then": "run", "reply": False},
+                {"verb": NO, "label": "No", "then": "skip", "reply": False}]
+    return [{"verb": REPLY if c.get("reply") else f"CHOICE_{i}",
+             "label": str(c["label"]).strip(), "then": c["then"],
+             "reply": bool(c.get("reply"))}
+            for i, c in enumerate(choices, 1)]
+
+
+def _ask_targets(store, send_to: dict | None = None) -> list[Target]:
+    """The enabled notification devices, or with ``send_to`` ``{type: device, ids}`` the
+    enabled ones among those chosen (#281), on enabled HA instances (actionable.targets).
+    Only ``mobile_app_*`` ones can show the buttons."""
+    ids = (send_to or {}).get("ids") if (send_to or {}).get("type") == "device" else None
+    if ids is None:
+        return actionable.targets(store)
+    on = {d["id"] for d in store.notify_devices() if d.get("enabled")}
+    return actionable.targets(store, [i for i in ids if i in on])
+
+
+async def _ask(targets: list[Target], buttons: list[Button], timeout_s: int, gateway: str,
+               *, remember=None, run: str | None = None, **values):
+    """Ask, record the request on the run (``remember(request_id)``), then wait.
+    Returns ``(answer, delivered)``. ``run`` names the run on the request (its meta),
+    so a restart before ``remember`` still finds it (:func:`_open_question`)."""
+    n = actionable.notifier()
+    req = await n.ask(ASK_EVENT, targets, buttons, ttl_s=timeout_s, gateway=gateway,
+                      meta={"run": run} if run else None, **values)
+    if req is None:
+        return Answer(None, timed_out=True), False
+    if remember is not None:
+        try:
+            await asyncio.to_thread(remember, req.id)
+        except Exception as e:  # noqa: BLE001 — the wait goes on; only a restart loses it
+            log.warning("could not record the question on the run: %s", e)
+    return await n.wait(req, timeout_s), True
+
+
+async def _rewait(request, timeout_s: int):
+    """The waiting half again, after a restart: what is left of the request's time.
+    A request answered before the restart, and not yet acted on, returns its answer at
+    once; one that expired unanswered times out at once. A tap made while the bridge was
+    down never arrives: Home Assistant does not resend events to a listener that was not
+    connected."""
+    return await actionable.notifier().wait(request, timeout_s), True
+
+
+def _restore_ask(entry: dict, *, store, gateway_id: str | None, wkey: str | None) -> None:
+    """After a restart, put back what this run decided, so the decision is not taken
+    twice and ``ask.answer`` still reads the answer. Nothing to do when it is held."""
+    dkey = f"{gateway_id or ''}:{entry['id']}"
+    held = _asks.get(dkey)
+    if not wkey or (held is not None and held["wkey"] == wkey):
+        return
+    try:
+        _, decided = store.occurrence_ask(schedule_id=entry["id"], gateway_id=gateway_id or "",
+                                          occurrence_key=wkey)
+    except Exception:  # noqa: BLE001 — a store without the columns: nothing to restore
+        return
+    if decided:
+        _asks[dkey] = {"wkey": wkey, "fut": None, "open": decided["step"] != "skip",
+                       "decided": (decided["step"], decided["detail"]),
+                       "answer": decided.get("answer")}
+
+
+def _reattach(request_id: str | None):
+    """The question a run asked before a restart: still open or answered before the
+    restart (``pending``), or expired while the bridge was down (so ``wait`` records it as
+    no reply). None when it is gone, or nothing is running to find it with."""
+    n = actionable.notifier()
+    if not request_id or n is None:
+        return None
+    return (next((r for r in n.pending(ASK_EVENT) if r.id == request_id), None)
+            or n.requests.get(request_id))
+
+
+def _open_question(run: str) -> str | None:
+    """The id of the open question this run sent, found by its ``run`` meta: for a restart
+    after the send but before the run recorded the id. None when there is none."""
+    n = actionable.notifier()
+    if n is None:
+        return None
+    return next((r.id for r in n.pending(ASK_EVENT) if (r.meta or {}).get("run") == run),
+                None)
+
+
+def _ask_step(entry: dict, *, store, gateway_id: str | None,
+              now: dt.datetime, snapshot: dict | None = None,
+              occ: dict | None = None) -> tuple[str, str]:
+    """``("wait" | "fire" | "skip", why)`` for a schedule with an Ask before continuing
+    step. Asks once per run; each button runs the action or skips this run as the step
+    maps it (Yes and No by default), and no reply (or nobody could be asked) follows the
+    step's "if no reply" rule. The question takes ``%sensor.id%`` values.
+
+    ``occ`` is this run's row: the question and the decision are recorded on it, so a
+    restart waits for the same question for the time it has left, applies "if no reply"
+    once if it expired meanwhile, and never decides the run twice."""
+    ask = entry["ask"]
+    dkey = f"{gateway_id or ''}:{entry['id']}"
+    wkey = entry.get("_wkey") or now.date().isoformat()
+    timeout_min = int(ask["timeout_min"])
+    gid = gateway_id or ""
+    choices = _ask_choices(ask)
+    occ_id = (occ or {}).get("id")
+    held = _asks.get(dkey)
+    asked = (occ or {}).get("ask_request_id")
+    run = f"{dkey}|{wkey}"
+    if (held is None or held["wkey"] != wkey) and not asked:
+        # Sent before a restart that came before the run recorded it.
+        asked = _open_question(run)
+        if asked and occ_id is not None:
+            store.set_occurrence_ask(occ_id, request_id=asked)
+    if (held is None or held["wkey"] != wkey) and asked:
+        # Asked before a restart: wait for that question rather than asking again.
+        req = _reattach(asked)
+        fut = actionable.submit(_rewait(req, timeout_min * 60)) if req is not None else None
+        held = _asks[dkey] = {"wkey": wkey, "fut": fut, "open": True, "decided": None,
+                              "answer": None, "lost": fut is None}
+        if fut is not None and req.answer is None and req.expires_at > time.time():
+            left = int((req.expires_at - time.time()) // 60)
+            store.log_schedule_event(
+                entry["id"], entry["name"], "asking",
+                f"still waiting for the reply after a restart ({left} min left)",
+                gateway_id=gid)
+    if held is None or held["wkey"] != wkey:
+        gw = _state.get_gateway(gateway_id) if gateway_id else None
+        question = substitute(ask["question"], {
+            **(snapshot or {}), **run_context(entry, gateway_id=gateway_id, now=now,
+                                              phase="fire")})
+        fut = actionable.submit(_ask(
+            _ask_targets(store, ask.get("send_to")), [Button(c["verb"], c["label"], c["reply"]) for c in choices],
+            timeout_min * 60, getattr(gw, "label", None) or gid,
+            remember=(None if occ_id is None else
+                      lambda rid: store.set_occurrence_ask(occ_id, request_id=rid)),
+            run=run, schedule=entry.get("name") or "",
+            question=f"{question} (reply within {timeout_min} min)"))
+        held = _asks[dkey] = {"wkey": wkey, "fut": fut, "open": True, "decided": None,
+                              "answer": None}
+        if fut is not None:
+            store.log_schedule_event(
+                entry["id"], entry["name"],
+                "asking", f"asked \"{question}\"; waiting up to {timeout_min} min "
+                f"for a reply", gateway_id=gid)
+    if held["decided"] is not None:
+        return held["decided"]
+    fut = held["fut"]
+    if fut is not None and not fut.done():
+        return "wait", f"asked; waiting up to {timeout_min} min for a reply"
+    answer = None
+    if fut is None:
+        why = ("the question was lost in a restart" if held.get("lost")
+               else "notifications are not running, so nobody could be asked")
+    else:
+        try:
+            answer, delivered = fut.result()
+            why = (f"no reply in {timeout_min} min" if delivered
+                   else "the question could not be delivered to any phone")
+        except Exception as e:  # noqa: BLE001 — recorded as a run nobody answered
+            why = f"the question could not be sent: {e}"
+    chosen = next((c for c in choices if answer is not None and c["verb"] == answer.verb),
+                  None)
+    if chosen is not None:
+        said = chosen["label"]
+        if chosen["reply"]:
+            held["answer"] = answer.reply or ""
+            said = f"{said}: \"{held['answer']}\""
+        else:
+            held["answer"] = chosen["label"]
+        if chosen["then"] == "run":
+            step, detail = "fire", f"answered {said}"
+        else:
+            step, detail = "skip", f"answered {said}: skipped this run"
+    elif ask["if_no_reply"] == "continue":
+        step, detail = "fire", f"{why}: continuing (if no reply: continue)"
+    else:
+        step, detail = "skip", f"{why}: skipped this run (if no reply: skip)"
+    held["decided"] = (step, detail)
+    if step == "skip":
+        held["open"] = False
+    if occ_id is not None:
+        try:
+            store.set_occurrence_ask(occ_id, decision={"step": step, "detail": detail,
+                                                       "answer": held["answer"]})
+        except Exception as e:  # noqa: BLE001
+            log.warning("could not record the answer on the run: %s", e)
+    store.log_schedule_event(entry["id"], entry["name"],
+                             "continuing" if step == "fire" else "skipped", detail,
+                             gateway_id=gid)
+    return step, detail

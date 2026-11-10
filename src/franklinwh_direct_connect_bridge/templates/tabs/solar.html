@@ -1,0 +1,238 @@
+<div x-data="solarTab" class="space-y-4">
+
+  <!-- real-time auto-paused notice -->
+  <div x-show="liveCapped"
+       class="flex items-center justify-between gap-3 px-3 py-2 rounded text-sm"
+       style="background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.35);color:var(--text)">
+    <span>
+      Live view paused after <span x-text="$store.app.liveCapMinutes('solar')"></span> min to limit memory and device
+      polling (Settings → Real-time limits). The last data is kept.
+    </span>
+    <button class="btn btn-primary btn-sm shrink-0" @click="resumeLive()">Resume live</button>
+  </div>
+
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <h2 class="page-title">Solar</h2>
+      <p class="text-sm" style="color:var(--text-secondary)">
+        PV inputs, remote solar (aPbox), relays and export limit
+        <span class="font-mono text-xs opacity-70" x-show="$store.app.showRawKeys">· 1903/1301</span>
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <button class="btn btn-secondary btn-sm" @click="loadRaw()"
+              x-text="showRaw ? 'Hide raw' : 'Raw JSON'"></button>
+      <button class="btn btn-sm" :class="auto ? 'btn-primary' : 'btn-secondary'"
+              @click="toggleAuto()" x-text="auto ? 'Auto ● on' : 'Auto ○ off'"></button>
+      <button class="btn btn-secondary btn-sm" @click="load()" :disabled="loading"
+              x-text="loading ? 'Reading…' : 'Refresh'">Refresh</button>
+    </div>
+  </div>
+
+  <div x-show="error" x-cloak class="rounded-lg px-3 py-2 text-sm"
+       style="background:rgba(239,68,68,.1);color:#fca5a5" x-text="error"></div>
+
+  <template x-if="data">
+    <div class="space-y-4">
+
+      <!-- live -->
+      <div class="card p-4 grid gap-4" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+        <div>
+          <div class="text-xs uppercase tracking-wide" style="color:var(--text-secondary)">Generating now</div>
+          <div class="text-2xl font-semibold" style="color:#34d399"
+               x-text="fmtW(data.live.power_w)"></div>
+        </div>
+        <div>
+          <div class="text-xs uppercase tracking-wide" style="color:var(--text-secondary)">Energy today</div>
+          <div class="text-2xl font-semibold" style="color:var(--text-primary)"
+               x-text="data.live.energy_today_kwh === null ? '—' : data.live.energy_today_kwh.toFixed(2) + ' kWh'"></div>
+        </div>
+        <div>
+          <div class="text-xs uppercase tracking-wide" style="color:var(--text-secondary)">Installed</div>
+          <div class="text-2xl font-semibold" style="color:var(--text-primary)"
+               x-text="fmtKw(data.inputs.total_rated_kw)"></div>
+        </div>
+        <div x-show="data.live.sources_agree === false">
+          <div class="text-xs uppercase tracking-wide text-amber-400">Sources disagree</div>
+          <div class="text-sm" style="color:var(--text-secondary)"
+               x-text="`1301 ${fmtW(data.live.power_w)} vs 1903 ${fmtW(data.live.power_w_from_1903)}`"></div>
+        </div>
+      </div>
+
+      <div class="grid gap-4" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">
+
+        <!-- built-in AC PV inputs (2) -->
+        <div class="card overflow-hidden">
+          <div class="px-4 py-2 border-b text-xs uppercase tracking-wide"
+               style="border-color:var(--border);color:var(--text-secondary)">
+            Built-in AC PV · 2 inputs</div>
+          <div class="p-4 space-y-3 text-sm">
+            <template x-for="p in data.inputs.ports" :key="p.port">
+              <div class="flex items-center justify-between gap-2">
+                <span style="color:var(--text-secondary)" x-text="`Input ${p.port}`"></span>
+                <span class="flex items-center gap-2">
+                  <span class="font-mono" style="color:var(--text-primary)"
+                        x-text="p.installed ? fmtKw(p.rated_kw) : 'not installed'"></span>
+                  <span class="px-2 py-0.5 rounded text-xs font-semibold"
+                        :title="`raw ${p.relay ? p.relay.raw : '—'}`"
+                        :style="p.relay && p.relay.open
+                                ? 'background:rgba(52,211,153,.15);color:#34d399'
+                                : 'background:var(--surface-2);color:var(--text-secondary)'"
+                        x-text="p.relay && p.relay.open ? 'OPEN' : 'CLOSED'"></span>
+                </span>
+              </div>
+            </template>
+            <div class="flex items-center justify-between pt-2 border-t" style="border-color:var(--border)">
+              <span style="color:var(--text-secondary)">Three-phase PV</span>
+              <span style="color:var(--text-primary)" x-text="data.inputs.three_phase_pv ? 'Yes' : 'No'"></span>
+            </div>
+            <p class="text-xs opacity-70" style="color:var(--text-secondary)">
+              Relays are <span class="font-mono">solarRelayStatus</span> and
+              <span class="font-mono">pvRelay2</span> — the firmware shares no naming
+              between the pair.
+            </p>
+          </div>
+        </div>
+
+        <!-- remote solar / aPbox -->
+        <div class="card overflow-hidden">
+          <div class="px-4 py-2 border-b text-xs uppercase tracking-wide"
+               style="border-color:var(--border);color:var(--text-secondary)">Remote solar · aPbox</div>
+          <div class="p-4 space-y-2 text-sm">
+            <div class="flex justify-between"><span style="color:var(--text-secondary)">Remote solar</span>
+              <span style="color:var(--text-primary)" x-text="data.remote_solar.enabled ? 'Enabled' : 'Disabled'"></span></div>
+            <div class="flex justify-between"><span style="color:var(--text-secondary)">Mode</span>
+              <span class="font-mono" style="color:var(--text-primary)" x-text="data.remote_solar.mode ?? '—'"></span></div>
+            <div class="flex justify-between"><span style="color:var(--text-secondary)">Proximal solar</span>
+              <span style="color:var(--text-primary)" x-text="data.remote_solar.proximal_installed ? 'Installed' : 'No'"></span></div>
+
+            <div class="pt-2 border-t" style="border-color:var(--border)">
+              <div class="text-xs mb-1" style="color:var(--text-secondary)">
+                AC PV inputs · 2 <span class="opacity-60">(max 65 A total)</span></div>
+              <template x-for="i in data.remote_solar.inputs" :key="i.input">
+                <div class="flex items-center justify-between gap-2 py-0.5">
+                  <span style="color:var(--text-secondary)" x-text="`Input ${i.input}`"></span>
+                  <span class="flex items-center gap-2">
+                    <span class="font-mono" style="color:var(--text-primary)"
+                          x-text="i.rated_kw === null ? 'not configured' : fmtKw(i.rated_kw)"></span>
+                    <span class="px-2 py-0.5 rounded text-xs font-semibold"
+                          :title="`raw ${i.relay.raw}`"
+                          :style="i.relay.open ? 'background:rgba(52,211,153,.15);color:#34d399'
+                                       : 'background:var(--surface-2);color:var(--text-secondary)'"
+                          x-text="i.relay.open ? 'OPEN' : 'CLOSED'"></span>
+                  </span>
+                </div>
+              </template>
+            </div>
+
+            <div class="pt-2 border-t" style="border-color:var(--border)">
+              <div class="text-xs mb-1" style="color:var(--text-secondary)">Digital inputs</div>
+              <div class="flex gap-1">
+                <template x-for="(v, i) in (io(data.remote_solar.digital_in) || [])" :key="'di'+i">
+                  <span class="px-2 py-1 rounded text-xs font-mono"
+                        :style="v ? 'background:rgba(52,211,153,.2);color:#34d399'
+                                  : 'background:var(--surface-2);color:var(--text-secondary)'"
+                        x-text="`DI${i + 1}`"></span>
+                </template>
+                <span x-show="!io(data.remote_solar.digital_in)" class="text-xs"
+                      style="color:var(--text-secondary)">unavailable</span>
+              </div>
+              <div class="text-xs mt-2 mb-1" style="color:var(--text-secondary)">Digital outputs</div>
+              <div class="flex gap-1">
+                <template x-for="(v, i) in (io(data.remote_solar.digital_out) || [])" :key="'do'+i">
+                  <span class="px-2 py-1 rounded text-xs font-mono"
+                        :style="v ? 'background:rgba(52,211,153,.2);color:#34d399'
+                                  : 'background:var(--surface-2);color:var(--text-secondary)'"
+                        x-text="`DO${i + 1}`"></span>
+                </template>
+                <span x-show="!io(data.remote_solar.digital_out)" class="text-xs"
+                      style="color:var(--text-secondary)">unavailable</span>
+              </div>
+              <p class="text-xs mt-2 opacity-70" style="color:var(--text-secondary)">
+                Undocumented, and shown raw. Grouped here because the cloud pairs them with
+                remote-solar detection — but the aPbox manual lists only TB1/TB2/TB3
+                (grid, inverter, aGate comms) and no dry contacts, so these are most likely
+                the gateway's own I/O rather than the aPbox's.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- system relays (1707) -->
+        <div class="card overflow-hidden">
+          <div class="px-4 py-2 border-b text-xs uppercase tracking-wide"
+               style="border-color:var(--border);color:var(--text-secondary)">System relays</div>
+          <div class="p-4 space-y-2 text-sm">
+            <template x-for="k in ['main_1','main_2','grid_2','black_start']" :key="k">
+              <div class="flex items-center justify-between">
+                <span style="color:var(--text-secondary)"
+                      x-text="{main_1:'Main 1',main_2:'Main 2',grid_2:'Grid 2',black_start:'Black start'}[k]"></span>
+                <span class="px-2 py-0.5 rounded text-xs font-semibold"
+                      :title="`raw ${data.system_relays[k].raw}`"
+                      :style="data.system_relays[k].open ? 'background:rgba(52,211,153,.15);color:#34d399'
+                                                         : 'background:var(--surface-2);color:var(--text-secondary)'"
+                      x-text="data.system_relays[k].raw === null || data.system_relays[k].raw === undefined
+                              ? '—' : (data.system_relays[k].open ? 'OPEN' : 'CLOSED')"></span>
+              </div>
+            </template>
+            <div class="flex items-center justify-between pt-2 border-t" style="border-color:var(--border)">
+              <span style="color:var(--text-secondary)">Smart circuits</span>
+              <span class="flex gap-1">
+                <template x-for="(r, i) in data.system_relays.smart_circuits" :key="i">
+                  <span class="px-2 py-0.5 rounded text-xs font-mono"
+                        :style="r.open ? 'background:rgba(52,211,153,.2);color:#34d399'
+                                       : 'background:var(--surface-2);color:var(--text-secondary)'"
+                        x-text="`SC${i + 1}`"></span>
+                </template>
+              </span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span style="color:var(--text-secondary)">main_sw</span>
+              <span class="font-mono text-xs" style="color:var(--text-primary)"
+                    x-text="`grid ${data.system_relays.main_sw.grid} · gen ${data.system_relays.main_sw.generator} · solar ${data.system_relays.main_sw.solar}`"></span>
+            </div>
+            <p class="text-xs pt-2 border-t opacity-70" style="border-color:var(--border);color:var(--text-secondary)">
+              From 1707. <span class="font-mono">main_sw</span> duplicates the grid/generator/solar
+              relays (cloud <span class="font-mono">API_COOKBOOK.md:36</span>).
+              <br><strong>OPEN</strong> = raw 1 = energised and conducting (grid connected,
+              solar producing) — FranklinWH inverts the usual electrical convention.
+              Hover any badge for the raw value.
+            </p>
+          </div>
+        </div>
+
+        <!-- export + protection -->
+        <div class="card overflow-hidden">
+          <div class="px-4 py-2 border-b text-xs uppercase tracking-wide"
+               style="border-color:var(--border);color:var(--text-secondary)">Export &amp; protection</div>
+          <div class="p-4 space-y-2 text-sm">
+            <div class="flex justify-between"><span style="color:var(--text-secondary)">Export limit</span>
+              <span class="font-mono" style="color:var(--text-primary)"
+                    x-text="data.export.unlimited ? 'unlimited' : fmtW(data.export.feed_max_w)"></span></div>
+            <div class="flex justify-between"><span style="color:var(--text-secondary)">Reconnect above SoC</span>
+              <span class="font-mono" style="color:var(--text-primary)"
+                    x-text="data.protection.reconnect_soc_pct === null ? '—' : data.protection.reconnect_soc_pct + ' %'"></span></div>
+            <div class="flex justify-between"><span style="color:var(--text-secondary)">Protect time</span>
+              <span class="font-mono" style="color:var(--text-primary)"
+                    x-text="data.protection.protect_time_s === null ? '—' : data.protection.protect_time_s + ' s'"></span></div>
+          </div>
+        </div>
+
+      </div>
+
+      <p class="text-xs" style="color:var(--text-secondary)">
+        <span class="font-mono">solarPowerGen</span> =
+        <span class="font-mono" x-text="data.undecoded.solarPowerGen"></span> — held constant
+        while generation changed across samples, so it is configuration of some kind, not
+        live output. Left undecoded rather than mislabelled.
+      </p>
+    </div>
+  </template>
+
+  <template x-if="showRaw && raw">
+    <pre class="card p-4 text-xs overflow-auto font-mono" style="max-height:420px" x-text="rawJson"></pre>
+  </template>
+
+  <div x-show="!data && !loading && !error" class="card p-8 text-center text-sm"
+       style="color:var(--text-secondary)">No reading yet.</div>
+</div>
