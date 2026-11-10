@@ -526,9 +526,13 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                             inserts += 1
                             if inserts % 20 == 0:
                                 # hourly per database: delete past retention, then keep
-                                # samples older than 10 days as 5-minute rows (#540); it logs
+                                # samples older than 10 days as 5-minute rows (#540); it logs.
+                                # Battery recordings go by their own age and size limits.
                                 await asyncio.to_thread(
-                                    maybe_maintain, store, settings.metrics_retention_days)
+                                    lambda: maybe_maintain(
+                                        store, settings.metrics_retention_days,
+                                        bms_keep_days=settings.bms_keep_days,
+                                        bms_max_mb=settings.bms_max_mb))
                         except Exception as e:  # noqa: BLE001
                             log.warning("[%s] metrics write failed: %s", gw.id, e)
 

@@ -15,6 +15,7 @@ to trust them.
 | Store | Retention |
 |---|---|
 | Power / metrics samples | **1 year** by default; Settings → Admin → Local history → **Keep for** (90 days, 1 year, 2 years or Forever) |
+| Battery tab recordings | **90 days** and **200 MB** by default; Settings → Admin → Local history → **Battery recordings: keep … days, up to … MB**. Past either, the oldest finished recordings are deleted first; one still recording is kept |
 | Application log | the newest **50,000** rows |
 | Hourly link-health buckets | 90 days |
 

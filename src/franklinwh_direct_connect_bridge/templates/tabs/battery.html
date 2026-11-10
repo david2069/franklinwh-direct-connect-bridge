@@ -333,8 +333,20 @@
             <button class="btn btn-secondary btn-sm" @click="exportCsv()"
                     :disabled="!samples.length">Export CSV</button>
             <button class="btn btn-secondary btn-sm" @click="clearSamples()">Clear</button>
+            <!-- Keep it on the bridge from now on (owner, 2026-11-11). -->
+            <button class="btn btn-primary btn-sm" x-show="!rec.active" @click="recordLive()"
+                    data-testid="record-live">Record</button>
+            <button class="btn btn-secondary btn-sm" x-show="rec.active"
+                    @click="stopRecording()">Stop</button>
           </div>
         </div>
+        <p x-show="rec.active || recMsg" class="text-xs mb-2" data-testid="record-live-status"
+           :style="recMsg.startsWith('Not') ? { color: '#fca5a5' } : { color: 'var(--text-secondary)' }">
+          <span x-show="rec.active">Recording on the bridge:
+            <span x-text="rec.captured"></span> sample(s)<span x-show="rec.errors" class="text-amber-400">,
+            <span x-text="rec.errors"></span> failed</span>.</span>
+          <span x-show="!rec.active" x-text="recMsg"></span>
+        </p>
         <!-- Single chart: single-unit, or the aggregate/trend multi-unit overlay. -->
         <div style="height:260px" x-show="!showStack"><canvas id="bmsChart"></canvas></div>
         <!-- Per-cell stack: one small chart per selected aPower (Per-cell + 2+ units). -->
@@ -348,7 +360,8 @@
         </div>
         <p class="mt-2 text-xs" style="color:var(--text-secondary)">
           Samples are collected in this browser while the tab is open — turn on Auto to build a
-          trend. Not persisted; use Export CSV to keep them.
+          trend. <b>Record</b> keeps it on the bridge from now on (at least every 5 s, up to a
+          day, or until Stop), in Charts; or use Export CSV.
         </p>
       </div>
 
@@ -392,6 +405,64 @@
         </div>
         <p class="text-xs" style="color:var(--text-secondary)">
           Runs on the bridge, not in this browser — you can close the page.
+        </p>
+        <p x-show="!rec.active && recMsg" class="text-xs"
+           :style="recMsg.startsWith('Not') ? { color: '#fca5a5' } : { color: '#86efac' }"
+           x-text="recMsg"></p>
+      </div>
+
+      <!-- Scheduled recordings (owner, 2026-11-11): the bridge starts each on the site's
+           clock, once a day, on the days ticked. -->
+      <div class="rounded-lg border p-3 space-y-2" style="border-color:var(--border)"
+           data-testid="bms-schedules">
+        <div class="text-xs font-semibold" style="color:var(--text-secondary)">Scheduled recordings</div>
+        <template x-for="sc in schedules" :key="sc.id">
+          <div class="flex items-center gap-2 text-xs" style="color:var(--text-primary)">
+            <div class="min-w-0 flex-1">
+              <span class="font-mono" x-text="sc.at"></span>
+              · <span x-text="sc.minutes + ' min every ' + sc.interval_s + ' s'"></span>
+              <div style="color:var(--text-faint)"
+                   x-text="schedDays(sc.days) + ' · aPower ' + sc.dev_id"></div>
+            </div>
+            <button type="button" role="switch" :aria-checked="sc.enabled"
+                    :aria-label="'Schedule ' + sc.at" @click="toggleSchedule(sc)"
+                    class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0"
+                    :class="sc.enabled ? 'bg-emerald-500' : 'bg-slate-600'">
+              <span class="inline-block h-5 w-5 rounded-full bg-white transition"
+                    :class="sc.enabled ? 'translate-x-5' : 'translate-x-0.5'"></span>
+            </button>
+            <button class="btn btn-secondary btn-sm !px-2" title="Delete"
+                    @click="deleteSchedule(sc)">&times;</button>
+          </div>
+        </template>
+        <p x-show="!schedules.length" class="text-xs" style="color:var(--text-faint)">None yet.</p>
+        <div class="flex flex-wrap items-center gap-2 text-sm">
+          <input type="time" class="form-control form-control-sm w-28" x-model="sched.at"
+                 aria-label="Start time">
+          <input type="number" min="1" max="1440" class="form-control form-control-sm w-20"
+                 x-model.number="sched.minutes" aria-label="Minutes">
+          <span style="color:var(--text-secondary)">min every</span>
+          <input type="number" min="5" max="600" class="form-control form-control-sm w-16"
+                 x-model.number="sched.interval_s" aria-label="Seconds between samples">
+          <span style="color:var(--text-secondary)">s</span>
+        </div>
+        <div class="flex flex-wrap gap-1">
+          <template x-for="(n, d) in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="d">
+            <button type="button" class="px-2 py-1 text-xs rounded-md border"
+                    style="border-color:var(--border)"
+                    :class="sched.days.includes(d) ? 'bg-emerald-500/15 text-emerald-300' : 'text-slate-400'"
+                    :aria-pressed="sched.days.includes(d)" @click="toggleSchedDay(d)" x-text="n"></button>
+          </template>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="btn btn-primary btn-sm" @click="saveSchedule()"
+                  :disabled="!sched.days.length">Add schedule</button>
+          <span class="text-xs" :style="schedMsg.startsWith('Not') || schedMsg.startsWith('Couldn')
+                ? { color: '#fca5a5' } : { color: '#86efac' }" x-text="schedMsg"></span>
+        </div>
+        <p class="text-xs" style="color:var(--text-secondary)">
+          On the site's clock, for the aPower shown above. Skipped if a recording is already
+          running. Old recordings are deleted by the limits in Settings → Admin → Local history.
         </p>
       </div>
 

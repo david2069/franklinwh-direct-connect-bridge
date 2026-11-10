@@ -152,6 +152,59 @@ def sweep(settings: Settings, *, now: float | None = None) -> list[dict]:
     return missed
 
 
+def bms_schedule_tick(settings: Settings, *, now=None) -> list[dict]:
+    """Start a scheduled battery recording that is due (owner, 2026-11-11). ``now`` is a
+    naive datetime on the site's clock; by default the site timezone's, else the host's.
+    One a day per schedule; while another recording runs it is skipped and logged.
+    Never raises."""
+    import datetime as _dt
+    from . import bms_record, setup_wizard
+    from . import client as _client
+    from .state import get_gateway
+    store = get_store(settings)
+    if store is None:
+        return []
+    try:
+        if now is None:
+            name = setup_wizard.site_timezone(store)
+            if name:
+                from zoneinfo import ZoneInfo
+                now = _dt.datetime.now(ZoneInfo(name)).replace(tzinfo=None)
+            else:
+                now = _dt.datetime.now()
+        due = bms_record.due(store.bms_schedules(), now)
+    except Exception as e:  # noqa: BLE001
+        log.warning("scheduled recordings: check failed: %s", e)
+        return []
+    started = []
+    today = now.strftime("%Y-%m-%d")
+    for sc in due:
+        store.set_bms_schedule_ran(sc["id"], today)
+        rec = bms_record.get_recorder()
+        if rec.status()["active"]:
+            log.info("scheduled recording %s at %s skipped: a recording is already running",
+                     sc["id"], sc["at"])
+            continue
+        gw = get_gateway(sc.get("gateway_id") or "")
+        if gw is None:
+            log.warning("scheduled recording %s skipped: gateway %s is not configured",
+                        sc["id"], sc.get("gateway_id"))
+            continue
+        host = gw.active_host or gw.configured_host
+        dev = int(sc.get("dev_id") or 1)
+        try:
+            rec.start(store, lambda h=host, d=dev: _client.battery(settings, h, d).get("cells"),
+                      samples=sc["samples"], interval_s=float(sc["interval_s"]),
+                      gateway_id=gw.id, dev_id=dev, label=f"Scheduled {sc['at']}",
+                      purge=(settings.bms_keep_days, settings.bms_max_mb))
+            log.info("scheduled recording %s started: %d sample(s) every %gs",
+                     sc["id"], sc["samples"], float(sc["interval_s"]))
+            started.append(sc)
+        except Exception as e:  # noqa: BLE001
+            log.warning("scheduled recording %s could not start: %s", sc["id"], e)
+    return started
+
+
 def tick_once(settings: Settings, *, client, now: float | None = None) -> list[dict]:
     """Evaluate every eligible gateway once. Never raises: one gateway's failure must
     not stop the others, which was the whole problem with the coupled version."""
@@ -159,6 +212,7 @@ def tick_once(settings: Settings, *, client, now: float | None = None) -> list[d
     if store is None:
         return []
     sweep(settings, now=now)
+    bms_schedule_tick(settings)
     fired: list[dict] = []
     for gw in get_gateways():
         ok, why = eligible(gw, settings, now)
