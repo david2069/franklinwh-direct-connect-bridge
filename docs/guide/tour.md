@@ -24,7 +24,10 @@ records "skipped", which stops the prompt and disables nothing.
 4. **Find it** — Discover scans the LAN for aGates on TCP 9000, or you enter the address.
    On the mock path, one mock per declared aGate is created, numbered, each with the aPower
    count you gave.
-5. **Confirm** — what the gateway reports. Anything wrong is correctable in Settings.
+5. **Confirm** — what the gateway reports, one line per fact (gateway model, batteries,
+   grid, modes, solar, generator, Smart Circuits, V2L) marked **Confirmed** or **To check**.
+   Tap a line to see where it was read from and confirm it; one line is open at a time.
+   Anything wrong is correctable in Settings.
 
 Everything optional — Home Assistant, notifications, tariffs — is deferred and says so.
 

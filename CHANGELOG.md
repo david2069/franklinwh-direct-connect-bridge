@@ -11,6 +11,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+- **Confirm what's installed: one line per fact, opened one at a time** (owner). Each fact
+  the gateway reports is a single line (label, value, **Confirmed** or **To check**); tap it
+  to see where it was read from and its **Confirm** button. Opening one closes the other.
+  The questions the gateway can't answer stay open.
+
+### Fixed
+- **Confirm what's installed said the gateway "Couldn't be read"** on every real aGate. It
+  looked for the hardware id (1101 SyHdVersion) in the latest status read, which never
+  carries it; it now uses the id the poller keeps, as the gateway list does, so it names the
+  model, for example "aGate X-01-AU (AU)".
+
 ## [0.5.39] — 2026-11-11
 
 ### Added

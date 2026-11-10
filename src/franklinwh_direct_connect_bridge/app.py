@@ -3767,7 +3767,10 @@ def create_app() -> FastAPI:
                 values = system_setup.values(st, None, gw.id, None)
             summ = gw.last_summary or {}
             fw = summ.get("firmware") or {}
-            m = (devicedb.gateway(fw["SyHdVersion"]) or {}) if fw.get("SyHdVersion") else {}
+            # The poller keeps 1101 SyHdVersion on the gateway; the summary's firmware
+            # block doesn't carry it, so reading only that left the row unread.
+            hw = getattr(gw, "sy_hd_version", None) or fw.get("SyHdVersion")
+            m = (devicedb.gateway(hw) or {}) if hw else {}
             fhp = fw.get("FHP_SN")
             info = {"model": "aGate (mock)" if gw.is_mock else m.get("model"),
                     "country": m.get("country"),
