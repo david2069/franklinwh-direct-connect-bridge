@@ -11,6 +11,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.39] — 2026-11-11
+
 ### Added
 - **Local history: how long it is kept, and an off switch, in Settings** (#540). Settings →
   Admin → Local history → **Keep for** 90 days, 1 year (default), 2 years or **Forever**,
