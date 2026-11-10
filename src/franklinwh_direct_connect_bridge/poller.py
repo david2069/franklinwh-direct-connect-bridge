@@ -69,6 +69,10 @@ SWEEP_GAP_MAX_S = 3600
 
 #: How often the aGate's network state is read for Home Assistant (#134).
 NET_EVERY_S = 600
+#: System view → Alarms: how often each aPower's 1705 alarmLevel and the aGate's 1829
+#: event count are read. Slow on purpose: the aGate is sensitive to load (#123).
+APOWER_ALARM_EVERY_S = 300
+EVENTS_EVERY_S = 900
 
 
 async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event) -> None:
@@ -225,6 +229,7 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
 
     net_state: dict = {}
     net_last = 0.0
+    alarm_last = events_last = 0.0   # System view → Alarms (slow device reads)
     next_sweep = 0.0
     sweep_gap = SWEEP_GAP_MIN_S
     prev: dict | None = None
@@ -365,6 +370,24 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                     except Exception as e:  # noqa: BLE001 — a network read never breaks the poll
                         log.debug("[%s] network read failed: %s", gw.id, e)
                 st.update(net_state)
+                # System view → Alarms: aPower alarm levels every APOWER_ALARM_EVERY_S, the
+                # aGate's event count every EVENTS_EVERY_S, in one session; never a mock.
+                if not getattr(gw, "is_mock", False) and summ.get("ok") and \
+                        time.time() - alarm_last >= APOWER_ALARM_EVERY_S:
+                    alarm_last = time.time()
+                    want_events = time.time() - events_last >= EVENTS_EVERY_S
+                    try:
+                        da = await asyncio.wait_for(asyncio.to_thread(
+                            client.device_alarms, settings,
+                            gw.active_host or gw.configured_host, events=want_events),
+                            timeout=_poll_timeout)
+                        gw.apower_alarms = da.get("apower") or None
+                        if want_events:
+                            events_last = time.time()
+                            gw.agate_events = da.get("events")
+                        gw.device_alarms_ts = time.time()
+                    except Exception as e:  # noqa: BLE001 — an alarm read never breaks the poll
+                        log.debug("[%s] device alarm read failed: %s", gw.id, e)
                 # grid.offgrid_min (#463): when this off-grid period began, as this bridge
                 # first saw it. A restart while off-grid starts counting from that poll.
                 from .scheduler import off_grid_since as _ogs

@@ -269,6 +269,32 @@ def network_bundle(s: Settings, host: str | None = None) -> dict[str, Any]:
     return out
 
 
+def device_alarms(s: Settings, host: str | None = None, *, events: bool = True) -> dict[str, Any]:
+    """System view → Alarms (owner, 2026-11-11), in ONE aGate session: each aPower's
+    ``alarmLevel`` from 1705 battery_cells (0 = none, as franklinwh-direct-connect-api's
+    bms.py prints it), and with ``events`` the aGate's 1829 event_block ``num``. Only the
+    count: the catalogue says the entries' request shape is unknown, so they aren't read.
+    A unit whose read fails is left out; the event count is left out when unread."""
+    out: dict[str, Any] = {"apower": {}}
+    with _client(s, host) as c:
+        c.login()
+        for dev_id in c.device_ids():
+            try:
+                lvl = (c.battery_cells(dev_id) or {}).get("alarmLevel")
+            except Exception:  # noqa: BLE001 — one unit's failed read must not hide the others
+                continue
+            if isinstance(lvl, int) and not isinstance(lvl, bool):
+                out["apower"][dev_id] = lvl
+        if events:
+            try:
+                num = (c.event_block() or {}).get("num")
+                if isinstance(num, int) and not isinstance(num, bool):
+                    out["events"] = num
+            except Exception:  # noqa: BLE001
+                pass
+    return out
+
+
 def network_light(s: Settings, host: str | None = None) -> dict[str, Any]:
     """The network reads for Home Assistant (#134) in ONE session — connectivity (1113),
     interfaces (1118), switches (1119), cloud endpoint (1121). Unlike network_bundle: no

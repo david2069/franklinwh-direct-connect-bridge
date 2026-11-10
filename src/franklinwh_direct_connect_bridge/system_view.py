@@ -70,6 +70,36 @@ def _alarms(store, gateway_id: str) -> list[dict]:
     return out
 
 
+#: Device alarm reads older than this are left out (three missed slow reads).
+DEVICE_ALARMS_STALE_S = 900
+
+
+def _device_alarms(gw, now: float) -> list[dict]:
+    """The devices' own alarms, each from a read that says so and none guessed:
+    - the FranklinWH app's active gateway alarms (franklinwh-cloud ``get_gateway_alarm``,
+      "Active gateway alarms"), counted: the items' fields aren't documented yet;
+    - each aPower's 1705 ``alarmLevel`` when not 0 (0 = none);
+    - the aGate's 1829 event count when above 0 (the entries can't be read locally)."""
+    from . import cloud_status
+    out: list[dict] = []
+    cl = getattr(gw, "cloud_alarms", None)
+    if cl and now - (getattr(gw, "cloud_alarms_ts", 0.0) or 0.0) <= cloud_status.STALE_AFTER_S:
+        n = len(cl)
+        out.append({"target": "agate", "level": "warn",
+                    "text": f"{n} active alarm{'s' if n != 1 else ''} in the FranklinWH app"})
+    if now - (getattr(gw, "device_alarms_ts", 0.0) or 0.0) <= DEVICE_ALARMS_STALE_S:
+        for unit, lvl in sorted((getattr(gw, "apower_alarms", None) or {}).items()):
+            if lvl:
+                out.append({"target": "battery", "unit": int(unit), "level": "warn",
+                            "text": f"aPower {unit}: alarm level {lvl}"})
+        ev = getattr(gw, "agate_events", None)
+        if isinstance(ev, int) and ev > 0:
+            out.append({"target": "agate", "level": "warn",
+                        "text": f"{ev} event{'s' if ev != 1 else ''} in the aGate's log "
+                                "(their details can't be read locally)"})
+    return out
+
+
 def gateway_payload(gw, store=None) -> dict:
     summ = gw.last_summary or {}
     power = summ.get("power") or {}
@@ -112,11 +142,15 @@ def gateway_payload(gw, store=None) -> dict:
     energy = _energy(summ)
     if energy:
         out["energy_today"] = energy
+    alarms = _device_alarms(gw, time.time())
     if store is not None:
         try:
-            out["alarms"] = _alarms(store, gw.id)
+            alarms += _alarms(store, gw.id)
         except Exception as e:  # noqa: BLE001 - the view is still worth drawing without them
             log.debug("system view: alerts unread: %s", e)
+        out["alarms"] = alarms
+    elif alarms:
+        out["alarms"] = alarms
     return out
 
 

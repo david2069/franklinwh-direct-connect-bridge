@@ -104,7 +104,7 @@ async def _client_for(email: str, password: str, gateway: str | None, source: st
 
 
 def _read_sync(email: str, password: str, gateway: str | None) -> tuple:
-    """One authenticated cloud read: (current, programmes). Runs its own event loop (called
+    """One authenticated cloud read: (current, programmes, edge, active alarms). Runs its own event loop (called
     from a worker thread). UPPERCASE gateway — the cloud is case-sensitive on the serial."""
     import asyncio
 
@@ -121,7 +121,15 @@ def _read_sync(email: str, password: str, gateway: str | None) -> tuple:
                 edge = (cloud.get_metrics() or {}).get("edge")   # CloudFront PoP snapshot
             except Exception:  # noqa: BLE001 — edge metrics are a nice-to-have
                 edge = None
-            return stats.current, prog, edge
+            # System view → Alarms: the app's active gateway alarms. None when the read
+            # failed, so a failure never reads as "no alarms".
+            alarms = None
+            try:
+                got = await cloud.get_gateway_alarm()
+                alarms = got if isinstance(got, list) else None
+            except Exception:  # noqa: BLE001 — alarms are a nice-to-have on this pass
+                alarms = None
+            return stats.current, prog, edge, alarms
 
     return asyncio.run(_run())
 
@@ -296,8 +304,8 @@ def poll(s: Settings) -> dict | None:
     global LAST_ERROR
     _t0 = time.monotonic()
     try:
-        cur, prog, edge = _read_sync(s.fwh_cloud_email, s.fwh_cloud_password,
-                                     s.fwh_cloud_gateway or None)
+        cur, prog, edge, alarms = _read_sync(s.fwh_cloud_email, s.fwh_cloud_password,
+                                             s.fwh_cloud_gateway or None)
     except providers.CloudLoginHeld as e:
         # Refused locally: no request was sent, so the breaker is not touched.
         LAST_ERROR = str(e)
@@ -337,5 +345,6 @@ def poll(s: Settings) -> dict | None:
         "run_status_desc": getattr(cur, "run_status_desc", "") or "",
         "tou_mode": tou_mode,
         "programme": _programme_label(prog) if is_vpp else None,
+        "alarms": alarms,
         "ts": time.time(),
     }
