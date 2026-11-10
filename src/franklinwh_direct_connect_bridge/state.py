@@ -52,6 +52,14 @@ class GatewayState:
     cloud_vpp: bool | None = None       # cloud says a VPP programme is dispatching now
     cloud_mode: str = ""                # cloud effective_mode label ("VPP Mode"/"Self-Consumption")
     cloud_programme: str | None = None  # enrolled VPP programme / partner name
+    # System view → Alarms (owner, 2026-11-11). None = not read. The cloud's active gateway
+    # alarms (franklinwh-cloud get_gateway_alarm) arrive with the cloud status pass; each
+    # aPower's 1705 alarmLevel and the aGate's 1829 event count with the poller's slow read.
+    cloud_alarms: list | None = None
+    cloud_alarms_ts: float = 0.0
+    apower_alarms: dict | None = None   # aPower id -> alarmLevel (0 = none)
+    agate_events: int | None = None     # 1829 event_block num
+    device_alarms_ts: float = 0.0
     published_entities: int | None = None  # count actually published to HA via MQTT discovery
     sy_hd_version: int | None = None    # 1101 SyHdVersion -> gateway model (devicedb)
     cloud_ts: float = 0.0               # when the cloud value was last read (freshness)

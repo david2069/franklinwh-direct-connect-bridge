@@ -87,8 +87,20 @@ home, solar, batteries and circuits, with the power flowing between them. Under 
 four extras each have their own switch, off until you turn them on and remembered in that
 browser: **Voltage & frequency** under the grid, **Today's energy** in kWh under each
 picture (grid in and out, solar, home, battery charged and discharged), **Power on wires**
-(the kW on each wire, with an arrow the way it goes) and **Alarms** (a count on the aGate for
-its open alerts, the same ones the alert list shows; tap the aGate to list them).
+(the kW on each wire, with an arrow the way it goes) and **Alarms** (a count on the device;
+tap it to list them).
+
+**Alarms** come from four places, each shown only once it has been read:
+
+- **The FranklinWH app's active alarms**, when the bridge is signed in to the FranklinWH
+  cloud: read with the cloud status pass (every 5 minutes) and shown on the aGate as a
+  count ("2 active alarms in the FranklinWH app"); open the app for what they are.
+- **An aPower's alarm level**: each aPower reports one with its cell readings; anything but
+  0 shows on that battery ("aPower 2: alarm level 3"). Read every 5 minutes.
+- **The aGate's event log**: only how many events it holds can be read locally, so more
+  than none shows on the aGate as a count. Read every 15 minutes.
+- **The bridge's own open alerts** (aGate unreachable, a refused command), the ones the
+  alert list shows, on the aGate.
 
 ## The tabs
 
