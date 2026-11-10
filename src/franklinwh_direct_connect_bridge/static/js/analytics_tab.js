@@ -189,6 +189,7 @@ function analyticsTab() {
     // Local (this bridge's samples) or Cloud (the FranklinWH cloud's history, #215).
     source: (() => { try { return localStorage.getItem('fwh-analytics-source') === 'cloud' ? 'cloud' : 'local'; } catch (e) { return 'local'; } })(),
     _cloud: null,
+    _stale: false,        // the source changed on the Dashboard; read again when shown
 
     init() {
       // A zone that arrives (or changes with the gateway) after the first draw moves the
@@ -200,6 +201,23 @@ function analyticsTab() {
         else if (this.source === 'cloud') { if (this._cloud) this._cloud.reload(); } else this.load();
       });
       lazyTab(this, 'analytics', () => this.load());
+      // Local | Cloud picked on the Dashboard's Energy Flow card: the same choice here, read
+      // when this tab is next shown; until one is picked, Cloud when signed in, as the card
+      window.addEventListener('fwh-source', (e) => {
+        const d = e.detail || {};
+        if (d.from === 'analytics' || d.source === this.source) return;
+        this.source = d.source;
+        if (this.$store.app.activeTab === 'analytics') this.load(); else this._stale = true;
+      });
+      this.$watch('$store.app.activeTab', (t) => { if (t === 'analytics' && this._stale) { this._stale = false; this.load(); } });
+      this.$watch('$store.app.cloudAvailable', (ok) => {
+        let picked = null;
+        try { picked = localStorage.getItem('fwh-analytics-source'); } catch (e) { /* private mode */ }
+        if (ok && !picked && this.source === 'local') {
+          this.source = 'cloud';
+          if (this.$store.app.activeTab === 'analytics') this.load(); else this._stale = true;
+        }
+      });
 
       // The Dashboard's Energy Flow card opens its period here (#543).
       window.addEventListener('fwh-analytics-flow', (e) => {
@@ -223,6 +241,8 @@ function analyticsTab() {
     setSource(src) {
       this.source = src;
       try { localStorage.setItem('fwh-analytics-source', src); } catch (e) { /* private mode */ }
+      // one choice with the Dashboard's Energy Flow card (owner, 2026-11-10)
+      window.dispatchEvent(new CustomEvent('fwh-source', { detail: { source: src, from: 'analytics' } }));
       this.load();
     },
 
@@ -482,54 +502,24 @@ function analyticsTab() {
     openPicker() { this.pickerFor = 'period'; this.pickerCursor = this.startDay; this.pickerOpen = !this.pickerOpen; },
     /** The oldest day there is: this bridge's first sample; the cloud's history is its own. */
     get minDay() { return this.source === 'local' && this.firstTs ? this.toSiteLocal(this.firstTs).slice(0, 10) : null; },
-    get pickerTitle() {
-      const [y, m] = (this.pickerCursor || this.startDay).split('-').map(Number);
-      if (this.pickerMode === 'years') return `${y - 8} – ${y + 3}`;
-      if (this.pickerMode === 'months') return String(y);
-      return new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, 1)));
-    },
+    // the calendar (partials/calendar.html, FWHCalendar): on the cursor's month, year or years
+    get pickerTitle() { return FWHCalendar.title(this.pickerCursor || this.startDay, this.pickerMode); },
     /** ‹ › inside the calendar: a month, a year, or twelve years. */
-    pickerStep(dir) {
-      const [y, m] = (this.pickerCursor || this.startDay).split('-').map(Number);
-      const t = this.pickerMode === 'days' ? Date.UTC(y, m - 1 + dir, 1)
-        : Date.UTC(y + dir * (this.pickerMode === 'years' ? 12 : 1), 0, 1);
-      this.pickerCursor = new Date(t).toISOString().slice(0, 10);
-    },
-    get pickerAtEnd() {
-      const c = this.pickerCursor || this.startDay;
-      return this.pickerMode === 'days' ? c.slice(0, 7) >= this.today.slice(0, 7)
-        : this.pickerMode === 'months' ? c.slice(0, 4) >= this.today.slice(0, 4) : +c.slice(0, 4) + 3 >= +this.today.slice(0, 4);
-    },
+    pickerStep(dir) { this.pickerCursor = FWHCalendar.step(this.pickerCursor || this.startDay, this.pickerMode, dir); },
+    get pickerAtEnd() { return FWHCalendar.atEnd(this.pickerCursor || this.startDay, this.pickerMode, this.today); },
     /** Six Monday-to-Sunday weeks around the cursor's month; a week period marks its week. */
     get pickerDays() {
-      const [y, m] = (this.pickerCursor || this.startDay).split('-').map(Number);
-      const first = Date.UTC(y, m - 1, 1), lead = (new Date(first).getUTCDay() + 6) % 7;
-      const minDay = this.minDay, range = this.pickerFor !== 'period', sel = range ? this.draft.date : this.startDay;
+      const range = this.pickerFor !== 'period';
       // To is where the range stops (not included), so it may be tomorrow's midnight
       const maxDay = this.pickerFor === 'to' ? new Date(Date.parse(this.today + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10) : this.today;
-      const weekEnd = analyticsStepDay('week', sel, 1);
-      return Array.from({ length: 42 }, (_, i) => {
-        const iso = new Date(first + (i - lead) * 86400000).toISOString().slice(0, 10);
-        return { iso, d: +iso.slice(8), inMonth: +iso.slice(5, 7) === m, today: iso === this.today,
-                 off: iso > maxDay || (minDay != null && iso < minDay),
-                 sel: this.period === 'week' && !range ? iso >= sel && iso < weekEnd : iso === sel };
-      });
+      return FWHCalendar.days(this.pickerCursor || this.startDay, { sel: range ? this.draft.date : this.startDay,
+        week: this.period === 'week' && !range, today: this.today, maxDay, minDay: this.minDay });
     },
     get pickerMonths() {
-      const y = +(this.pickerCursor || this.startDay).slice(0, 4), minDay = this.minDay;
-      return Array.from({ length: 12 }, (_, i) => {
-        const iso = `${y}-${String(i + 1).padStart(2, '0')}-01`;
-        return { iso, label: new Intl.DateTimeFormat(undefined, { month: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(y, i, 1))),
-                 off: iso > this.today || (minDay != null && iso.slice(0, 7) < minDay.slice(0, 7)), sel: iso === this.startDay };
-      });
+      return FWHCalendar.months(this.pickerCursor || this.startDay, { sel: this.startDay, today: this.today, minDay: this.minDay });
     },
     get pickerYears() {
-      const y = +(this.pickerCursor || this.startDay).slice(0, 4), minDay = this.minDay;
-      return Array.from({ length: 12 }, (_, i) => {
-        const yy = y - 8 + i, iso = `${yy}-01-01`;
-        return { iso, label: String(yy), off: iso > this.today || (minDay != null && String(yy) < minDay.slice(0, 4)),
-                 sel: iso === this.startDay };
-      });
+      return FWHCalendar.years(this.pickerCursor || this.startDay, { sel: this.startDay, today: this.today, minDay: this.minDay });
     },
     pick(iso) {
       if (this.pickerFor !== 'period') { this.draft.date = iso; this.rangeErr = ''; return; }   // then a time, then Apply

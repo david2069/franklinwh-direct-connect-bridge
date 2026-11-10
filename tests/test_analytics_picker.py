@@ -6,6 +6,8 @@ SRC = Path(__file__).resolve().parents[1] / "src" / "franklinwh_direct_connect_b
 JS = (SRC / "static" / "js" / "analytics_tab.js").read_text()
 HTML = (SRC / "templates" / "tabs" / "analytics.html").read_text()
 TOP = HTML[:HTML.index('x-ref="cloud"')]
+# the calendar itself is shared with the Dashboard's Energy Flow card since 2026-11-10
+CAL = (SRC / "templates" / "partials" / "calendar.html").read_text()
 
 
 def test_one_styled_picker_above_every_view_and_no_browser_date_input():
@@ -13,8 +15,9 @@ def test_one_styled_picker_above_every_view_and_no_browser_date_input():
     assert HTML.count('aria-label="Pick a date"') == 2            # the button and its popover
     assert HTML.count("stepWindow(-1)") == 1 and HTML.count("goToday()") == 1
     assert TOP.index('aria-label="Pick a date"') > TOP.index('aria-label="Source"')
+    assert '{% include "partials/calendar.html" %}' in HTML
     for mode in ("pickerMode === 'days'", "pickerMode === 'months'", "pickerMode === 'years'"):
-        assert mode in HTML
+        assert mode in CAL
     assert "@click.outside" in HTML[HTML.index('aria-label="Pick a date"') - 400:][:600]
 
 
@@ -22,7 +25,7 @@ def test_the_picker_shows_the_period_and_offers_only_what_exists():
     label = JS[JS.index("get periodLabel()"):][:900]
     assert "Week of" in label and "month: 'long'" in label
     days = JS[JS.index("get pickerDays()"):][:1200]
-    assert "this.today" in days and "minDay" in days                # no future, no day before history
+    assert "today: this.today" in days and "minDay: this.minDay" in days   # no future, no day before history
     assert "pick(iso) {" in JS and "this.jumpTo(iso)" in JS[JS.index("pick(iso) {"):][:200]
 
 

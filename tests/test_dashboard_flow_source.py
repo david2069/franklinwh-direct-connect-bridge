@@ -33,4 +33,4 @@ def test_a_link_opens_the_period_in_analytics_flow():
 
 
 def test_week_month_and_year_show_the_periods_first_day():
-    assert 'x-model="day"' not in CARD and ':value="startDay"' in CARD
+    assert 'x-model="day"' not in CARD and "get startDay()" in JS   # the calendar marks the period's first day
