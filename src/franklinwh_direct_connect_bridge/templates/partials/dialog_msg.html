@@ -1,7 +1,0 @@
-{#- A dialog's result, shown inside it until the next action (#293): the same box as the
-    companion-device dialog. `m` is an Alpine expression for {kind: danger|warn|ok, text}. -#}
-{% macro dialog_msg(m) -%}
-<div x-show="{{ m }}" x-cloak role="alert" aria-live="polite" class="text-xs rounded px-3 py-2 border"
-     :style="{{ m }} ? { color: 'var(--' + {{ m }}.kind + ')', borderColor: 'var(--' + {{ m }}.kind + ')' } : {}"
-     x-text="{{ m }} && {{ m }}.text"></div>
-{%- endmacro %}
