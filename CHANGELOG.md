@@ -17,6 +17,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   switched on and remembered in the browser. The bridge now sends today's kWh (the same
   reading as the Dashboard's Now / Today toggle) and the gateway's open alerts (the alert
   list's set) as the aGate's alarms; voltage and frequency were already sent but not shown.
+- **System view → Alarms from the devices** (owner). Beside the bridge's open alerts, Alarms
+  now shows the FranklinWH app's active alarms when the bridge is signed in to the cloud (a
+  count on the aGate, read with the 5-minute cloud pass), any aPower whose alarm level isn't
+  0 (on that battery, read every 5 minutes) and how many events the aGate's log holds when
+  above none (read every 15 minutes; their details can't be read locally). Each is left out
+  until it has been read.
 
 ## [0.5.39] — 2026-11-11
 
