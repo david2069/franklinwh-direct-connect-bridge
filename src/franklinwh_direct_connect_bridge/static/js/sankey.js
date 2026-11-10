@@ -146,6 +146,7 @@
     // Draw the fattest first so thin ribbons stay clickable on top.
     arcs.sort((a, b) => b.v - a.v);
 
+    const arcEls = [];
     arcs.forEach((a, i) => {
       const gid = `sk-${i}-${Math.round(a.v * 1000)}`;
       const grad = el('linearGradient', {
@@ -180,6 +181,7 @@
       title.textContent = `${a.src.label} → ${a.dst.label}: ${fmt(a.v)}`;
       path.appendChild(title);
       svg.appendChild(path);
+      arcEls.push({ path, name: `${a.src.label} → ${a.dst.label}`, v: a.v });
     });
 
     // Nodes last, so they sit above the ribbons they anchor.
@@ -228,6 +230,47 @@
     drawNodes(right, true);
 
     host.appendChild(svg);
+
+    // What a flow carried, on hover, tap or keyboard focus (owner 2026-11-10): the
+    // <title> above never shows on a touch screen and is slow on a mouse.
+    if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+    const tip = document.createElement('div');
+    tip.className = 'sankey-tip';
+    tip.hidden = true;
+    host.appendChild(tip);
+    const show = (a, ev) => {
+      for (const o of arcEls) o.path.classList.toggle('is-active', o === a);
+      svg.classList.add('has-active');
+      tip.innerHTML = '';
+      const b = document.createElement('b');
+      b.textContent = a.name;
+      tip.append(b, ` ${fmt(a.v)}`);
+      tip.hidden = false;
+      const hb = host.getBoundingClientRect();
+      const pb = a.path.getBoundingClientRect();
+      let x = ev && ev.clientX != null ? ev.clientX - hb.left : pb.left - hb.left + pb.width / 2;
+      let y = ev && ev.clientY != null ? ev.clientY - hb.top : pb.top - hb.top + pb.height / 2;
+      x = Math.max(4, Math.min(x - tip.offsetWidth / 2, hb.width - tip.offsetWidth - 4));
+      y = y - tip.offsetHeight - 12;
+      if (y < 0) y += tip.offsetHeight + 24;
+      tip.style.left = `${x}px`;
+      tip.style.top = `${y}px`;
+    };
+    const hide = () => {
+      tip.hidden = true;
+      svg.classList.remove('has-active');
+      for (const o of arcEls) o.path.classList.remove('is-active');
+    };
+    for (const a of arcEls) {
+      a.path.addEventListener('pointerenter', (ev) => show(a, ev));
+      a.path.addEventListener('pointermove', (ev) => { if (ev.pointerType === 'mouse') show(a, ev); });
+      a.path.addEventListener('pointerdown', (ev) => show(a, ev));
+      a.path.addEventListener('pointerleave', (ev) => { if (ev.pointerType === 'mouse') hide(); });
+      a.path.addEventListener('focus', () => show(a));
+      a.path.addEventListener('blur', hide);
+    }
+    // a tap off the flows puts the label away
+    svg.addEventListener('pointerdown', (ev) => { if (!ev.target.classList.contains('sankey-arc')) hide(); });
   }
 
   window.FWHSankey = { render, SOURCES, SINKS };

@@ -669,12 +669,26 @@ select.form-control:not([multiple]):not([size]) {
   }
 }
 
+/* Analytics → Chart ▾ → Colours…: round swatches, the series' and the palette's */
+.fwh-swatch { display: inline-block; width: 28px; height: 28px; padding: 0; border: 1px solid var(--border);
+  border-radius: 50%; cursor: pointer; flex: none; }
+
 /* ── Energy-flow Sankey (rendered by static/js/sankey.js) ─────────────── */
 .fwh-sankey { width: 100%; }
 .sankey-svg { display: block; width: 100%; overflow: visible; }
 .sankey-arc { transition: fill-opacity .15s; }
 .sankey-arc:hover,
 .sankey-arc:focus { fill-opacity: .75; outline: none; }
+.sankey-svg.has-active .sankey-arc:not(.is-active) { fill-opacity: .2; }
+.sankey-arc.is-active { fill-opacity: .8; }
+.sankey-tip {
+  position: absolute; z-index: 5; pointer-events: none; white-space: nowrap;
+  background: var(--surface-1); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 8px; font-size: 12px; font-variant-numeric: tabular-nums;
+  box-shadow: 0 4px 12px rgba(0,0,0,.25);
+}
+.sankey-tip b { font-weight: 600; margin-right: 4px; }
 .sankey-label { font-size: 11px; font-weight: 600; fill: var(--text-primary); }
 .sankey-value { font-size: 10px; fill: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .sankey-empty {
@@ -726,3 +740,9 @@ select.form-control:not([multiple]):not([size]) {
   position: absolute; right: 2px; bottom: 2px; width: 22px; height: 22px; z-index: 1;
   cursor: nwse-resize; touch-action: none;
 }
+
+/* The shared cloud panel (franklinwh-ha-cloud-analytics) in this page's theme: its Details
+   menu on our raised surface, light or dark, and axes and grid lines as Local's chart draws
+   them. `html .fwhca` outranks the panel's own stylesheet, which loads after this one. */
+html .fwhca { --ca-menu-bg: var(--surface-1); --ca-gridline: rgba(148,163,184,.12); --ca-muted: #64748b; }
+html .fwhca .fwhca-status { font-size: .75rem; }   /* as Local's note under its chart */
