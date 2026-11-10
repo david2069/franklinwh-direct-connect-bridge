@@ -5705,7 +5705,8 @@ def create_app() -> FastAPI:
         try:
             return bms_record.get_recorder().start(
                 store, _fetch, samples=req.samples, interval_s=req.interval_s,
-                gateway_id=gateway, apower_sn=sn, dev_id=req.id, label=req.label)
+                gateway_id=gateway, apower_sn=sn, dev_id=req.id, label=req.label,
+                purge=(get_settings().bms_keep_days, get_settings().bms_max_mb))
         except ValueError as e:
             code = 409 if "already running" in str(e) else 422
             raise HTTPException(status_code=code, detail=str(e))
@@ -5719,6 +5720,69 @@ def create_app() -> FastAPI:
     def api_bms_record_status():
         """Progress of the running (or last) session: captured / planned / errors."""
         return bms_record.get_recorder().status()
+
+    # Scheduled recordings (owner, 2026-11-11): the scheduler worker starts each one
+    # that is due, once a day, on the site's clock.
+    def _bms_schedules_out(store, gateway: str | None) -> dict:
+        return {"schedules": store.bms_schedules(gateway) if store else []}
+
+    @app.get("/api/battery/record/schedules")
+    def api_bms_schedules(gateway: str = Depends(_gateway_q)):
+        """This gateway's scheduled recordings: start time, minutes, interval, weekdays, unit."""
+        return _bms_schedules_out(db.get_store(get_settings()), gateway)
+
+    @app.post("/api/battery/record/schedules")
+    async def api_bms_schedule_add(request: Request, gateway: str = Depends(_gateway_q)):
+        """Add a scheduled recording for this gateway. 422 on a bad time, interval or day."""
+        store = db.get_store(get_settings())
+        if store is None:
+            raise HTTPException(status_code=503,
+                                detail="metrics storage is disabled (METRICS_ENABLED)")
+        try:
+            b = await request.json()
+            hh, mm = (int(x) for x in str(b["at"]).split(":"))
+            minutes, interval = int(b["minutes"]), float(b["interval_s"])
+            days = [int(d) for d in b["days"]]
+            dev = int(b.get("dev_id") or 1)
+        except Exception:  # noqa: BLE001
+            raise HTTPException(status_code=422,
+                                detail="send at (HH:MM), minutes, interval_s, days, dev_id")
+        if not (0 <= hh < 24 and 0 <= mm < 60):
+            raise HTTPException(status_code=422, detail="at must be a time, HH:MM")
+        if interval < bms_record.MIN_INTERVAL_S:
+            raise HTTPException(status_code=422, detail=f"interval must be >= "
+                                f"{bms_record.MIN_INTERVAL_S:g}s (the aGate is slow and shared)")
+        if not (1 <= minutes <= 24 * 60):
+            raise HTTPException(status_code=422, detail="minutes must be 1..1440")
+        if not days or any(d < 0 or d > 6 for d in days):
+            raise HTTPException(status_code=422, detail="days must be weekdays 0 (Mon)..6 (Sun)")
+        store.add_bms_schedule(gateway_id=gateway, at=f"{hh:02d}:{mm:02d}", minutes=minutes,
+                               interval_s=interval, days=days, dev_id=dev)
+        _audit("bms_schedule", detail=f"{hh:02d}:{mm:02d} {minutes} min every {interval:g}s",
+               result="ok", ok=True)
+        return _bms_schedules_out(store, gateway)
+
+    @app.post("/api/battery/record/schedules/{schedule_id}")
+    async def api_bms_schedule_update(schedule_id: int, request: Request,
+                                      gateway: str = Depends(_gateway_q)):
+        """Switch a scheduled recording on or off."""
+        store = db.get_store(get_settings())
+        try:
+            on = (await request.json())["enabled"]
+        except Exception:  # noqa: BLE001
+            raise HTTPException(status_code=422, detail="send enabled")
+        if not isinstance(on, bool):
+            raise HTTPException(status_code=422, detail="enabled must be true or false")
+        if store is None or not store.update_bms_schedule(schedule_id, enabled=on):
+            raise HTTPException(status_code=404, detail="no such schedule")
+        return _bms_schedules_out(store, gateway)
+
+    @app.delete("/api/battery/record/schedules/{schedule_id}")
+    def api_bms_schedule_delete(schedule_id: int, gateway: str = Depends(_gateway_q)):
+        store = db.get_store(get_settings())
+        if store is None or not store.delete_bms_schedule(schedule_id):
+            raise HTTPException(status_code=404, detail="no such schedule")
+        return _bms_schedules_out(store, gateway)
 
     @app.get("/api/battery/sessions")
     def api_bms_sessions(limit: int = Query(200, ge=1, le=1000),
@@ -6994,7 +7058,10 @@ def create_app() -> FastAPI:
                "growth": store.growth(int(time.time())) if store is not None else {},
                # full resolution this long, then 5-minute rows (about a tenth as many)
                "full_resolution_days": db.POLL_RAW_DAYS,
-               "is_ha_addon": environment.IS_HA_ADDON}
+               "is_ha_addon": environment.IS_HA_ADDON,
+               # Battery recordings' purge limits and their size now (owner, 2026-11-11)
+               "bms_keep_days": s.bms_keep_days, "bms_max_mb": s.bms_max_mb,
+               "bms_bytes": store.bms_bytes() if store is not None else 0}
         if store is not None:
             out.update(store.info())
         return out
@@ -7013,9 +7080,24 @@ def create_app() -> FastAPI:
             body = await request.json()
         except Exception:  # noqa: BLE001
             raise HTTPException(status_code=422, detail="request body must be JSON")
-        if not isinstance(body, dict) or not set(body) <= {"enabled", "retention_days"}:
-            raise HTTPException(status_code=422, detail="send enabled and/or retention_days")
+        if not isinstance(body, dict) or not set(body) <= {"enabled", "retention_days",
+                                                           "bms_keep_days", "bms_max_mb"}:
+            raise HTTPException(status_code=422, detail="send enabled, retention_days, "
+                                "bms_keep_days and/or bms_max_mb")
         s = get_settings()
+        for key, lo, hi, what in (("bms_keep_days", 1, 3650, "days"),
+                                  ("bms_max_mb", 1, 100_000, "MB")):
+            if key in body:
+                v = body[key]
+                if isinstance(v, bool) or not isinstance(v, int) or not lo <= v <= hi:
+                    raise HTTPException(status_code=422,
+                                        detail=f"{key} must be a whole number of {what}, "
+                                        f"{lo}..{hi}")
+        for key in ("bms_keep_days", "bms_max_mb"):
+            if key in body:
+                setattr(s, key, body[key])
+                save_override(key, body[key])
+                _audit("bms_purge_limits", detail=f"{key}={body[key]}", result="ok", ok=True)
         if "retention_days" in body:
             days = body["retention_days"]
             if days not in RETENTION_CHOICES or isinstance(days, bool):

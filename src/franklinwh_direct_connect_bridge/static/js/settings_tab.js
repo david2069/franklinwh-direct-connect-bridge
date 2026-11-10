@@ -1217,7 +1217,9 @@ function settingsTab() {
         this.history.info = d;
         this.history.confirmOff = false;
         const days = d.retention_days;
-        this.history.msg = { kind: 'ok', text: 'enabled' in change
+        this.history.msg = { kind: 'ok', text: ('bms_keep_days' in change || 'bms_max_mb' in change)
+          ? `Battery recordings: kept ${d.bms_keep_days} days, up to ${d.bms_max_mb} MB.`
+          : 'enabled' in change
           ? (d.enabled ? 'Local history is on.' : 'Local history is off. What is stored is kept.')
           : 'Kept for ' + (days ? (days % 365 ? days + ' days' : (days / 365) + (days === 365 ? ' year' : ' years')) : 'ever') + '.' };
       } catch (e) {

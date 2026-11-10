@@ -85,6 +85,9 @@ function batteryTab() {
     init() {
       this._loadBmsCards();
       this.load();
+      // A recording runs on the bridge; after a reload, pick its progress back up.
+      fetch('api/battery/record/status').then(r => r.json())
+        .then(d => { if (d.active) { this.rec = d; this.pollRecording(); } }).catch(() => {});
       // Restore a persisted Auto/Chart choice so the live view survives a reload
       // (previously every refresh hid the chart and stopped auto-refresh).
       if (this.$store.app.activeTab === 'battery' && (this.showChart || this.auto)) this._syncPoll();
@@ -609,12 +612,19 @@ function batteryTab() {
     rec: { active: false, captured: 0, planned: 0, errors: 0 },
     recSamples: 20,
     recIntervalS: 15,
+    recMsg: '',               // the last recording result, shown in the card (no toast)
     _recTimer: null,
+    // Scheduled recordings (owner, 2026-11-11): started by the bridge on the site's clock.
+    schedules: [],
+    sched: { at: '02:00', minutes: 30, interval_s: 15, days: [0, 1, 2, 3, 4, 5, 6] },
+    schedMsg: '',
     _cellChart: null,
 
     setView(v) {
       this.view = v;
-      if (v === 'charts') { this.loadSessions(); this.$nextTick(() => this.drawCells()); }
+      if (v === 'charts') {
+        this.loadSessions(); this.loadSchedules(); this.$nextTick(() => this.drawCells());
+      }
     },
 
     async loadSessions() {
@@ -644,18 +654,31 @@ function batteryTab() {
       this.loadSessions();
     },
 
-    async startRecording() {
+    async _record(body) {
+      this.recMsg = '';
       try {
         const r = await fetch('api/battery/record' + this.$store.app.gwQuery(), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ samples: this.recSamples,
-                                 interval_s: this.recIntervalS, id: this.unitId }),
+          body: JSON.stringify(body),
         });
         const d = await r.json();
         if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
         this.rec = d;
         this.pollRecording();
-      } catch (e) { this.$store.app.toast(`Record failed: ${e.message}`, 'error'); }
+      } catch (e) { this.recMsg = `Not recording: ${e.message}`; }
+    },
+
+    startRecording() {
+      return this._record({ samples: this.recSamples, interval_s: this.recIntervalS,
+                            id: this.unitId });
+    },
+
+    // Keep the live trend on the bridge from now on: the live interval (the recorder's
+    // floor is 5 s), this unit, until Stop or a day has passed.
+    recordLive() {
+      const every = Math.max(5, this.intervalS);
+      return this._record({ samples: Math.floor(86400 / every), interval_s: every,
+                            id: this.unitId, label: 'Live trend' });
     },
 
     async stopRecording() {
@@ -673,11 +696,58 @@ function batteryTab() {
             clearInterval(this._recTimer);
             this._recTimer = null;
             this.loadSessions();
-            this.$store.app.toast(
-              `Recording finished — ${this.rec.captured} sample(s)`, 'success');
+            this.recMsg = `Recording saved: ${this.rec.captured} sample(s)`
+              + (this.rec.errors ? `, ${this.rec.errors} failed` : '') + '.';
           }
         } catch { clearInterval(this._recTimer); this._recTimer = null; }
       }, 2000);
+    },
+
+    async loadSchedules() {
+      try {
+        this.schedules = (await (await fetch('api/battery/record/schedules' + this.$store.app.gwQuery())).json()).schedules || [];
+      } catch (e) { this.schedMsg = `Couldn't read the schedules: ${e.message}`; }
+    },
+
+    async _schedReq(url, init, done) {
+      this.schedMsg = '';
+      try {
+        const r = await fetch(url, init);
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+        this.schedules = d.schedules || [];
+        this.schedMsg = done;
+      } catch (e) { this.schedMsg = `Not saved: ${e.message}`; }
+    },
+
+    saveSchedule() {
+      const body = { ...this.sched, dev_id: this.unitId };
+      return this._schedReq('api/battery/record/schedules' + this.$store.app.gwQuery(),
+        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body) }, 'Schedule added.');
+    },
+
+    toggleSchedule(sc) {
+      return this._schedReq(`api/battery/record/schedules/${sc.id}` + this.$store.app.gwQuery(),
+        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: !sc.enabled }) },
+        sc.enabled ? 'Schedule off.' : 'Schedule on.');
+    },
+
+    deleteSchedule(sc) {
+      return this._schedReq(`api/battery/record/schedules/${sc.id}` + this.$store.app.gwQuery(),
+        { method: 'DELETE' },
+        'Schedule deleted.');
+    },
+
+    toggleSchedDay(d) {
+      const i = this.sched.days.indexOf(d);
+      if (i >= 0) this.sched.days.splice(i, 1); else this.sched.days.push(d);
+    },
+
+    schedDays(days) {
+      const n = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      return days.length === 7 ? 'Every day' : days.map(d => n[d]).join(' ');
     },
 
     get sessionCells() {

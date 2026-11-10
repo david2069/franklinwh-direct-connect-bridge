@@ -11,6 +11,20 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+- **Battery → Record on the live trend** (owner). The trend card has a **Record** button that
+  keeps the readings on the bridge from that moment: at the live interval (at least every
+  5 s), for the aPower shown, until **Stop** or a day has passed. Closing the page doesn't
+  stop it, and its progress and result show in the card. A recording can now run for a day
+  (it was capped at 500 samples).
+- **Battery → Charts: scheduled recordings** (owner). Add a start time (on the site's clock),
+  how many minutes, how often and which weekdays; each has an on/off switch and delete. The
+  bridge starts it once a day; if a recording is already running, it is skipped and logged.
+- **Battery recordings are purged** (owner). Finished recordings older than **90 days** are
+  deleted, and past **200 MB** the oldest go first; one still recording is never deleted. Both
+  limits, and the size the recordings take now, are in Settings → Admin → Local history. The
+  purge runs with the hourly history upkeep and when a recording ends.
+
 ### Changed
 - **Confirm what's installed: one line per fact, opened one at a time** (owner). Each fact
   the gateway reports is a single line (label, value, **Confirmed** or **To check**); tap it
