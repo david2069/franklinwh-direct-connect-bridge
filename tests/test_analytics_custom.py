@@ -79,7 +79,8 @@ def test_the_range_is_remembered_and_reaches_cloud():
     load = JS[JS.index("async load() {"):][:900]
     assert "this._cloud.setRange(this.range.from, this.range.to)" in load
     mount = JS[JS.index("FWHCloudAnalytics.mount("):][:1400]
-    assert "range: this.period === 'custom' ? this.rangeOrDefault : null" in mount
+    assert "...this.cloudRange," in mount
+    assert "if (this.period === 'custom') return { range: this.rangeOrDefault };" in JS
     flow = JS[JS.index("async loadFlow(refresh) {"):][:900]
     assert "period=custom&from=" in flow
 
@@ -93,7 +94,7 @@ def test_from_and_to_buttons_open_a_calendar_with_a_styled_time_grid():
 
 
 def test_the_cloud_extra_has_custom_ranges():
-    assert "franklinwh-ha-cloud-analytics==0.1.23" in (PKG.parents[1] / "pyproject.toml").read_text()
+    assert "franklinwh-ha-cloud-analytics==0.1.24" in (PKG.parents[1] / "pyproject.toml").read_text()
 
 
 def test_hourly_slots_start_at_the_ranges_own_hour():

@@ -174,7 +174,9 @@ function analyticsTab() {
     coloursOpen: false,
     colourPalette: ANALYTICS_PALETTE,
     colourEdit: null,     // the series whose palette is open in the dialog
-    atTime: null,         // Day views: the picker's time ('HH:MM'); the readout opens there
+    // Day views: the stretch shown (owner, 2026-11-10), 'HH:MM' each; null = the day's own edge
+    dayFrom: null,
+    dayTo: null,
     // Flow (#543): the period's arcs in kWh, where they came from, and what went wrong
     flow: null,
     flowNote: '',
@@ -246,6 +248,13 @@ function analyticsTab() {
       this.load();
     },
 
+    /** The shared panel opens on a range: Custom's, or a Day view's From / To in its slots. */
+    get cloudRange() {
+      if (this.period === 'custom') return { range: this.rangeOrDefault };
+      const r = this.dayRange;
+      return r ? { period: 'custom', range: Object.assign({ res: this.period === 'dayhour' ? 'hour' : '5min' }, r) } : {};
+    },
+
     /** Settings → Integrations, scrolled to the FranklinWH Cloud API card. */
     openCloudSettings() {
       Alpine.store('app').setActiveTab('settings');
@@ -259,13 +268,13 @@ function analyticsTab() {
         endpoint: 'api/analytics/cloud',
         params: () => ({ gateway: this.$store.app.selectedGateway || '' }),
         periodPicker: false, period: this.period,        // the picker at the top serves both
-        range: this.period === 'custom' ? this.rangeOrDefault : null,   // and Custom's From-To
         height: 380,                                      // as tall as the Local chart
         styleControl: false, style: this.style,           // Line | Area | Bars at the top serves both
         stackControl: false, stacked: this.stacked,       // and Stack
         navControl: false, date: this.startDay,           // and the date picker
         refreshControl: false, statusBelow: true,         // Refresh at the top; the note under the chart, as Local's
         socAxis: 'always',                                // the SoC axis every period, so the plots line up
+        ...this.cloudRange,                               // Custom's From-To, or a Day view's From / To
       });
       this.applyCloudColours();
     },
@@ -314,8 +323,28 @@ function analyticsTab() {
         if (k === 'year') start = Date.UTC(f.getUTCFullYear(), f.getUTCMonth(), 1) / 1000 - off;
         return { start, end, bucket: 300 };
       }
+      const r = this.dayRange;
+      if (r) {
+        let start = this.fromSiteLocal(r.from);
+        if (this.period === 'dayhour') start -= (start + this.offMin * 60) % 3600;   // on its hour
+        return { start, end: this.fromSiteLocal(r.to), bucket: 300 };
+      }
+      return this.baseWindow;
+    },
+    /** The period's own window, before any From / To. */
+    get baseWindow() {
       return analyticsPeriodWindow(this.period, this.day || this.today, this.offMin,
         Math.floor(Date.now() / 1000), this.firstTs);
+    },
+    /** Day views: From → To on the shown day ('YYYY-MM-DDTHH:MM'); a To at or before From is
+     *  the next day's. null when neither is set (the whole day). */
+    get dayRange() {
+      if (!this.timeMode || (!this.dayFrom && !this.dayTo)) return null;
+      const day = this.day || this.today;
+      const next = new Date(Date.parse(day + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10);
+      const to = !this.dayTo ? `${next}T00:00`
+        : this.dayTo > (this.dayFrom || '00:00') ? `${day}T${this.dayTo}` : `${next}T${this.dayTo}`;
+      return { from: `${day}T${this.dayFrom || '00:00'}`, to };
     },
     /** The slots drawn: the period's own, or for Custom the period its length matches. */
     get kind() {
@@ -354,7 +383,7 @@ function analyticsTab() {
       this.load();
     },
     /** The first day of the shown period, for the day picker (as the Cloud view shows it). */
-    get startDay() { return this.toSiteLocal(this.window.start).slice(0, 10); },
+    get startDay() { return this.toSiteLocal(this.period === 'custom' ? this.window.start : this.baseWindow.start).slice(0, 10); },
 
     /** The time span picker: one for both views. */
     setPeriod(v) {
@@ -380,7 +409,7 @@ function analyticsTab() {
     },
     /** Back to the period that holds today. */
     goToday() { this.day = null; this.load(); },
-    get atToday() { return this.window.end > Math.floor(Date.now() / 1000); },
+    get atToday() { return this.baseWindow.end > Math.floor(Date.now() / 1000); },
     get atOldest() {     // this bridge's history; the cloud's goes further back
       return this.source === 'local' && this.firstTs != null && this.window.start <= this.firstTs;
     },
@@ -457,49 +486,39 @@ function analyticsTab() {
       const day = f({ day: 'numeric', month: 'short', year: 'numeric' });
       return this.period === 'week' ? 'Week of ' + day : day;
     },
-    /** The picker takes a time on the Day views (owner, 2026-11-10), not on Flow. */
-    get timeMode() { return (this.period === 'day5' || this.period === 'dayhour') && this.chartType !== 'flow'; },
+    /** The Day views take a From and a To (owner, 2026-11-10), on the chart and on Flow. */
+    get timeMode() { return this.period === 'day5' || this.period === 'dayhour'; },
     get pickerHours() { return Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')); },
     /** Day (5-min): the minute snaps to the 5-minute slots. */
     get pickerMinutes() { return Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0')); },
-    get atHour() { return this.atTime ? this.atTime.slice(0, 2) : ''; },
-    get atMinute() { return this.atTime && this.period === 'day5' ? this.atTime.slice(3) : '00'; },
-    /** A time picked: Day (hourly) snaps to the hour; '' clears it. */
-    setAtTime(h, m) {
-      this.atTime = h === '' ? null : `${h}:${this.period === 'day5' ? m || '00' : '00'}`;
-      this.showAtTime();
+    /** How the From / To buttons read: 06:00, and the next day's To marked. */
+    get dayFromLabel() { return this.dayFrom || '00:00'; },
+    get dayToLabel() {
+      const r = this.dayRange;
+      if (!r) return '24:00';
+      return r.to.slice(0, 10) === (this.day || this.today) ? r.to.slice(11) : (r.to.slice(11) === '00:00' ? '24:00' : r.to.slice(11) + ' +1 day');
     },
-    /** The readout at the picked time, on whichever chart is shown. */
-    showAtTime() {
-      const t = this.timeMode ? this.atTime : null;
-      if (this.source === 'cloud') { if (this._cloud && this._cloud.showAt) this._cloud.showAt(t); }
-      else this.showLocalAt();
+    /** From or To on a Day view: the time grid opens on its time, then Apply. */
+    openDayTime(which) {
+      const which2 = which === 'from' ? 'dayfrom' : 'dayto';
+      if (this.pickerOpen && this.pickerFor === which2) { this.pickerOpen = false; return; }
+      const v = (which === 'from' ? this.dayFrom : this.dayTo) || '00:00';
+      this.draft = { date: this.day || this.today, h: v.slice(0, 2), m: v.slice(3, 5) };
+      this.rangeErr = ''; this.pickerFor = which2; this.pickerOpen = true;
     },
-    /** Local: Chart.js's own readout at the slot holding the picked time. */
-    showLocalAt() {
-      const c = this._chart && Alpine.raw(this._chart);   // Chart.js breaks behind Alpine's proxy
-      if (!c) return;
-      if (!this.timeMode || !this.atTime) { c.setActiveElements([]); c.tooltip.setActiveElements([], { x: 0, y: 0 }); c.update(); return; }
-      const [h, m] = this.atTime.split(':').map(Number);
-      const ts = this.window.start + h * 3600 + m * 60;
-      const active = [];
-      const series = Alpine.raw(this.series);
-      c.data.datasets.forEach((d, di) => {
-        let best = -1, gap = Infinity;
-        d.data.forEach((p, i) => {
-          if (p.y == null) return;
-          const g = this.energyMode ? (series[i] && series[i].ts <= ts && ts < series[i].end ? 0 : Infinity) : Math.abs(p.x - ts);
-          if (g < gap) { gap = g; best = i; }
-        });
-        if (best >= 0 && gap <= (this.energyMode ? 0 : 300)) active.push({ datasetIndex: di, index: best });
-      });
-      const a = c.chartArea;
-      c.setActiveElements(active);
-      c.tooltip.setActiveElements(active, { x: c.scales.x.getPixelForValue(ts), y: a.top + (a.bottom - a.top) / 3 });
-      c.update();
+    applyDayTime() {
+      const v = `${this.draft.h}:${this.period === 'day5' ? this.draft.m : '00'}`;
+      if (this.pickerFor === 'dayfrom') this.dayFrom = v === '00:00' ? null : v; else this.dayTo = v === '00:00' ? null : v;
+      this.pickerOpen = false;
+      this.load();
     },
+    /** The whole day again. */
+    clearDayTimes() { this.dayFrom = null; this.dayTo = null; this.pickerOpen = false; this.load(); },
     get pickerMode() { return this.period === 'year' ? 'years' : this.period === 'month' ? 'months' : 'days'; },
-    openPicker() { this.pickerFor = 'period'; this.pickerCursor = this.startDay; this.pickerOpen = !this.pickerOpen; },
+    openPicker() {
+      if (this.pickerOpen && this.pickerFor !== 'period') { this.pickerFor = 'period'; return; }
+      this.pickerFor = 'period'; this.pickerCursor = this.startDay; this.pickerOpen = !this.pickerOpen;
+    },
     /** The oldest day there is: this bridge's first sample; the cloud's history is its own. */
     get minDay() { return this.source === 'local' && this.firstTs ? this.toSiteLocal(this.firstTs).slice(0, 10) : null; },
     // the calendar (partials/calendar.html, FWHCalendar): on the cursor's month, year or years
@@ -509,7 +528,7 @@ function analyticsTab() {
     get pickerAtEnd() { return FWHCalendar.atEnd(this.pickerCursor || this.startDay, this.pickerMode, this.today); },
     /** Six Monday-to-Sunday weeks around the cursor's month; a week period marks its week. */
     get pickerDays() {
-      const range = this.pickerFor !== 'period';
+      const range = this.pickerFor === 'from' || this.pickerFor === 'to';
       // To is where the range stops (not included), so it may be tomorrow's midnight
       const maxDay = this.pickerFor === 'to' ? new Date(Date.parse(this.today + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10) : this.today;
       return FWHCalendar.days(this.pickerCursor || this.startDay, { sel: range ? this.draft.date : this.startDay,
@@ -522,15 +541,15 @@ function analyticsTab() {
       return FWHCalendar.years(this.pickerCursor || this.startDay, { sel: this.startDay, today: this.today, minDay: this.minDay });
     },
     pick(iso) {
-      if (this.pickerFor !== 'period') { this.draft.date = iso; this.rangeErr = ''; return; }   // then a time, then Apply
+      if (this.pickerFor === 'from' || this.pickerFor === 'to') { this.draft.date = iso; this.rangeErr = ''; return; }   // then a time, then Apply
       this.pickerOpen = false; this.jumpTo(iso);
     },
     /** The styled time grid (owner, 2026-11-10): the Day views' time, or From / To's. */
-    get gridHour() { return this.pickerFor === 'period' ? this.atHour : this.draft.h; },
-    get gridMinute() { return this.pickerFor === 'period' ? this.atMinute : this.draft.m; },
-    get gridMinutes() { return this.pickerFor !== 'period' || this.period === 'day5'; },
-    pickHour(h) { if (this.pickerFor === 'period') this.setAtTime(h, this.atMinute); else this.draft.h = h; },
-    pickMinute(m) { if (this.pickerFor === 'period') this.setAtTime(this.atHour || '00', m); else this.draft.m = m; },
+    get gridHour() { return this.draft.h; },
+    get gridMinute() { return this.draft.m; },
+    get gridMinutes() { return this.pickerFor === 'from' || this.pickerFor === 'to' || this.period === 'day5'; },
+    pickHour(h) { this.draft.h = h; },
+    pickMinute(m) { this.draft.m = m; },
 
     async load() {
       if (this.chartType === 'flow') return this.loadFlow();
@@ -538,8 +557,8 @@ function analyticsTab() {
       if (this.source === 'cloud') {
         if (!this._cloud) this.mountCloud();
         else if (this.period === 'custom') { this.range = this.rangeOrDefault; this._cloud.setRange(this.range.from, this.range.to); }
+        else if (this.dayRange) { const r = this.dayRange; this._cloud.setRange(r.from, r.to, this.period === 'dayhour' ? 'hour' : '5min'); }
         else this._cloud.setPeriod(this.period, this.startDay);
-        this.showAtTime();      // the package opens it again once the period has loaded
         return;
       }
       this.loading = true;
@@ -721,7 +740,6 @@ function analyticsTab() {
         };
         if (this._chart) this._chart.destroy();
         this._chart = new Chart(el, cfg);
-        if (this.timeMode && this.atTime) this.showLocalAt();
       });
     },
 
@@ -801,8 +819,8 @@ function analyticsTab() {
       try {
         const w = this.window;
         if (this.source === 'cloud') {
-          const r = this.rangeOrDefault;
-          const what = this.period === 'custom' ? `period=custom&from=${r.from}&to=${r.to}` : `period=${this.period}&date=${this.startDay}`;
+          const r = this.period === 'custom' ? this.rangeOrDefault : this.dayRange;    // Custom, or a Day view's From / To
+          const what = r ? `period=custom&from=${r.from}&to=${r.to}` : `period=${this.period}&date=${this.startDay}`;
           const d = await (await fetch(`api/analytics/cloud?${what}`
             + (refresh ? '&refresh=1' : '') + this.$store.app.gwQuery('&'))).json();
           this.flowWarn = false;

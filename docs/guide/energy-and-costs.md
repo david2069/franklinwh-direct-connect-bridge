@@ -82,10 +82,12 @@ this browser; **Dark background** and **Light background** are ready-made sets, 
 battery's greens). Under it, one date picker serves Local, Cloud and Flow: **‹ ›** move by the
 period (a day, a Monday-to-Sunday week, a month or a year on the site's calendar), the
 period button (9 Nov 2026, Week of 2 Nov 2026, October 2026, 2026) opens a calendar of days,
-months or years to pick from, and **Today** comes back to the current one. On Day (5-min) and Day (hourly) the calendar also has a
-**Time** grid: an hour, and on Day (5-min) a minute in 5-minute steps. The chart then opens
-with its readout (every value at that time) there, on Local and Cloud. The **Time** button
-beside the date opens the calendar too and shows the picked time; **Clear** takes it away. **‹** stops at the oldest stored sample;
+months or years to pick from, and **Today** comes back to the current one. On Day (5-min) and Day (hourly),
+**From** and **To** beside the date set the stretch shown, each from a time grid (an hour,
+and on Day (5-min) a minute in 5-minute steps), then **Apply**: Local, Cloud and Flow show
+just that stretch, in the view's own slots. A To at or before From is the next day's (22:00
+to 02:00 runs past midnight, marked "+1 day"); **Whole day** goes back to the full day, and
+**‹ ›** keep the times as they move the day. **‹** stops at the oldest stored sample;
 the caption under the chart says where the history starts ("history from …").
 
 **Custom** (last in the time span list) shows any range: **From** and **To** each open the
@@ -177,7 +179,8 @@ Analytics' Local | Cloud, so changing either changes both; until one is picked i
 when signed in. If the cloud can't answer, the card says why and shows Local. **‹ ›** move
 by the period, the date button opens the same calendar as Analytics (days, or months for
 Month, or years for Year) and shows the period ("Week of 2 Nov 2026", "November 2026"), and
-**Today** comes back. **In Analytics** opens the same period in Analytics → Flow.
+**Today** comes back. **In Analytics** opens the same period in Analytics → Flow. The line under the heading says which one is shown ("Cloud · metered by the FranklinWH
+cloud" or "Local · 402 days of data").
 
 Hover over a flow, or tap it on a touch screen, to see what it carried, e.g.
 "Solar → Battery 321.7 kWh"; the other flows dim while it shows. Tapping outside the flows

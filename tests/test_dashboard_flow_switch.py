@@ -44,3 +44,12 @@ def test_the_styled_calendar_replaces_the_date_box_and_chip():
         assert f in JS and f in TAB
     assert "window.FWHCalendar" in CALJS and "fwh_calendar.js" in INDEX
     assert "pickerDays" in CAL and "pickerMonths" in CAL and "pickerYears" in CAL
+
+
+def test_the_source_line_sits_under_the_heading_so_switching_never_rewraps_it():
+    # owner, 2026-11-10: "Local · N days of data" in the heading line wrapped it differently
+    # for Local and Cloud; it has a line of its own, the same height for both
+    head = CARD[:CARD.index('role="tablist" aria-label="Source"')]
+    assert "Local ·" not in head
+    line = CARD[CARD.index('data-testid="flow-source-line"') - 200:][:1800]
+    assert "Local ·" in line and "Cloud · metered by the FranklinWH cloud" in line and "min-h-" in line

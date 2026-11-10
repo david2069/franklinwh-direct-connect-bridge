@@ -26,7 +26,7 @@ def test_the_picker_shows_the_period_and_offers_only_what_exists():
     assert "Week of" in label and "month: 'long'" in label
     days = JS[JS.index("get pickerDays()"):][:1200]
     assert "today: this.today" in days and "minDay: this.minDay" in days   # no future, no day before history
-    assert "pick(iso) {" in JS and "this.jumpTo(iso)" in JS[JS.index("pick(iso) {"):][:200]
+    assert "pick(iso) {" in JS and "this.jumpTo(iso)" in JS[JS.index("pick(iso) {"):][:300]
 
 
 def test_cloud_follows_the_shared_picker():
