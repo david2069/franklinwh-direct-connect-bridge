@@ -49,13 +49,6 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   remembered in this browser), **‹ day › Today** on the right with a day picker, and the
   chips and **Line | Area | Bars** under the chart (remembered; SoC stays a line); its dates
   are in the browser's own format.
-- **Notifications when the bridge starts, restarts or stops**, under a new trigger
-  **Bridge started / restarted / stopped** (on by default), like the Energipays bridge (#528). A
-  start after a clean stop says it restarted, how long it was down and, after an update, the
-  version it came from; a start with no clean stop before it says started. The stop
-  notification goes out after any battery dispatch the bridge holds is
-  released, and before notifications shut down, waiting at most 3 s (Home Assistant stops
-  an add-on after 10 s).
 - **Energy flow: hover or tap a flow to see what it carried** (#543): on the Dashboard card
   and in Analytics → Flow, a label such as "Solar → Battery 321.7 kWh" appears over the
   flow, which stays bright while the others dim. Keyboard focus shows it too.
@@ -147,9 +140,6 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   A slot with no samples is empty, never 0. The strip under the chart shows the period's
   kWh totals. Until a style is picked, a day draws lines and the kWh periods bars, as Cloud
   does. New `GET /api/metrics/energy?edges=`.
-- **The off-grid notification says why:** "user requested" (someone asked for off-grid) or
-  "grid outage" (no request was made), the same words as the top bar, or "reason unknown"
-  when that wasn't read. Before, every off-grid message read the same (#528).
 
 ### Fixed
 - **Analytics → Colours: Cloud's detailed metrics couldn't be coloured** (#543): every
@@ -162,6 +152,25 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   (and a hex field) inside the dialog, which ends in **Done**.
 - **The guide said Local history is off by default on the add-on with MQTT**; it has been on
   everywhere since 0.4.10 (#136). The guide and Settings now say so (#540).
+
+## [0.5.38] — 2026-11-10
+
+There is no 0.5.37: an image with that number was published by mistake from the wrong
+branch, so the number was skipped.
+
+### Added
+- **Notifications when the bridge starts, restarts or stops**, under a new trigger
+  **Bridge started / restarted / stopped** (on by default), like the Energipays bridge (#528). A
+  start after a clean stop says it restarted, how long it was down and, after an update, the
+  version it came from; a start with no clean stop before it says started. The stop
+  notification goes out after any battery dispatch the bridge holds is
+  released, and before notifications shut down, waiting at most 3 s (Home Assistant stops
+  an add-on after 10 s).
+
+### Changed
+- **The off-grid notification says why:** "user requested" (someone asked for off-grid) or
+  "grid outage" (no request was made), the same words as the top bar, or "reason unknown"
+  when that wasn't read. Before, every off-grid message read the same (#528).
 
 ## [0.5.36] — 2026-11-09
 
