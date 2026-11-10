@@ -122,6 +122,23 @@ const ANALYTICS_COLOUR_ROWS = [
   ['battery_charge', 'Battery charged'], ['grid_import', 'Grid imported'],
   ['grid_export', 'Grid exported (Local: Grid)'], ['soc', 'SoC'], ['generator', 'Generator'],
 ];
+/** Cloud's detailed metrics (Details ▾): [key, label, the colour it takes until one is
+ *  picked]. Each is sent as --ca-<key> (franklinwh-ha-cloud-analytics 0.1.25). */
+const ANALYTICS_DETAIL_ROWS = [
+  ['solar_to_home', 'Solar to home', 'solar'], ['solar_to_battery', 'Solar to battery', 'solar'],
+  ['solar_to_grid', 'Solar to grid', 'solar'], ['grid_to_home', 'Grid to home', 'grid_import'],
+  ['grid_to_battery', 'Grid to battery', 'grid_import'], ['battery_to_home', 'Battery to home', 'battery_discharge'],
+  ['battery_to_grid', 'Battery to grid', 'battery_discharge'], ['generator_to_home', 'Generator to home', 'generator'],
+  ['generator_to_battery', 'Generator to battery', 'generator'],
+  ['home_from_solar', 'Home use supplied by solar', 'solar'], ['home_from_grid', 'Home use supplied by the grid', 'grid_import'],
+  ['home_from_battery', 'Home use supplied by the battery', 'battery_discharge'],
+  ['home_from_generator', 'Home use supplied by the generator', 'generator'],
+  ['battery_from_solar', 'Battery charged from solar', 'solar'], ['battery_from_grid', 'Battery charged from the grid', 'grid_import'],
+  ['battery_from_generator', 'Battery charged from the generator', 'generator'],
+  ['grid_export_from_solar', 'Grid export that came from solar', 'solar'],
+  ['grid_export_from_battery', 'Grid export that came from the battery', 'battery_discharge'],
+  ['v2l', 'Vehicle-to-load (V2L) total', 'home'], ['v2l_to_home', 'V2L to home', 'home'], ['v2l_to_battery', 'V2L to battery', 'home'],
+];
 const ANALYTICS_COLOUR_OF = { load_w: 'home', solar_w: 'solar', battery_w: 'battery_discharge',
                               grid_w: 'grid_export', generator_w: 'generator' };
 /** The shared panel's tokens for each colour. */
@@ -171,6 +188,8 @@ function analyticsTab() {
       catch (e) { return Object.assign({}, ANALYTICS_COLOURS.defaults); }
     })(),
     colourRows: ANALYTICS_COLOUR_ROWS,
+    detailRows: ANALYTICS_DETAIL_ROWS,
+    detailColoursOpen: false,
     coloursOpen: false,
     colourPalette: ANALYTICS_PALETTE,
     colourEdit: null,     // the series whose palette is open in the dialog
@@ -456,7 +475,15 @@ function analyticsTab() {
       for (const k in ANALYTICS_CLOUD_VARS) {
         for (const v of ANALYTICS_CLOUD_VARS[k]) el.style.setProperty(v, this.colours[k]);
       }
+      // the detailed metrics: their own colour once picked, else their source's
+      for (const [k] of ANALYTICS_DETAIL_ROWS) {
+        if (this.colours[k]) el.style.setProperty('--ca-' + k, this.colours[k]); else el.style.removeProperty('--ca-' + k);
+      }
     },
+    /** A detailed metric's colour as drawn: its own, or its source's. */
+    detailColour(r) { return this.colours[r[0]] || this.colours[r[2]]; },
+    /** Back to its source's colour. */
+    clearDetailColour(k) { delete this.colours[k]; this.saveColours(); },
     get chips() { return this.energyMode ? ANALYTICS_ENERGY : this.metricDefs; },
     get chartType() { return this.style || (this.energyMode ? 'bars' : 'line'); },
     get unit() { return this.energyMode ? 'kWh' : 'kW'; },
