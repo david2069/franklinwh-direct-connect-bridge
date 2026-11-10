@@ -79,7 +79,9 @@ piled above zero and its uses below) or Flow; Analytics opens on the last one pi
 take Battery discharged's and Grid exported's), for Local and Cloud alike and remembered in
 this browser; **Dark background** and **Light background** are ready-made sets, and
 **Reset to defaults** brings back the original colours (SoC in magenta, apart from the
-battery's greens). Under it, one date picker serves Local, Cloud and Flow: **‹ ›** move by the
+battery's greens). **Detailed metrics** in the same dialog lists Cloud's Details ▾
+fields (solar to home, grid to battery, …): each takes its source's colour (Solar's, Grid
+imported's, …) until you pick one, and **Use its source's** goes back. Under it, one date picker serves Local, Cloud and Flow: **‹ ›** move by the
 period (a day, a Monday-to-Sunday week, a month or a year on the site's calendar), the
 period button (9 Nov 2026, Week of 2 Nov 2026, October 2026, 2026) opens a calendar of days,
 months or years to pick from, and **Today** comes back to the current one. On Day (5-min) and Day (hourly),

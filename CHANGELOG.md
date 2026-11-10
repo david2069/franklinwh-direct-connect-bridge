@@ -152,6 +152,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   when that wasn't read. Before, every off-grid message read the same (#528).
 
 ### Fixed
+- **Analytics → Colours: Cloud's detailed metrics couldn't be coloured** (#543): every
+  Details ▾ field took its source's colour (all the solar flows Solar's yellow) and the
+  dialog had no row for them. **Detailed metrics** in the dialog now lists each one, its
+  source's colour until one is picked, with **Use its source's** to go back.
+  franklinwh-ha-cloud-analytics 0.1.25.
 - **Analytics → Colours couldn't be closed on an iPad** (#543): the browser's own colour
   picker opened over the dialog and hid its ×. Each series now opens a palette of colours
   (and a hex field) inside the dialog, which ends in **Done**.

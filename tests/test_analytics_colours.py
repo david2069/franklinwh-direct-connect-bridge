@@ -48,3 +48,16 @@ def test_the_dialog_has_a_picker_per_series_presets_and_reset():
     for b in ("Dark background", "Light background", "Reset to defaults"):
         assert b in HTML
     assert "Colours…" in HTML                           # opened from the Chart ▾ menu
+
+
+def test_the_detailed_metrics_have_colours_too():
+    # owner, 2026-11-10: "colour customisation for optional metrics not working" — each Details ▾
+    # field gets a row (its source's colour until one is picked), sent as --ca-<key>
+    rows = JS[JS.index("const ANALYTICS_DETAIL_ROWS"):][:2500]
+    for k in ("solar_to_home", "grid_to_battery", "home_from_grid", "grid_export_from_battery", "v2l_to_home"):
+        assert f"['{k}'," in rows, k
+    body = JS[JS.index("applyCloudColours() {"):][:900]
+    assert "'--ca-' + k" in body and "removeProperty" in body
+    assert "detailRows" in HTML and "Detailed metrics" in HTML
+    assert "clearDetailColour(" in HTML
+    assert "franklinwh-ha-cloud-analytics==0.1.25" in (SRC.parents[1] / "pyproject.toml").read_text()
