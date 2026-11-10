@@ -22,7 +22,7 @@ def test_the_system_view_follows_the_top_bar_picker_only():
 def test_the_pinned_system_view_has_the_phone_layout():
     # 0.2.4: Options fold away on phones, opens fitted, follows the top bar's height.
     pin = (ROOT / "pyproject.toml").read_text()
-    assert '"franklinwh-system-view==0.2.4"' in pin
+    assert '"franklinwh-system-view==0.3.0"' in pin
 
 
 def test_the_top_bar_menus_stay_on_a_phone_screen():
