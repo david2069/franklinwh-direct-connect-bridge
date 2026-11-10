@@ -11,6 +11,150 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.39] — 2026-11-11
+
+### Added
+- **Local history: how long it is kept, and an off switch, in Settings** (#540). Settings →
+  Admin → Local history → **Keep for** 90 days, 1 year (default), 2 years or **Forever**,
+  with the database size and its growth; the switch turns recording off after a
+  confirmation that Dashboard power history, Analytics and Energy Costs stop getting new
+  data. Both apply at once and survive a restart. An explicit `METRICS_ENABLED` /
+  `METRICS_RETENTION_DAYS` still wins and shows as set for the install. On the add-on, the
+  card says this overlaps Home Assistant's recorder. New `PUT /api/metrics/settings`;
+  `GET /api/metrics/info` adds the choices, locks and growth.
+- **Local history keeps full resolution for 10 days, then 5-minute rows** (#540): each
+  gateway's older samples become one row per 5 minutes (average, with min, max and count,
+  the last mode and tier counters), so energy totals are unchanged and long Keep for
+  choices stay small. Runs hourly and logs what it did ("Local history: N samples older than
+  10 days kept as M five-minute rows", "deleted N rows older than D days"). Windows reaching
+  past 10 days are read in buckets of at least 5 minutes. The Local history card shows
+  growth measured from the database (the old fixed 0.35–0.7 MB a day predates the per-poll
+  record, about 8 MB a day for recent days); Database storage counts the WAL and SHM files
+  and shows each table's size.
+- **Analytics → Cloud** (#215, phase 1). A **Local | Cloud** switch on Analytics; Cloud
+  shows the FranklinWH cloud's energy history for the gateway in the top bar: Day (5-min)
+  as kW lines, Day (hourly), Week, Month, Year and Lifetime as kWh bars, with a period
+  dropdown and date stepping on the site's calendar. Read-only, through the new shared
+  package franklinwh-ha-cloud-analytics 0.1.5 (also for the Modbus Bridge), in the
+  `cloud` extra. New `GET /api/analytics/cloud?gateway=&period=&date=`. The switch has its
+  own row under the title, full size. While the cloud account is missing or refused, the
+  Cloud view links straight to Settings → Integrations → **FranklinWH Cloud API**. Cloud has
+  **Today**, a chip per series to show or hide it, **Line | Area | Bars** for every period,
+  and, on hover or tap, every value at that time. Dates are in the browser's own format
+  (5 Nov in Australia, Nov 5 in the US). **Export CSV**, **JSON** and **Refresh** at the top
+  of Analytics serve whichever source is shown; Cloud exports the shown period.
+- **Analytics → Local steps through history:** **‹ ›** move the shown window back or forward
+  by its own length (24h, 3d, 7d, 30d or a custom range), **Today** comes back to now, and
+  **‹** stops at the oldest stored sample. The caption says where the history starts, and
+  the custom range can't be set before it. `GET /api/metrics` returns `first_ts`. Local now
+  has the Cloud view's layout: a period dropdown (24 hours, 3 days, 7 days, 30 days, Custom,
+  remembered in this browser), **‹ day › Today** on the right with a day picker, and the
+  chips and **Line | Area | Bars** under the chart (remembered; SoC stays a line); its dates
+  are in the browser's own format.
+- **Energy flow: hover or tap a flow to see what it carried** (#543): on the Dashboard card
+  and in Analytics → Flow, a label such as "Solar → Battery 321.7 kWh" appears over the
+  flow, which stays bright while the others dim. Keyboard focus shows it too.
+- **Analytics: a time in the date picker on the Day views** (#543): on Day (5-min) the
+  calendar takes an hour and minute (in 5-minute steps), on Day (hourly) an hour; the chart,
+  Local or Cloud, then opens with its readout at that time, and the date button shows it
+  ("9 Nov 2026 · 14:30"). **Clear** takes it away. franklinwh-ha-cloud-analytics 0.1.20.
+- **Analytics: Chart ▾ → Colours…** (#543): a colour for each series (Home, Solar, Battery
+  discharged and charged, Grid imported and exported, SoC, Generator), used by Local and
+  Cloud alike and remembered in this browser, with **Dark background** and **Light
+  background** presets and **Reset to defaults**. SoC's default is now magenta (#d946ef);
+  it was a green close to Battery discharged.
+- **Analytics: Colours and Time in sight** (#543): the legend, Local and Cloud, ends in a
+  **Colours** button (the Chart ▾ → Colours… dialog), and Day (5-min) and Day (hourly) show
+  a **Time** button beside the date that opens the calendar at its Time row; the picked time
+  shows on that button rather than on the date.
+- **Analytics: a Custom From → To range** (#543): **Custom** in the time span list, with
+  **From** and **To** each picked as a day and a time; Local, Cloud and Flow show it, with
+  5-minute power up to 2 days, hourly kWh up to 31 days, daily up to a year and monthly
+  beyond, the same on both. The time is picked from a styled grid of hours and 5-minute
+  steps, here and on the Day views, instead of the browser's lists.
+  `GET /api/analytics/cloud?period=custom&from=&to=`. franklinwh-ha-cloud-analytics 0.1.23.
+- **Dashboard → Energy Flow: Local | Cloud and Analytics' calendar** (#543): the card has
+  Analytics' Local | Cloud switch, one choice shared with Analytics (Cloud when signed in
+  until one is picked; Cloud greyed out with a sign-in hint until then; a cloud that fails
+  says why and shows Local), and Analytics' styled calendar in place of the browser's date
+  box and the repeated "November 2026" chip. Both use one calendar.
+
+### Changed
+- **Analytics: the Day views take a start and an end time** (#543; owner: "i really [want] a
+  start n end time"): **From** and **To** beside the date replace the single Time, which only
+  moved the readout. Local, Cloud and Flow show just that stretch, in the view's own slots
+  (a To at or before From runs into the next day); **Whole day** clears them.
+  franklinwh-ha-cloud-analytics 0.1.24 (a range's slots on request).
+- **Dashboard → Energy Flow: where the data comes from has its own line** under the heading
+  ("Cloud · metered by the FranklinWH cloud", "Local · N days of data"), so switching Local |
+  Cloud no longer re-wraps the heading.
+- **Analytics: one top row and the same periods for Local and Cloud** (owner). The time span
+  picker sits at the top for both sources with Cloud's periods: Day (5-min), Day (hourly),
+  Week, Month, Year and Lifetime. Local now steps by site day, Monday-to-Sunday week, month
+  or year like Cloud; 24 hours, 3 days, 7 days, 30 days and Custom are gone. **Local |
+  Cloud**, **Export ▾** (CSV, JSON) and **Refresh** are on the same row. Cloud panel
+  franklinwh-ha-cloud-analytics 0.1.6 (the host's picker).
+- **Analytics: one styled date picker, Bars stacked for both, Details ▾ for Cloud** (owner): the
+  browser's own date input (a different size on each card) is replaced by one picker above
+  Local, Cloud and Flow: **‹ period › Today**, where the period button (9 Nov 2026, Week
+  of 2 Nov 2026, October 2026, 2026) opens a calendar of days, months or years; it offers
+  nothing after today, nor, on Local, before the oldest sample. One **Chart ▾** button holds
+  every chart type (Line, Area, Bars, **Bars stacked**, Flow) and Analytics opens on the last
+  one picked in this browser; stacked bars work for Local too (sources above zero, home,
+  charging and export below). Cloud's chart is drawn
+  like Local's (rotated kWh title, a green SoC % axis in tens, a solid SoC line, vertical
+  grid lines), with its note under the chart where Local's is and no ↻ of its own (Refresh at
+  the top serves both), and Local's Day (5-min) takes Cloud's colours. The two plots line up:
+  Cloud keeps its SoC % axis for every period, and Local labels its kWh bars as Cloud does
+  (every few bars from the first, under the bar). Cloud's chips look like
+  Local's, and its detailed metrics (solar → battery, export from solar, …) are ticked under
+  **Details ▾** (it scrolls, and follows the dark theme) instead of being a row of chips.
+  franklinwh-ha-cloud-analytics 0.1.20.
+- **Analytics → Flow: the Energy Flow Sankey for any period, Local or Cloud** (#543): a
+  fourth chart type, **Flow**, beside Line | Area | Bars, draws the Sankey for the shown
+  time span and day (Day to Lifetime). Local is this bridge's estimate with its coverage;
+  Cloud is the FranklinWH cloud's own metered breakdown. The period's totals are under the
+  diagram, and **Export ▾** downloads them. `GET /api/energy/flow` takes spans up to 10
+  years and returns `first_ts`.
+- **Dashboard → Energy Flow says where its data comes from** (#543): signed in to the
+  cloud, the card shows the cloud's metered breakdown with a cloud icon; otherwise this
+  bridge's estimate with a slashed cloud and "Local · N days of data" (Local again if the
+  cloud can't answer). **In Analytics** opens the period in Analytics → Flow, and Week,
+  Month and Year show the period's first day rather than the day picked.
+- **Analytics: Line | Area | Bars at the top** (owner): one chart-style choice in the top
+  row, right after the time span, serving Local and Cloud (remembered in this browser);
+  it is no longer under each chart.
+- **Analytics → Cloud: the cloud's other fields as chips** (owner): every other field with
+  data for the shown period gets a chip that starts off: home from solar, grid and battery;
+  battery charged from solar and grid; export from solar and battery; and on a day, each
+  5-minute flow. Empty fields (V2L, solar sub-meters) get no chip; **Export ▾ → JSON** keeps
+  every array the cloud returned.
+- **Analytics: Local and Cloud charts match in size and scale, and Cloud shows SoC**
+  (owner): both charts are 380 px tall, and Local's kW/kWh axis uses Cloud's rule (zero
+  always shown, four even steps), so the same data reads the same in both. Cloud's Day
+  (5-min) and Day (hourly) draw the battery's state of charge on a 0–100 % axis at the right,
+  as Local does.
+- **Analytics → Local shows what Cloud shows** (owner): Day (5-min) is power in **kW** (it
+  was W); Day (hourly), Week, Month, Year and Lifetime are **kWh** per hour, day, month or
+  year with Cloud's six series (home, solar, battery discharged and charged, grid imported
+  and exported; charge and export below zero) and SoC, summed from the bridge's power
+  samples as Energy Flow does: an estimate, with the share of the period that has samples.
+  A slot with no samples is empty, never 0. The strip under the chart shows the period's
+  kWh totals. Until a style is picked, a day draws lines and the kWh periods bars, as Cloud
+  does. New `GET /api/metrics/energy?edges=`.
+
+### Fixed
+- **Analytics → Colours: Cloud's detailed metrics couldn't be coloured** (#543): every
+  Details ▾ field took its source's colour (all the solar flows Solar's yellow) and the
+  dialog had no row for them. **Detailed metrics** in the dialog now lists each one, its
+  source's colour until one is picked, with **Use its source's** to go back.
+  franklinwh-ha-cloud-analytics 0.1.25.
+- **Analytics → Colours couldn't be closed on an iPad** (#543): the browser's own colour
+  picker opened over the dialog and hid its ×. Each series now opens a palette of colours
+  (and a hex field) inside the dialog, which ends in **Done**.
+- **The guide said Local history is off by default on the add-on with MQTT**; it has been on
+  everywhere since 0.4.10 (#136). The guide and Settings now say so (#540).
+
 ## [0.5.38] — 2026-11-10
 
 There is no 0.5.37: an image with that number was published by mistake from the wrong

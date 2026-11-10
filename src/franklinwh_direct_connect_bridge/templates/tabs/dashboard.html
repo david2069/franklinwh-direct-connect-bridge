@@ -326,7 +326,22 @@
   <!-- Energy Flow (Sankey) — reconstructed from power samples, with a day picker -->
   <div class="card lg:col-span-3" x-data="energyFlowCard()" x-show="$store.app.dashCards.energyFlow" :style="$store.app.dashCardStyle('energyFlow')">
     <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-      <div class="card-label" style="margin-bottom:0">Energy Flow <a :href="$store.app.guideUrl('energy-and-costs/#the-energy-flow-sankey')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></div>
+      <div class="card-label flex items-center gap-2 flex-wrap" style="margin-bottom:0">Energy Flow
+        <a :href="$store.app.guideUrl('energy-and-costs/#the-energy-flow-sankey')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a>
+        <button class="text-xs underline normal-case tracking-normal font-normal" style="color:var(--text-secondary)" @click="openInAnalytics()" title="This period in Analytics → Flow">In Analytics</button>
+      </div>
+      <!-- Local | Cloud (owner, 2026-11-10): one choice with Analytics; Cloud needs the sign-in -->
+      <div class="flex items-center gap-1 flex-wrap">
+      <div class="inline-flex rounded-lg overflow-hidden border" style="border-color:var(--border)" role="tablist" aria-label="Source">
+        <button class="px-3 py-1 text-xs font-semibold transition" role="tab" :aria-selected="String(source === 'local')"
+                :class="source === 'local' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-slate-200'"
+                @click="setSource('local')">Local</button>
+        <button class="px-3 py-1 text-xs font-semibold transition disabled:opacity-40 disabled:cursor-default" role="tab" :aria-selected="String(source === 'cloud')"
+                :class="source === 'cloud' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-slate-200'"
+                :disabled="!$store.app.cloudAvailable"
+                :title="$store.app.cloudAvailable ? 'Metered by the FranklinWH cloud' : 'Sign in to the FranklinWH cloud: Settings → Integrations → FranklinWH Cloud API'"
+                @click="setSource('cloud')">Cloud</button>
+      </div>
       <!-- Period presets — week/month/year are anchored on the chosen date. -->
       <div class="flex items-center gap-1">
         <template x-for="p in ['day','week','month','year']" :key="p">
@@ -334,14 +349,39 @@
                   @click="setPeriod(p)" x-text="p.charAt(0).toUpperCase() + p.slice(1)"></button>
         </template>
       </div>
+      </div>
     </div>
+    <!-- where the data comes from (#543), on a line of its own (owner, 2026-11-10: in the
+         heading it re-wrapped the row on every Local | Cloud switch): the cloud's metered
+         breakdown, or this bridge's estimate with a slashed cloud -->
+    <div class="flex items-center gap-1 text-xs mb-2 min-h-[1.25rem]" style="color:var(--text-secondary)" data-testid="flow-source-line">
+          <svg x-show="source === 'cloud'" role="img" aria-label="Cloud data" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24">
+            <title>Cloud data: metered by the FranklinWH cloud</title>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z"/></svg>
+          <svg x-show="source !== 'cloud'" role="img" aria-label="Local data; cloud not set up" class="w-4 h-4 opacity-70" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24">
+            <title>Local data from this bridge. Cloud data needs the FranklinWH Cloud API in Settings → Integrations.</title>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z"/>
+            <path stroke-linecap="round" d="M3 3l18 18"/></svg>
+          <span x-show="source === 'cloud'">Cloud · metered by the FranklinWH cloud</span>
+          <span x-show="source !== 'cloud'" x-text="'Local · ' + (localDays ? localDays + (localDays === 1 ? ' day' : ' days') + ' of data' : 'this bridge\'s estimate')"></span>
+    </div>
+    <!-- Analytics' styled calendar (owner, 2026-11-10), not the browser's date box -->
     <div class="flex flex-wrap items-center gap-1.5 mb-3">
-      <button class="btn btn-secondary btn-sm" @click="shiftDay(-1)" :title="'Previous ' + period">‹</button>
-      <input type="date" class="form-control form-control-sm text-center flex-1 min-w-[8rem]"
-             x-model="day" :max="today" @change="load()">
-      <button class="btn btn-secondary btn-sm" @click="shiftDay(1)" :disabled="atToday()" :title="'Next ' + period">›</button>
+      <button class="btn btn-secondary btn-sm" @click="shiftDay(-1)" :title="'Previous ' + period" aria-label="Earlier">‹</button>
+      <div class="relative flex-1 min-w-[9.5rem]" @click.outside="pickerOpen = false" @keydown.escape.window="pickerOpen = false">
+        <button class="btn btn-secondary btn-sm w-full inline-flex items-center gap-1.5 justify-center" aria-label="Pick a date"
+                aria-haspopup="dialog" :aria-expanded="String(pickerOpen)" @click="openPicker()">
+          <svg class="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+          <span x-text="periodLabel"></span>
+        </button>
+        <div x-show="pickerOpen" x-cloak role="dialog" aria-label="Pick a date"
+             class="absolute left-1/2 -translate-x-1/2 mt-1 z-40 w-72 rounded-xl border shadow-xl p-3 space-y-2"
+             style="background:var(--surface-1);border-color:var(--border)">
+        {% include "partials/calendar.html" %}
+        </div>
+      </div>
+      <button class="btn btn-secondary btn-sm" @click="shiftDay(1)" :disabled="atToday()" :title="'Next ' + period" aria-label="Later">›</button>
       <button class="btn btn-secondary btn-sm" @click="goToday()" :disabled="atToday()">Today</button>
-      <span class="chip muted text-center" x-show="period !== 'day'" x-text="spanLabel"></span>
     </div>
 
     <div class="fwh-sankey" x-ref="sankey" style="min-height:260px"></div>
@@ -366,6 +406,7 @@
 
     <div class="text-[0.65rem] mt-3" :class="warn ? 'text-amber-400' : 'text-slate-500'"
          x-text="quality"></div>
+    <div class="text-[0.65rem] mt-1 text-amber-400" x-show="cloudErr" x-text="'Cloud didn\'t answer (' + cloudErr + '); showing Local.'"></div>
   </div>
 
   <!-- First-run setup. Offered, never imposed: "Not now" only stops the prompt, and the

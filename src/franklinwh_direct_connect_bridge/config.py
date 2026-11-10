@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from pydantic import Field
@@ -175,7 +176,23 @@ _OVERRIDE_KEYS = {"allow_writes", "log_level", "ha_notify", "ha_url", "ha_token"
                   # broker in one click instead of sending the user to the add-on options
                   # and a restart. Enabling it CREATES Home Assistant entities, so it stays
                   # an explicit action, never something startup decides.
-                  "mqtt_enabled", "mqtt_host", "mqtt_port", "mqtt_username", "mqtt_password"}
+                  "mqtt_enabled", "mqtt_host", "mqtt_port", "mqtt_username", "mqtt_password",
+                  # Local history on/off and how long it is kept, from Settings (#540).
+                  "metrics_enabled", "metrics_retention_days"}
+
+#: Settings saved from the UI that an explicit env value (or add-on option, which becomes
+#: one) still beats: the env value is the deployment's decision, so the UI shows it locked.
+_ENV_WINS = {"metrics_enabled": "METRICS_ENABLED",
+             "metrics_retention_days": "METRICS_RETENTION_DAYS"}
+
+#: How long Local history can be kept, in days; 0 keeps it forever (#540).
+RETENTION_CHOICES = (90, 365, 730, 0)
+
+
+def env_locked(key: str) -> bool:
+    """True when ``key`` is set explicitly in the environment, so Settings can't change it."""
+    var = _ENV_WINS.get(key)
+    return bool(var) and var in os.environ
 
 
 def overrides_path() -> Path:
@@ -201,7 +218,7 @@ def apply_overrides(settings: Settings) -> None:
     overrides win over env for those keys. Unknown/restart-only keys are ignored."""
     data = load_overrides()
     for key in _OVERRIDE_KEYS:
-        if key in data:
+        if key in data and not env_locked(key):
             try:
                 setattr(settings, key, data[key])
             except Exception:  # noqa: BLE001 — a bad value must not break startup

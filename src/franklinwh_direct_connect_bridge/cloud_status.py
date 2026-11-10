@@ -211,6 +211,51 @@ def read_power_control(email: str, password: str, gateway: str | None) -> dict:
     return asyncio.run(_run())
 
 
+#: Analytics → Cloud (#215): the shared package's cache, made on first use so the optional
+#: franklinwh-cloud library is only imported when the cloud is.
+_ENERGY_CACHE = None
+
+
+def read_energy(email: str, password: str, gateway: str | None, period: str, on, today,
+                refresh: bool = False) -> dict:
+    """The franklinwh-ha-cloud-analytics payload for ``period`` containing ``on``, for this
+    gateway's serial. Finished periods are kept for hours and the current one for minutes;
+    ``refresh`` asks the cloud again. Runs its own event loop; raises on any failure."""
+    import asyncio
+
+    import franklinwh_ha_cloud_analytics as ca
+    global _ENERGY_CACHE
+    if _ENERGY_CACHE is None or refresh:
+        _ENERGY_CACHE = ca.Cache()
+
+    async def _run():
+        async with await _client_for(email, password, gateway, "analytics") as cloud:
+            return await ca.fetch(cloud, period, on, today=today, cache=_ENERGY_CACHE,
+                                  key=(gateway or "").upper())
+
+    return asyncio.run(_run())
+
+
+def read_range(email: str, password: str, gateway: str | None, start, end, today,
+               refresh: bool = False) -> dict:
+    """The franklinwh-ha-cloud-analytics payload for the site-local range ``start`` to
+    ``end`` (a custom range, owner 2026-11-10): the package reads the days, months or years
+    it needs through the same cache as :func:`read_energy`. Raises on any failure."""
+    import asyncio
+
+    import franklinwh_ha_cloud_analytics as ca
+    global _ENERGY_CACHE
+    if _ENERGY_CACHE is None or refresh:
+        _ENERGY_CACHE = ca.Cache()
+
+    async def _run():
+        async with await _client_for(email, password, gateway, "analytics") as cloud:
+            return await ca.fetch_range(cloud, start, end, today=today, cache=_ENERGY_CACHE,
+                                        key=(gateway or "").upper())
+
+    return asyncio.run(_run())
+
+
 def _programme_label(prog) -> str | None:
     """Best-effort programme/partner name from get_programme_info(). The shape VARIES: a list
     (of strings or dicts), OR a single DICT (the VPP programme object with

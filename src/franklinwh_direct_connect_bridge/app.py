@@ -1463,6 +1463,13 @@ def create_app() -> FastAPI:
     # The System view overlay's page files (#428), from the shared package.
     import franklinwh_system_view as _sv
     app.mount("/system-view", StaticFiles(directory=str(_sv.static_dir())), name="system-view")
+    # Analytics → Cloud's panel (#215), from the shared package; absent without the cloud extra.
+    try:
+        import franklinwh_ha_cloud_analytics as _ca
+        app.mount("/cloud-analytics", StaticFiles(directory=str(_ca.static_dir())),
+                  name="cloud-analytics")
+    except ImportError:
+        pass
     app.mount("/static",
               StaticFiles(directory=str(Path(__file__).parent / "static")),
               name="static")
@@ -5541,6 +5548,54 @@ def create_app() -> FastAPI:
             get_settings(), serial=gw.serial,
             serial_locked=bool(getattr(gw, "serial_locked", False)), is_mock=bool(gw.is_mock))
 
+    @app.get("/api/analytics/cloud")
+    def api_analytics_cloud(period: str = "day5", date: str | None = None, refresh: bool = False,
+                            gateway: str = Depends(_gateway_q),
+                            from_: str | None = Query(None, alias="from"), to: str | None = None):
+        """Analytics → Cloud (#215): the FranklinWH cloud's energy history for one period of
+        the viewed gateway, as the shared franklinwh-ha-cloud-analytics payload. Read-only.
+        ``period=custom&from=&to=`` (site-local ``YYYY-MM-DDTHH:MM``, the end not included)
+        is a custom range (owner, 2026-11-10). Anything that stops it (no cloud account, a
+        mock gateway, the cloud refusing) comes back as ``{"error": ...}`` for the panel to
+        show; a bad period, date or range is a 400."""
+        try:
+            import franklinwh_ha_cloud_analytics as ca
+        except ImportError:
+            return {"error": "Cloud analytics isn't installed in this build."}
+        gw = _gw_or_404(gateway)
+        if period not in ca.PERIODS and period != "custom":
+            raise HTTPException(status_code=400, detail=f"period is one of {', '.join(ca.PERIODS)}, custom")
+        today = site_time.now_known(gw.active_host or gw.configured_host).date()
+        span = None
+        if period == "custom":
+            try:
+                span = (_dt.datetime.fromisoformat(from_ or ""), _dt.datetime.fromisoformat(to or ""))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="from and to are YYYY-MM-DDTHH:MM") from None
+            if span[1] <= span[0]:
+                raise HTTPException(status_code=400, detail="to must be after from")
+        try:
+            on = _dt.date.fromisoformat(date) if date else today
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date is YYYY-MM-DD") from None
+        s = get_settings()
+        if not (s.fwh_cloud_email and s.fwh_cloud_password):
+            return {"error": "Add your FranklinWH cloud account in Settings to see the "
+                             "cloud's energy history here."}
+        refused = _cloud_target_refusal(gw)
+        if refused:
+            return {"error": refused}
+        try:
+            from . import cloud_status
+            if span:
+                return cloud_status.read_range(s.fwh_cloud_email, s.fwh_cloud_password,
+                                               gw.serial, span[0], span[1], today, refresh)
+            return cloud_status.read_energy(s.fwh_cloud_email, s.fwh_cloud_password,
+                                            gw.serial, period, on, today, refresh)
+        except Exception as e:  # noqa: BLE001 — shown in the panel, never a 500
+            log.warning("cloud call failed: energy history — %s: %s", type(e).__name__, e)
+            return {"error": f"The FranklinWH cloud didn't answer: {type(e).__name__}: {e}"}
+
     @app.post("/api/cloud/reserve")
     def api_cloud_reserve(req: ReserveReq, gateway: str = Depends(_gateway_q)):
         """Set a mode's reserve SoC via the CLOUD provider (HYBRID Phase 3) — the local API
@@ -6737,13 +6792,17 @@ def create_app() -> FastAPI:
             end = int(time.time())
             start = end - RANGE_SECONDS.get(range, RANGE_SECONDS["6h"])
             span_key = range
-        b = _resolve_bucket(span_key, start, end, bucket, points)
+        # past 10 days only 5-minute rows are kept (#540): never read those finer
+        b = db.history_bucket(start, _resolve_bucket(span_key, start, end, bucket, points))
         store = db.get_store(get_settings())
         if store is None:
             return {"enabled": False, "series": [], "count": 0}
-        series = store.query(start, end, b, gateway=_metrics_gw_key(gateway))
+        gw_key = _metrics_gw_key(gateway)
+        series = store.query(start, end, b, gateway=gw_key)
+        # where this gateway's history starts, so the page stops stepping back there
         return {"enabled": True, "range": range, "start": start, "end": end,
-                "bucket_s": b, "count": len(series), "series": series}
+                "bucket_s": b, "count": len(series), "series": series,
+                "first_ts": store.first_ts(gw_key)}
 
     @app.get("/api/energy/flow")
     def api_energy_flow(
@@ -6757,7 +6816,8 @@ def create_app() -> FastAPI:
         merit-order split — a well-founded estimate, not a meter (the gateway reports
         node scalars, never the arcs). ``quality.coverage`` says how much of the span
         actually had samples. Never 500s."""
-        _TARGET_BUCKETS, _MIN_BUCKET_S, _MAX_SPAN_DAYS = 720, 60, 366
+        # 10 years: Analytics' Lifetime reads from the oldest sample (#543)
+        _TARGET_BUCKETS, _MIN_BUCKET_S, _MAX_SPAN_DAYS = 720, 60, 3660
         if start is not None and end is not None:
             if end <= start:
                 raise HTTPException(400, "end must be greater than start")
@@ -6780,16 +6840,19 @@ def create_app() -> FastAPI:
         store = db.get_store(get_settings())
         rows: list[dict] = []
         if store is not None and query_end > span_start:
-            bucket = max(_MIN_BUCKET_S, int((query_end - span_start) / _TARGET_BUCKETS))
+            bucket = db.history_bucket(int(span_start),
+                                       max(_MIN_BUCKET_S, int((query_end - span_start) / _TARGET_BUCKETS)))
             raw = store.query(int(span_start), int(query_end), bucket, gateway=_metrics_gw_key(gateway))
             # The decomposition speaks `home_w`; our column is `load_w`.
             rows = [{**r, "home_w": r.get("load_w")} for r in raw]
+        first_ts = store.first_ts(_metrics_gw_key(gateway)) if store is not None else None
 
         flows = _eflow.integrate(rows)
         nodes = _eflow.node_totals(flows)
         span_s = query_end - span_start
         return {
             "day": label, "start": span_start, "end": span_end, "gateway_id": gateway,
+            "first_ts": first_ts,
             "flows": {k: v for k, v in flows.items()
                       if k not in ("residual_kwh", "covered_s", "samples")},
             "nodes": nodes,
@@ -6799,6 +6862,58 @@ def create_app() -> FastAPI:
                 "residual_kwh": flows["residual_kwh"],
             },
         }
+
+    @app.get("/api/metrics/energy")
+    def api_metrics_energy(
+        edges: str = Query(..., description="slot boundaries, epoch seconds, comma-separated"),
+        gateway: str = Depends(_gateway_q),
+    ):
+        """kWh per slot (an hour, day, month or year on the site's calendar; the page sends
+        the boundaries), as Cloud shows it: home, solar, battery charged and discharged,
+        grid imported and exported, plus each slot's average SoC. Summed from the power
+        samples the same way as Energy Flow, so an estimate, not a meter. A slot with no
+        samples is null, never 0."""
+        import bisect
+        try:
+            e = [int(x) for x in edges.split(",")]
+        except ValueError:
+            raise HTTPException(400, "edges must be epoch seconds") from None
+        if not 2 <= len(e) <= 400 or any(b <= a for a, b in zip(e, e[1:])):
+            raise HTTPException(400, "edges: 2 to 400 increasing times")
+        keys = ("home", "solar", "battery_discharge", "battery_charge", "grid_import", "grid_export")
+        n = len(e) - 1
+        series = {k: [None] * n for k in keys}
+        soc: list = [None] * n
+        out = {"unit": "kWh", "starts": e[:-1], "series": series, "soc": soc, "coverage": 0.0,
+               "first_ts": None}
+        store = db.get_store(get_settings())
+        if store is None:
+            return out
+        gw_key = _metrics_gw_key(gateway)
+        out["first_ts"] = store.first_ts(gw_key)
+        end = min(e[-1], int(time.time()))
+        if end <= e[0]:
+            return out
+        bucket = db.history_bucket(e[0], max(60, (end - e[0]) // 20000))
+        rows = store.query(e[0], end, bucket, gateway=gw_key)
+        slots: list[list[dict]] = [[] for _ in range(n)]
+        for r in rows:
+            i = bisect.bisect_right(e, r["ts"]) - 1
+            if 0 <= i < n:
+                slots[i].append({**r, "home_w": r.get("load_w")})
+        covered = 0.0
+        for i, rs in enumerate(slots):
+            if not rs:
+                continue
+            flows = _eflow.integrate(rs + [{**rs[-1], "ts": min(e[i + 1], rs[-1]["ts"] + bucket)}])
+            covered += flows["covered_s"]
+            nodes = _eflow.node_totals(flows)
+            for k in keys:
+                series[k][i] = nodes[k]
+            vals = [r["soc"] for r in rs if r.get("soc") is not None]
+            soc[i] = round(sum(vals) / len(vals), 1) if vals else None
+        out["coverage"] = round(covered / (end - e[0]), 3)            # of the time so far
+        return out
 
     @app.get("/api/solar/forecast")
     def api_solar_forecast(force: bool = Query(False)):
@@ -6852,15 +6967,70 @@ def create_app() -> FastAPI:
         return {"enabled": True, "start": start, "end": end, "count": len(rows), "rows": rows,
                 "hourly": store.poll_hourly(start, end, gateway=gw)}
 
-    @app.get("/api/metrics/info")
-    def api_metrics_info():
+    def _history_info() -> dict:
+        """Local history for Settings (#540): on or off, how long it is kept, which of those
+        an explicit env value locks, the database size and the expected growth."""
+        from .config import RETENTION_CHOICES, env_locked
         s = get_settings()
         store = db.get_store(s)
         out = {"enabled": metrics_active(s),
-               "retention_days": s.metrics_retention_days}
+               "retention_days": s.metrics_retention_days,
+               "retention_choices": list(RETENTION_CHOICES),
+               "locked": {"enabled": env_locked("metrics_enabled"),
+                          "retention_days": env_locked("metrics_retention_days")},
+               # measured from this database, per gateway
+               "growth": store.growth(int(time.time())) if store is not None else {},
+               # full resolution this long, then 5-minute rows (about a tenth as many)
+               "full_resolution_days": db.POLL_RAW_DAYS,
+               "is_ha_addon": environment.IS_HA_ADDON}
         if store is not None:
             out.update(store.info())
         return out
+
+    @app.get("/api/metrics/info")
+    def api_metrics_info():
+        return _history_info()
+
+    @app.put("/api/metrics/settings")
+    async def api_metrics_settings(request: Request):
+        """Turn Local history on or off and choose how long it is kept (#540). Applies now
+        and is kept across restarts; an explicit env value wins (409). Turning it on or off
+        restarts each gateway's poller so it starts or stops recording."""
+        from .config import RETENTION_CHOICES, env_locked
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            raise HTTPException(status_code=422, detail="request body must be JSON")
+        if not isinstance(body, dict) or not set(body) <= {"enabled", "retention_days"}:
+            raise HTTPException(status_code=422, detail="send enabled and/or retention_days")
+        s = get_settings()
+        if "retention_days" in body:
+            days = body["retention_days"]
+            if days not in RETENTION_CHOICES or isinstance(days, bool):
+                raise HTTPException(status_code=422, detail="retention_days must be one of "
+                                    + ", ".join(map(str, RETENTION_CHOICES)) + " (0 = forever)")
+            if env_locked("metrics_retention_days"):
+                raise HTTPException(status_code=409, detail="METRICS_RETENTION_DAYS is set for "
+                                    "this install; change it there")
+            s.metrics_retention_days = days
+            save_override("metrics_retention_days", days)
+            _audit("history_retention", detail=f"{days or 'forever'} days", result="ok", ok=True)
+        if "enabled" in body:
+            on = body["enabled"]
+            if not isinstance(on, bool):
+                raise HTTPException(status_code=422, detail="enabled must be true or false")
+            if env_locked("metrics_enabled"):
+                raise HTTPException(status_code=409, detail="METRICS_ENABLED is set for this "
+                                    "install; change it there")
+            changed = metrics_active(s) != on
+            s.metrics_enabled = on
+            save_override("metrics_enabled", on)
+            _audit("history_enabled", detail="on" if on else "off", result="ok", ok=True)
+            st = _gw_store()
+            if changed and st is not None:
+                for row in st.gateways():
+                    await _reconcile_gateway(row)
+        return _history_info()
 
     # ── Admin: storage insight + backup / restore / export (OPS-ADMIN-*) ──────
     import os as _os
@@ -6916,6 +7086,11 @@ def create_app() -> FastAPI:
             return {"enabled": False}
         stats = store.storage_stats()
         stats["db_human"] = _human_bytes(stats.get("db_bytes"))
+        # the -wal/-shm files are part of what the database takes on disk (#540)
+        for k in ("wal", "shm", "total"):
+            stats[f"{k}_human"] = _human_bytes(stats.get(f"{k}_bytes"))
+        for t in stats.get("tables") or []:
+            t["bytes_human"] = _human_bytes(t.get("bytes")) if t.get("bytes") is not None else None
         stats["retention_days"] = s.metrics_retention_days
         stats["backups"] = _list_backups()
         return stats
