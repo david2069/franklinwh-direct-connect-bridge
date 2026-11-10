@@ -705,7 +705,7 @@ function batteryTab() {
 
     async loadSchedules() {
       try {
-        this.schedules = (await (await fetch('api/battery/record/schedules')).json()).schedules || [];
+        this.schedules = (await (await fetch('api/battery/record/schedules' + this.$store.app.gwQuery())).json()).schedules || [];
       } catch (e) { this.schedMsg = `Couldn't read the schedules: ${e.message}`; }
     },
 
@@ -728,14 +728,15 @@ function batteryTab() {
     },
 
     toggleSchedule(sc) {
-      return this._schedReq(`api/battery/record/schedules/${sc.id}`,
+      return this._schedReq(`api/battery/record/schedules/${sc.id}` + this.$store.app.gwQuery(),
         { method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ enabled: !sc.enabled }) },
         sc.enabled ? 'Schedule off.' : 'Schedule on.');
     },
 
     deleteSchedule(sc) {
-      return this._schedReq(`api/battery/record/schedules/${sc.id}`, { method: 'DELETE' },
+      return this._schedReq(`api/battery/record/schedules/${sc.id}` + this.$store.app.gwQuery(),
+        { method: 'DELETE' },
         'Schedule deleted.');
     },
 

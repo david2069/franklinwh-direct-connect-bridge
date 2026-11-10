@@ -5723,13 +5723,13 @@ def create_app() -> FastAPI:
 
     # Scheduled recordings (owner, 2026-11-11): the scheduler worker starts each one
     # that is due, once a day, on the site's clock.
-    def _bms_schedules_out(store) -> dict:
-        return {"schedules": store.bms_schedules() if store else []}
+    def _bms_schedules_out(store, gateway: str | None) -> dict:
+        return {"schedules": store.bms_schedules(gateway) if store else []}
 
     @app.get("/api/battery/record/schedules")
-    def api_bms_schedules():
-        """Every scheduled recording: start time, minutes, interval, weekdays, unit."""
-        return _bms_schedules_out(db.get_store(get_settings()))
+    def api_bms_schedules(gateway: str = Depends(_gateway_q)):
+        """This gateway's scheduled recordings: start time, minutes, interval, weekdays, unit."""
+        return _bms_schedules_out(db.get_store(get_settings()), gateway)
 
     @app.post("/api/battery/record/schedules")
     async def api_bms_schedule_add(request: Request, gateway: str = Depends(_gateway_q)):
@@ -5760,10 +5760,11 @@ def create_app() -> FastAPI:
                                interval_s=interval, days=days, dev_id=dev)
         _audit("bms_schedule", detail=f"{hh:02d}:{mm:02d} {minutes} min every {interval:g}s",
                result="ok", ok=True)
-        return _bms_schedules_out(store)
+        return _bms_schedules_out(store, gateway)
 
     @app.post("/api/battery/record/schedules/{schedule_id}")
-    async def api_bms_schedule_update(schedule_id: int, request: Request):
+    async def api_bms_schedule_update(schedule_id: int, request: Request,
+                                      gateway: str = Depends(_gateway_q)):
         """Switch a scheduled recording on or off."""
         store = db.get_store(get_settings())
         try:
@@ -5774,14 +5775,14 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=422, detail="enabled must be true or false")
         if store is None or not store.update_bms_schedule(schedule_id, enabled=on):
             raise HTTPException(status_code=404, detail="no such schedule")
-        return _bms_schedules_out(store)
+        return _bms_schedules_out(store, gateway)
 
     @app.delete("/api/battery/record/schedules/{schedule_id}")
-    def api_bms_schedule_delete(schedule_id: int):
+    def api_bms_schedule_delete(schedule_id: int, gateway: str = Depends(_gateway_q)):
         store = db.get_store(get_settings())
         if store is None or not store.delete_bms_schedule(schedule_id):
             raise HTTPException(status_code=404, detail="no such schedule")
-        return _bms_schedules_out(store)
+        return _bms_schedules_out(store, gateway)
 
     @app.get("/api/battery/sessions")
     def api_bms_sessions(limit: int = Query(200, ge=1, le=1000),

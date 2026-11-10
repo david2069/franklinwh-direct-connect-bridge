@@ -161,11 +161,11 @@ def test_schedule_routes(api):
         assert api.post("/api/battery/record/schedules?gateway=gw-s",
                         json={"at": "02:00", "minutes": 30, "interval_s": 2,
                               "days": [0]}).status_code == 422
-        r = api.post(f"/api/battery/record/schedules/{sid}", json={"enabled": False})
+        r = api.post(f"/api/battery/record/schedules/{sid}?gateway=gw-s", json={"enabled": False})
         assert r.json()["schedules"][0]["enabled"] is False
-        assert len(api.get("/api/battery/record/schedules").json()["schedules"]) == 1
-        assert api.delete(f"/api/battery/record/schedules/{sid}").status_code == 200
-        assert api.get("/api/battery/record/schedules").json()["schedules"] == []
+        assert len(api.get("/api/battery/record/schedules?gateway=gw-s").json()["schedules"]) == 1
+        assert api.delete(f"/api/battery/record/schedules/{sid}?gateway=gw-s").status_code == 200
+        assert api.get("/api/battery/record/schedules?gateway=gw-s").json()["schedules"] == []
     finally:
         state.unregister_gateway("gw-s")
 
