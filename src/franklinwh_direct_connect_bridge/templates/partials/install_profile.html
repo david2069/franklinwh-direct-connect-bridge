@@ -32,8 +32,8 @@
             <button type="button" class="w-full flex items-center gap-2 px-2 py-1.5 text-left"
                     :aria-expanded="isOpen(card, f.key)" @click="toggle(card, f.key)">
               <span class="text-xs shrink-0" style="color:var(--text-secondary)" x-text="f.label"></span>
-              <span class="text-sm min-w-0 flex-1 truncate" style="color:var(--text-primary)"
-                    x-text="f.value"></span>
+              <span class="text-sm min-w-0 flex-1" :class="isOpen(card, f.key) || 'truncate'"
+                    style="color:var(--text-primary)" x-text="f.value"></span>
               <span x-show="f.confirmed" class="chip ok" style="font-size:.6rem">Confirmed</span>
               <span x-show="!f.confirmed" class="chip warn" style="font-size:.6rem">To check</span>
               <svg class="w-3.5 h-3.5 shrink-0 transition-transform" :class="isOpen(card, f.key) && 'rotate-180'"
