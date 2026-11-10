@@ -85,6 +85,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   box and the repeated "November 2026" chip. Both use one calendar.
 
 ### Changed
+- **Analytics: the Day views take a start and an end time** (#543; owner: "i really [want] a
+  start n end time"): **From** and **To** beside the date replace the single Time, which only
+  moved the readout. Local, Cloud and Flow show just that stretch, in the view's own slots
+  (a To at or before From runs into the next day); **Whole day** clears them.
+  franklinwh-ha-cloud-analytics 0.1.24 (a range's slots on request).
+- **Dashboard → Energy Flow: where the data comes from has its own line** under the heading
+  ("Cloud · metered by the FranklinWH cloud", "Local · N days of data"), so switching Local |
+  Cloud no longer re-wraps the heading.
 - **Analytics: one top row and the same periods for Local and Cloud** (owner). The time span
   picker sits at the top for both sources with Cloud's periods: Day (5-min), Day (hourly),
   Week, Month, Year and Lifetime. Local now steps by site day, Monday-to-Sunday week, month
