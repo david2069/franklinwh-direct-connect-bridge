@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     # column). Keeping a year locally removes the only reason the gateway's own
     # ~105-day history looked like the longer record.
     metrics_retention_days: int = 365
+    # Battery recordings (owner, 2026-11-11): finished recordings older than this many days,
+    # and the oldest past this many MB, are deleted. Set in Settings next to Local history.
+    bms_keep_days: int = 90
+    bms_max_mb: int = 200
 
     # Home Assistant notifications (non-actionable). In the HA add-on the supervisor
     # provides SUPERVISOR_TOKEN + http://supervisor/core/api automatically; standalone can
@@ -178,7 +182,9 @@ _OVERRIDE_KEYS = {"allow_writes", "log_level", "ha_notify", "ha_url", "ha_token"
                   # an explicit action, never something startup decides.
                   "mqtt_enabled", "mqtt_host", "mqtt_port", "mqtt_username", "mqtt_password",
                   # Local history on/off and how long it is kept, from Settings (#540).
-                  "metrics_enabled", "metrics_retention_days"}
+                  "metrics_enabled", "metrics_retention_days",
+                  # Battery recordings' purge limits (owner, 2026-11-11).
+                  "bms_keep_days", "bms_max_mb"}
 
 #: Settings saved from the UI that an explicit env value (or add-on option, which becomes
 #: one) still beats: the env value is the deployment's decision, so the UI shows it locked.

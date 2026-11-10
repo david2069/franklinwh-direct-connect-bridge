@@ -1449,6 +1449,24 @@
     <p class="text-xs text-slate-500" x-show="history.info.full_resolution_days" x-cloak
        x-text="'Full resolution for the last ' + history.info.full_resolution_days + ' days; older samples are kept as 5-minute averages, with each value\'s min and max.'"></p>
     <p class="text-xs text-slate-500" x-text="historySize()"></p>
+    <!-- Battery recordings' purge limits (owner, 2026-11-11) -->
+    <div class="flex flex-wrap items-center justify-between gap-2 text-sm" data-testid="bms-purge">
+      <span class="text-slate-500">Battery recordings: keep</span>
+      <span class="flex items-center gap-1">
+        <input type="number" min="1" max="3650" class="form-control form-control-sm w-20"
+               aria-label="bms_keep_days" :value="history.info.bms_keep_days"
+               :disabled="history.busy"
+               @change="setHistory({ bms_keep_days: +$event.target.value })">
+        <span class="text-slate-500">days, up to</span>
+        <input type="number" min="1" max="100000" class="form-control form-control-sm w-24"
+               aria-label="bms_max_mb" :value="history.info.bms_max_mb"
+               :disabled="history.busy"
+               @change="setHistory({ bms_max_mb: +$event.target.value })">
+        <span class="text-slate-500">MB</span>
+      </span>
+    </div>
+    <p class="text-xs text-slate-500" x-show="history.info.bms_bytes != null" x-cloak
+       x-text="'Battery tab recordings take about ' + ((history.info.bms_bytes || 0) / 1048576).toFixed(1) + ' MB now. Older ones are deleted first when either limit is passed; one still recording is kept.'"></p>
     <p class="text-xs text-slate-500" x-show="history.info.is_ha_addon" x-cloak>
       In Home Assistant, the recorder also keeps the values this bridge publishes over MQTT, so this is a second copy of them. It stays on because the bridge's own charts read only this one.</p>
     {{ dialog_msg('history.msg') }}
