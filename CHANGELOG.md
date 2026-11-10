@@ -11,7 +11,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
-## [0.5.37] — 2026-11-10
+## [0.5.38] — 2026-11-10
+
+There is no 0.5.37: an image with that number was published by mistake from the wrong
+branch, so the number was skipped.
 
 ### Added
 - **Notifications when the bridge starts, restarts or stops**, under a new trigger
