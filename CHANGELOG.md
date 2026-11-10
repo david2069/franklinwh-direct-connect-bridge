@@ -18,6 +18,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   The questions the gateway can't answer stay open.
 
 ### Fixed
+- **Automation → Battery capacity: Derive from aPower showed "model…" on a real aGate.** It
+  looked for the aPowers in the latest status read, which doesn't carry them; it now uses
+  the aPowers System Setup reads from the gateway (as the Setup card's Batteries row does),
+  so the model and count are filled in, for example aPower X × 1.
 - **Confirm what's installed said the gateway "Couldn't be read"** on every real aGate. It
   looked for the hardware id (1101 SyHdVersion) in the latest status read, which never
   carries it; it now uses the id the poller keeps, as the gateway list does, so it names the

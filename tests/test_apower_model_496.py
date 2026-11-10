@@ -161,6 +161,8 @@ def test_capacity_helper_and_support_info_use_the_read_model(catalog, tmp_path, 
     monkeypatch.setattr(environment, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(config, "_settings", None)
     monkeypatch.setattr(db, "get_store", lambda s: st)
+    from franklinwh_direct_connect_bridge import system_setup as ss
+    monkeypatch.setattr(ss, "_derive", lambda settings, host: {})   # no manifest: firmware fallback
     c = TestClient(app_module.create_app())
     g = state.register_gateway("gw-ap", "10.0.0.1", "House")
     g.last_summary = {"firmware": {"FHP_SN": ["a"], "PE_HW_VER": [2]}}
@@ -174,3 +176,27 @@ def test_capacity_helper_and_support_info_use_the_read_model(catalog, tmp_path, 
     js = (root / "static/js/settings_tab.js").read_text()
     assert "d.apower_model" in js and "g.apower_models" in js
     assert "can't read it" not in (root / "templates/tabs/settings.html").read_text()
+
+
+def test_capacity_helper_reads_the_model_without_the_firmware_block(tmp_path, monkeypatch):
+    """Owner, 2026-11-11: Automation's aPower picker said "model…" on a real aGate. The
+    summary's firmware block carries no FHP_SN / PE_HW_VER; the login manifest does, and
+    System Setup already reads it (the Setup card's Batteries row was right)."""
+    from fastapi.testclient import TestClient
+    from franklinwh_direct_connect_bridge import app as app_module, config, environment, db, state
+    from franklinwh_direct_connect_bridge import system_setup as ss
+    from franklinwh_direct_connect_bridge.db import MetricsStore
+    st = MetricsStore(str(tmp_path / "m.db"))
+    monkeypatch.setattr(environment, "DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(config, "_settings", None)
+    monkeypatch.setattr(db, "get_store", lambda s: st)
+    monkeypatch.setattr(ss, "_derive", lambda settings, host: {
+        "apower_model": "aPower X", "_apower_models": ["aPower X-01-AU"]})
+    c = TestClient(app_module.create_app())
+    g = state.register_gateway("gw-ap2", "10.0.0.1", "House")
+    g.last_summary = {"firmware": {"IBG_VER": "V1", "APP_VER": "V1"}}
+    try:
+        d = c.get("/api/apower-specs?gateway=gw-ap2").json()
+        assert d["apower_model"] == "aPower X" and d["apower_count"] == 1
+    finally:
+        state.unregister_gateway("gw-ap2")

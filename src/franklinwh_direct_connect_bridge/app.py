@@ -6515,15 +6515,24 @@ def create_app() -> FastAPI:
         """aPower model spec table (usable/rated kWh, kW) + the selected gateway's aPower COUNT
         and model, so the UI can derive battery capacity = usable_kwh × count. Count and model
         come from the cached firmware (FHP_SN; PE_HW_VER via the catalogue, #496)."""
-        from . import devicedb as _ddb
+        from . import devicedb as _ddb, system_setup
         count, family = None, None
         try:
             gw = _gw_or_404(gateway)
-            fwb = (gw.last_summary or {}).get("firmware") or {}
-            fhp = fwb.get("FHP_SN")
-            count = len(fhp) if isinstance(fhp, list) else None
-            fams = {(a or {}).get("family") for a in _ddb.apowers(fwb)}
-            family = fams.pop() if len(fams) == 1 else None    # mixed or unknown: not guessed
+            # System Setup reads the aPowers from the login manifest (cached); the summary's
+            # firmware block usually lacks FHP_SN / PE_HW_VER, so it is only the fallback.
+            v = system_setup.values(_gw_store(), get_settings(), gw.id,
+                                    gw.active_host or gw.configured_host)
+            units = v.get("_apower_models")
+            if isinstance(units, list) and units:
+                count = len(units)
+                family = v.get("apower_model") or None
+            else:
+                fwb = (gw.last_summary or {}).get("firmware") or {}
+                fhp = fwb.get("FHP_SN")
+                count = len(fhp) if isinstance(fhp, list) else None
+                fams = {(a or {}).get("family") for a in _ddb.apowers(fwb)}
+                family = fams.pop() if len(fams) == 1 else None    # mixed or unknown: not guessed
         except Exception:  # noqa: BLE001
             count = None
         return {"models": _ddb.apower_specs(), "apower_count": count, "apower_model": family}
