@@ -43,7 +43,34 @@ def _count(summ: dict) -> int | None:
     return len(sn) if isinstance(sn, list) and sn else None
 
 
-def gateway_payload(gw) -> dict:
+#: The summary's today-energy names (client._energy_today_from_power_flow) → the overlay's.
+ENERGY = {"grid_in": "grid_import_kwh", "grid_out": "grid_export_kwh", "solar": "solar_kwh",
+          "home": "home_kwh", "charged": "battery_charge_kwh", "discharged": "battery_discharge_kwh"}
+LEVEL = {"critical": "crit", "warning": "warn"}
+
+
+def _energy(summ: dict) -> dict | None:
+    """Today's kWh, as the Dashboard's Now / Today toggle reads them; None when nothing was read."""
+    e = summ.get("energy_today") or {}
+    out = {v: _n(e.get(k)) for k, v in ENERGY.items()}
+    return out if any(v is not None for v in out.values()) else None
+
+
+def _alarms(store, gateway_id: str) -> list[dict]:
+    """The gateway's open alerts, the set the bridge's own alert list shows (still active,
+    or not yet acknowledged), as the overlay's alarms on the aGate."""
+    rows = store.alerts(open_only=True, gateway_id=gateway_id, limit=50)
+    out = []
+    for r in sorted(rows, key=lambda r: (r.get("code") or "")):
+        text = r.get("title") or r.get("code") or "Alert"
+        if r.get("message"):
+            text += f": {r['message']}"
+        out.append({"target": "agate", "code": r.get("code"),
+                    "level": LEVEL.get(r.get("severity"), "warn"), "text": text})
+    return out
+
+
+def gateway_payload(gw, store=None) -> dict:
     summ = gw.last_summary or {}
     power = summ.get("power") or {}
     ok = bool(summ.get("ok"))
@@ -71,7 +98,7 @@ def gateway_payload(gw) -> dict:
     has_gen = (gen_w or 0) >= W or (_n(power.get("kwh_gen")) or 0) > 0
     circuits = [{"id": int(k) if str(k).isdigit() else k, "name": f"Circuit {k}", "on": bool(v)}
                 for k, v in sorted((summ.get("circuits_on") or {}).items())]
-    return {
+    out = {
         "id": gw.id, "name": name, "kind": "agate", "online": True,
         "mode": power.get("mode"), "inverter": power.get("run_status_desc"),
         "reserve_pct": _reserve(summ),
@@ -82,6 +109,15 @@ def gateway_payload(gw) -> dict:
         "circuits": circuits,
         "generator": {"power_w": gen_w} if has_gen else None,
     }
+    energy = _energy(summ)
+    if energy:
+        out["energy_today"] = energy
+    if store is not None:
+        try:
+            out["alarms"] = _alarms(store, gw.id)
+        except Exception as e:  # noqa: BLE001 - the view is still worth drawing without them
+            log.debug("system view: alerts unread: %s", e)
+    return out
 
 
 # ── the site: its name from the location, and the weather now ─────────────────
@@ -157,7 +193,15 @@ def raw_payload(cfg=None) -> dict:
     gws = state.gateways()
     active = state.default_gateway()
     gws = sorted(gws, key=lambda g: active is None or g.id != active.id)
-    return {"version": 1, "site": site(cfg), "gateways": [gateway_payload(g) for g in gws]}
+    store = None
+    if cfg is not None:
+        try:
+            from . import db
+            store = db.get_store(cfg)
+        except Exception:  # noqa: BLE001 - metrics off or unreadable: no alarms
+            store = None
+    return {"version": 1, "site": site(cfg),
+            "gateways": [gateway_payload(g, store=store) for g in gws]}
 
 
 INTRO = ("Where no reading tells the bridge how your site is built, tell it here. Empty or "

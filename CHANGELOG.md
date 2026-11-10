@@ -24,6 +24,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   deleted, and past **200 MB** the oldest go first; one still recording is never deleted. Both
   limits, and the size the recordings take now, are in Settings → Admin → Local history. The
   purge runs with the hourly history upkeep and when a recording ends.
+- **System view: voltage & frequency, today's energy, power on wires and alarms**
+  (franklinwh-system-view 0.3.0; owner). Each has its own switch under **Options**, off until
+  switched on and remembered in the browser. The bridge now sends today's kWh (the same
+  reading as the Dashboard's Now / Today toggle) and the gateway's open alerts (the alert
+  list's set) as the aGate's alarms; voltage and frequency were already sent but not shown.
 
 ### Changed
 - **Confirm what's installed: one line per fact, opened one at a time** (owner). Each fact
