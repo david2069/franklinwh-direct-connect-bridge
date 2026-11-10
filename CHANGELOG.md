@@ -11,6 +11,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+- **System view: voltage & frequency, today's energy, power on wires and alarms**
+  (franklinwh-system-view 0.3.0; owner). Each has its own switch under **Options**, off until
+  switched on and remembered in the browser. The bridge now sends today's kWh (the same
+  reading as the Dashboard's Now / Today toggle) and the gateway's open alerts (the alert
+  list's set) as the aGate's alarms; voltage and frequency were already sent but not shown.
+
 ## [0.5.39] — 2026-11-11
 
 ### Added

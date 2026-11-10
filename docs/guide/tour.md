@@ -78,6 +78,15 @@ Everything here except the connection chip and the cog can be turned on or off f
 | **Release** | Appears *only while a force dispatch is active*, on every tab, so you can stop it from anywhere. |
 | **Refresh · theme · cog** | Re-poll, light/dark and accent, and the preferences popover. |
 
+**System view** (its top-bar button, or System view in the sidebar) opens a picture of the
+site over the page: grid, aGate,
+home, solar, batteries and circuits, with the power flowing between them. Under **Options**,
+four extras each have their own switch, off until you turn them on and remembered in that
+browser: **Voltage & frequency** under the grid, **Today's energy** in kWh under each
+picture (grid in and out, solar, home, battery charged and discharged), **Power on wires**
+(the kW on each wire, with an arrow the way it goes) and **Alarms** (a count on the aGate for
+its open alerts, the same ones the alert list shows; tap the aGate to list them).
+
 ## The tabs
 
 ![The Dashboard tab with the sidebar listing every tab](../images/tour/05-the-tabs.png)
