@@ -56,6 +56,9 @@ gateway's address with the Modbus TCP Server port (`modbus_port`, or a port type
 gateway added as `address:port` uses that port for Direct Connect only; its Modbus TCP
 Server is still reached on the Modbus port. **Test** connects to it now.
 
+Every change made here, and every Test, writes a line to **Logs** and a row to the Control
+tab's **Audit Trail**, saying whether it worked. None of them needs a restart.
+
 **Settings → Setup** is the same content, reachable for ever: every step reports whether it
 is already satisfied, so a second pass shows current state rather than blank fields.
 

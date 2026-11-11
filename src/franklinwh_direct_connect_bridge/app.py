@@ -2249,6 +2249,9 @@ def create_app() -> FastAPI:
         if current is None:     # the first gateway: it takes what ran on "no gateway" (#379)
             _log_adopted(st.adopt_default_data(gid), gid)
         await _reconcile_gateway(row)
+        _audit("gateway_add", gateway=gid,
+               detail=f"{req.label or ''} ({'mock' if req.is_mock else 'host set'})",
+               result="added", ok=True)
         return _gw_merged(row)
 
     @app.patch("/api/gateways/{gw_id}")
@@ -3891,9 +3894,13 @@ def create_app() -> FastAPI:
         if st is None:
             raise HTTPException(503, "metrics store is disabled")
         try:
-            vals = constants.update(st, req.model_dump(exclude_unset=True, exclude_none=True))
+            sent = req.model_dump(exclude_unset=True, exclude_none=True)
+            vals = constants.update(st, sent)
         except (ValueError, TypeError):
+            _audit("constants_update", detail="not numeric", result="refused", ok=False)
             raise HTTPException(422, "constants must be numeric")
+        _audit("constants_update", detail=" ".join(f"{k}={v}" for k, v in sent.items()),
+               result="saved", ok=True)
         return {"values": vals, "spec": constants.spec()}
 
     def _sched_gateway(gateway_id: str | None) -> GatewayState | None:
@@ -5219,7 +5226,8 @@ def create_app() -> FastAPI:
                 status_code=428,
                 detail=f"'{action}' changes the physical gateway — re-send with confirm=true.")
 
-    _NOT_COMMANDS = frozenset({"worker_failed"})
+    # Setup changes and tests are logged too, but are not commands to the aGate.
+    _NOT_COMMANDS = frozenset({"worker_failed", "modbus_test", "gateway_add", "constants_update"})
 
     def _audit(action: str, *, gateway: str | None = None, detail: str = "",
                result: str = "", ok: bool | None = None) -> None:
@@ -5427,6 +5435,9 @@ def create_app() -> FastAPI:
         st = battery_control.status(base)   # live connect; applies the override via effective_target
         # A deliberate check is the freshest answer there is: show it everywhere (#223).
         _avail_cache[base] = {"ts": time.time(), "val": st}
+        _audit("modbus_test", gateway=gateway, detail=f"port {eff_port}",
+               result=("answered" if st.get("available") else (st.get("reason") or "no answer")),
+               ok=bool(st.get("available")))
         return {"ok": bool(st.get("available")), "target": target,
                 "reason": st.get("reason") or "",
                 "max_charge_w": st.get("max_charge_w"),

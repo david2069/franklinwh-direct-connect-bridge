@@ -16,6 +16,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   answered in the wizard: add an emulator as a gateway by its address and Direct Connect
   port, and turn the Modbus client on or off, set its address and port, and Test it, with
   the results shown in the wizard.
+- **Logged: the default mode saved, a gateway added, a Modbus Test** (owner). Each now
+  writes a line to Logs and a row to the Audit Trail, worked or failed, like the cloud
+  sign-in, publishing and the Modbus settings already did. None needs a restart.
 - **The setup wizard opens on a setup list** (owner). After the first steps, and whenever
   it is reopened on a bridge with a gateway, the wizard lists everything else worth setting
   up, each **Done** or **To do**: the FranklinWH cloud, publishing to Home Assistant, the
