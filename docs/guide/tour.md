@@ -31,6 +31,22 @@ records "skipped", which stops the prompt and disables nothing.
 
 Everything optional — Home Assistant, notifications, tariffs — is deferred and says so.
 
+### The setup list
+
+When those steps are done, the wizard opens on a **setup list**: everything else worth
+setting up, each marked **Done** or **To do**. Reopening the wizard on a bridge that already
+has a gateway (Settings → Setup → **Run the wizard**, or the dashboard banner) goes straight
+to it, and closing it is not declining setup.
+
+- **Essentials**: Connect to FranklinWH Cloud · Publish to Home Assistant (MQTT) · Connect
+  to Home Assistant · Electricity utility, pricing & billing · Default operating mode ·
+  Automatic scheduling.
+- **Advanced**: HA notifications & devices · Security · User & API accounts · System View.
+
+**Set up** answers it in the wizard (the cloud sign-in, publishing, and the default mode),
+then **Done** brings you back to the list. **Open** takes you to the Settings card, tab or
+overlay that already does it. **Start again from the first steps** re-runs the steps above.
+
 **Settings → Setup** is the same content, reachable for ever: every step reports whether it
 is already satisfied, so a second pass shows current state rather than blank fields.
 

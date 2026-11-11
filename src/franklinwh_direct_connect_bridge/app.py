@@ -3487,7 +3487,32 @@ def create_app() -> FastAPI:
         """Where setup stands — every step, whether it is already satisfied, and whether to
         prompt. Safe to call repeatedly; re-running the wizard is always allowed."""
         st = db.get_store(get_settings())
-        return setup_wizard.summary(st, **_wizard_inputs(gateway))
+        out = setup_wizard.summary(st, **_wizard_inputs(gateway))
+        out["tasks"] = setup_wizard.tasks(**_hub_facts(st))
+        return out
+
+    def _hub_facts(st) -> dict:
+        """What is already set up, for the setup list. Each read is guarded: one store
+        problem must not hide the whole list."""
+        from . import constants
+        s = get_settings()
+
+        def ok(fn):
+            try:
+                return bool(fn())
+            except Exception:  # noqa: BLE001
+                return False
+        return {
+            "cloud": bool(s.fwh_cloud_email),
+            "mqtt": bool(s.mqtt_enabled),
+            "home_assistant": ok(lambda: st.ha_instances()),
+            "billing": ok(lambda: st.tariffs()),
+            "default_mode": ok(lambda: constants.mode_chosen(st)),
+            "automation": ok(lambda: st.schedules()),
+            "notifications": ok(lambda: st.notify_devices()),
+            "security": ok(lambda: security.enabled(st)),
+            "accounts": ok(lambda: len(auth.users(st)) > 1 or auth.tokens(st)),
+        }
 
     @app.post("/api/setup/state")
     def api_setup_state(req: SetupStateReq):

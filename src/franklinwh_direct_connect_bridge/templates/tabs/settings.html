@@ -272,7 +272,7 @@
   </div>
 
   </div>
-  <div x-show="sub==='billing'" x-cloak class="space-y-6">
+  <div x-show="sub==='billing'" x-cloak class="space-y-6" id="settings-billing">
   <!-- ══ Sites &amp; Meters ══ -->
   <div class="flex items-center gap-3">
     <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Sites &amp; Meters <a :href="$store.app.guideUrl('multi-gateway/#sites-meters-utilities-and-tariffs')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
@@ -1473,7 +1473,7 @@
   </div>
 
   </div>
-  <div x-show="sub==='admin'" x-cloak class="space-y-6">
+  <div x-show="sub==='admin'" x-cloak class="space-y-6" id="settings-security">
   <!-- ══ Security (#457 phase 1: trusted networks) ══ -->
   <div class="flex items-center gap-3" x-init="loadSecurity().then(() => loadAccounts())">
     <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Security <a :href="$store.app.guideUrl('security/')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
@@ -1506,7 +1506,7 @@
   </div>
 
   <!-- Accounts (#457 phase 3): admins only while Security is on. -->
-  <div class="card space-y-3" data-testid="accounts-section" x-show="security.loaded && securityAdmin()" x-cloak>
+  <div class="card space-y-3" id="settings-accounts" data-testid="accounts-section" x-show="security.loaded && securityAdmin()" x-cloak>
     <div>
       <div class="text-sm" style="color:var(--text-primary)">Accounts</div>
       <div class="text-xs text-slate-500">For signing in on the HTTPS port. admin: everything. user: battery commands and schedules; everything else read-only. viewer: read-only. api: no sign-in or web UI; reads and battery commands with a token.
@@ -1807,7 +1807,7 @@
     <div class="flex-1 border-t border-white/[0.08]"></div>
   </div>
 
-  <div class="card space-y-4">
+  <div class="card space-y-4" id="settings-notifications">
     <!-- Master push toggle -->
     <div class="flex items-center justify-between gap-3">
       <div class="min-w-0">
@@ -1975,7 +1975,7 @@
     </div>
 
     <!-- ── HA Instances ── -->
-    <div class="space-y-2 pt-1">
+    <div class="space-y-2 pt-1" id="settings-ha-instances">
       <div class="flex items-center justify-between">
         <span class="metric-label">HA Instances</span>
         <button @click="openAddInstance()" class="btn btn-secondary btn-sm">+ Add instance</button>
