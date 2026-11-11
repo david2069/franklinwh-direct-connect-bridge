@@ -11,6 +11,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.40] — 2026-11-12
+
 ### Added
 - **System view: voltage & frequency, today's energy, power on wires and alarms**
   (franklinwh-system-view 0.3.0; owner). Each has its own switch under **Options**, off until
