@@ -12,6 +12,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **The setup wizard opens on a setup list** (owner). After the first steps, and whenever
+  it is reopened on a bridge with a gateway, the wizard lists everything else worth setting
+  up, each **Done** or **To do**: the FranklinWH cloud, publishing to Home Assistant, the
+  Home Assistant connection, utility & billing, the default operating mode and scheduling;
+  under Advanced, HA notifications & devices, security, user & API accounts and System
+  View. The cloud sign-in, publishing and the default mode are answered in the wizard; the
+  others open the Settings card, tab or overlay that already does them. `/api/setup`
+  returns the list as `tasks`.
 - **`modbus_port` setting** (owner). The aGate's Modbus TCP Server port is now a setting
   (default 502), like `fwh_port` (default 9000) for Direct Connect. Control → Modbus's
   port override still wins over it.
