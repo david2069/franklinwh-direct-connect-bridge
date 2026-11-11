@@ -79,6 +79,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   device"). With notify actions: On entry messages go once per run, not again on every
   retry of a failed action, and a run Ask skipped sends no On exit message either. Import
   warns about Ask devices it doesn't know.
+- **System view: smart circuits by their aGate names, and Customise one gateway at a time**
+  (owner). Circuits showed "Circuit 1–3" while the Smart Circuits tab showed the names saved
+  on the aGate ("Test Switch"); the System view now uses them, read in the same poll as the
+  on/off state, and Customise diagram still changes them. With several gateways, Customise
+  diagram has a **Gateway** picker instead of listing every gateway (franklinwh-system-view
+  0.3.1).
 - **Analytics: Local's SoC on Lifetime, and "Home load" on both sources** (owner). A SoC
   value with nothing either side of it (Lifetime's one year) is drawn as a dot; it had no
   line to join and didn't show. Local now says Home load, as Cloud does. The Analytics

@@ -1128,6 +1128,9 @@ def summary(s: Settings, host: str | None = None, *, mock: bool = False) -> dict
                 sw = c.smart_circuits() or {}
                 out["circuits_on"] = {n: sw.get(f"Sw{n}Mode") == 1
                                       for n in (1, 2, 3) if f"Sw{n}Mode" in sw}
+                # and the names saved on the aGate (the app's), for the System view
+                out["circuit_names"] = {n: str(sw.get(f"Sw{n}Name") or "").strip()
+                                        for n in out["circuits_on"]}
             except (OSError, TransportError, TimeoutError):
                 pass
             # Grid voltage + frequency, inside the SAME session — one extra read, no
