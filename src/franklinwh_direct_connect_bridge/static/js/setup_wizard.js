@@ -47,6 +47,10 @@ window.setupWizard = function setupWizard() {
     setupState: 'pending',
     fromHub: false,                    // an inline task was opened from the list
     mode: { value: '', options: [], msg: '', busy: false },
+    // A FranklinWH Gateway Emulator, added as a gateway at its address and port.
+    emu: { label: 'Gateway Emulator', host: '', port: window.FWH_BOOT.ports.dc, msg: '', ok: false, busy: false },
+    // Where the Modbus client connects (the active gateway's, or an override).
+    mb: { enabled: true, host: '', port: '', resolved: '', msg: '', ok: false, test: null, busy: false },
 
     // ONE profile per gateway. Solar, generator and backup wiring are per-gateway facts:
     // a site can have an aGate with 6.6 kW of PV and another with none, and showing a
@@ -132,6 +136,8 @@ window.setupWizard = function setupWizard() {
       if (t.inline) {
         this.fromHub = true;
         if (t.inline === 'mode') this.loadModes();
+        if (t.inline === 'modbus') this.loadModbus();
+        if (t.inline === 'emulator') this.emu.msg = '';
         this.go(t.inline);
         return;
       }
@@ -158,6 +164,77 @@ window.setupWizard = function setupWizard() {
           if ((m.options || []).length) this.mode.options = m.options;
         }
       } catch (e) { this.mode.msg = `Could not read the modes: ${e.message || e}`; }
+    },
+
+    // The address the emulator listens on and its Direct Connect port. A port other than
+    // this bridge's Direct Connect port travels in the host (host:port), the form every
+    // read uses.
+    async addEmulator() {
+      const e = this.emu;
+      if (!e.host.trim()) return;
+      e.busy = true; e.msg = ''; e.ok = false;
+      const port = Number(e.port) || window.FWH_BOOT.ports.dc;
+      const host = port === window.FWH_BOOT.ports.dc ? e.host.trim() : `${e.host.trim()}:${port}`;
+      try {
+        const r = await fetch('api/gateways', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ label: e.label || 'Gateway Emulator', host, port, enabled: true }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { e.msg = `Not added: ${d.detail || r.status}`; return; }
+        e.ok = true;
+        e.msg = `Added as "${d.label || e.label}". Pick it in the gateway list at the top.`;
+        const a = (window.Alpine && Alpine.store('app')) || null;
+        if (a && typeof a.loadGateways === 'function') a.loadGateways();
+      } catch (err) { e.msg = `Not added: ${err.message || err}`; }
+      finally { e.busy = false; }
+    },
+
+    _gwq() {
+      const a = (window.Alpine && Alpine.store('app')) || null;
+      return a && a.selectedGateway ? a.gwQuery() : '';
+    },
+
+    async loadModbus() {
+      const m = this.mb;
+      m.msg = ''; m.test = null;
+      try {
+        const d = await (await fetch('api/modbus' + this._gwq())).json();
+        m.enabled = !!d.enabled;
+        m.host = d.host_override || '';
+        m.port = d.port_override || '';
+        m.resolved = d.resolved_host ? `${d.resolved_host}:${d.resolved_port}` : '';
+      } catch (e) { m.msg = `Could not read it: ${e.message || e}`; }
+    },
+
+    async saveModbus(body) {
+      const m = this.mb;
+      m.busy = true; m.msg = ''; m.ok = false; m.test = null;
+      try {
+        const r = await fetch('api/modbus' + this._gwq(), {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body || { host_override: m.host.trim(), port_override: Number(m.port) || 0 }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { m.msg = `Not saved: ${d.detail || r.status}`; return; }
+        m.enabled = !!d.enabled;
+        m.resolved = d.resolved_host ? `${d.resolved_host}:${d.resolved_port}` : '';
+        m.ok = true;
+        m.msg = body ? (d.enabled ? 'Modbus client on.' : 'Modbus client off.')
+                     : (d.auto ? `Saved: the active gateway's address (${m.resolved}).` : `Saved: ${m.resolved}.`);
+        const a = (window.Alpine && Alpine.store('app')) || null;
+        if (a && typeof a.loadModbus === 'function') a.loadModbus();
+      } catch (e) { m.msg = `Not saved: ${e.message || e}`; }
+      finally { m.busy = false; }
+    },
+
+    async testModbus() {
+      const m = this.mb;
+      m.busy = true; m.test = null;
+      try {
+        m.test = await (await fetch('api/modbus/test' + this._gwq(), { method: 'POST' })).json();
+      } catch (e) { m.test = { ok: false, reason: String(e) }; }
+      finally { m.busy = false; }
     },
 
     async saveMode(v) {

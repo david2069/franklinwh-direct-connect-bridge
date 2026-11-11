@@ -302,6 +302,64 @@
             </div>
           </template>
 
+          <!-- A FranklinWH Gateway Emulator, added as a gateway. -->
+          <template x-if="step === 'emulator'">
+            <div class="space-y-3">
+              <p>The emulator's address and its Direct Connect port. It is added as a gateway
+                and read like an aGate; its Modbus TCP Server is set under <strong>Modbus
+                TCP</strong> in the setup list.</p>
+              <div class="flex flex-wrap items-end gap-2">
+                <label class="text-xs">Name
+                  <input type="text" class="form-control form-control-sm block mt-1" style="width:10rem"
+                         x-model="emu.label"></label>
+                <label class="text-xs">Address
+                  <input type="text" class="form-control form-control-sm block mt-1 font-mono" style="width:10rem"
+                         x-model="emu.host" placeholder="192.168.0.50"
+                         @keydown.enter="addEmulator()"></label>
+                <label class="text-xs">Port
+                  <input type="number" min="1" max="65535" class="form-control form-control-sm block mt-1 font-mono"
+                         style="width:6rem" x-model="emu.port"></label>
+                <button class="btn btn-secondary btn-sm" :disabled="emu.busy || !emu.host.trim()"
+                        @click="addEmulator()">Add</button>
+              </div>
+              <p x-show="emu.msg" class="text-xs" :style="emu.ok ? { color: '#86efac' } : { color: '#fca5a5' }"
+                 x-text="emu.msg"></p>
+            </div>
+          </template>
+
+          <!-- Modbus TCP: where the Modbus client connects. -->
+          <template x-if="step === 'modbus'">
+            <div class="space-y-3">
+              <p>This bridge's Modbus client reads battery ratings and sends force dispatch
+                through the Modbus TCP Server of the active gateway: an aGate or an emulator.</p>
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs">Modbus client</span>
+                <button class="btn btn-sm" :class="mb.enabled ? 'btn-primary' : 'btn-secondary'"
+                        :disabled="mb.busy" @click="saveModbus({ enabled: !mb.enabled })"
+                        x-text="mb.enabled ? 'On' : 'Off'"></button>
+                <span class="text-xs" style="color:var(--text-faint)" x-show="mb.resolved">
+                  Connects to <span class="font-mono" x-text="mb.resolved"></span></span>
+              </div>
+              <div class="flex flex-wrap items-end gap-2">
+                <label class="text-xs">Address
+                  <input type="text" class="form-control form-control-sm block mt-1 font-mono" style="width:10rem"
+                         x-model="mb.host" placeholder="the active gateway's"></label>
+                <label class="text-xs">Port
+                  <input type="number" min="1" max="65535" class="form-control form-control-sm block mt-1 font-mono"
+                         style="width:6rem" x-model="mb.port" :placeholder="$store.app.ports.modbus"></label>
+                <button class="btn btn-secondary btn-sm" :disabled="mb.busy" @click="saveModbus()">Save</button>
+                <button class="btn btn-secondary btn-sm" :disabled="mb.busy || !mb.enabled"
+                        @click="testModbus()">Test</button>
+              </div>
+              <p class="text-xs" style="color:var(--text-faint)">Leave the address blank to use the
+                active gateway's. Test connects to the Modbus TCP Server now. Also on the Control tab.</p>
+              <p x-show="mb.msg" class="text-xs" :style="mb.ok ? { color: '#86efac' } : { color: '#fca5a5' }"
+                 x-text="mb.msg"></p>
+              <p x-show="mb.test" class="text-xs" :style="mb.test && mb.test.ok ? { color: '#86efac' } : { color: '#fca5a5' }"
+                 x-text="mb.test ? ((mb.test.ok ? 'Answered' : 'No answer') + (mb.test.target ? ' at ' + mb.test.target : '') + (mb.test.reason ? ' — ' + mb.test.reason : '')) : ''"></p>
+            </div>
+          </template>
+
           <!-- The setup list (owner, 2026-11-11): everything else worth setting up. -->
           <template x-if="step === 'hub'">
             <div class="space-y-3" data-testid="setup-hub">

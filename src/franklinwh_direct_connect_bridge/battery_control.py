@@ -447,15 +447,14 @@ def _override_for(host: str | None) -> tuple | None:
 
 def effective_target(host: str | None) -> tuple:
     """The (host, port) actually used for Modbus: the override for the default gateway when
-    one is set, else the passed gateway host split into (host, port) — so a mock's
-    ``127.0.0.1:<ephemeral>`` is handled and a bare IP keeps the ``modbus_port`` setting. This is the
-    single source of truth for the target."""
-    from .client import _split_hostport
+    one is set, else the gateway's host with the ``modbus_port`` setting. A port in the
+    gateway's host is its Direct Connect port, never its Modbus port: a gateway emulator
+    added as ``host:port`` keeps its Modbus TCP Server on the Modbus port (owner,
+    2026-11-11). This is the single source of truth for the target."""
     ov = _override_for(host)
     if ov:
         return ov
-    h, p = _split_hostport(host or "", default_port())
-    return h, p
+    return _host_part(host), default_port()
 
 
 def _no_connect_writes(c) -> None:
