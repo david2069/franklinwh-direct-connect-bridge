@@ -12,8 +12,10 @@ def test_effective_target_auto_splits_gateway_host():
     _reset()
     # bare IP -> default 502
     assert bc.effective_target("192.168.0.110") == ("192.168.0.110", 502)
-    # a mock's ip:port is split (not resolved as a hostname)
-    assert bc.effective_target("127.0.0.1:44075") == ("127.0.0.1", 44075)
+    # a gateway's host:port is its Direct Connect port, never its Modbus port: the host part
+    # is kept and the Modbus port applies (a gateway emulator on host:port, owner 2026-11-11).
+    # A mock's 127.0.0.1:<ephemeral> never gets here: is_mock_target() stops it first.
+    assert bc.effective_target("127.0.0.1:44075") == ("127.0.0.1", 502)
     # empty host -> ("", 502)
     assert bc.effective_target("") == ("", 502)
 

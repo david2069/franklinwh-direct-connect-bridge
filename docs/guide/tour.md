@@ -41,11 +41,23 @@ to it, and closing it is not declining setup.
 - **Essentials**: Connect to FranklinWH Cloud · Publish to Home Assistant (MQTT) · Connect
   to Home Assistant · Electricity utility, pricing & billing · Default operating mode ·
   Automatic scheduling.
-- **Advanced**: HA notifications & devices · Security · User & API accounts · System View.
+- **Advanced**: HA notifications & devices · Security · User & API accounts · System View ·
+  Connect to FranklinWH Gateway Emulator · Modbus TCP.
 
-**Set up** answers it in the wizard (the cloud sign-in, publishing, and the default mode),
+**Set up** answers it in the wizard (the cloud sign-in, publishing, the default mode, the
+Gateway Emulator and Modbus TCP),
 then **Done** brings you back to the list. **Open** takes you to the Settings card, tab or
 overlay that already does it. **Start again from the first steps** re-runs the steps above.
+
+**Connect to FranklinWH Gateway Emulator** adds an emulator as a gateway: its address and
+Direct Connect port (the bridge's `fwh_port` to start with). **Modbus TCP** turns this
+bridge's Modbus client on or off and sets where it connects: blank uses the active
+gateway's address with the Modbus TCP Server port (`modbus_port`, or a port typed here). A
+gateway added as `address:port` uses that port for Direct Connect only; its Modbus TCP
+Server is still reached on the Modbus port. **Test** connects to it now.
+
+Every change made here, and every Test, writes a line to **Logs** and a row to the Control
+tab's **Audit Trail**, saying whether it worked. None of them needs a restart.
 
 **Settings → Setup** is the same content, reachable for ever: every step reports whether it
 is already satisfied, so a second pass shows current state rather than blank fields.

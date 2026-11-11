@@ -12,6 +12,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Setup list: Connect to FranklinWH Gateway Emulator and Modbus TCP** (owner). Both are
+  answered in the wizard: add an emulator as a gateway by its address and Direct Connect
+  port, and turn the Modbus client on or off, set its address and port, and Test it, with
+  the results shown in the wizard.
+- **Logged: the default mode saved, a gateway added, a Modbus Test** (owner). Each now
+  writes a line to Logs and a row to the Audit Trail, worked or failed, like the cloud
+  sign-in, publishing and the Modbus settings already did. None needs a restart.
 - **The setup wizard opens on a setup list** (owner). After the first steps, and whenever
   it is reopened on a bridge with a gateway, the wizard lists everything else worth setting
   up, each **Done** or **To do**: the FranklinWH cloud, publishing to Home Assistant, the
@@ -53,6 +60,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   until it has been read.
 
 ### Changed
+- **A gateway's port is never its Modbus port** (owner). A gateway added as `address:port`
+  (an emulator, say) uses that port for Direct Connect only; the Modbus client reaches it
+  on the Modbus TCP Server port (`modbus_port`, or the override). Before, it tried the
+  Direct Connect port for Modbus too.
 - **No port typed into the UI** (owner). Every label that named 9000 or 502 (connection
   check, Health, Network, Dashboard, Control, Settings → Gateways, the setup wizard) now
   shows the port from the settings: `fwh_port` for Direct Connect, and for Modbus the
