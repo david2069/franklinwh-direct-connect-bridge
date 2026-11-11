@@ -415,7 +415,20 @@ tick **Ask before continuing**:
 | **Text reply** | At most one of your buttons can take a text reply: the phone asks for text when it is tapped. What you type becomes the answer. |
 | **Wait for a reply (minutes)** | 5 in a new schedule. It must fit the schedule's window: a reply after the window closes could not run the action. A schedule with no duration has a 1-minute window; **Always** has no window and takes any wait. |
 | **If no reply** | **Skip this run** (the default) or **Continue**. |
-| **Send to** | **All enabled devices**, or **Chosen devices**. |
+| **Send to** | **All enabled devices**, or **Chosen devices**. Only Companion apps (`mobile_app`) show the buttons, so only they are asked and listed; a switched-off one shows "(off)", and one removed since it was chosen shows "(removed)" so you can untick it. A removed device never stops the schedule from saving; it is just not asked. |
+
+Under Send to, **Asks:** names the devices the question goes to, and, when the schedule
+also has notify actions, **This schedule also notifies** names them and when they go. The
+schedule list and **Explain** name the asked devices too, and the schedule's log says
+`asked "…" on Phone, Tablet`. Home Assistant doesn't say which phone a tap came from, so
+the log records the answer, not who gave it.
+
+With the schedule's notify actions (section 5), there are no double messages:
+
+- the **On entry** messages go once the answer runs the action, once per run, even when
+  a failed action is retried;
+- a run the answer (or **If no reply: Skip**) skipped sends neither its On entry nor its
+  On exit messages; the log says `On exit actions not sent: Ask skipped this run`.
 
 Here it is filled in by the **Off-grid (user requested) for 30 min — ask** template, sent to the Phone only:
 
