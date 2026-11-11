@@ -126,7 +126,10 @@ def gateway_payload(gw, store=None) -> dict:
     has_solar = (solar_w or 0) >= W or (_n(today) or 0) > 0
     gen_w = _n(power.get("generator_w"))
     has_gen = (gen_w or 0) >= W or (_n(power.get("kwh_gen")) or 0) > 0
-    circuits = [{"id": int(k) if str(k).isdigit() else k, "name": f"Circuit {k}", "on": bool(v)}
+    # each circuit by the name saved on the aGate, as the Smart Circuits tab shows it
+    names = {str(k): str(v).strip() for k, v in (summ.get("circuit_names") or {}).items() if v}
+    circuits = [{"id": int(k) if str(k).isdigit() else k, "name": names.get(str(k)) or f"Circuit {k}",
+                 "on": bool(v)}
                 for k, v in sorted((summ.get("circuits_on") or {}).items())]
     out = {
         "id": gw.id, "name": name, "kind": "agate", "online": True,
