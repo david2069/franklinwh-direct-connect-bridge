@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "franklinwh-direct-connect-bridge"
-version = "0.5.20.55"
+version = "0.5.20.56"
 description = "Home Assistant add-on / REST + MQTT bridge for the FranklinWH aGate local (sendMqtt) API"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -26,7 +26,7 @@ dependencies = [
     "franklinwh-modbus==0.13.0",      # direct-Modbus WSet force control (Battery Control widget)
     # The System view overlay (#428), shared with the Modbus Bridge. Pinned like the other
     # shared packages; move it only after G0 + G1.
-    "franklinwh-system-view==0.2.4",
+    "franklinwh-system-view==0.3.0",
     "franklinwh-ha-notify==0.1.4",    # actionable HA notifications (#374)
     "fastapi>=0.111",
     "uvicorn>=0.29",

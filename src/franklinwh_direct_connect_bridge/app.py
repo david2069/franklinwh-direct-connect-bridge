@@ -1267,6 +1267,9 @@ def create_app() -> FastAPI:
                             target.cloud_mode = data.get("effective_mode") or ""
                             target.cloud_programme = data.get("programme")
                             target.cloud_ts = data["ts"]
+                            if data.get("alarms") is not None:
+                                target.cloud_alarms = data["alarms"]
+                                target.cloud_alarms_ts = data["ts"]
                             # Log ONLY a real state change — not every 5-min poll (matches the
                             # Logs policy: startup, state changes and errors). A transient unknown
                             # (empty mode -> "?") is skipped so it can't flap the log.
