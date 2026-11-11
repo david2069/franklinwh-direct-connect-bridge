@@ -87,6 +87,11 @@ picture (grid in and out, solar, home, battery charged and discharged), **Power 
 (the kW on each wire, with an arrow the way it goes) and **Alarms** (a count on the device;
 tap it to list them).
 
+Smart circuits show the names saved on the aGate (set in the FranklinWH app), as the Smart
+Circuits tab does. **Options → Customise diagram** changes a name or picks a picture for
+the diagram only; with several gateways, its **Gateway** picker shows one gateway at a time,
+starting on the one shown.
+
 **Alarms** come from four places, each shown only once it has been read:
 
 - **The FranklinWH app's active alarms**, when the bridge is signed in to the FranklinWH
