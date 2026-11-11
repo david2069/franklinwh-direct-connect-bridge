@@ -75,6 +75,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   The questions the gateway can't answer stay open.
 
 ### Fixed
+- **Analytics: Local's SoC on Lifetime, and "Home load" on both sources** (owner). A SoC
+  value with nothing either side of it (Lifetime's one year) is drawn as a dot; it had no
+  line to join and didn't show. Local now says Home load, as Cloud does. The Analytics
+  guide says the cloud keeps SoC for the day views only.
 - **Automation → Battery capacity: Derive from aPower showed "model…" on a real aGate.** It
   looked for the aPowers in the latest status read, which doesn't carry them; it now uses
   the aPowers System Setup reads from the gateway (as the Setup card's Batteries row does),
