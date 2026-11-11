@@ -101,11 +101,12 @@ def dispatch_provider(s: Settings) -> dict:
             "auth": st["state"],          # unreachable | unauthenticated | forbidden | ready
             "reason": st["reason"],
         })
+    from . import battery_control
     host = s.modbus_host or s.fwh_host
     lib = _lib_available("franklinwh_modbus")
     candidates.append({
         "kind": "modbus-lib", "via": "library",
-        "source": (f"{host}:502" if host else ""),
+        "source": (f"{host}:{battery_control.default_port()}" if host else ""),
         "available": bool(lib and host),
         "reason": None if (lib and host) else ("library not installed" if not lib else "no aGate host"),
     })

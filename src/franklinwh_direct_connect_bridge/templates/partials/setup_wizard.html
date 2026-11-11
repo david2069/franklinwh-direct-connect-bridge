@@ -113,7 +113,7 @@
           <!-- 4. Find it. Discover does the work; the address is the fallback. -->
           <template x-if="step === 'find'">
             <div class="space-y-3">
-              <p>Scanning your network for aGates on TCP 9000.</p>
+              <p>Scanning your network for aGates on TCP <span x-text="$store.app.ports.dc"></span>.</p>
               <div class="flex flex-wrap items-end gap-2">
                 <label class="text-xs">Subnet(s) to search, comma-separated
                   <input class="form-control form-control-sm block mt-1" style="width:16rem"

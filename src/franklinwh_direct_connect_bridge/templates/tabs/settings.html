@@ -1030,7 +1030,7 @@
                      x-text="gw.identity_error"></div>
               </td>
               <td class="px-3 py-2 font-mono text-xs" style="color:var(--text-secondary)"
-                  x-text="(gw.host || '—') + (gw.port && gw.port !== 9000 ? ':' + gw.port : '')"></td>
+                  x-text="(gw.host || '—') + (gw.port && gw.port !== $store.app.ports.dc ? ':' + gw.port : '')"></td>
               <td class="px-3 py-2 font-mono text-xs hidden sm:table-cell" style="color:var(--text-secondary)"
                   x-text="gw.serial || '—'"></td>
               <td class="px-3 py-2 text-xs hidden sm:table-cell" style="color:var(--text-secondary)"
@@ -1070,7 +1070,7 @@
                    placeholder="subnet (auto)" title="e.g. 192.0.2.0/24 — blank auto-detects">
             <button class="btn btn-secondary btn-sm ml-auto" @click="cancelAddGateway()">Close</button>
           </div>
-          <p class="text-[10px] mt-1" style="color:var(--text-faint)">Sweeps TCP 9000 and confirms each with a Direct-Connect Local-API login. No manual entry needed — finds 0, 1 or more.</p>
+          <p class="text-[10px] mt-1" style="color:var(--text-faint)">Sweeps TCP <span x-text="$store.app.ports.dc"></span> and confirms each with a Direct-Connect Local-API login. No manual entry needed — finds 0, 1 or more.</p>
           <template x-if="scanCands !== null">
             <div class="mt-2 space-y-1">
               <template x-if="!confirmedCands().length">
@@ -1090,7 +1090,7 @@
               </template>
               <!-- Non-aGate hosts that merely had 9000 open — noted, not offered. -->
               <div x-show="unconfirmedCount()" class="text-[10px] pt-0.5" style="color:var(--text-faint)">
-                <span x-text="unconfirmedCount()"></span> other host(s) had TCP 9000 open but didn't answer the aGate login (not FranklinWH). Add one via "manually" below if you're sure.
+                <span x-text="unconfirmedCount()"></span> other host(s) had TCP <span x-text="$store.app.ports.dc"></span> open but didn't answer the aGate login (not FranklinWH). Add one via "manually" below if you're sure.
               </div>
             </div>
           </template>

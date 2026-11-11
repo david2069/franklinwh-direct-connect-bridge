@@ -426,7 +426,7 @@ function settingsTab() {
         const label = c.serial ? ('aGate ' + String(c.serial).slice(-4)) : c.host;
         const r = await fetch('api/gateways', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ label, host: c.host, port: 9000, enabled: true }) });
+          body: JSON.stringify({ label, host: c.host, port: window.FWH_BOOT.ports.dc, enabled: true }) });
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
         c.already_added = true;
         await this.loadGateways();
@@ -451,7 +451,7 @@ function settingsTab() {
       } catch (e) { this.gwErr = e.message; }
     },
 
-    openAddGateway() { this.gwErr = ''; this.scanCands = null; this.gwAdd = { label: '', host: '', port: 9000, enabled: true }; },
+    openAddGateway() { this.gwErr = ''; this.scanCands = null; this.gwAdd = { label: '', host: '', port: window.FWH_BOOT.ports.dc, enabled: true }; },
     cancelAddGateway() { this.gwAdd = null; },
     async saveAddGateway() {
       if (!this.canWrite()) { this.gwErr = 'Enable writes (ALLOW_WRITES) to add a gateway.'; return; }
@@ -466,11 +466,11 @@ function settingsTab() {
     },
 
     // ── Edit Gateway modal ──
-    gwEdit: { open: false, id: '', label: '', host: '', port: 9000, description: '', publish_ha: true, is_mock: false, mock_units: 1, is_default: false, enabled: true, was_enabled: true, meter_id: '' },
+    gwEdit: { open: false, id: '', label: '', host: '', port: window.FWH_BOOT.ports.dc, description: '', publish_ha: true, is_mock: false, mock_units: 1, is_default: false, enabled: true, was_enabled: true, meter_id: '' },
     gwTest: null, gwTesting: false, gwNote: '',
     openEditGateway(gw) {
       this.gwErr = ''; this.gwNote = ''; this.gwTest = null;
-      this.gwEdit = { open: true, id: gw.id, label: gw.label, host: gw.host || '', port: gw.port || 9000,
+      this.gwEdit = { open: true, id: gw.id, label: gw.label, host: gw.host || '', port: gw.port || window.FWH_BOOT.ports.dc,
         description: gw.description || '', publish_ha: !!gw.publish_ha, is_mock: !!gw.is_mock,
         mock_units: gw.mock_units || 1, is_default: !!gw.is_default, enabled: !!gw.enabled,
         was_enabled: !!gw.enabled, meter_id: gw.meter_id || '' };

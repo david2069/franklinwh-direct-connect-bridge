@@ -66,6 +66,7 @@ options:
 schema:
   fwh_host: str
   fwh_port: int?
+  modbus_port: int?
   poll_interval: int
   mqtt_enabled: bool
   mqtt_host: str?

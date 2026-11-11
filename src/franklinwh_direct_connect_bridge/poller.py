@@ -44,8 +44,9 @@ def _record_modbus_leg(store, gw_id: str, summ: dict) -> bool:
     if mb is None or not mb_at or mb_at == _MB_RECORDED.get(gw_id):
         return False
     _MB_RECORDED[gw_id] = mb_at
+    from . import battery_control
     store.record_link_probe(gw_id, "ok" if mb else "failed", leg="modbus_502",
-                            error="" if mb else "port 502 not open", now=mb_at)
+                            error="" if mb else f"port {battery_control.default_port()} not open", now=mb_at)
     return True
 
 

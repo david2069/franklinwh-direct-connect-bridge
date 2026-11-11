@@ -220,7 +220,7 @@ window.setupWizard = function setupWizard() {
     async addManual() {
       if (!this.manual.host) return;
       await this._addGateway({
-        label: 'aGate', host: this.manual.host.trim(), port: 9000, enabled: true });
+        label: 'aGate', host: this.manual.host.trim(), port: window.FWH_BOOT.ports.dc, enabled: true });
     },
 
     // NB the roster field is `is_mock`, not `mock`. Sending the wrong key creates a REAL

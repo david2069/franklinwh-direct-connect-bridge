@@ -1934,11 +1934,11 @@ def create_app() -> FastAPI:
     #: silent no-op is the thing that burned us before — controls painted in the UI
     #: and not grounded in code.
     INTEGRATION_PROTOCOLS = [
-        {"id": "direct_9000", "name": "Direct Connect (TCP 9000)",
+        {"id": "direct_9000", "name": "Direct Connect",
          "detail": "The aGate's own local API — cmdType frames, auto-discovered",
          "implemented": True},
         {"id": "sunspec_502", "name": "SunSpec / Modbus TCP",
-         "detail": "SunSpec models over :502. NB this aGate's map starts at offset 0, "
+         "detail": "SunSpec models over the Modbus TCP Server port. NB this aGate's map starts at offset 0, "
                    "not 40000 — a 4xxxx address must be converted first",
          "implemented": True},
         {"id": "modbus_bridge_rest", "name": "Modbus Bridge REST",
@@ -4797,7 +4797,7 @@ def create_app() -> FastAPI:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             try:
-                s.connect((host.split(":")[0], 9000))
+                s.connect(client._split_hostport(host, get_settings().fwh_port))
                 return s.getsockname()[0]
             finally:
                 s.close()
@@ -7352,6 +7352,15 @@ def create_app() -> FastAPI:
         return get_redoc_html(openapi_url=_base_path(request) + app.openapi_url,
                               title=f"{app.title} - ReDoc")
 
+    def _ui_ports() -> dict:
+        """Direct Connect port (``fwh_port``) and the Modbus TCP Server port of the default
+        gateway (the Control tab's override, else ``modbus_port``)."""
+        from . import battery_control
+        gw = state.default_gateway()
+        host = (gw.active_host or gw.configured_host) if gw else ""
+        modbus = battery_control.effective_target(host)[1] if host else battery_control.default_port()
+        return {"dc": get_settings().fwh_port, "modbus": modbus}
+
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
         resp = _TEMPLATES.TemplateResponse(
@@ -7362,6 +7371,8 @@ def create_app() -> FastAPI:
              # The page opens on the default gateway (#383), and names it from its first
              # request: no call goes out before the gateway list has loaded (#379).
              "boot_gateway": (state.default_gateway().id if state.default_gateway() else ""),
+             # The ports the labels show, from the settings: never typed into the UI.
+             "ports": _ui_ports(),
              "docs_url": BRIDGE_DOCS_URL, "guide_url": BRIDGE_GUIDE_URL})
         # The HTML must never be cached: it carries the hashed asset URLs, so a stale
         # page pins the browser to stale JS no matter how good the asset hashing is.

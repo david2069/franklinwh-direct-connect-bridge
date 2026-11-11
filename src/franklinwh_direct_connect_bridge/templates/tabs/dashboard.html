@@ -577,12 +577,12 @@
       <div class="metric-value"><span x-text="fmt.ms($store.app.summary.latency_ms)"></span><span class="unit">ms</span></div>
     </div>
     <div class="card metric-card">
-      <div class="metric-label">aGate Modbus TCP Server :502</div>
+      <div class="metric-label">aGate Modbus TCP Server :<span x-text="$store.app.ports.modbus"></span></div>
       <div class="mt-1">
         <span class="chip ok" x-show="$store.app.summary.modbus_502 === true">Up</span>
         <span class="chip error" x-show="$store.app.summary.modbus_502 === false">Down</span>
         <span class="chip muted" x-show="$store.app.summary.modbus_502 == null"
-              title="Not measured: the Modbus client of this bridge is off, this is a mock gateway, or it has not connected yet. The bridge does not probe the Modbus TCP Server of the aGate (:502) to show this; it reports its last real connection (a force, release, ratings read or Test). This is not a statement about the gateway — its own SunSpec Modbus setting is on the SunSpec Modbus card.">Not probed</span>
+              :title="'Not measured: the Modbus client of this bridge is off, this is a mock gateway, or it has not connected yet. The bridge does not probe the Modbus TCP Server of the aGate (:' + $store.app.ports.modbus + ') to show this; it reports its last real connection (a force, release, ratings read or Test). This is not a statement about the gateway — its own SunSpec Modbus setting is on the SunSpec Modbus card.'">Not probed</span>
       </div>
       <div class="metric-sub">Ping: <span x-text="$store.app.summary.ping ?? 'n/a'"></span></div>
     </div>
