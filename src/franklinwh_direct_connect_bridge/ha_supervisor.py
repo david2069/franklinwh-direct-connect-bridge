@@ -160,6 +160,14 @@ def host_timezone() -> str | None:
     and a shell guard cannot tell a refusal from "no timezone set" — so it fails silently
     and the container stays on UTC. Their finding, cited; not independently reproduced here.
     """
+    info = supervisor_info()
+    tz = ((info or {}).get("timezone") or "").strip()
+    return tz or None
+
+
+def supervisor_info() -> dict | None:
+    """The Supervisor's ``/info`` data (timezone, ``hassos``, ``homeassistant``,
+    ``operating_system`` …), or None off the add-on or on any failure. Never raises."""
     if not IS_HA_ADDON:
         return None
     token = os.environ.get("SUPERVISOR_TOKEN")
@@ -173,10 +181,9 @@ def host_timezone() -> str | None:
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
             payload = json.loads(resp.read().decode())
-        tz = ((payload.get("data") or {}).get("timezone") or "").strip()
-        return tz or None
-    except Exception as e:  # noqa: BLE001 — a missing timezone must never block startup
-        log.warning("host timezone lookup via Supervisor failed: %s", e)
+        return payload.get("data") or {}
+    except Exception as e:  # noqa: BLE001 — must never block startup
+        log.warning("Supervisor info lookup failed: %s", e)
         return None
 
 

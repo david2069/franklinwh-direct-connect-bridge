@@ -89,6 +89,8 @@ function settingsTab() {
       L.push('FranklinWH Direct Connect Bridge — support info (redacted)');
       L.push(`generated: ${new Date((m.generated_at||0)*1000).toISOString()}`);
       L.push(`version: ${m.software_version}  build: ${m.build}  platform: ${m.platform}`);
+      const i = m.install || {};   // which installation this is (owner, 2026-11-11)
+      if (i.install_id) L.push(`install: ${i.install_id} · ${i.install_type} · ${i.os} ${i.arch} · Python ${i.python}${i.home_assistant ? ' · HA ' + i.home_assistant : ''} · since ${i.install_date || '?'} (${i.first_version || '?'}) · now ${i.bridge_version}`);
       L.push(`installed: ${m.install_date||'?'}  last update: ${m.last_updated?new Date(m.last_updated*1000).toISOString().slice(0,10):'?'}  uptime: ${m.bridge_uptime_s!=null?Math.round(m.bridge_uptime_s)+'s':'?'}`);
       if ((m.updates||[]).length) L.push('updates: ' + m.updates.map(u => u.version+'@'+new Date(u.ts*1000).toISOString().slice(0,10)).join(', '));
       L.push('');

@@ -27,6 +27,7 @@ from franklinwh_direct_connect_api.transport import TransportError
 
 from . import __version__, client, db
 from . import environment
+from . import install_identity
 from . import auth
 from . import security
 from . import tls
@@ -1034,6 +1035,7 @@ def create_app() -> FastAPI:
                                   _idt.datetime.now(_idt.timezone.utc).strftime("%Y-%m-%d"))
         if _cfg_store is not None:
             _cfg_store.record_version(__version__, _asset_version())   # update history
+            install_identity.ensure(_cfg_store, __version__)
     except Exception:  # noqa: BLE001
         pass
 
@@ -6624,6 +6626,7 @@ def create_app() -> FastAPI:
             "build": _asset_version(),
             "platform": environment.RUNTIME,
             "install_date": (store.get_config("install_date") if store else None),
+            "install": install_identity.facts(store, __version__),
             "bridge_uptime_s": round(_t.time() - _STARTED_AT, 1),
             "updates": (store.version_history(limit=20) if store else []),
             "last_updated": (max((u.get("ts") or 0) for u in store.version_history(limit=1)) if store and store.version_history(limit=1) else None),

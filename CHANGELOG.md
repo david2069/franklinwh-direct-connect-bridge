@@ -15,6 +15,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - **`modbus_port` setting** (owner). The aGate's Modbus TCP Server port is now a setting
   (default 502), like `fwh_port` (default 9000) for Direct Connect. Control → Modbus's
   port override still wins over it.
+- **Support info says which installation it is** (owner). A new **install** line: a random
+  install id made on the first start and kept, how the bridge was installed (add-on on
+  HAOS or Supervised, Docker, Podman, pip or a source checkout), the OS and CPU, Python,
+  the Home Assistant version on an add-on, the install date with the first version, and
+  the version now. Also in the JSON under `meta.install`.
 - **Battery → Record on the live trend** (owner). The trend card has a **Record** button that
   keeps the readings on the bridge from that moment: at the live interval (at least every
   5 s), for the aPower shown, until **Stop** or a day has passed. Closing the page doesn't
