@@ -74,3 +74,17 @@ def test_local_offers_line_area_and_bars_like_cloud_and_remembers_it():
     # SoC stays a line on its own % axis whatever the style
     ds = JS[JS.index("const datasets ="):][:900]
     assert "m.pct" in ds and "'bar'" in ds
+
+
+def test_local_and_cloud_name_home_the_same():
+    # Owner, 2026-11-12: the legends differed ("Home" here, "Home load" on Cloud).
+    energy = JS[JS.index("const ANALYTICS_ENERGY"):JS.index("];", JS.index("const ANALYTICS_ENERGY"))]
+    assert "{ key: 'home', label: 'Home load' }" in energy
+    assert "{ key: 'load_w', label: 'Home load' }" in JS
+    assert "{ label: 'Home load', value: kwh(sum('home')) }" in JS
+
+
+def test_a_lone_point_is_drawn():
+    # Owner, 2026-11-12: Lifetime has one bucket, so its SoC line had nothing to join and
+    # didn't show. A value with no neighbour is drawn as a dot.
+    assert "pointRadius: analyticsLonePoint" in JS

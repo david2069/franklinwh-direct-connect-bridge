@@ -108,9 +108,10 @@ summed from the bridge's power samples, as Energy Flow does, so they are an esti
 meter; the caption says what share of the period has samples, and a slot with none is
 left empty. The strip under the chart shows the period's totals. A period older than the
 stored history is shown empty. The chips
-under the chart (SoC, Grid, Solar, Battery, Home, Generator for a day; Cloud's series for
+under the chart (SoC, Grid, Solar, Battery, Home load, Generator for a day; Cloud's series for
 the kWh periods) show or hide each series;
-**Line | Area | Bars** at the top picks the style (SoC, on its own % axis, stays a line);
+**Line | Area | Bars** at the top picks the style (SoC, on its own % axis, stays a line, and a
+value with nothing either side of it, such as Lifetime's one year, is drawn as a dot);
 until one is picked, a day draws lines and the kWh periods bars, as Cloud does. Dates are in
 your browser's own format. Local and Cloud charts are the same height, and Local's kW or kWh axis
 is scaled as Cloud's (zero always shown, four even steps), so the same data looks the same in
@@ -135,6 +136,10 @@ FranklinWH cloud's energy history for the gateway picked in the top bar:
 | Week, Month | each day's kWh, as bars |
 | Year | each month's kWh |
 | Lifetime | each year's kWh |
+
+The cloud keeps SoC only for the day views. Week to Lifetime have no SoC from the cloud, so
+their SoC % axis stays empty (it is kept so the plot lines up with Local's); Local has the
+average SoC for every period.
 
 The cloud's other fields with data for the period are listed under **Details ▾**, after the
 chips; tick one to give it a chip (remembered):

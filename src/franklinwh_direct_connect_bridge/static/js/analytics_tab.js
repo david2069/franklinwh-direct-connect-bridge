@@ -88,9 +88,16 @@ function analyticsYRange(values) {
   return { min: Math.floor(lo / step) * step, max: Math.ceil(hi / step) * step, step };
 }
 
+/** A line's point radius: a value with no value either side (Lifetime's one year, a sample
+ *  between gaps) has nothing to join, so it is drawn as a dot. */
+function analyticsLonePoint(c) {
+  const d = c.dataset.data, i = c.dataIndex, has = (j) => d[j] && d[j].y != null;
+  return has(i) && !has(i - 1) && !has(i + 1) ? 3 : 0;
+}
+
 /** Cloud's series for the kWh periods; charge and export below zero. */
 const ANALYTICS_ENERGY = [
-  { key: 'home', label: 'Home' },
+  { key: 'home', label: 'Home load' },
   { key: 'solar', label: 'Solar' },
   { key: 'battery_discharge', label: 'Battery discharged' },
   { key: 'battery_charge', label: 'Battery charged', below: true },
@@ -118,7 +125,7 @@ const ANALYTICS_PALETTE = [
 ];
 /** The colours dialog's rows; Local's power series share Cloud's. */
 const ANALYTICS_COLOUR_ROWS = [
-  ['home', 'Home'], ['solar', 'Solar'], ['battery_discharge', 'Battery discharged (Local: Battery)'],
+  ['home', 'Home load'], ['solar', 'Solar'], ['battery_discharge', 'Battery discharged (Local: Battery)'],
   ['battery_charge', 'Battery charged'], ['grid_import', 'Grid imported'],
   ['grid_export', 'Grid exported (Local: Grid)'], ['soc', 'SoC'], ['generator', 'Generator'],
 ];
@@ -159,7 +166,7 @@ function analyticsTab() {
       { key: 'grid_w', label: 'Grid' },
       { key: 'solar_w', label: 'Solar' },
       { key: 'battery_w', label: 'Battery' },
-      { key: 'load_w', label: 'Home' },
+      { key: 'load_w', label: 'Home load' },
       { key: 'generator_w', label: 'Generator' },
     ],
     metrics: { soc: true, grid_w: true, solar_w: true, battery_w: true, load_w: true, generator_w: false,
@@ -697,7 +704,7 @@ function analyticsTab() {
           backgroundColor: this.chartType === 'area' ? this.colourOf(m.key) + '26' : this.colourOf(m.key),
           fill: this.chartType === 'area' && !m.pct,
           yAxisID: m.pct ? 'y1' : 'y',
-          borderWidth: 1.5, pointRadius: 0,
+          borderWidth: 1.5, pointRadius: analyticsLonePoint,
           tension: 0,          // straight between samples: smoothing invented shapes (#145)
           spanGaps: false,     // a missing stretch stays a gap
         }));
@@ -821,7 +828,7 @@ function analyticsTab() {
         const kwh = (v) => (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + ' kWh';
         return [
           { label: 'Solar', value: kwh(sum('solar')) },
-          { label: 'Home', value: kwh(sum('home')) },
+          { label: 'Home load', value: kwh(sum('home')) },
           { label: 'Grid imported', value: kwh(sum('grid_import')) },
           { label: 'Grid exported', value: kwh(sum('grid_export')) },
         ];
