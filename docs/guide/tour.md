@@ -189,6 +189,11 @@ bridge on a trusted network.
 **Support info** is worth knowing about before you file a bug: it produces a deliberately
 redacted snapshot — models, firmware, counts, settings, and explicitly no serials, host,
 location or credentials — as text, JSON or CSV, to paste into an issue.
+Its **install** line says which installation sent it: a random install id made on the
+first start, how the bridge was installed (Home Assistant add-on on HAOS or Supervised,
+Docker, Podman, pip, or a source checkout), the OS and CPU, the Python version, the Home
+Assistant version on an add-on, the install date with the version first installed, and
+the version now. The id never leaves the bridge unless you paste the support info.
 
 ### Integration → Mapping, and the Probe
 
