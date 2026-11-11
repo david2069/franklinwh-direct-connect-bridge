@@ -118,6 +118,8 @@
           <span x-show="!(s.action && s.action.kind)">No gateway action</span>
           <span x-show="(s.ha_actions || []).length"
                 x-text="` · ${s.ha_actions.length} HA action(s)`"></span>
+          <span x-show="s.ask && s.ask.question"
+                x-text="` · asks ${askedNames(s.ask) || 'no Companion app'} first`"></span>
         </div>
 
         <!-- Explain (min / medium / full) — plain-language "what will this do?" -->
@@ -740,20 +742,27 @@
                 <input type="radio" value="device" x-model="form.ask.send_to.to"> Chosen devices</label>
             </div>
             <div x-show="form.ask.send_to.to === 'device'" class="pl-1 max-w-sm">
-              {% call device_multiselect("devices.filter(x => x.enabled && form.ask.send_to.ids.includes(x.id)).map(x => x.alias).join(', ')") %}
-              <template x-for="d in devices.filter(x => x.enabled)" :key="d.id">
+              {% call device_multiselect("askDeviceChoices(form.ask.send_to.ids).filter(x => form.ask.send_to.ids.includes(x.id)).map(x => x.label).join(', ')") %}
+              <template x-for="d in askDeviceChoices(form.ask.send_to.ids)" :key="d.id">
                 <label class="flex items-center gap-2 text-xs py-0.5" style="color:var(--text-secondary)">
                   <input type="checkbox" :value="d.id" x-model="form.ask.send_to.ids"
                          data-testid="ask-send-to-device">
-                  <span x-text="d.alias"></span>
-                  <span x-show="(d.service || '').replace(/^notify\./, '').startsWith('mobile_app_')"
-                        class="chip muted" style="font-size:.55rem" title="Shows the buttons">buttons</span>
+                  <span x-text="d.label"></span>
                 </label>
               </template>
-              <span x-show="!devices.some(x => x.enabled)" class="text-xs" style="color:var(--text-secondary)">
-                No enabled notification devices.</span>
+              <span x-show="!askDeviceChoices(form.ask.send_to.ids).length" class="text-xs" style="color:var(--text-secondary)">
+                No Companion app devices. Add one in Settings → Integrations → HA notifications.</span>
               {% endcall %}
             </div>
+            <!-- who is asked, by name, and what else this schedule sends (owner, 2026-11-12) -->
+            <p class="text-xs" style="color:var(--text-secondary)" data-testid="ask-asked-names">
+              Asks: <span x-text="askedNames(form.ask) || 'nobody: no Companion app (mobile_app) is enabled'"
+                          :style="askedNames(form.ask) ? 'color:var(--text-primary)' : 'color:var(--warn, #f59e0b)'"></span>.
+              Only Companion apps show the buttons, so only they are asked.</p>
+            <p class="text-xs" style="color:var(--text-secondary)" x-show="alsoNotified(form)"
+               data-testid="ask-also-notified">
+              This schedule also notifies <span x-text="alsoNotified(form)"></span> (Home Assistant
+              actions below). A No skips this run's On entry and On exit messages too.</p>
           </div>
         </div>
       </div>

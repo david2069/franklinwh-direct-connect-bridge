@@ -3980,10 +3980,12 @@ def create_app() -> FastAPI:
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
 
-    def _valid_spec(spec: dict, saved_as: tuple[str, ...] = ()) -> None:
+    def _valid_spec(spec: dict, saved_as: tuple[str, ...] = (), kept_devices: tuple = ()) -> None:
         """Refuse a schedule that cannot run as written (#198) — never quietly fix it.
         ``saved_as``: errors the saved schedule already had under a newer rule; an edit
-        that leaves them as they were (the enable toggle) is not refused for them."""
+        that leaves them as they were (the enable toggle) is not refused for them.
+        ``kept_devices``: Ask devices the saved schedule already had; one removed since is
+        never a reason to refuse the save (it is just not asked)."""
         errors = [e for e in scheduler.validate_spec(spec) if e not in saved_as]
         # Every schedule names its gateway (#379). There is no "default gateway" to
         # leave it on: the form starts on the active gateway.
@@ -3994,7 +3996,8 @@ def create_app() -> FastAPI:
                 and isinstance(send_to.get("ids"), list):
             known = {d["id"] for d in _ha_store().notify_devices()}
             errors = [*errors, *(f"ask before continuing: unknown device '{i}'"
-                                 for i in send_to["ids"] if isinstance(i, str) and i not in known)]
+                                 for i in send_to["ids"]
+                                 if isinstance(i, str) and i not in known and i not in kept_devices)]
         if not gid:
             errors = [*errors, "choose the gateway it runs on"]
         elif state.get_gateway(gid) is None and (st is None or st.gateway(gid) is None):
@@ -4041,8 +4044,10 @@ def create_app() -> FastAPI:
         spec["action"] = _normalized_action(spec.get("action"))
         # A schedule saved before the Ask wait had to fit its window stays editable as
         # long as the edit leaves that wait and window as they were.
+        prior_send = (prior_spec.get("ask") or {}).get("send_to") or {}
         _valid_spec(spec, saved_as=tuple(scheduler._ask_window_errors(
-            {**req.model_dump(exclude={"name", "enabled"}), **prior_spec})))
+            {**req.model_dump(exclude={"name", "enabled"}), **prior_spec})),
+            kept_devices=tuple(prior_send.get("ids") or ()))
         # `enabled` merges like every other field (#168): left out, the schedule keeps its
         # state. Its model default (True) used to apply and turned a disabled one back on.
         enabled = req.enabled if "enabled" in req.model_fields_set else bool(prior.get("enabled"))

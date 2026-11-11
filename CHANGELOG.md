@@ -70,6 +70,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   The questions the gateway can't answer stay open.
 
 ### Fixed
+- **Ask before continuing names who it asks, and doesn't clash with notify actions**
+  (owner). The editor shows **Asks: Phone, Tablet** (All enabled devices was never
+  resolved to names), the list and Explain name them, and the log says
+  `asked "…" on Phone, Tablet`. Only Companion apps are asked, since only they show the
+  buttons. A chosen device that is switched off or removed stays in the list, marked, so it
+  can be unticked; a removed one no longer stops the schedule from saving ("unknown
+  device"). With notify actions: On entry messages go once per run, not again on every
+  retry of a failed action, and a run Ask skipped sends no On exit message either. Import
+  warns about Ask devices it doesn't know.
 - **System view: smart circuits by their aGate names, and Customise one gateway at a time**
   (owner). Circuits showed "Circuit 1–3" while the Smart Circuits tab showed the names saved
   on the aGate ("Test Switch"); the System view now uses them, read in the same poll as the
