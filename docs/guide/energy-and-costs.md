@@ -106,7 +106,22 @@ month or year with Cloud's series (home, solar, battery discharged and charged, 
 imported and exported; charge and export below zero) plus the average SoC. Local's kWh are
 summed from the bridge's power samples, as Energy Flow does, so they are an estimate, not a
 meter; the caption says what share of the period has samples, and a slot with none is
-left empty. The strip under the chart shows the period's totals. A period older than the
+left empty. The cards under the chart, on Local and Cloud alike, show the period:
+
+- **Solar, Home load, Grid imported, Grid exported, Battery discharged, Battery charged**: the
+  kWh totals.
+- **Self-sufficiency**: the share of the home load that didn't come from the grid
+  (1 − grid imported ÷ home load).
+- **Solar used on site**: the share of solar that wasn't exported (1 − grid exported ÷ solar).
+- **Battery cycles**: kWh discharged ÷ the battery capacity in Settings → Automation
+  constants; not shown while the capacity is unset.
+- **Avg SoC**, where the source has SoC.
+- **History**: how long the shown source has data for, such as "1 year 23 days". Local
+  counts from the bridge's oldest sample; Cloud from the day the aGate was activated on the
+  FranklinWH cloud.
+
+A day of power (Day, 5-min) shows the peak solar, home load and grid import instead of
+the kWh totals. A period older than the
 stored history is shown empty. The chips
 under the chart (SoC, Grid, Solar, Battery, Home load, Generator for a day; Cloud's series for
 the kWh periods) show or hide each series;

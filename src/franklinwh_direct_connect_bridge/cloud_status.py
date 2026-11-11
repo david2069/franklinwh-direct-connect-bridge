@@ -219,6 +219,39 @@ def read_power_control(email: str, password: str, gateway: str | None) -> dict:
     return asyncio.run(_run())
 
 
+#: The day each aGate was activated on the cloud, by serial; it never changes.
+_SINCE: dict[str, str] = {}
+
+
+def read_since(email: str, password: str, gateway: str | None) -> str | None:
+    """The site-local day this aGate was activated on the FranklinWH cloud (the gateway
+    list's ``activeTime``): where the cloud's history starts (owner, 2026-11-12). Asked
+    once per serial. Raises on any failure."""
+    import asyncio
+    import datetime as _dt
+    from zoneinfo import ZoneInfo
+
+    key = (gateway or "").upper()
+    if key in _SINCE:
+        return _SINCE[key]
+
+    async def _run():
+        async with await _client_for(email, password, gateway, "analytics") as cloud:
+            return await cloud.get_home_gateway_list(), str(cloud.gateway)
+
+    res, serial = asyncio.run(_run())
+    gw = next((g for g in (res or {}).get("result") or [] if str(g.get("id")) == serial), None)
+    ms = gw and gw.get("activeTime")
+    if not ms:
+        return None
+    try:
+        tz = ZoneInfo(gw.get("zoneInfo") or "UTC")
+    except Exception:  # noqa: BLE001 — an unknown zone name: UTC
+        tz = _dt.timezone.utc
+    _SINCE[key] = _dt.datetime.fromtimestamp(ms / 1000, tz).date().isoformat()
+    return _SINCE[key]
+
+
 #: Analytics → Cloud (#215): the shared package's cache, made on first use so the optional
 #: franklinwh-cloud library is only imported when the cloud is.
 _ENERGY_CACHE = None

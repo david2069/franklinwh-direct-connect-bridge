@@ -42,4 +42,4 @@ def test_local_cloud_and_flow_show_the_stretch():
 
 
 def test_the_cloud_extra_takes_a_ranges_slots():
-    assert "franklinwh-ha-cloud-analytics==0.1.25" in (ROOT / "pyproject.toml").read_text()
+    assert "franklinwh-ha-cloud-analytics==0.1.26" in (ROOT / "pyproject.toml").read_text()

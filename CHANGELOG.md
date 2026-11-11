@@ -12,6 +12,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Analytics: more cards, on Local and Cloud, and how much history there is** (owner).
+  Under the chart: battery discharged and charged, self-sufficiency, solar used on site,
+  battery cycles (with the capacity set) and **History**, how long the shown source has data
+  for ("1 year 23 days": the bridge's oldest sample, or the aGate's activation on the cloud).
+  Cloud now has the cards too, from the same read as its chart (franklinwh-ha-cloud-analytics
+  0.1.26, `onData`).
 - **Setup list: Connect to FranklinWH Gateway Emulator and Modbus TCP** (owner). Both are
   answered in the wizard: add an emulator as a gateway by its address and Direct Connect
   port, and turn the Modbus client on or off, set its address and port, and Test it, with
