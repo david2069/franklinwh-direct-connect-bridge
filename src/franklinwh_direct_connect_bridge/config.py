@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     # (e.g. "10.0.0.5=Home,10.0.0.6=Shed"). Wins over fwh_host when set.
     fwh_hosts: str = ""
     fwh_port: int = 9000
+    modbus_port: int = 502               # the aGate's Modbus TCP Server (Control tab can override)
     fwh_timeout: float = 20.0
     fwh_retries: int = 2
     fwh_subnet: str = ""                 # for re-discovery; blank = derive host's /24

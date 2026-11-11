@@ -12,6 +12,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **`modbus_port` setting** (owner). The aGate's Modbus TCP Server port is now a setting
+  (default 502), like `fwh_port` (default 9000) for Direct Connect. Control → Modbus's
+  port override still wins over it.
 - **Battery → Record on the live trend** (owner). The trend card has a **Record** button that
   keeps the readings on the bridge from that moment: at the live interval (at least every
   5 s), for the aPower shown, until **Stop** or a day has passed. Closing the page doesn't
@@ -37,6 +40,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   until it has been read.
 
 ### Changed
+- **No port typed into the UI** (owner). Every label that named 9000 or 502 (connection
+  check, Health, Network, Dashboard, Control, Settings → Gateways, the setup wizard) now
+  shows the port from the settings: `fwh_port` for Direct Connect, and for Modbus the
+  Control tab's override or `modbus_port`. Add Gateway starts on `fwh_port`. Link names,
+  notifications and the capability list say the port the same way.
 - **Confirm what's installed: one line per fact, opened one at a time** (owner). Each fact
   the gateway reports is a single line (label, value, **Confirmed** or **To check**); tap it
   to see where it was read from and its **Confirm** button. Opening one closes the other.

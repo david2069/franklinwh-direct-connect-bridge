@@ -16,6 +16,12 @@ import urllib.request
 
 from .config import Settings
 
+
+def _mb_port() -> int:
+    from .battery_control import default_port
+    return default_port()
+
+
 log = logging.getLogger("franklinwh_direct_connect_bridge.notify")
 
 #: The outbox record for a delivery not made because ha_notify is off (#271; the wording
@@ -141,6 +147,6 @@ def transitions(prev: dict | None, cur: dict, gateway: str = "") -> list[tuple[s
                     else f"aGate is UNREACHABLE{tag} (check network / WiFi / power)."))
     if prev.get("modbus_502") != cur.get("modbus_502"):
         out.append(("FranklinWH Modbus",
-                    f"Modbus :502 is back up{tag}." if cur.get("modbus_502")
-                    else f"Modbus :502 is DOWN{tag}."))
+                    f"Modbus :{_mb_port()} is back up{tag}." if cur.get("modbus_502")
+                    else f"Modbus :{_mb_port()} is DOWN{tag}."))
     return out

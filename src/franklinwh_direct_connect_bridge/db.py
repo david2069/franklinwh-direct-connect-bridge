@@ -1366,8 +1366,8 @@ class MetricsStore:
     #: poll cycle, so recording them would mean inventing a probe rather than writing
     #: down a measurement already taken.
     LINK_LEGS: dict[str, str] = {
-        "local_9000": "Direct Connect API — bridge to aGate, TCP :9000",
-        "modbus_502": "Modbus TCP — bridge to aGate, TCP :502",
+        "local_9000": "Direct Connect API — bridge to aGate",
+        "modbus_502": "Modbus TCP — bridge to aGate's Modbus TCP Server",
         "icmp": "ICMP ping — bridge to aGate",
     }
 

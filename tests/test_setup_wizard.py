@@ -235,7 +235,7 @@ def test_mock_creation_uses_the_roster_field_name():
 def test_real_gateway_creation_sends_host_and_port():
     """A gateway row with no port never connects; the Discover path in Settings sends both."""
     js = _wizard_js()
-    assert "port: 9000" in js
+    assert "port: window.FWH_BOOT.ports.dc" in js     # from the settings, never typed
     assert js.count("enabled: true") >= 2
 
 

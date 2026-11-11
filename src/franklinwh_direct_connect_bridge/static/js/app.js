@@ -693,7 +693,7 @@ document.addEventListener('alpine:init', () => {
       checks: {              // per-component probe results for the modal
         web:    { label: 'Bridge API',   state: 'ok', detail: '' },
         poller: { label: 'Device poller', state: 'ok', detail: '' },
-        agate:  { label: 'aGate :9000',  state: 'ok', detail: '' },
+        agate:  { label: 'aGate :' + window.FWH_BOOT.ports.dc,  state: 'ok', detail: '' },
       },
     },
     _retryTimer: null,
@@ -1101,7 +1101,7 @@ document.addEventListener('alpine:init', () => {
       // The bridge answered, so distinguish "bridge up, device down" from a full outage.
       const deviceOk = summary && summary.ok === true;
       this.conn.checks.agate = {
-        label: 'aGate :9000',
+        label: 'aGate :' + this.ports.dc,
         state: deviceOk ? 'ok' : 'fail',
         detail: deviceOk ? `${summary.latency_ms ?? '?'} ms`
                          : (summary && summary.error) || 'not responding',
@@ -1151,7 +1151,7 @@ document.addEventListener('alpine:init', () => {
       // The bridge itself is unreachable, so nothing behind it can be assessed.
       this.conn.checks.web = { label: 'Bridge API', state: 'fail', detail: this.conn.lastError };
       this.conn.checks.poller = { label: 'Device poller', state: 'unknown', detail: 'waiting…' };
-      this.conn.checks.agate = { label: 'aGate :9000', state: 'unknown', detail: 'waiting…' };
+      this.conn.checks.agate = { label: 'aGate :' + this.ports.dc, state: 'unknown', detail: 'waiting…' };
       this._scheduleRetry();
     },
 
@@ -1322,8 +1322,8 @@ document.addEventListener('alpine:init', () => {
     capState(kind) {
       if (kind === 'modbus') {
         if (!this.modbusEnabled) return { ok: false, hint: 'Enable the Modbus path on the Control tab' };
-        if (!this.modbusReachable) return { ok: false, hint: 'Modbus port 502 is not reachable on this gateway' };
-        return { ok: true, hint: 'Uses the Modbus (SunSpec 502) path' };
+        if (!this.modbusReachable) return { ok: false, hint: `Modbus port ${this.ports.modbus} is not reachable on this gateway` };
+        return { ok: true, hint: `Uses the Modbus (SunSpec ${this.ports.modbus}) path` };
       }
       if (!this.cloudConfigured) return { ok: false, hint: 'Add FranklinWH Cloud credentials in Settings' };
       if (!this.cloudAvailable) return { ok: false, hint: 'FranklinWH Cloud sign-in is unavailable (check credentials)' };
@@ -1734,8 +1734,12 @@ document.addEventListener('alpine:init', () => {
       this.loadControlLog();
     },
 
-    // ── Modbus (SunSpec 502) master switch ──────────────────────────────────
-    modbus: { enabled: true, available: true, reason: '', resolved_host: null, resolved_port: 502,
+    // The Direct Connect and Modbus TCP Server ports, from the settings (never typed into
+    // the UI). ports.modbus follows the selected gateway's resolved port once read.
+    ports: { ...window.FWH_BOOT.ports },
+
+    // ── Modbus master switch ─────────────────────────────────────────────────
+    modbus: { enabled: true, available: true, reason: '', resolved_host: null, resolved_port: window.FWH_BOOT.ports.modbus,
              unit_id: null, host_override: '', port_override: null, auto: true },
     modbusTest: null, modbusTesting: false,
     async loadModbus() {
@@ -1743,9 +1747,10 @@ document.addEventListener('alpine:init', () => {
         if (!this.selectedGateway) return;
         const d = await (await fetch('api/modbus' + this.gwQuery())).json();
         this.modbus = { enabled: !!d.enabled, available: !!d.available, reason: d.reason || '',
-                        resolved_host: d.resolved_host || null, resolved_port: d.resolved_port || 502,
+                        resolved_host: d.resolved_host || null, resolved_port: d.resolved_port || this.ports.modbus,
                         unit_id: d.unit_id, host_override: d.host_override || '',
                         port_override: d.port_override || null, auto: !!d.auto };
+        this.ports.modbus = this.modbus.resolved_port;
       } catch (e) { /* leave defaults */ }
     },
     async toggleModbus() {
@@ -1772,9 +1777,10 @@ document.addEventListener('alpine:init', () => {
         });
         const d = await r.json();
         Object.assign(this.modbus, {
-          resolved_host: d.resolved_host || null, resolved_port: d.resolved_port || 502,
+          resolved_host: d.resolved_host || null, resolved_port: d.resolved_port || this.ports.modbus,
           host_override: d.host_override || '', port_override: d.port_override || null,
           auto: !!d.auto });
+        this.ports.modbus = this.modbus.resolved_port;
         this.modbusTest = null;
         this.toast(d.auto ? 'Modbus host: auto (from gateway)' : `Modbus host set: ${d.resolved_host}:${d.resolved_port}`, 'info');
         this.loadControlLog();
