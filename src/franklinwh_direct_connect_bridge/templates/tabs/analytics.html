@@ -209,17 +209,19 @@
     </div>
   </div>
 
+</div><!-- /local -->
+
   <!-- Stats strip -->
-  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  <!-- the period's totals from whichever source is shown, and how much history it holds (owner, 2026-11-12) -->
+  <div x-show="chartType !== 'flow'" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
     <template x-for="s in stats" :key="s.label">
       <div class="card" style="padding:14px 16px">
         <div class="text-[10px] uppercase tracking-widest text-slate-500" x-text="s.label"></div>
         <div class="text-lg font-semibold tabular-nums" style="color:var(--text-primary)" x-text="s.value"></div>
+        <div x-show="s.note" class="text-[11px] text-slate-500" x-text="s.note"></div>
       </div>
     </template>
   </div>
-
-</div>
 
   <!-- Colours (owner, 2026-11-10): one colour per series for Local and Cloud, remembered in
        this browser; presets for a dark or light background, and the defaults. -->

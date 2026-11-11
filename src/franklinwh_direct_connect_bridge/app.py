@@ -5640,6 +5640,26 @@ def create_app() -> FastAPI:
             log.warning("cloud call failed: energy history — %s: %s", type(e).__name__, e)
             return {"error": f"The FranklinWH cloud didn't answer: {type(e).__name__}: {e}"}
 
+    @app.get("/api/analytics/cloud/since")
+    def api_analytics_cloud_since(gateway: str = Depends(_gateway_q)):
+        """The day the viewed aGate was activated on the FranklinWH cloud, where the
+        cloud's history starts (owner, 2026-11-12): ``{"since": "YYYY-MM-DD"}``, or
+        ``{"error": ...}`` as the Cloud view shows it. Read-only."""
+        gw = _gw_or_404(gateway)
+        s = get_settings()
+        if not (s.fwh_cloud_email and s.fwh_cloud_password):
+            return {"error": "No FranklinWH cloud account."}
+        refused = _cloud_target_refusal(gw)
+        if refused:
+            return {"error": refused}
+        try:
+            from . import cloud_status
+            return {"since": cloud_status.read_since(s.fwh_cloud_email, s.fwh_cloud_password,
+                                                     gw.serial)}
+        except Exception as e:  # noqa: BLE001 — shown in the card, never a 500
+            log.warning("cloud call failed: activation date — %s: %s", type(e).__name__, e)
+            return {"error": f"The FranklinWH cloud didn't answer: {type(e).__name__}"}
+
     @app.post("/api/cloud/reserve")
     def api_cloud_reserve(req: ReserveReq, gateway: str = Depends(_gateway_q)):
         """Set a mode's reserve SoC via the CLOUD provider (HYBRID Phase 3) — the local API

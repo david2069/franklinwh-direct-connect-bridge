@@ -88,6 +88,15 @@ function analyticsYRange(values) {
   return { min: Math.floor(lo / step) * step, max: Math.ceil(hi / step) * step, step };
 }
 
+/** How long a history is, as people say it: "1 year 23 days", "5 days", "today". */
+function analyticsSpan(fromTs, toTs) {
+  const days = Math.floor((toTs - fromTs) / 86400);
+  if (days < 1) return 'today';
+  const y = Math.floor(days / 365), d = days % 365;
+  const years = y ? y + ' year' + (y === 1 ? '' : 's') : '', ds = d ? d + ' day' + (d === 1 ? '' : 's') : '';
+  return [years, ds].filter(Boolean).join(' ');
+}
+
 /** A line's point radius: a value with no value either side (Lifetime's one year, a sample
  *  between gaps) has nothing to join, so it is drawn as a dot. */
 function analyticsLonePoint(c) {
@@ -175,6 +184,9 @@ function analyticsTab() {
     period: (() => { try { const p = localStorage.getItem('fwh-analytics-period'); return ANALYTICS_PERIODS.some(x => x[0] === p) ? p : 'day5'; } catch (e) { return 'day5'; } })(),
     day: null,            // the site day the shown period holds ('YYYY-MM-DD'); null = today
     firstTs: null,        // the oldest stored sample for this gateway (epoch s)
+    cloudData: null,      // the Cloud panel's last payload (onData), for the cards
+    cloudSince: null,     // the day the aGate was activated on the cloud ('YYYY-MM-DD')
+    capacityKwh: null,    // Settings → constants' battery capacity, for the cycles card
     // line | area | bars | flow, remembered in this browser like the Cloud view's style
     // unset: lines for Day (5-min), bars for the kWh periods, as the Cloud view does
     style: (() => { try { const t = localStorage.getItem('fwh-analytics-style'); return ['line', 'area', 'bars', 'flow'].includes(t) ? t : null; } catch (e) { return null; } })(),
@@ -224,11 +236,12 @@ function analyticsTab() {
       // site's midnights: read the period again.
       this.$watch('$store.app.siteTzOffsetMin', () => { if (this.win && this.source === 'local') this.load(); });
       this.$watch('$store.app.selectedGateway', () => {
+        this.cloudSince = null; this.cloudData = null;      // another aGate: its own history
         if (this.$store.app.activeTab !== 'analytics') return;
         if (this.chartType === 'flow') this.loadFlow();
         else if (this.source === 'cloud') { if (this._cloud) this._cloud.reload(); } else this.load();
       });
-      lazyTab(this, 'analytics', () => this.load());
+      lazyTab(this, 'analytics', () => { this.load(); this.loadCardFacts(); });
       // Local | Cloud picked on the Dashboard's Energy Flow card: the same choice here, read
       // when this tab is next shown; until one is picked, Cloud when signed in, as the card
       window.addEventListener('fwh-source', (e) => {
@@ -300,6 +313,7 @@ function analyticsTab() {
         navControl: false, date: this.startDay,           // and the date picker
         refreshControl: false, statusBelow: true,         // Refresh at the top; the note under the chart, as Local's
         socAxis: 'always',                                // the SoC axis every period, so the plots line up
+        onData: (p) => { this.cloudData = p; },           // the cards under the chart, from the same read
         ...this.cloudRange,                               // Custom's From-To, or a Day view's From / To
       });
       this.applyCloudColours();
@@ -589,6 +603,7 @@ function analyticsTab() {
       if (this.chartType === 'flow') return this.loadFlow();
       // Cloud: the shared panel reads the period and day picked here, in one read
       if (this.source === 'cloud') {
+        if (!this.cloudSince) this.loadCardFacts();
         if (!this._cloud) this.mountCloud();
         else if (this.period === 'custom') { this.range = this.rangeOrDefault; this._cloud.setRange(this.range.from, this.range.to); }
         else if (this.dayRange) { const r = this.dayRange; this._cloud.setRange(r.from, r.to, this.period === 'dayhour' ? 'hour' : '5min'); }
@@ -820,30 +835,81 @@ function analyticsTab() {
       return txt;
     },
 
-    get stats() {
-      const s = this.series;
-      if (!s.length) return [];
-      if (this.energyMode) {
-        const sum = (k) => s.reduce((t, p) => t + (p[k] || 0), 0);
-        const kwh = (v) => (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + ' kWh';
-        return [
-          { label: 'Solar', value: kwh(sum('solar')) },
-          { label: 'Home load', value: kwh(sum('home')) },
-          { label: 'Grid imported', value: kwh(sum('grid_import')) },
-          { label: 'Grid exported', value: kwh(sum('grid_export')) },
-        ];
+    /** The battery capacity (for cycles) and, on Cloud, where the cloud's history starts. */
+    async loadCardFacts() {
+      try { const c = (await (await fetch('api/constants')).json()).values || {};
+            this.capacityKwh = c.battery_capacity_kwh > 0 ? c.battery_capacity_kwh : null; } catch (e) { /* no cycles card */ }
+      if (this.source !== 'cloud' || this.cloudSince) return;
+      try { this.cloudSince = (await (await fetch('api/analytics/cloud/since' + this.$store.app.gwQuery())).json()).since || null; }
+      catch (e) { /* no history card */ }
+    },
+
+    /** The history card: how long the shown source has data for (owner, 2026-11-12). */
+    get historyCard() {
+      const now = Date.now() / 1000;
+      if (this.source === 'cloud') {
+        if (!this.cloudSince) return null;
+        const t = this.fromSiteLocal(this.cloudSince + 'T00:00');     // the site's midnight, not the browser's
+        return { label: 'History', value: analyticsSpan(t, now), note: 'cloud, since ' + this.dayLabel(t, true) };
       }
-      const nums = (k) => s.map(p => p[k]).filter(v => typeof v === 'number');
-      const avg = (a) => a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : null;
-      const socs = nums('soc');
-      const grid = nums('grid_w');
-      const fmtW = (v) => v == null ? '–' : (Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + ' kW' : v + ' W');
-      return [
-        { label: 'Avg SoC', value: socs.length ? Math.round(avg(socs)) + '%' : '–' },
-        { label: 'Peak solar', value: fmtW(Math.max(0, ...nums('solar_w'))) },
-        { label: 'Peak home', value: fmtW(Math.max(0, ...nums('load_w'))) },
-        { label: 'Peak grid import', value: fmtW(Math.max(0, ...grid)) },
-      ];
+      return this.firstTs ? { label: 'History', value: analyticsSpan(this.firstTs, now),
+                              note: 'this bridge, since ' + this.dayLabel(this.firstTs, true) } : null;
+    },
+
+    /** The period's totals as cards, from whichever source is shown: kWh periods get the
+     *  energy balance and what it means; a day of power gets the peaks. */
+    get stats() {
+      const kwh = (v) => (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + ' kWh';
+      const pct = (v) => v == null || !isFinite(v) ? '–' : Math.round(Math.max(0, Math.min(1, v)) * 100) + '%';
+      let tot = null, socs = [], peaks = null;
+      if (this.source === 'cloud') {
+        const d = this.cloudData;
+        if (!d || d.empty) return [];
+        const vals = (k) => ((d.series || []).find(x => x.key === k) || {}).values || [];
+        const num = (k) => vals(k).filter(v => typeof v === 'number');
+        socs = num('soc');
+        if (d.unit === 'kWh') {
+          const sum = (k) => num(k).reduce((a, v) => a + Math.abs(v), 0);
+          tot = { solar: sum('solar'), home: sum('home'), grid_import: sum('grid_import'), grid_export: sum('grid_export'),
+                  battery_discharge: sum('battery_discharge'), battery_charge: sum('battery_charge') };
+        } else {
+          const mx = (k) => Math.max(0, ...num(k)) * 1000;   // kW → W
+          peaks = { solar: mx('solar'), home: mx('home'), grid: mx('grid') };
+        }
+      } else {
+        const s = this.series;
+        if (!s.length) return [];
+        const nums = (k) => s.map(p => p[k]).filter(v => typeof v === 'number');
+        if (this.energyMode) {
+          const sum = (k) => s.reduce((t, p) => t + Math.abs(p[k] || 0), 0);
+          tot = { solar: sum('solar'), home: sum('home'), grid_import: sum('grid_import'), grid_export: sum('grid_export'),
+                  battery_discharge: sum('battery_discharge'), battery_charge: sum('battery_charge') };
+        } else {
+          peaks = { solar: Math.max(0, ...nums('solar_w')), home: Math.max(0, ...nums('load_w')), grid: Math.max(0, ...nums('grid_w')) };
+        }
+        socs = nums('soc');
+      }
+      const avgSoc = socs.length ? Math.round(socs.reduce((x, y) => x + y, 0) / socs.length) + '%' : null;
+      const out = [];
+      if (tot) {
+        out.push({ label: 'Solar', value: kwh(tot.solar) }, { label: 'Home load', value: kwh(tot.home) },
+                 { label: 'Grid imported', value: kwh(tot.grid_import) }, { label: 'Grid exported', value: kwh(tot.grid_export) },
+                 { label: 'Battery discharged', value: kwh(tot.battery_discharge) },
+                 { label: 'Battery charged', value: kwh(tot.battery_charge) },
+                 { label: 'Self-sufficiency', value: tot.home ? pct(1 - tot.grid_import / tot.home) : '–',
+                   note: 'home load not from the grid' },
+                 { label: 'Solar used on site', value: tot.solar ? pct(1 - tot.grid_export / tot.solar) : '–',
+                   note: 'solar not exported' });
+        if (this.capacityKwh) out.push({ label: 'Battery cycles', value: (tot.battery_discharge / this.capacityKwh).toFixed(1),
+                                         note: 'discharged ÷ ' + this.capacityKwh + ' kWh' });
+      } else if (peaks) {
+        const fmtW = (v) => Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + ' kW' : Math.round(v) + ' W';
+        out.push({ label: 'Peak solar', value: fmtW(peaks.solar) }, { label: 'Peak home', value: fmtW(peaks.home) },
+                 { label: 'Peak grid import', value: fmtW(peaks.grid) });
+      }
+      if (avgSoc) out.push({ label: 'Avg SoC', value: avgSoc });
+      if (this.historyCard) out.push(this.historyCard);
+      return out;
     },
 
     /** Flow (#543): the period's arcs, from this bridge's samples (an estimate) or from the

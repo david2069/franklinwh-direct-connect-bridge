@@ -81,7 +81,7 @@ def test_local_and_cloud_name_home_the_same():
     energy = JS[JS.index("const ANALYTICS_ENERGY"):JS.index("];", JS.index("const ANALYTICS_ENERGY"))]
     assert "{ key: 'home', label: 'Home load' }" in energy
     assert "{ key: 'load_w', label: 'Home load' }" in JS
-    assert "{ label: 'Home load', value: kwh(sum('home')) }" in JS
+    assert "{ label: 'Home load', value: kwh(tot.home) }" in JS
 
 
 def test_a_lone_point_is_drawn():

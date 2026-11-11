@@ -60,4 +60,4 @@ def test_the_detailed_metrics_have_colours_too():
     assert "'--ca-' + k" in body and "removeProperty" in body
     assert "detailRows" in HTML and "Detailed metrics" in HTML
     assert "clearDetailColour(" in HTML
-    assert "franklinwh-ha-cloud-analytics==0.1.25" in (SRC.parents[1] / "pyproject.toml").read_text()
+    assert "franklinwh-ha-cloud-analytics==0.1.26" in (SRC.parents[1] / "pyproject.toml").read_text()
