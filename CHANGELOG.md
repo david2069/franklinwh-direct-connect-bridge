@@ -63,6 +63,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   purge runs with the hourly history upkeep and when a recording ends.
 
 ### Changed
+- **Customise: drag to reorder the top bar, navbar and dashboard cards in one dialog**
+  (#585, owner), as the Modbus Bridge. The cog's **Customise top bar, navbar and cards…**
+  and the Dashboard's **Cards** button open it. Each row has a drag handle (mouse or
+  finger), up/down arrows kept as the fallback, and a switch. Saved as you go, with Undo
+  and Reset in the dialog. Saved preferences carry over. The Dashboard's Cards panel and
+  the cog's Navbar / Top bar lists are gone; Theme stays in the cog.
 - **Actionable Notifications: one notify path** (#576, owner). A schedule notifies only
   from its **Home Assistant actions** notify rows. **Ask before continuing** is now the
   **Actionable notification** option on a notify row (buttons, wait, if no reply, Send
