@@ -4417,7 +4417,8 @@ def create_app() -> FastAPI:
         # Manual run simulates an entry fire: fire/both actions, honouring guards
         # (never exit-only actions, and never a guard that does not currently hold).
         results += scheduler._fire_ha_phase(entry, "fire", settings=get_settings(),
-                                            client=client, store=st, snapshot=snap, host=host)
+                                            client=client, store=st, snapshot=snap, host=host,
+                                            gateway_id=target_gw)
         st.log_schedule_event(sid, entry["name"], "manual",
                               "; ".join(results) or "nothing to do")
         return {"results": results}

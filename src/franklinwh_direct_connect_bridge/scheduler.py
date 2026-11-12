@@ -2528,9 +2528,11 @@ def _guard_ok(guard: dict | None, snapshot: dict) -> bool:
 
 
 def _fire_ha_phase(entry: dict, phase: str, *, settings, client, store,
-                   snapshot: dict, host: str | None) -> list[str]:
+                   snapshot: dict, host: str | None,
+                   gateway_id: str | None = None) -> list[str]:
     """Run the entry's HA actions tagged for this edge (``fire`` on entry / ``exit``
-    on window close; ``both`` runs on each), each gated by its own guard."""
+    on window close; ``both`` runs on each), each gated by its own guard. Messages name
+    ``gateway_id``, the gateway the schedule ran on (#577)."""
     out: list[str] = []
     for ha in entry.get("ha_actions") or []:
         if (ha.get("when") or "fire") not in (phase, "both"):
@@ -2539,7 +2541,8 @@ def _fire_ha_phase(entry: dict, phase: str, *, settings, client, store,
             continue
         akind = "ha_service" if (ha.get("ha_kind") == "service") else "notify"
         out.append(run_action({**ha, "kind": akind}, settings=settings,
-                              client=client, store=store, snapshot=snapshot, host=host))
+                              client=client, store=store, snapshot=snapshot, host=host,
+                              gateway_id=gateway_id))
     return out
 
 
@@ -2651,7 +2654,7 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                     entry, "exit", settings=settings, client=client, store=store,
                     snapshot={**snapshot, **run_context(entry, gateway_id=gateway_id,
                                                         now=now, phase="exit")},
-                    host=host)
+                    host=host, gateway_id=gateway_id)
             # BR-50: put back what this rule overrode. Opt-in, because "leave it where
             # the rule left it" is a legitimate intent and changing it under existing
             # rules would be a silent behaviour change.
@@ -3152,7 +3155,8 @@ def _fire_entry(entry: dict, *, settings, client, store, snapshot: dict,
     # The run's attempt count is on its occurrence row, so this holds across a restart.
     if int(entry.get("_occ_attempts") or 1) <= 1:
         results += _fire_ha_phase(entry, "fire", settings=settings, client=client,
-                                  store=store, snapshot=snapshot, host=host)
+                                  store=store, snapshot=snapshot, host=host,
+                                  gateway_id=gateway_id)
     summary = "; ".join(results) or "nothing to do"
     # Decide on the VERDICT, not on the words. This used to be
     # `"failed" not in r`, so an action whose failure text did not happen to

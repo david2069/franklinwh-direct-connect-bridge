@@ -70,6 +70,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   The questions the gateway can't answer stay open.
 
 ### Fixed
+- **A schedule's notify messages named the wrong gateway** (#577). A **+ notify** row under
+  Home Assistant actions named the first gateway, not the one the schedule ran on, on
+  entry, on exit and with **Run now**. It now names the gateway that ran it, as the Notify
+  battery action and Ask already did.
 - **Automation → Battery capacity: Derive from aPower showed "model…" on a real aGate.** It
   looked for the aPowers in the latest status read, which doesn't carry them; it now uses
   the aPowers System Setup reads from the gateway (as the Setup card's Batteries row does),
