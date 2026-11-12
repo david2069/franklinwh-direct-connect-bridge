@@ -67,7 +67,9 @@ def test_status_endpoint(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "_settings", None)
     monkeypatch.setattr(db, "get_store", lambda s: store)
     c = TestClient(app_module.create_app())
-    state.reset_gateways()
+    # A private registry, put back afterwards: other tests read the gateways create_app made.
+    monkeypatch.setattr(state, "_gateways", {})
+    monkeypatch.setattr(state, "_default_id", None)
     gw = state.register_gateway("g1", "127.0.0.1:1", "House")
     gw.last_summary = {"ok": True, "power": _p(35.7, "simulated")}
     gw.last_state = {"off_grid": True, "off_grid_since": 1000.0}
