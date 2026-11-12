@@ -95,6 +95,11 @@ class Settings(BaseSettings):
     nem_region: str = ""              # AEMO NEM region for wholesale spot (NSW1/QLD1/SA1/TAS1/VIC1)
     tariff_price_entity: str = ""     # HA entity (ha:<inst>:<eid>) -> tariff.spot_price (buy, dynamic)
     tariff_feedin_entity: str = ""    # HA entity (ha:<inst>:<eid>) -> tariff.feed_in_price (sell, dynamic)
+    # Price events (#582): a price spike at or above this many c/kWh (0 = off), or from an
+    # HA binary_sensor; a demand / peak window from an HA entity (wins over the tariff's).
+    price_spike_c: float = 0.0
+    price_spike_entity: str = ""
+    demand_window_entity: str = ""
     billing_dynamic: bool = False     # price BILLING at the live wholesale rate (spot/feed-in), not the static tariff
     pv_tilt: float = 20.0
     pv_azimuth: float = 0.0
@@ -176,6 +181,7 @@ _OVERRIDE_KEYS = {"allow_writes", "log_level", "ha_notify", "ha_url", "ha_token"
                   "nem_region",   # AEMO NEM wholesale spot region (live-editable)
                   "tariff_price_entity", "tariff_feedin_entity",   # HA dynamic-price provider
                   "billing_dynamic",   # price billing at the live wholesale rate
+                  "price_spike_c", "price_spike_entity", "demand_window_entity",   # #582
                   "dispatch_interrupt_policy",
                   # MQTT publishing, live-editable so the add-on can adopt the Supervisor's
                   # broker in one click instead of sending the user to the add-on options

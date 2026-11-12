@@ -12,6 +12,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Price events: price spike and an HA demand window** (#582, owner). Under Sites &
+  Billing → Prices: a spike at or above a number of c/kWh, or from a Home Assistant spike
+  sensor, gives `tariff.price_spike` and `tariff.spike_threshold`; a Home Assistant binary
+  sensor, calendar or switch can supply the demand / peak window
+  (`tariff.demand_window_active`), winning over the tariff's.
 - **Analytics → Explain: trends and what to change for your objectives** (#588, owner).
   For the period shown, on Local or Cloud: each total against the previous period and last
   year (with runs of rises or falls), what the period shows, and suggestions for the
@@ -63,6 +68,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   purge runs with the hourly history upkeep and when a recording ends.
 
 ### Changed
+- **Prices in one place under Sites & Billing** (#582, owner). The price signal for
+  automation (AEMO NEM or Home Assistant price entities) moves from Integrations to Sites &
+  Billing → Prices, and the AEMO region is your site's (Sites & Meters → Region, AU-NSW →
+  NSW1) for both the price signal and a Dynamic tariff: the region pickers in Location &
+  Solar and in the tariff editor are gone. A saved region is given to sites with none at
+  start-up. The **High wholesale price** template is now **Price spike — ask to export**,
+  using `tariff.price_spike` instead of a fixed 50 c/kWh.
 - **Actionable Notifications: one notify path** (#576, owner). A schedule notifies only
   from its **Home Assistant actions** notify rows. **Ask before continuing** is now the
   **Actionable notification** option on a notify row (buttons, wait, if no reply, Send

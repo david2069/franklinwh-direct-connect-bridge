@@ -10,6 +10,8 @@ function settingsTab() {
     support: null, supportText: '', supportBusy: false, supportCopied: '',
     apowerSpecs: [], apowerModel: '', apowerCount: 1,
     haPriceOpts: [],   // {id:'ha:<inst>:<eid>', label:friendly, group:instance}
+    haEventOpts: [],   // on/off HA entities for the price events (#582)
+    priceSrc: 'off',   // the price signal's source: off | nem | ha (#582)
     cfg: { connection: {}, mqtt: {}, control: {}, notifications: {},
            metrics: {}, environment: {} },
     // Live-editable mirror of the whitelisted fields (bound to the inputs).
@@ -20,7 +22,8 @@ function settingsTab() {
     form: { allow_writes: false, log_level: 'info', ha_notify: true, ha_url: '', ha_token: '',
             fwh_cloud_email: '', fwh_cloud_password: '', fwh_cloud_gateway: '',
             pv_latitude: '', pv_longitude: '', pv_kwp: '', pv_tilt: '', pv_azimuth: '',
-            nem_region: '', tariff_price_entity: '', tariff_feedin_entity: '' },
+            nem_region: '', tariff_price_entity: '', tariff_feedin_entity: '',
+            price_spike_c: '', price_spike_entity: '', demand_window_entity: '' },
     nemSpot: null,   // {region, spot:{price_c_kwh,...}, regions[]} — AEMO NEM wholesale
     cloudTesting: false,
     cloudResult: null,
@@ -768,10 +771,26 @@ function settingsTab() {
     async loadHaPriceOpts() {
       try {
         const d = await (await fetch('api/ha/entities?exposed=true&limit=1000')).json();
+        const opt = e => ({ id: `ha:${e.instance_id}:${e.entity_id}`, label: e.name || e.entity_id, group: e.instance || 'HA' });
         this.haPriceOpts = (d.entities || [])
-          .filter(e => ['sensor', 'number', 'input_number'].includes(e.domain))
-          .map(e => ({ id: `ha:${e.instance_id}:${e.entity_id}`, label: e.name || e.entity_id, group: e.instance || 'HA' }));
-      } catch (e) { this.haPriceOpts = []; }
+          .filter(e => ['sensor', 'number', 'input_number'].includes(e.domain)).map(opt);
+        // On/off entities for the price events (#582): a spike sensor, a peak window.
+        this.haEventOpts = (d.entities || [])
+          .filter(e => ['binary_sensor', 'calendar', 'input_boolean', 'switch'].includes(e.domain)).map(opt);
+      } catch (e) { this.haPriceOpts = []; this.haEventOpts = []; }
+    },
+    // The price signal's source (#582): off, AEMO NEM (the site's region) or HA entities.
+    async setPriceSignal(v) {
+      this.priceSrc = v;
+      if (v === 'nem') {
+        const rg = (this.nemSpot && this.nemSpot.site_region) || '';
+        await this.saveOne({ nem_region: rg, tariff_price_entity: '', tariff_feedin_entity: '' });
+      } else if (v === 'ha') {
+        await this.saveOne({ nem_region: '' });
+      } else {
+        await this.saveOne({ nem_region: '', tariff_price_entity: '', tariff_feedin_entity: '' });
+      }
+      await this.loadNemSpot();
     },
     haPriceLabel(id) {
       if (!id) return '';
@@ -1076,6 +1095,10 @@ function settingsTab() {
       this.form.log_level = (this.cfg.control && this.cfg.control.log_level) || 'info';
       this.form.ha_notify = !!(this.cfg.notifications && this.cfg.notifications.ha_notify);
       this.form.ha_url = (this.cfg.notifications && this.cfg.notifications.ha_url) || '';
+      const pr = this.cfg.prices || {};                 // price events (#582)
+      this.form.price_spike_c = pr.price_spike_c || '';
+      this.form.price_spike_entity = pr.price_spike_entity || '';
+      this.form.demand_window_entity = pr.demand_window_entity || '';
       const loc = this.cfg.location || {};
       this.form.pv_latitude = loc.latitude ?? '';
       this.form.pv_longitude = loc.longitude ?? '';
@@ -1260,8 +1283,10 @@ function settingsTab() {
       try {
         const r = await (await fetch('api/tariff/spot')).json();
         this.nemSpot = r;
-        if (r.configured_region != null) this.form.nem_region = r.configured_region;
+        this.form.nem_region = r.configured_region || '';
         if (r.ha) { this.form.tariff_price_entity = r.ha.price_entity || ''; this.form.tariff_feedin_entity = r.ha.feedin_entity || ''; }
+        if (this.priceSrc !== 'ha' || this.form.tariff_price_entity)
+          this.priceSrc = this.form.tariff_price_entity ? 'ha' : (this.form.nem_region ? 'nem' : 'off');
       } catch (e) { /* optional */ }
     },
     async saveOne(patch) {

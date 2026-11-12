@@ -499,7 +499,7 @@ when there is no reply. Change the thresholds, buttons and Send to as you like.
 | Off-grid (grid outage) for 30 min — notify | The grid has been out for 30 minutes | Acknowledge / Dismiss | None |
 | Cheap wholesale price — ask to charge | Wholesale price ≤ 5 c/kWh | Charge / Not now | Charge from the grid to 90 % |
 | Cheap tariff import rate — ask to charge | Import rate ≤ $0.05/kWh | Charge / Not now | Charge from the grid to 90 % |
-| High wholesale price — ask to export | Wholesale price ≥ 50 c/kWh, battery at or above the min discharge SoC | Export / Hold | Discharge, down to 20 % |
+| Price spike — ask to export | A price spike (Sites & Billing → Prices), battery at or above the min discharge SoC | Export / Hold | Discharge, down to 20 % |
 | High tariff feed-in rate — ask to export | Feed-in rate ≥ $0.50/kWh, battery at or above the min discharge SoC | Export / Hold | Discharge, down to 20 % |
 | Demand charge window — ask to self-consume | The demand window opens, battery at or above the demand-charge min SoC | Self-consume / Leave it | Self-Consumption for the window, then the previous mode back |
 | Battery export bonus — ask to export | The bonus window opens | Export / Hold | Discharge, down to 30 % |

@@ -215,9 +215,10 @@ bridge on a trusted network.
   multiplies them. The constants themselves are *not* read
   from the aGate; you set them here and they become `const.*` sensors in the Scheduler.
   Also **System Setup**, the install profile.
-- **Sites & Billing** — sites, meters, utilities and tariffs.
+- **Sites & Billing** — sites, meters, utilities and tariffs, and **Prices**: the price
+  signal for automation and the price events (spike, demand window).
 - **Integrations** — MQTT broker, notifications, location and PV array for the solar
-  forecast, the dynamic (wholesale) price provider, battery dispatch, the Cloud API
+  forecast, battery dispatch, the Cloud API
   credentials, and **Integration → Mapping** (below).
 - **Admin** — storage, vacuum, database backup / restore / download.
 
