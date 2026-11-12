@@ -4299,35 +4299,51 @@ def create_app() -> FastAPI:
                 "tick_s": tick_s}
 
     @app.get("/api/schedules/timeline")
-    def api_schedule_timeline(gateway: str = Depends(_gateway_q)):
-        """Today's timeline: each enabled schedule's planned window, plus the real
-        work-mode band, the SoC % line, and fire markers from the activity log — all
-        in minutes-from-midnight. (No VPP-override band: the local channel has no
-        force provider, so only the actual work mode is shown.)"""
-        now = _site_now(gateway)
-        base = scheduler.timeline_segments(_ha_store().schedules(), now)
-        midnight = int(now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
-        now_ts = int(now.timestamp())
-        def to_min(ts: float) -> float:
-            return max(0.0, min(1440.0, (ts - midnight) / 60.0))
-        soc: list = []; modes: list = []; fires: list = []
+    def api_schedule_timeline(gateway: str | None = Depends(_gateway_opt),
+                              every: bool = Query(False, alias="all",
+                                                  description="every gateway (#579)")):
+        """Today's timeline, a lane per gateway (#579): its planned windows, the real
+        work-mode band, the SoC % line and fire markers from its activity log — all in
+        minutes-from-midnight on its site clock. ``site``: the All gateways rules, drawn
+        once. ``?gateway=`` gives that gateway's lane, ``?all=true`` every gateway's.
+        (No VPP-override band: the local channel has no force provider, so only the
+        actual work mode is shown.)"""
+        if not every and not gateway:
+            _gw_or_404(None)                     # names a gateway, or every one (#379)
+        gws = list(get_gateways() or []) if every else [_gw_or_404(gateway)]
+        schedules = _ha_store().schedules()
         store = db.get_store(get_settings())
-        if store is not None:
-            key = _metrics_gw_key(gateway)
-            for row in store.query(midnight, now_ts, 300, gateway=key):
-                if row.get("soc") is not None:
-                    soc.append({"min": round(to_min(row["ts"]), 1), "soc": row["soc"]})
-            for seg in store.mode_segments(midnight, now_ts, gateway=key):
-                if seg.get("mode"):
-                    modes.append({"start_min": round(to_min(seg["start"]), 1),
-                                  "end_min": round(to_min(seg["end"]), 1),
-                                  "mode": seg["mode"]})
-            for ev in _ha_store().schedule_log(limit=300):
-                if ev["ts"] >= midnight and ev["status"] in ("fired", "exit", "gated", "error"):
+        log_rows = _ha_store().schedule_log(limit=500)
+        lanes, site = [], []
+        for gw in gws:
+            now = _site_now(gw.id)
+            base = scheduler.timeline_segments(schedules, now, gateway_id=gw.id)
+            site = site or base["site"]
+            midnight = int(now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+            now_ts = int(now.timestamp())
+
+            def to_min(ts: float) -> float:
+                return max(0.0, min(1440.0, (ts - midnight) / 60.0))
+            soc: list = []; modes: list = []; fires: list = []
+            if store is not None:
+                key = _metrics_gw_key(gw.id)
+                for row in store.query(midnight, now_ts, 300, gateway=key):
+                    if row.get("soc") is not None:
+                        soc.append({"min": round(to_min(row["ts"]), 1), "soc": row["soc"]})
+                for seg in store.mode_segments(midnight, now_ts, gateway=key):
+                    if seg.get("mode"):
+                        modes.append({"start_min": round(to_min(seg["start"]), 1),
+                                      "end_min": round(to_min(seg["end"]), 1),
+                                      "mode": seg["mode"]})
+            for ev in log_rows:                  # this gateway's runs only
+                if (ev["ts"] >= midnight and ev.get("gateway_id") == gw.id
+                        and ev["status"] in ("fired", "exit", "gated", "error")):
                     fires.append({"min": round(to_min(ev["ts"]), 1),
                                   "name": ev["name"], "status": ev["status"]})
-        base.update({"soc": soc, "modes": modes, "fires": fires})
-        return base
+            lanes.append({"gateway_id": gw.id, "name": gw.label or gw.id,
+                          "now_min": base["now_min"], "segments": base["segments"],
+                          "soc": soc, "modes": modes, "fires": fires})
+        return {"now_min": lanes[0]["now_min"] if lanes else 0, "lanes": lanes, "site": site}
 
     @app.post("/api/schedules/{sid}/test")
     def api_schedule_test(sid: str, gateway: str | None = Depends(_gateway_opt)):

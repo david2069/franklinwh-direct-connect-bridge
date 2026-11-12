@@ -1334,28 +1334,87 @@ def validate_import(entry: dict, *, gateway_ids: set, device_ids: set,
     return {"name": name, "ok": not errors, "errors": errors, "warnings": warnings}
 
 
-def timeline_segments(entries: list[dict], now: dt.datetime) -> dict[str, Any]:
+def _day_blocks(e: dict, now: dt.datetime) -> list[list[int]]:
+    """Today's [start_min, end_min] slots of an interval or cron rule, as the engine opens
+    them (``_interval_window`` / ``_cron_window``): one per slot, ``duration_min`` long
+    (1 minute when 0). Capped at 288 so a 1-minute interval stays drawable."""
+    tt = e.get("trigger_type")
+    win = int(e.get("duration_min") or 0) or 1
+    starts: list[int] = []
+    if tt == "interval":
+        iv = int(e.get("interval_min") or 0)
+        if iv > 0:
+            # Before the anchor the slots run on from yesterday's anchor, as the engine.
+            anchor = _minutes(e.get("anchor", "")) or 0
+            starts = [m for m in range((anchor - 24 * 60) % iv, anchor, iv)]
+            starts += list(range(anchor, 24 * 60, iv))
+    elif tt == "cron" and cron_available():
+        try:
+            from croniter import croniter
+            expr = (e.get("cron") or "").strip()
+            if croniter.is_valid(expr):
+                midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                it = croniter(expr, midnight - dt.timedelta(seconds=1))
+                while len(starts) < 288:
+                    nxt = it.get_next(dt.datetime)
+                    if nxt.date() != midnight.date():
+                        break
+                    starts.append(nxt.hour * 60 + nxt.minute)
+        except Exception:                                      # noqa: BLE001
+            starts = []
+    return [[s, min(24 * 60, s + win)] for s in starts[:288]]
+
+
+def timeline_segments(entries: list[dict], now: dt.datetime,
+                      gateway_id: str | None = None) -> dict[str, Any]:
     """A day's windows per ENABLED entry, as minutes-from-midnight, for the
-    24-hour bar. Handles windows that wrap past midnight (end <= start)."""
-    segments = []
+    24-hour bar. Handles windows that wrap past midnight (end <= start).
+
+    With ``gateway_id`` (#579), ``segments`` holds that gateway's own rules and ``site``
+    the All gateways ones (``gateway_scope`` all), as the Modbus Bridge's Site row;
+    without it, every rule is in ``segments``. Each segment has a unique ``key`` (one per
+    window) and ``blocks``, its [start, end] slots: interval and cron rules have one per
+    slot, and an always rule one for the whole day, ``conditional`` (it runs while its
+    conditions hold)."""
+    segments, site = [], []
     for e in entries:
         if not e.get("enabled"):
             continue
-        tt = e.get("trigger_type") or "daily"
-        if tt in ("interval", "cron", "always"):    # no fixed daily window to draw
+        scope_all = str(e.get("gateway_scope") or "one").lower() == "all"
+        if gateway_id is not None and not scope_all and (e.get("gateway_id") or "") != gateway_id:
             continue
         if not _calendar_ok(e, now.date())[0]:      # not scheduled to run today
             continue
-        for (start, dur) in _windows_for(e):
-            end = start + dur if dur > 0 else start
-            segments.append({
-                "schedule_id": e["id"], "name": e["name"],
+        tt = e.get("trigger_type") or "daily"
+        base = {"schedule_id": e["id"], "name": e["name"], "trigger_type": tt,
                 "action": (e.get("action") or {}).get("kind") or "notify-only",
                 "gateway_id": e.get("gateway_id") or "",
-                "start_min": start, "end_min": end % (24 * 60) if dur else start,
-                "wraps_midnight": dur > 0 and (start + dur) > 24 * 60,
-            })
-    return {"now_min": now.hour * 60 + now.minute, "segments": segments}
+                "scope": "all" if scope_all else "one"}
+        out = site if (scope_all and gateway_id is not None) else segments
+        if tt in ("interval", "cron"):
+            blocks = _day_blocks(e, now)
+            if blocks:
+                out.append({**base, "key": f"{e['id']}#0", "start_min": blocks[0][0],
+                            "end_min": blocks[-1][1], "wraps_midnight": False,
+                            "blocks": blocks})
+            continue
+        if tt == "always":
+            out.append({**base, "key": f"{e['id']}#0", "start_min": 0, "end_min": 24 * 60,
+                        "wraps_midnight": False, "blocks": [[0, 24 * 60]],
+                        "conditional": True})
+            continue
+        for i, (start, dur) in enumerate(_windows_for(e)):
+            end = start + dur if dur > 0 else start
+            wraps = dur > 0 and end > 24 * 60
+            blocks = ([[start, 24 * 60], [0, end - 24 * 60]] if wraps
+                      else [[start, max(end, start + 1)]])
+            out.append({**base, "key": f"{e['id']}#{i}", "start_min": start,
+                        "end_min": end % (24 * 60) if dur else start,
+                        "wraps_midnight": wraps, "blocks": blocks})
+    out = {"now_min": now.hour * 60 + now.minute, "segments": segments}
+    if gateway_id is not None:
+        out["site"] = site
+    return out
 
 
 #: grid.offgrid_reason text per client._off_grid_kind — the same source as the top-bar chip

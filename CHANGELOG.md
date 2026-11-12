@@ -12,6 +12,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Scheduler timeline: a lane per gateway** (#579, owner), as the Modbus Bridge. Pick a
+  gateway or **All gateways**; each lane has its own planned windows, mode band, SoC line
+  and fire markers (before, every gateway's markers and schedules showed on one chart).
+  All gateways rules are drawn once on a **Site** row, and Every N minutes, cron and
+  Always schedules are drawn too. `GET /api/schedules/timeline` returns `lanes` and
+  `site`; `?all=true` gives every gateway.
 - **Scheduler notifications: failed, missed, aborted and no reply** (#581, owner). A
   **Scheduler** group under Notifications → Auto-notify triggers: **Run failed** (on),
   **Run missed** (on), **Run aborted** (off: stopped, deferred or ended early) and **No
@@ -104,6 +110,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   The questions the gateway can't answer stay open.
 
 ### Fixed
+- **Scheduler timeline: the planned-window bars were drawn empty** (found while building
+  #579): the bar lost its colour and height, so only the grey track showed.
 - **A schedule's notify messages named the wrong gateway** (#577). A **+ notify** row under
   Home Assistant actions named the first gateway, not the one the schedule ran on, on
   entry, on exit and with **Run now**. It now names the gateway that ran it, as the Notify
