@@ -80,6 +80,14 @@ def _generator_source(gen: dict) -> str:
     return head + "not turned on, and no model or rating"
 
 
+def reported_solar_kwp(host) -> float | None:
+    """The solar size this gateway last reported (1903), from the derive cache: no read,
+    so a tick never waits on the gateway (#583). None until it has been read."""
+    hit = _derive_cache.get(host) if host else None
+    kwp = (hit[1] if hit else {}).get("solar_kwp")
+    return float(kwp) if isinstance(kwp, (int, float)) and kwp > 0 else None
+
+
 def _derive(settings, host) -> dict:
     """Best-effort derive from the aGate (solar 1903 + generator 1901), cached ~1 h.
     Returns {} when there's no host or the reads fail (stale cache re-used if present).

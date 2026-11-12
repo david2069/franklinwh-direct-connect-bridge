@@ -914,21 +914,17 @@ def _grid_status_value(status) -> int:
 
 
 def _derived_pv_kwp(gateway: str | None = None) -> float | None:
-    """The array size the aGate reports (1903 ``solar_pv``), or None if it cannot say.
+    """The array size the site's gateways report (1903 ``solar_pv``), summed, or None if
+    none can say (#583).
 
     None is not 0: "the gateway did not answer" and "there is no solar" are different
     facts, and only one of them should ever replace a user's number.
     """
-    from . import system_setup
-    try:
-        s = get_settings()
-        vals = system_setup.values(db.get_store(s), s, gateway, None)
+    from . import pv_size
+    try:                         # the site's gateways, summed (#583)
+        return pv_size.derived_kwp(read=True)
     except Exception:  # noqa: BLE001 — a settings page must not fail on an unread gateway
         return None
-    if "solar_kwp" not in (vals.get("_derived") or {}):
-        return None
-    kwp = vals.get("solar_kwp")
-    return float(kwp) if isinstance(kwp, (int, float)) and kwp > 0 else None
 
 
 def _seed_self_ha_instance(settings) -> bool:
@@ -4706,9 +4702,15 @@ def create_app() -> FastAPI:
         """
         host = _gw_host(gateway)
         try:
-            return client.solar(get_settings(), host=host)
+            out = client.solar(get_settings(), host=host)
         except (OSError, TransportError, TimeoutError) as e:
             raise HTTPException(status_code=502, detail=str(e))
+        from . import pv_size
+        try:                                     # what the forecast uses (#583)
+            out = {**out, "forecast_size": pv_size.effective(get_settings())}
+        except Exception:  # noqa: BLE001
+            pass
+        return out
 
     @app.get("/api/solar/raw")
     def api_solar_raw(gateway: str = Depends(_gateway_q)):
@@ -6669,6 +6671,8 @@ def create_app() -> FastAPI:
             "location": {
                 "latitude": s.pv_latitude, "longitude": s.pv_longitude,
                 "pv_kwp": s.pv_kwp, "pv_tilt": s.pv_tilt, "pv_azimuth": s.pv_azimuth,
+                # pv_kwp is yours (None = not set); the forecast uses yours, else the
+                # gateways' (#583).
                 # What the GATEWAY says the array is (1903 solar_pv), so the forecast's
                 # kWp can be taken from the installation instead of typed from memory.
                 # Offered, not applied: an owner who deliberately set a different number
@@ -7222,10 +7226,17 @@ def create_app() -> FastAPI:
             return {"configured": False,
                     "reason": "Set your location (latitude & longitude) in Settings "
                               "to enable the solar forecast."}
-        fc = solar_forecast.forecast(cfg.pv_latitude, cfg.pv_longitude, kwp=cfg.pv_kwp,
+        from . import pv_size
+        size = pv_size.effective(cfg)                # yours, else the gateways' (#583)
+        if not size["kwp"]:
+            return {"configured": False,
+                    "reason": "Please confirm your solar size in Settings → Integrations → "
+                              "Location & Solar: the gateway hasn't reported it yet."}
+        fc = solar_forecast.forecast(cfg.pv_latitude, cfg.pv_longitude, kwp=size["kwp"],
                                      tilt=cfg.pv_tilt, azimuth=cfg.pv_azimuth, force=force)
         return {"configured": True, **fc,
-                "pv": {"kwp": cfg.pv_kwp, "tilt": cfg.pv_tilt, "azimuth": cfg.pv_azimuth,
+                "pv": {"kwp": size["kwp"], "kwp_source": size["source"],
+                       "tilt": cfg.pv_tilt, "azimuth": cfg.pv_azimuth,
                        "lat": cfg.pv_latitude, "lon": cfg.pv_longitude}}
 
     @app.post("/api/solar/sync-location")

@@ -166,14 +166,18 @@ def _forecast(cfg) -> dict | None:
     """The solar page's cached forecast for this location; a stale or missing one is
     refreshed in the background, so a request never waits on Open-Meteo."""
     from . import solar_forecast
+    from . import pv_size
     if cfg is None or cfg.pv_latitude is None or cfg.pv_longitude is None:
         return None
-    key = f"{cfg.pv_latitude},{cfg.pv_longitude},{cfg.pv_tilt},{cfg.pv_azimuth},{cfg.pv_kwp}"
+    kwp = pv_size.kwp(cfg)                           # yours, else the gateways' (#583)
+    if not kwp:
+        return None
+    key = f"{cfg.pv_latitude},{cfg.pv_longitude},{cfg.pv_tilt},{cfg.pv_azimuth},{kwp}"
     hit = solar_forecast._cache.get(key)
     if (hit is None or time.time() - hit[0] >= solar_forecast.CACHE_S) and _refreshing.acquire(blocking=False):
         def run():
             try:
-                solar_forecast.forecast(cfg.pv_latitude, cfg.pv_longitude, kwp=cfg.pv_kwp,
+                solar_forecast.forecast(cfg.pv_latitude, cfg.pv_longitude, kwp=kwp,
                                         tilt=cfg.pv_tilt, azimuth=cfg.pv_azimuth)
             finally:
                 _refreshing.release()

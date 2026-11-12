@@ -51,6 +51,10 @@
           <div class="text-xs uppercase tracking-wide" style="color:var(--text-secondary)">Installed</div>
           <div class="text-2xl font-semibold" style="color:var(--text-primary)"
                x-text="fmtKw(data.inputs.total_rated_kw)"></div>
+          <!-- What the forecast and the analysis use, when it isn't this rating (#583). -->
+          <div x-show="data.forecast_size && data.forecast_size.source === 'you'" x-cloak
+               class="text-[11px]" style="color:var(--text-secondary)" data-testid="solar-forecast-size"
+               x-text="data.forecast_size ? 'Forecast uses ' + data.forecast_size.kwp + ' kWp (yours)' : ''"></div>
         </div>
         <div x-show="data.live.sources_agree === false">
           <div class="text-xs uppercase tracking-wide text-amber-400">Sources disagree</div>

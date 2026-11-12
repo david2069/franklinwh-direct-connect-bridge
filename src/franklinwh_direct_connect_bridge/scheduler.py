@@ -1726,8 +1726,11 @@ def solar_snapshot(settings) -> dict[str, Any]:
         lon = getattr(settings, "pv_longitude", None)
         if lat is None or lon is None:
             return {}
-        from . import solar_forecast
-        fc = solar_forecast.forecast(lat, lon, kwp=settings.pv_kwp,
+        from . import pv_size, solar_forecast
+        kwp = pv_size.kwp(settings)                  # yours, else the gateways' (#583)
+        if not kwp:
+            return {}
+        fc = solar_forecast.forecast(lat, lon, kwp=kwp,
                                      tilt=settings.pv_tilt, azimuth=settings.pv_azimuth)
         return solar_forecast.sensors(fc)
     except Exception:                                           # noqa: BLE001
