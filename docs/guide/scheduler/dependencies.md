@@ -56,7 +56,6 @@ Where to set each one:
 | **Smart circuit on/off** | ✔ | | | | |
 | **Go off-grid / reconnect** | ✔ | | | | |
 | **Set reserve SoC** | — never runs (#129) | | (listed as needed, not used) | | |
-| **Notify (Home Assistant)** | | | | ✔ | ✔ (enabled) |
 | **Force charge / discharge / standby** | | ✔ (on, library installed, a host, a SunSpec read that succeeds) | | | |
 | No battery action (HA only) | | | | | |
 

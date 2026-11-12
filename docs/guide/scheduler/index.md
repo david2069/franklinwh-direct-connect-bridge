@@ -157,7 +157,7 @@ the stored schedule, so nothing else changes (#157).
   notify start & end, Time-of-Use at peak (only if charged), and four force presets: Peak
   shaving, Battery Bonus export (evening), Solar sponge (charge midday) and Off-peak charge
   (overnight), each with an SoC condition and a target SoC.
-- **Ask before continuing**: **Wait for a reply** is 5 minutes in a new schedule. The
+- **Actionable notification**: **Wait for a reply** is 5 minutes in a new schedule. The
   wait must fit the schedule's window: a reply after the window closes cannot run the
   action, so a longer wait is refused on save. The window is the duration (a duration of 0
   runs only in its start minute, so 1 minute), or the shortest window of a **Recurring

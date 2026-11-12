@@ -1166,6 +1166,18 @@ class MetricsStore:
                 "SELECT * FROM schedules ORDER BY name"))
         return [self._sched_row(r) for r in rows]
 
+    def schedule_specs(self) -> list[tuple[str, dict]]:
+        """Each schedule's id and stored spec as saved (for one-off moves, #576)."""
+        with self._lock:
+            rows = self._conn.execute("SELECT id, spec FROM schedules").fetchall()
+        out = []
+        for sid, raw in rows:
+            try:
+                out.append((sid, json.loads(raw or "{}")))
+            except (ValueError, TypeError):
+                continue
+        return out
+
     def schedule(self, sid: str) -> dict | None:
         with self._lock:
             rows = self._ha_rows(self._conn.execute(

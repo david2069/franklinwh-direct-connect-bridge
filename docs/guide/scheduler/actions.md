@@ -20,7 +20,6 @@ action shows a note from the code under the list.
 | Smart circuit on/off | `smart_circuit` | `circuit` (1–3), `on` | a smart-circuit write (1409, read back) — **Direct Connect only** |
 | Go off-grid / reconnect | `offgrid` | `on`, `soc` | an off-grid switch (1723) — **Direct Connect only** |
 | Set reserve SoC | `reserve_soc` | `mode`, `soc` | nothing: always skipped (see below, #129) |
-| Notify (Home Assistant) | `notify` | `device_id`, `title`, `message` | a notification to one saved device — **Direct Connect only** |
 | Force charge / discharge / standby | `force` | `direction`, `power`, `unit`, `target_soc` | a WSet power setpoint through the Modbus client (this bridge) to the Modbus TCP Server (aGate :502) |
 | No battery action (HA only) | `""` (empty) | — | nothing; only the Home Assistant actions run |
 
@@ -255,9 +254,11 @@ JSON"*. <!-- @b HAA-15 ;; src: scheduler.py:1828-1834 ;; tested: tests/test_sche
 A guided entity action calls `/api/services/<domain>/<service>` with the entity and its data.
 <!-- @b HAA-16 ;; src: scheduler.py:1818-1845, static/js/scheduler_tab.js:383-399 ;; tested: tests/test_scheduler.py::test_ha_guided_entity_action_calls_domain_service ;; write: no ;; b: A guided entity action calls domain.service with {entity_id, **data} ;; test: — -->
 
-**Direct Connect only: the Notify battery action.** *Notify (Home Assistant)* can also be
-chosen as the Battery action. Its device is a free-text device id, not a picker. It behaves
-like a notify HA action that runs at fire time and claims nothing. <!-- @b HAA-18 ;; src: scheduler.py:58-62, scheduler.py:1801-1816, scheduler.py:2189 ;; untested ;; write: no ;; b: kind notify sends to one saved device, skipping a missing, disabled or instance-less device ;; test: unit: notify with a disabled device returns "switched off" and sends nothing -->
+**One notify path (#576).** Notifications are sent only from these rows. *Notify (Home
+Assistant)* is no longer a battery action: a schedule saved with it, imported with it or
+sent with it through the API gets an **On entry** notify row instead. A notify row can be
+an **Actionable notification** (buttons, a wait, what no reply does); see
+[Actionable notifications](../ha-setup-and-notifications.md#actionable-notifications). <!-- @b HAA-18 ;; src: scheduler.py normalize_spec, entry_ask, migrate_notify_paths ;; tested: tests/test_actionable_notify_576.py ;; write: no ;; b: one notify path: the notify action and ask move into notify rows -->
 
 ### When they run
 
@@ -346,7 +347,6 @@ confirmed* does, and the HA helpers report errors as *HTTP 500* or *token reject
 | Smart circuit on/off | the gateway reachable over Direct Connect, and the circuit installed |
 | Go off-grid / reconnect | the gateway reachable over Direct Connect |
 | Set reserve SoC | nothing works today (#129) |
-| Notify (Home Assistant) | a notification device and its Home Assistant instance |
 | Force charge / discharge / standby | the Modbus client (this bridge) switched on (**Control → Modbus client**), and the Modbus TCP Server (aGate :502) answering SunSpec |
 | HA action: notify | a notification device |
 | HA action: entity | a Home Assistant instance, and the entity exposed (guided) |

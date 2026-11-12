@@ -63,6 +63,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   purge runs with the hourly history upkeep and when a recording ends.
 
 ### Changed
+- **Actionable Notifications: one notify path** (#576, owner). A schedule notifies only
+  from its **Home Assistant actions** notify rows. **Ask before continuing** is now the
+  **Actionable notification** option on a notify row (buttons, wait, if no reply, Send
+  to), not a block of its own; one per schedule, On entry. **Notify (Home Assistant)** is
+  no longer in the Battery action list. Saved schedules move over when the bridge starts;
+  an import or API call in the old shape is moved over the same way.
 - **A gateway's port is never its Modbus port** (owner). A gateway added as `address:port`
   (an emulator, say) uses that port for Direct Connect only; the Modbus client reaches it
   on the Modbus TCP Server port (`modbus_port`, or the override). Before, it tried the

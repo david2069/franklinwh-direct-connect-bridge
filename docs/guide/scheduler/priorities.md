@@ -29,7 +29,7 @@ one:
 | Force charge / discharge / standby, Set operating mode, Set reserve SoC | the gateway's **battery** |
 | Go off-grid / reconnect | the gateway's **grid** connection |
 | Smart circuit on/off | that **circuit**; with no circuit set, every circuit on the gateway |
-| Notify (Home Assistant), No battery action (HA only) | nothing: never competes |
+| No battery action (HA only) | nothing: never competes |
 
 <!-- @b PRI-05 ;; src: scheduler.py:2183-2212 ;; tested: tests/test_scheduler.py::test_force_and_mode_claim_the_same_battery ;; write: yes ;; b: force, set_mode and reserve_soc claim the same '<gw>/battery' resource, so a mode entry and a force entry contend -->
 <!-- @b PRI-17 ;; src: scheduler.py:2183-2228, scheduler.py:2095-2101 ;; tested: tests/test_scheduler.py::test_an_unscoped_circuit_write_claims_every_circuit ;; write: no ;; b: offgrid claims 'grid', each smart circuit its own circuit, a circuit with no number claims circuit:* which is merged with every specific circuit before a winner is picked; an unknown kind claims only itself (see also test_two_circuits_on_one_gateway_do_not_contend, test_offgrid_is_different_hardware_from_the_battery, test_an_unknown_action_contends_with_itself_not_the_battery) -->

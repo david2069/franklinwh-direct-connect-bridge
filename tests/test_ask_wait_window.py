@@ -25,12 +25,13 @@ def _spec(ask_wait, **spec):
 
 
 def _window_errors(spec):
-    return [e for e in sch.validate_spec(spec) if "window" in e and "ask" in e]
+    return [e for e in sch.validate_spec(spec) if "window" in e and "actionable" in e]
 
 
 def test_a_new_schedule_waits_5_minutes():
     js = (ROOT / "static/js/scheduler_tab.js").read_text()
-    assert "timeout_min: 5, if_no_reply: 'skip'" in js
+    # the Actionable notify row's defaults (#576)
+    assert "timeout_min: (h && h.timeout_min) || 5, if_no_reply: (h && h.if_no_reply) || 'skip'" in js
     assert "timeout_min: 10" not in js
 
 
@@ -112,11 +113,11 @@ def test_a_saved_schedule_with_a_longer_wait_can_still_be_toggled(c):
     sid = c.post("/api/schedules", json=BODY).json()["id"]
     st = db.get_store(get_settings())
     row = st.schedule(sid)
-    spec = {k: row[k] for k in ("fire_at", "duration_min", "gateway_id", "action", "ask")}
+    spec = {k: row[k] for k in ("fire_at", "duration_min", "gateway_id", "action")}
     st.update_schedule(sid, name="asked", enabled=False,              # saved before the rule
                        spec={**spec, "ask": {**ASK, "timeout_min": 90}})
     on = c.put(f"/api/schedules/{sid}", json={"name": "asked", "enabled": True})
-    assert on.status_code == 200 and on.json()["ask"]["timeout_min"] == 90
+    assert on.status_code == 200 and sch.entry_ask(on.json())["timeout_min"] == 90
     longer = c.put(f"/api/schedules/{sid}", json={"name": "asked",
                                                    "ask": {**ASK, "timeout_min": 120}})
     assert longer.status_code == 422 and "120 min" in longer.text

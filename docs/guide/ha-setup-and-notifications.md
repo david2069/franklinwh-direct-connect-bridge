@@ -386,7 +386,7 @@ device, and set a title and a message. `%sensor.id%` in the text is replaced wit
 live value, or `?` when there is none. Write `%%` for a literal `%`.
 
 You don't need to remember the codes. The **{x}** button beside every such field (the
-notify title and message, the **Ask before continuing** question, and a raw service's
+notify title and message (an **Actionable notification**'s question too), and a raw service's
 entity and data) opens a searchable list of the same sensors as the condition picker,
 with each one's value now. Tap a row to put its code where the cursor was. Some useful
 ones: `%battery.soc_pct%`, `%grid.power_w%`, `%schedule.name%`, `%run.phase%` (`fire` or
@@ -403,22 +403,24 @@ when the battery is low at the start of the peak, add a guard to the notify acti
 A notify step that cannot be sent is skipped, and the schedule's log says why: "device
 no longer exists", "'Phone' is switched off", or "has no HA instance".
 
-### Ask before continuing
+### Actionable notifications
 
-A schedule can ask you on your phone before its action runs. In the schedule editor,
-tick **Ask before continuing**:
+A schedule can ask you on your phone before its action runs. In the schedule editor, add
+a notification under **Home Assistant actions** (**+ notify**) and tick **Actionable
+notification**. It goes **On entry**, and the action waits for your answer. A schedule
+has one; its other notifications stay plain messages.
 
 | Field | What it does |
 |---|---|
-| **Question** | The message, with **{x}** values filled in when it is sent, for example `SoC is %battery.soc_pct%%. Charge now?`. The title is the schedule's name and the gateway. " (reply within N min)" is added at the end. |
+| **Message** | The question, with **{x}** values filled in when it is sent, for example `SoC is %battery.soc_pct%%. Charge now?`. The title is the schedule's name and the gateway. " (reply within N min)" is added at the end. |
 | **Buttons** | **Yes** (runs the action) and **No** (skips this run), unless you press **Use my own buttons**. Then give 2 to 4 buttons, each with its own label, and set each to **Runs the action** or **Skips this run**. |
 | **Text reply** | At most one of your buttons can take a text reply: the phone asks for text when it is tapped. What you type becomes the answer. |
 | **Wait for a reply (minutes)** | 5 in a new schedule. It must fit the schedule's window: a reply after the window closes could not run the action. A schedule with no duration has a 1-minute window; **Always** has no window and takes any wait. |
 | **If no reply** | **Skip this run** (the default) or **Continue**. |
-| **Send to** | **All enabled devices**, or **Chosen devices**. Only Companion apps (`mobile_app`) show the buttons, so only they are asked and listed; a switched-off one shows "(off)", and one removed since it was chosen shows "(removed)" so you can untick it. A removed device never stops the schedule from saving; it is just not asked. |
+| **Send to** | **All enabled phones**, or **Chosen phones**. Only Companion apps (`mobile_app`) show the buttons, so only they are asked and listed; a switched-off one shows "(off)", and one removed since it was chosen shows "(removed)" so you can untick it. A removed device never stops the schedule from saving; it is just not asked. |
 
-Under Send to, **Asks:** names the devices the question goes to, and, when the schedule
-also has notify actions, **This schedule also notifies** names them and when they go. The
+Under Send to, **Asks:** names the phones the question goes to, and the schedule's other
+notifications are named below it. The
 schedule list and **Explain** name the asked devices too, and the schedule's log says
 `asked "…" on Phone, Tablet`. Home Assistant doesn't say which phone a tap came from, so
 the log records the answer, not who gave it.
@@ -430,9 +432,14 @@ With the schedule's notify actions (section 5), there are no double messages:
 - a run the answer (or **If no reply: Skip**) skipped sends neither its On entry nor its
   On exit messages; the log says `On exit actions not sent: Ask skipped this run`.
 
+Schedules saved with the old **Ask before continuing** step, or with **Notify (Home
+Assistant)** as their battery action, are moved over when the bridge starts: the Ask
+becomes the Actionable notification and the Notify action an **On entry** notification.
+An import or an API call in the old shape is moved over the same way.
+
 Here it is filled in by the **Off-grid (user requested) for 30 min — ask** template, sent to the Phone only:
 
-![The schedule editor's Ask before continuing step: question, two own buttons, wait 5 minutes, skip if no reply, Send to Phone](../images/ha-setup-and-notifications/09-schedule-ask.png)
+![A notify row ticked Actionable notification: the question, two own buttons, wait 5 minutes, skip if no reply, Send to Phone](../images/ha-setup-and-notifications/09-schedule-ask.png)
 
 The question is sent once per run, when the schedule's window opens. While it waits, the
 schedule shows **holding**, and other schedules carry on. Then:
@@ -511,7 +518,7 @@ Every notification with buttons works the same way:
   matched to the question on iOS and on Android.
 - A question has a time limit: 2 minutes for **Test with buttons**, 5 minutes for **Test
   critical alert**, 15 minutes for **Release / Keep**, 1 hour for an alert, and the wait
-  you set for **Ask before continuing**. A tap after that is recorded as expired and does
+  you set for an **Actionable notification**. A tap after that is recorded as expired and does
   nothing.
 - A question takes one answer. A second tap, on the same phone or another, does nothing.
 - **Open questions survive a bridge restart.** A tap within the time limit after a
