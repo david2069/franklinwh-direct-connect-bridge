@@ -55,10 +55,6 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   purge runs with the hourly history upkeep and when a recording ends.
 
 ### Changed
-- **The Audit trail moved to Logs, and is easier to read** (owner). It is now a sub-tab,
-  **Logs → Audit trail**, next to **Bridge log**, instead of a card at the bottom of
-  Control. Its rows are no longer shaded, the detail wraps instead of being cut off, and
-  its text is brighter. A refused-command alert's **Open Audit trail** goes straight there.
 - **A gateway's port is never its Modbus port** (owner). A gateway added as `address:port`
   (an emulator, say) uses that port for Direct Connect only; the Modbus client reaches it
   on the Modbus TCP Server port (`modbus_port`, or the override). Before, it tried the
@@ -72,6 +68,24 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   the gateway reports is a single line (label, value, **Confirmed** or **To check**); tap it
   to see where it was read from and its **Confirm** button. Opening one closes the other.
   The questions the gateway can't answer stay open.
+
+### Fixed
+- **Automation → Battery capacity: Derive from aPower showed "model…" on a real aGate.** It
+  looked for the aPowers in the latest status read, which doesn't carry them; it now uses
+  the aPowers System Setup reads from the gateway (as the Setup card's Batteries row does),
+  so the model and count are filled in, for example aPower X × 1.
+- **Confirm what's installed said the gateway "Couldn't be read"** on every real aGate. It
+  looked for the hardware id (1101 SyHdVersion) in the latest status read, which never
+  carries it; it now uses the id the poller keeps, as the gateway list does, so it names the
+  model, for example "aGate X-01-AU (AU)".
+
+## [0.5.41] — 2026-11-13
+
+### Changed
+- **The Audit trail moved to Logs, and is easier to read** (owner). It is now a sub-tab,
+  **Logs → Audit trail**, next to **Bridge log**, instead of a card at the bottom of
+  Control. Its rows are no longer shaded, the detail wraps instead of being cut off, and
+  its text is brighter. A refused-command alert's **Open Audit trail** goes straight there.
 
 ### Fixed
 - **Ask before continuing names who it asks, and doesn't clash with notify actions**
@@ -93,14 +107,6 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   value with nothing either side of it (Lifetime's one year) is drawn as a dot; it had no
   line to join and didn't show. Local now says Home load, as Cloud does. The Analytics
   guide says the cloud keeps SoC for the day views only.
-- **Automation → Battery capacity: Derive from aPower showed "model…" on a real aGate.** It
-  looked for the aPowers in the latest status read, which doesn't carry them; it now uses
-  the aPowers System Setup reads from the gateway (as the Setup card's Batteries row does),
-  so the model and count are filled in, for example aPower X × 1.
-- **Confirm what's installed said the gateway "Couldn't be read"** on every real aGate. It
-  looked for the hardware id (1101 SyHdVersion) in the latest status read, which never
-  carries it; it now uses the id the poller keeps, as the gateway list does, so it names the
-  model, for example "aGate X-01-AU (AU)".
 
 ## [0.5.40] — 2026-11-12
 
