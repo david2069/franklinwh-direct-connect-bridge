@@ -63,7 +63,7 @@ def test_cloud_since_endpoint_without_an_account(tmp_path, monkeypatch):
 
 
 def test_the_package_has_on_data():
-    assert "franklinwh-ha-cloud-analytics==0.1.26" in (ROOT.parents[1] / "pyproject.toml").read_text()
+    assert "franklinwh-ha-cloud-analytics==0.1.27" in (ROOT.parents[1] / "pyproject.toml").read_text()
 
 
 def test_cloud_since_is_the_sites_day():

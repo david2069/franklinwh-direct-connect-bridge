@@ -266,6 +266,11 @@ class RestoreReq(BaseModel):
     confirm: bool = False               # consequential: overwrites the live database
 
 
+class InsightObjectivesBody(BaseModel):
+    """Analytics → Explain's objectives for a gateway (#588)."""
+    objectives: list[str] = []
+
+
 class NotifyTriggersBody(BaseModel):
     master: bool | None = None
     triggers: dict | None = None        # {event: {enabled: bool, threshold?: int, target?: {}}}
@@ -5665,6 +5670,121 @@ def create_app() -> FastAPI:
         except Exception as e:  # noqa: BLE001 — shown in the card, never a 500
             log.warning("cloud call failed: activation date — %s: %s", type(e).__name__, e)
             return {"error": f"The FranklinWH cloud didn't answer: {type(e).__name__}"}
+
+    @app.get("/api/analytics/insights")
+    def api_analytics_insights(source: str = "local", start: int | None = None,
+                               end: int | None = None, period: str = "month",
+                               date: str | None = None, objectives: str | None = None,
+                               gateway: str = Depends(_gateway_q)):
+        """Analytics → Explain (#588): the shown period's trends (against the previous period
+        and the same one last year), findings and suggestions for the user's objectives, from
+        franklinwh-ha-cloud-analytics ``insights``. ``source=local&start=&end=`` (epoch s)
+        reads this bridge's samples; ``source=cloud&period=&date=`` the cloud's totals.
+        ``objectives`` (comma-separated) defaults to the gateway's saved ones. Read-only:
+        suggestions are never applied. Anything that stops it is ``{"error": ...}``."""
+        try:
+            import franklinwh_ha_cloud_analytics as ca
+        except ImportError:
+            return {"error": "Cloud analytics isn't installed in this build."}
+        from . import analytics_insights as ai
+        gw = _gw_or_404(gateway)
+        s = get_settings()
+        store = db.get_store(s)
+        objs = ([o for o in objectives.split(",") if o] if objectives is not None
+                else ai.saved_objectives(store, gw.id))
+        bad = [o for o in objs if o not in ca.insights.OBJECTIVES]
+        if bad:
+            raise HTTPException(status_code=400, detail=f"unknown objective(s): {', '.join(bad)}")
+        today = site_time.now_known(gw.active_host or gw.configured_host).date()
+        if source == "local":
+            if start is None or end is None or end <= start:
+                raise HTTPException(status_code=400, detail="start and end (epoch s), end after start")
+            now = int(time.time())
+            span = end - start
+            back = (364 if span <= 7 * 86400 else 365) * 86400    # last year, same weekdays for a week
+
+            def local(a, b):
+                if min(b, now) <= a:
+                    return None
+                return ai.local_totals(api_metrics_energy(edges=f"{a},{b}", gateway=gateway),
+                                       (min(b, now) - a) / 86400)
+            current = local(start, end)
+            previous = local(start - span, start)
+            last_year = local(start - back, end - back)
+            month = _dt.datetime.fromtimestamp(start).month
+        elif source == "cloud":
+            if not (s.fwh_cloud_email and s.fwh_cloud_password):
+                return {"error": "Add your FranklinWH cloud account in Settings to explain the "
+                                 "cloud's history."}
+            refused = _cloud_target_refusal(gw)
+            if refused:
+                return {"error": refused}
+            p = ai.cloud_period(period)
+            if p not in ca.PERIODS:
+                raise HTTPException(status_code=400, detail=f"period is one of {', '.join(ca.PERIODS)}")
+            try:
+                on = _dt.date.fromisoformat(date) if date else today
+            except ValueError:
+                raise HTTPException(status_code=400, detail="date is YYYY-MM-DD") from None
+            from . import cloud_status
+            tomorrow = today + _dt.timedelta(days=1)
+
+            def cloud(day):
+                r = ca.resolve(p, day, today)
+                days = (None if p == "lifetime"
+                        else (min(r.next or tomorrow, tomorrow) - r.start).days)
+                return ai.cloud_totals(cloud_status.read_energy(
+                    s.fwh_cloud_email, s.fwh_cloud_password, gw.serial, p, day, today), days)
+            try:
+                current = cloud(on)
+            except Exception as e:  # noqa: BLE001 — shown in the dialog, never a 500
+                log.warning("cloud call failed: explain — %s: %s", type(e).__name__, e)
+                return {"error": f"The FranklinWH cloud didn't answer: {type(e).__name__}"}
+            previous = last_year = None
+            if p != "lifetime":
+                res = ca.resolve(p, on, today)
+                try:
+                    previous = cloud(res.prev) if res.prev else None
+                    ly = on.replace(year=on.year - 1) if (on.month, on.day) != (2, 29) else on.replace(year=on.year - 1, day=28)
+                    last_year = cloud(ly)
+                except Exception as e:  # noqa: BLE001 — trends need them, the rest doesn't
+                    log.info("explain: an earlier cloud period wasn't read: %s", e)
+            month = on.month
+        else:
+            raise HTTPException(status_code=400, detail="source is local or cloud")
+        if current is None:                     # the objectives still show, to be picked
+            return {"error": "No energy recorded for this period.",
+                    "objectives": [{"id": o, "label": ca.insights.OBJECTIVES[o]} for o in objs],
+                    "objective_choices": ca.insights.OBJECTIVES}
+        site = ai.site(store, s, gw, _gw_host(gw.id), month)
+        out = ca.insights.summarise(current, previous=previous, last_year=last_year, site=site,
+                                    objectives=objs)
+        missing = []                            # what would make the answer fuller
+        if not site.get("capacity_kwh"):
+            missing.append({"id": "capacity", "text": "Set the battery capacity (Settings → "
+                            "Automation) for battery cycles and reserve sizes.", "tab": "settings"})
+        if not site.get("tariff"):
+            missing.append({"id": "tariff", "text": "Add your tariff (Settings → Billing) for "
+                            "time-of-use advice and $ estimates.", "tab": "settings"})
+        out.update(source=source, site=site, current=current, missing=missing,
+                   objective_choices=ca.insights.OBJECTIVES)
+        return out
+
+    @app.put("/api/analytics/insights/objectives")
+    def api_analytics_insights_objectives(body: InsightObjectivesBody,
+                                          gateway: str = Depends(_gateway_q)):
+        """Remember the gateway's objectives for Explain (#588)."""
+        import franklinwh_ha_cloud_analytics as ca
+        from . import analytics_insights as ai
+        gw = _gw_or_404(gateway)
+        bad = [o for o in body.objectives if o not in ca.insights.OBJECTIVES]
+        if bad:
+            raise HTTPException(status_code=400, detail=f"unknown objective(s): {', '.join(bad)}")
+        store = db.get_store(get_settings())
+        if store is None:
+            raise HTTPException(status_code=503, detail="no store")
+        ai.save_objectives(store, gw.id, body.objectives)
+        return {"objectives": body.objectives}
 
     @app.post("/api/cloud/reserve")
     def api_cloud_reserve(req: ReserveReq, gateway: str = Depends(_gateway_q)):

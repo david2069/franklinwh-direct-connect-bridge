@@ -132,6 +132,31 @@ your browser's own format. Local and Cloud charts are the same height, and Local
 is scaled as Cloud's (zero always shown, four even steps), so the same data looks the same in
 both.
 
+### Explain: trends and what to change
+
+**Explain**, next to Refresh, opens a dialog about the period shown, on Local or Cloud:
+
+- **Your objectives**: pick one or two of **Lowest bill**, **Most self-sufficiency**,
+  **Backup ready**, **Most export earnings** and **Battery care**. They are remembered for the
+  gateway.
+- **Trends**: each total per day against the previous period and the same period last
+  year, such as "Grid imported up 25% on the previous period", and a run of rises or falls
+  ("falling 3 periods running"). Local compares only with a window it recorded at least
+  half of; Cloud reads the two earlier periods from the cloud (two more reads, cached).
+- **What it shows**: self-sufficiency, how much solar went to the grid, how hard the
+  battery works, and the mode the gateway runs in now.
+- **For your objectives**: what to change, why, with the numbers, and an estimated effect a
+  month in kWh and, with a tariff set, $. For example, Emergency Backup with an idle battery
+  → Self-Consumption with a 20% reserve; a time-of-use tariff run in Self-Consumption →
+  Time-of-Use for the peak; a reserve under 30% for **Backup ready** → 30%. Each opens the
+  Control tab or the Scheduler; nothing is changed from the dialog.
+- **For a fuller answer**: what's missing, such as the battery capacity or a tariff.
+
+The answers come from fixed rules over the period's totals (franklinwh-ha-cloud-analytics
+`insights`), the same each time, and the effects are estimates. The mode and reserve are
+read from the aGate when the dialog opens. `GET /api/analytics/insights` returns the same
+answer as data.
+
 ### Local or Cloud
 
 The **Local | Cloud** switch in the top row picks the source, and the page says which one

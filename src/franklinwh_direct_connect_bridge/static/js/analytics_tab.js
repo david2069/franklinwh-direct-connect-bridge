@@ -210,6 +210,9 @@ function analyticsTab() {
     detailRows: ANALYTICS_DETAIL_ROWS,
     detailColoursOpen: false,
     coloursOpen: false,
+    // Explain (#588): the dialog's state; its results stay in the dialog
+    explainOpen: false, explainBusy: false, explainErr: '', explainData: null,
+    explainObjs: [], explainChoices: [],
     colourPalette: ANALYTICS_PALETTE,
     colourEdit: null,     // the series whose palette is open in the dialog
     // Day views: the stretch shown (owner, 2026-11-10), 'HH:MM' each; null = the day's own edge
@@ -858,6 +861,52 @@ function analyticsTab() {
 
     /** The period's totals as cards, from whichever source is shown: kWh periods get the
      *  energy balance and what it means; a day of power gets the peaks. */
+    /** Explain (#588): the shown period's trends and suggestions for the objectives. */
+    async explain(objs) {
+      this.explainOpen = true; this.explainBusy = true; this.explainErr = '';
+      try {
+        const q = new URLSearchParams({ source: this.source });
+        if (this.source === 'cloud') { q.set('period', this.period); q.set('date', this.startDay); }
+        else { const w = this.win || this.window; q.set('start', w.start); q.set('end', w.end); }
+        if (objs) q.set('objectives', objs.join(','));
+        const r = await fetch('api/analytics/insights?' + q + this.$store.app.gwQuery('&'));
+        const d = await r.json();
+        this.explainData = d;
+        this.explainErr = d.error || (r.ok ? '' : String(d.detail || r.status));
+        if (d.objective_choices) this.explainChoices = Object.entries(d.objective_choices);
+        if (d.objectives) this.explainObjs = d.objectives.map(o => o.id);
+      } catch (e) {
+        this.explainErr = "Couldn't explain this period: " + e;
+      }
+      this.explainBusy = false;
+    },
+    async toggleObjective(id) {
+      const on = this.explainObjs.includes(id);
+      this.explainObjs = on ? this.explainObjs.filter(o => o !== id) : [...this.explainObjs, id];
+      try {
+        await fetch('api/analytics/insights/objectives' + this.$store.app.gwQuery(), {
+          method: 'PUT', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ objectives: this.explainObjs }) });
+      } catch (e) { /* the answer below still follows the picks */ }
+      this.explain(this.explainObjs);
+    },
+    explainEffect(e) {
+      if (!e) return '';
+      const parts = [];
+      if (e.kwh_month != null) parts.push((e.kwh_month > 0 ? '≈ ' : '≈ −') + Math.abs(e.kwh_month).toFixed(0) + ' kWh a month from the grid');
+      if (e.money_month != null) parts.push((e.money_month >= 0 ? '≈ $' : '≈ −$') + Math.abs(e.money_month).toFixed(0) + ' a month');
+      return parts.join(' · ');
+    },
+    suggestionLink(a) {
+      return ({ mode: 'Open Control (mode)', reserve: 'Open Control (reserve)',
+                schedule: 'Open Scheduler (templates)', schedules: 'Open Scheduler' })[(a || {}).type] || 'Open';
+    },
+    openSuggestion(a) {
+      const tab = ['mode', 'reserve'].includes((a || {}).type) ? 'control' : 'scheduler';
+      this.explainOpen = false;
+      this.$store.app.setActiveTab(tab);
+    },
+
     get stats() {
       const kwh = (v) => (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + ' kWh';
       const pct = (v) => v == null || !isFinite(v) ? '–' : Math.round(Math.max(0, Math.min(1, v)) * 100) + '%';
