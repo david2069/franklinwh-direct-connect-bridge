@@ -70,7 +70,7 @@ def test_a_schedule_without_the_step_is_not_checked():
 def test_a_saved_schedule_with_a_longer_wait_still_runs(st, notifier):
     _schedule(st, ask={**ASK, "timeout_min": 90})          # saved before this rule
     assert _tick(st) == []
-    assert notifier.calls[0]["timeout_s"] == 90 * 60
+    assert notifier.asked()[0]["timeout_s"] == 90 * 60   # waits: the ask is sent on its own loop
     notifier.answer(Answer(YES))
     _settle()
     assert [f["id"] for f in _tick(st, NOW + dt.timedelta(minutes=1))] == ["s1"]
@@ -80,7 +80,7 @@ def test_the_question_tells_the_deadline(st, notifier, monkeypatch):
     monkeypatch.setattr(sch, "snapshot_from_state", lambda state: {"battery.soc_pct": 41})
     _schedule(st, ask={**ASK, "question": "SoC %battery.soc_pct%%. Charge?", "timeout_min": 7})
     _tick(st)
-    assert notifier.calls[0]["question"] == "SoC 41%. Charge? (reply within 7 min)"
+    assert notifier.asked()[0]["question"] == "SoC 41%. Charge? (reply within 7 min)"
 
 
 # ── the save route ────────────────────────────────────────────────────────────

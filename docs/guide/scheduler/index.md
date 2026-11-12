@@ -202,25 +202,27 @@ the stored schedule, so nothing else changes (#157).
 
 ## Visual timeline
 
-The **Timeline** view shows today, 00:00 to 24:00:
+The **Timeline** view shows today, 00:00 to 24:00, on each gateway's site clock, with a
+**lane per gateway** (#579). The list next to "now" picks a gateway or **All gateways**
+(shown with more than one gateway); it starts on the active gateway. Each lane has:
 
 - a band along the top coloured by the operating mode the gateway actually ran;
 - the battery SoC as a line;
-- dashed markers where a schedule *fired*, *exit*ed, was *gated* or had an *error*;
+- dashed markers where one of that gateway's runs *fired*, *exit*ed, was *gated* or had
+  an *error*;
 - a line at the current time.
 
-Below it, **Planned windows** lists each enabled schedule's windows for today as a bar
-(*(+1d)* when a window wraps past midnight). Every N minutes, Custom cron and Always
-schedules are not drawn, nor are schedules the calendar excludes today.
-<!-- @b IDX-06 ;; src: scheduler.py:864-885, app.py:3328-3358 ;; tested: tests/test_scheduler.py::test_disabled_schedule_absent_from_timeline ;; write: no ;; b: Planned windows: enabled entries only, today's calendar only; interval, cron and always are not drawn ;; test: -->
+Below it, **Planned windows** lists that gateway's enabled schedules for today as bars
+(*(+1d)* when a window wraps past midnight). An Every N minutes or Custom cron schedule
+shows each of today's slots ("12× from 00:00"); an Always schedule is a faint bar across
+the day, "while its conditions hold". Schedules the calendar excludes today are not drawn.
+Rules set to **All gateways** are drawn once, on the **Site · All gateways** row at the
+end.
+<!-- @b IDX-06 ;; src: scheduler.py timeline_segments, app.py api_schedule_timeline ;; tested: tests/test_timeline_lanes_579.py ;; write: no ;; b: Planned windows: enabled entries only, today's calendar only; per gateway lane; scope-all on the Site row; interval/cron slots and always drawn ;; test: -->
 
 A One-off schedule appears only on its date.
 <!-- @b IDX-07 ;; src: scheduler.py:874-875 ;; untested ;; write: no ;; b: A one-off is drawn only when today is its date (calendar check) ;; test: unit: timeline_segments for a once entry on another date is empty -->
 
-!!! warning "The Timeline is not per gateway, and uses the container's clock"
-    The planned windows list every enabled schedule whatever its gateway, the markers come
-    from every gateway's History, and "today" and "now" are the bridge container's clock, not
-    the site's (#161).
 <!-- @b IDX-11 ;; src: app.py:3328-3358 ;; untested ;; write: no ;; b: The timeline ignores the gateway for segments and markers and uses the container clock ;; test: unit (API): two gateways' schedules; ?gateway=gw2 still returns both -->
 
 ## Activity Log
