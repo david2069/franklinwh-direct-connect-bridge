@@ -296,8 +296,9 @@ The editor's **Rate type** toggle offers two, and only two, options:
   tiered tariff is complete with no seasons and no periods at all.
 - **Dynamic (live)** — priced at the live wholesale rate while this tariff is active. Two
   providers:
-  - **AusNEM (AEMO spot)** — set your NEM region (`NEM_REGION`: NSW1, QLD1, SA1, TAS1,
-    VIC1).
+  - **AusNEM (AEMO spot)** — the region is your site's: **Sites & Meters → Region**
+    (AU-NSW and AU-ACT → NSW1, AU-QLD → QLD1, AU-SA → SA1, AU-TAS → TAS1, AU-VIC → VIC1).
+    There is no second region to pick (#582).
   - **Home Assistant price entity** — point at an HA entity for the buy price and
     optionally another for the feed-in price. Values in dollars are auto-detected and
     scaled to c/kWh.
@@ -311,6 +312,31 @@ wiring the price in twice. `GET /api/tariff/spot` shows both providers side by s
 
 Tariffs can be **exported, imported and validated** one at a time, so a plan can be moved
 between installs or shared.
+
+### Prices
+
+**Settings → Sites & Billing → Prices** holds the rest of what prices the scheduler sees
+(#582). Before 0.5.42 these were under Integrations (Dynamic price, and the Wholesale
+region under Location & Solar).
+
+- **Price signal for automation** — for a fixed or TOU bill that still wants a wholesale
+  signal. **Source**: Off, **AEMO NEM** (your site's region, as above) or **Home Assistant
+  price entities** (a buy entity, and optionally a feed-in one). It feeds
+  `tariff.spot_price` and `tariff.feed_in_price` to the scheduler only, never billing. A
+  plan with the **Dynamic (live)** rate type drives both billing and the scheduler with
+  its own source, and wins while it is the active tariff.
+- **Price events**:
+    - **Price spike** — at or above a number of c/kWh (0 = off), or from a Home Assistant
+      spike sensor (a binary sensor, which wins when set). Gives `tariff.price_spike` (1
+      during a spike, 0 otherwise, no value with neither set) and `tariff.spike_threshold`.
+      The **Price spike — ask to export** template uses it.
+    - **Demand / peak window** — from the tariff's demand window, or from a Home Assistant
+      binary sensor, calendar or switch, which wins when set. Feeds
+      `tariff.demand_window_active`.
+
+Only entities exposed to the bridge are listed. On the first start of 0.5.42 a saved
+wholesale region is given to any site with no region (NSW1 → AU-NSW); a site whose region
+disagrees keeps its own, and the bridge log says so.
 
 ---
 

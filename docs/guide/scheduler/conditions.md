@@ -271,7 +271,7 @@ instance, after the bridge's own groups.
     check its History for runs while Home Assistant had lost the entity.
 
 **Direct Connect only.** A Home Assistant price entity can feed `tariff.spot_price` and
-`tariff.feed_in_price` (**Settings → Integrations**). A `$/kWh` unit is scaled to c/kWh;
+`tariff.feed_in_price` (**Settings → Sites & Billing → Prices**). A `$/kWh` unit is scaled to c/kWh;
 `c/kWh`, `¢/kWh` and a unitless value are taken as they are. A configured entity wins over
 the AEMO NEM price for the same sensor.
 <!-- @b CND-37 ;; src: scheduler.py:1203-1248, scheduler.py:1307-1327, scheduler.py:1952-1953 ;; tested: tests/test_aemo_nem.py::test_ha_price_snapshot_units_and_mapping ;; write: yes ;; b: tariff_price_entity and tariff_feedin_entity map to tariff.spot_price and feed_in_price in c/kWh with $ units scaled x100, applied after NEM so they win ;; test: — -->
@@ -382,7 +382,12 @@ calculators, and `tariff.spot_price` / `tariff.feed_in_price` (c/kWh).
 - `tariff.import_billable` is 1 or 0 from the rate model, and None when the rate model gives
   no answer.
   <!-- @b SEN-09 ;; src: scheduler.py:1507-1515 ;; untested ;; write: yes ;; b: tariff.import_billable is int(billable) from rate_model.resolve, None when billable is None ;; test: unit: a free window and a priced window -->
-- `tariff.spot_price` is the AEMO NEM 5-minute price for the configured region, cached about
+- `tariff.price_spike` is 1 during a price spike and 0 otherwise: the Home Assistant spike
+  sensor when one is set, else the price at or above the spike threshold; no value with
+  neither. `tariff.spike_threshold` is that threshold in c/kWh (**Sites & Billing →
+  Prices**, #582). A Home Assistant demand-window entity there wins over the tariff's
+  window for `tariff.demand_window_active`.
+- `tariff.spot_price` is the AEMO NEM 5-minute price for your site's region, cached about
   4 minutes. On a fetch error the **last good price is kept, however old**; it is not dropped
   after 30 minutes as on the Modbus Bridge. A Home Assistant price entity wins over NEM. An
   active **dynamic** tariff overrides both, and also sets `tariff.buy_rate`/`sell_rate`.

@@ -862,6 +862,9 @@ class SettingsUpdate(BaseModel):
     tariff_price_entity: str | None = None
     tariff_feedin_entity: str | None = None
     billing_dynamic: bool | None = None       # AEMO NEM wholesale spot region
+    price_spike_c: float | None = None        # price events (#582)
+    price_spike_entity: str | None = None
+    demand_window_entity: str | None = None
     # Interrupted scheduled-dispatch policy: none | notify | release | resume.
     dispatch_interrupt_policy: str | None = None
 
@@ -1090,6 +1093,8 @@ def create_app() -> FastAPI:
                 moved = scheduler.migrate_notify_paths(store)      # one notify path (#576)
                 if moved:
                     log.info("schedules: %d moved to Actionable notify rows (#576)", moved)
+                from . import aemo_nem
+                aemo_nem.migrate_region(store, s)      # the region is the site's (#582)
                 db_rows = store.gateways()
             except Exception:  # noqa: BLE001 — roster must never block startup
                 db_rows = []
@@ -2494,15 +2499,17 @@ def create_app() -> FastAPI:
     @app.post("/api/tariffs/validate")
     def api_tariff_validate(req: TariffValidateReq):
         """Check a rate model's coverage/tier completeness — the editor's live linter."""
-        from . import rate_model
+        from . import aemo_nem, rate_model
         pricing = req.pricing or {}
         if pricing.get("kind") == "dynamic":
             # A dynamic/wholesale tariff carries no static rates — the live provider supplies
             # them. Validate the provider instead of demanding seasons/default_rate.
             dyn = pricing.get("dynamic") or {}
             probs = []
-            if dyn.get("source") == "nem" and not (dyn.get("region") or "").strip():
-                probs.append("Choose a NEM region for the AusNEM provider.")
+            if dyn.get("source") == "nem" and not (dyn.get("region") or "").strip() and not any(
+                    aemo_nem.region_for(s.get("region")) for s in (_ha_store().sites() or [])):
+                probs.append("Set your site's Region (e.g. AU-NSW) under Sites & Meters: "
+                             "the AusNEM price is the site's region (#582).")
             elif dyn.get("source") == "ha" and not (dyn.get("buy_entity") or "").strip():
                 probs.append("Choose a buy price entity for the Home Assistant provider.")
             elif dyn.get("source") not in ("nem", "ha"):
@@ -4362,11 +4369,12 @@ def create_app() -> FastAPI:
         snap = scheduler.snapshot_from_state(getattr(gw, "last_state", {}) or {})
         snap.update(scheduler.ha_snapshot(st))
         snap.update(scheduler.solar_snapshot(get_settings()))
-        snap.update(scheduler.nem_snapshot(get_settings()))
+        snap.update(scheduler.nem_snapshot(get_settings(), st, gateway))
         snap.update(scheduler.ha_price_snapshot(get_settings(), st))
         snap.update(scheduler.tariff_snapshot(st, gateway))
         scheduler.apply_dynamic_pricing(snap, get_settings(), st, gateway)   # per-tariff wholesale override
         snap.update(scheduler.billing_snapshot(st, gateway))
+        scheduler.price_events(snap, get_settings())                      # #582
         snap.update(__import__("franklinwh_direct_connect_bridge.billing", fromlist=["billing"]).billing_read(st, gateway))
         snap.update(__import__("franklinwh_direct_connect_bridge.billing", fromlist=["billing"]).fixed_snapshot(st, gateway))
         try:
@@ -4396,11 +4404,12 @@ def create_app() -> FastAPI:
         snap = scheduler.snapshot_from_state(getattr(gw, "last_state", {}) or {})
         snap.update(scheduler.ha_snapshot(st))
         snap.update(scheduler.solar_snapshot(get_settings()))
-        snap.update(scheduler.nem_snapshot(get_settings()))
+        snap.update(scheduler.nem_snapshot(get_settings(), st, gateway))
         snap.update(scheduler.ha_price_snapshot(get_settings(), st))
         snap.update(scheduler.tariff_snapshot(st, gateway))
         scheduler.apply_dynamic_pricing(snap, get_settings(), st, gateway)   # per-tariff wholesale override
         snap.update(scheduler.billing_snapshot(st, gateway))
+        scheduler.price_events(snap, get_settings())                      # #582
         snap.update(__import__("franklinwh_direct_connect_bridge.billing", fromlist=["billing"]).billing_read(st, gateway))
         snap.update(__import__("franklinwh_direct_connect_bridge.billing", fromlist=["billing"]).fixed_snapshot(st, gateway))
         try:
@@ -5176,7 +5185,12 @@ def create_app() -> FastAPI:
         HA entities so the picker can offer them. Region defaults to the configured nem_region."""
         from . import aemo_nem
         st = get_settings()
-        reg = (region or st.nem_region or "").upper()
+        # The region is the site's (#582): Sites & Meters → Region, AU-NSW → NSW1.
+        try:
+            site_region = scheduler.site_nem_region(_ha_store(), None)
+        except Exception:  # noqa: BLE001
+            site_region = None
+        reg = (region or (st.nem_region and (site_region or st.nem_region)) or "").upper()
         spot = aemo_nem.spot_price(reg) if reg else None
         # HA price provider (buy/sell in c/kWh) from the configured entities. Guarded: a store
         # or HA outage must not fail the endpoint — the AusNEM half still answers.
@@ -5202,6 +5216,7 @@ def create_app() -> FastAPI:
             active = {"source": None, "buy_c_kwh": None, "sell_c_kwh": None}
         return {"region": reg or None, "regions": list(aemo_nem.REGIONS),
                 "configured_region": st.nem_region or None, "spot": spot,
+                "site_region": site_region,
                 "ha": ha, "ha_options": ha_options,
                 "billing_dynamic": bool(st.billing_dynamic),
                 "active": active}
@@ -6681,6 +6696,11 @@ def create_app() -> FastAPI:
             "scheduler": {
                 "dispatch_interrupt_policy": s.dispatch_interrupt_policy,
             },
+            "prices": {                          # price events (#582)
+                "price_spike_c": s.price_spike_c,
+                "price_spike_entity": s.price_spike_entity,
+                "demand_window_entity": s.demand_window_entity,
+            },
         }
 
     # -- Settings tab (live write — scoped whitelist, P7) ---------------------
@@ -6764,7 +6784,15 @@ def create_app() -> FastAPI:
                         raise HTTPException(status_code=422, detail=f"{key} must be a number")
                 setattr(s, key, val)
                 save_override(key, val)
-            elif key in ("tariff_price_entity", "tariff_feedin_entity"):
+            elif key == "price_spike_c":
+                try:                             # c/kWh; empty or 0 switches it off (#582)
+                    val = max(0.0, float(value or 0))
+                except (TypeError, ValueError):
+                    raise HTTPException(status_code=422, detail="price_spike_c must be a number")
+                setattr(s, key, val)
+                save_override(key, val)
+            elif key in ("tariff_price_entity", "tariff_feedin_entity",
+                         "price_spike_entity", "demand_window_entity"):
                 # HA scheduler-id strings (ha:<inst>:<eid>) — not bools; empty clears.
                 val = str(value or "").strip()
                 setattr(s, key, val)

@@ -173,7 +173,7 @@ the stored schedule, so nothing else changes (#157).
       action.
     - **Cheap wholesale price** (`tariff.spot_price` ≤ 5 c/kWh) and **Cheap tariff import
       rate** (`tariff.buy_rate` ≤ $0.05/kWh): **Charge** / **Not now**; force charge to 90%.
-    - **High wholesale price** (`tariff.spot_price` ≥ 50 c/kWh) and **High tariff feed-in
+    - **Price spike** (`tariff.price_spike == 1`, set under Sites & Billing → Prices) and **High tariff feed-in
       rate** (`tariff.sell_rate` ≥ $0.50/kWh): only while `battery.soc_pct` is at or above
       the **min discharge SoC** Automation Constant (`const.min_discharge_soc`, default 20%).
       **Export** / **Hold**; force discharge to a 20% floor.

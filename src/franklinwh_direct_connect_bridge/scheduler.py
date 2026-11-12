@@ -574,9 +574,16 @@ _ASK_CHEAP = (
     ("spot", "wholesale price", "Wholesale price", "tariff.spot_price", 5, "c/kWh"),
     ("tariff", "tariff import rate", "Import rate", "tariff.buy_rate", 0.05, "$/kWh"),
 )
+#: The high-price ones (#582): the wholesale one fires on the price spike (Sites & Billing →
+#: Prices), not a fixed 50 c; the tariff one on its feed-in rate. (id prefix, name, question
+#: label, sensor shown, unit, condition, when).
 _ASK_HIGH = (
-    ("spot", "wholesale price", "Wholesale price", "tariff.spot_price", 50, "c/kWh"),
-    ("tariff", "tariff feed-in rate", "Feed-in rate", "tariff.sell_rate", 0.50, "$/kWh"),
+    ("spot", "price spike", "Wholesale price", "tariff.spot_price", "c/kWh",
+     {"sensor": "tariff.price_spike", "op": "==", "value": 1},
+     "the price spikes (Prices → Price spike)"),
+    ("tariff", "tariff feed-in rate", "Feed-in rate", "tariff.sell_rate", "$/kWh",
+     {"sensor": "tariff.sell_rate", "op": ">=", "value": 0.50},
+     "tariff.sell_rate is 0.5 $/kWh or more"),
 )
 
 #: Built-in schedule templates. Every action here is hardware-verified on the
@@ -698,15 +705,17 @@ PRESETS: list[dict[str, Any]] = [
       for key, what, label, sensor, low, unit in _ASK_CHEAP],
     # High price exports only while SoC is at or above the Automation Constant
     # const.min_discharge_soc (default 20%), and holds that same 20% as the floor.
-    *[{"id": f"{key}_high_export_ask", "name": f"High {what} — ask to export",
+    *[{"id": f"{key}_high_export_ask",
+       "name": (f"{what.capitalize()} — ask to export" if key == "spot"
+                else f"High {what} — ask to export"),
        "requires": "modbus",
-       "description": f"When {sensor} is {high} {unit} or more and SoC is at or above the "
+       "description": f"When {when} and SoC is at or above the "
                       "minimum discharge SoC (Automation Constants), ask whether to "
                       "force-discharge to the grid, holding a 20% floor. Released when the "
                       "price falls.",
        "spec": {"trigger_type": "always", "fire_at": "00:00", "duration_min": 0,
                 "match": "all",
-                "conditions": [{"sensor": sensor, "op": ">=", "value": high},
+                "conditions": [dict(cond),
                                {"sensor": "battery.soc_pct", "op": ">=",
                                 "value_kind": "sensor",
                                 "value_sensor": "const.min_discharge_soc"}],
@@ -717,7 +726,7 @@ PRESETS: list[dict[str, Any]] = [
                         "timeout_min": 5, "if_no_reply": "skip",
                         "choices": [{"label": "Export", "then": "run"},
                                     {"label": "Hold", "then": "skip"}]}}}
-      for key, what, label, sensor, high, unit in _ASK_HIGH],
+      for key, what, label, sensor, unit, cond, when in _ASK_HIGH],
     # Demand window: Self-Consumption while it lasts, only while SoC is at or above
     # const.demand_charge_min_soc (default 30%), then the mode that was active before it is
     # put back (restore_on_exit, BR-50: captured before the write, kept with the run).
@@ -1740,12 +1749,26 @@ def derived_snapshot(snap: dict) -> dict[str, Any]:
     return out
 
 
-def nem_snapshot(settings) -> dict[str, Any]:
-    """Wholesale spot sensor from the AEMO NEM built-in — {tariff.spot_price} in c/kWh when a
-    nem_region is configured. Cached in aemo_nem (~4min); empty otherwise or on fetch failure."""
+def site_nem_region(store, gateway_id) -> str | None:
+    """The NEM region of the gateway's site (Sites & Meters → Region, #582), or None."""
+    try:
+        from . import aemo_nem
+        meter = _meter_for_gateway(store, gateway_id) or {}
+        site = store.site(meter["site_id"]) if meter.get("site_id") else None
+        return aemo_nem.region_for((site or {}).get("region"))
+    except Exception:                                          # noqa: BLE001
+        return None
+
+
+def nem_snapshot(settings, store=None, gateway_id=None) -> dict[str, Any]:
+    """Wholesale spot sensor from the AEMO NEM built-in — {tariff.spot_price} in c/kWh when
+    the price signal is AEMO NEM (``nem_region`` set). The region is the gateway's site's
+    (#582), else the saved one. Cached in aemo_nem (~4min); empty otherwise or on fetch
+    failure."""
     region = getattr(settings, "nem_region", "") or ""
     if not region:
         return {}
+    region = (site_nem_region(store, gateway_id) if store is not None else None) or region
     try:
         from . import aemo_nem
         sp = aemo_nem.spot_price(region)
@@ -1863,6 +1886,8 @@ def apply_dynamic_pricing(snapshot: dict, settings, store, gateway_id) -> dict |
     dyn = tariff_dynamic_provider(store, gateway_id)
     if not dyn:
         return None
+    if dyn.get("source") == "nem":                 # the site's region (#582)
+        dyn = {**dyn, "region": site_nem_region(store, gateway_id) or dyn.get("region")}
     buy_c, sell_c = resolve_dynamic_price(dyn, store)
     if buy_c is None:
         return None
@@ -1874,6 +1899,26 @@ def apply_dynamic_pricing(snapshot: dict, settings, store, gateway_id) -> dict |
     snapshot["tariff.buy_rate"] = round(buy, 5)
     snapshot["tariff.sell_rate"] = round(sell, 5)
     return {"buy": buy, "sell": sell}
+
+
+def price_events(snapshot: dict, settings) -> None:
+    """Price events (#582), after the prices are settled. ``tariff.price_spike``: 1 while
+    the HA spike sensor is on, else while the price is at or above the threshold; no
+    reading with neither. ``tariff.demand_window_active``: the HA entity wins over the
+    tariff's window when one is set."""
+    thr = float(getattr(settings, "price_spike_c", 0) or 0)
+    ent = (getattr(settings, "price_spike_entity", "") or "").strip()
+    spot = _coerce_number(snapshot.get("tariff.spot_price"))
+    spike = None
+    if ent and snapshot.get(ent) is not None:
+        spike = int(bool(_coerce_number(snapshot.get(ent))))
+    elif thr > 0 and spot is not None:
+        spike = int(spot >= thr)
+    snapshot["tariff.price_spike"] = spike
+    snapshot["tariff.spike_threshold"] = thr or None
+    dw = (getattr(settings, "demand_window_entity", "") or "").strip()
+    if dw and snapshot.get(dw) is not None:
+        snapshot["tariff.demand_window_active"] = int(bool(_coerce_number(snapshot.get(dw))))
 
 
 def ha_price_snapshot(settings, store) -> dict[str, Any]:
@@ -1902,6 +1947,8 @@ def ha_price_snapshot(settings, store) -> dict[str, Any]:
 TARIFF_SENSORS = [
     ("tariff.spot_price", "Wholesale spot price (AEMO NEM or HA entity, c/kWh)"),
     ("tariff.feed_in_price", "Dynamic feed-in price (HA entity, c/kWh)"),
+    ("tariff.price_spike", "Price spike (1 at or above the spike threshold, or the HA spike sensor on)"),
+    ("tariff.spike_threshold", "Price spike threshold (c/kWh)"),
     ("tariff.buy_rate", "Tariff: import rate ($/kWh)"),
     ("tariff.sell_rate", "Tariff: feed-in rate ($/kWh)"),
     ("tariff.season", "Tariff: season"),
@@ -2001,7 +2048,7 @@ FEATURES = ("gateway", "modbus", "solar_forecast", "spot_price", "feed_in_price"
             "tariff", "utility", "constants", "ask")
 
 _SETUP_SOLAR = "set your location in Settings → Integrations → Location & Solar"
-_SETUP_PRICE = "set it in Settings → Integrations → Dynamic price"
+_SETUP_PRICE = "set it in Settings → Sites & Billing → Prices"
 _SETUP_TARIFF = "give the meter a tariff in Settings → Sites & Billing"
 _SETUP_UTILITY = "give the meter a utility in Settings → Sites & Billing"
 
@@ -2013,6 +2060,8 @@ def sensor_feature(sid: str) -> str:
         return "ha:" + sid.split(":")[1]
     if sid in ("tariff.spot_price", "tariff.feed_in_price"):
         return sid.split(".", 1)[1]
+    if sid in ("tariff.price_spike", "tariff.spike_threshold"):    # from the price (#582)
+        return "spot_price"
     if sid.startswith(("weather.", "solar_forecast.")):
         return "solar_forecast"
     if sid.startswith("service."):
@@ -2686,12 +2735,13 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
     snapshot["grid.offgrid_min"] = offgrid_min(state, now.timestamp())   # on the tick's clock
     snapshot.update(ha_snapshot(store))     # exposed HA entities are conditions too
     snapshot.update(solar_snapshot(settings))   # weather + solar-forecast sensors
-    snapshot.update(nem_snapshot(settings))     # tariff.spot_price (AEMO NEM built-in)
+    snapshot.update(nem_snapshot(settings, store, gateway_id))   # tariff.spot_price (AEMO NEM, the site's region)
     snapshot.update(ha_price_snapshot(settings, store))   # HA price entity -> tariff.spot_price/feed_in_price (wins over NEM)
     snapshot.update(tariff_snapshot(store, gateway_id, now))   # tariff.* + service.*
     snapshot.update(billing_snapshot(store, gateway_id, now))   # tariff.*_window_active
     from . import billing
     _dyn = apply_dynamic_pricing(snapshot, settings, store, gateway_id)   # per-tariff wholesale override
+    price_events(snapshot, settings)            # tariff.price_spike, HA demand window (#582)
     snapshot.update(billing.billing_tick(store, gateway_id, snapshot.get("grid.power_w"),
                                          now, dynamic_rate=_dyn))   # demand/energy/bonus/charge
     snapshot.update(billing.fixed_snapshot(store, gateway_id, now))   # fixed.* (pure accrual)

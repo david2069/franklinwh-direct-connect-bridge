@@ -71,9 +71,9 @@ ASK_TEMPLATES = {
                               ({"tariff.buy_rate": 0.05}, {"tariff.buy_rate": 0.051})),
     # High price exports only at or above the min-discharge SoC constant.
     "spot_high_export_ask": (("force", "discharge"), "modbus", ["Export", "Hold"],
-                             ({"tariff.spot_price": 50, "battery.soc_pct": 20,
+                             ({"tariff.price_spike": 1, "battery.soc_pct": 20,   # #582
                                "const.min_discharge_soc": 20},
-                              {"tariff.spot_price": 50, "battery.soc_pct": 19,
+                              {"tariff.price_spike": 1, "battery.soc_pct": 19,
                                "const.min_discharge_soc": 20})),
     "tariff_high_export_ask": (("force", "discharge"), "modbus", ["Export", "Hold"],
                                ({"tariff.sell_rate": 0.5, "battery.soc_pct": 60,

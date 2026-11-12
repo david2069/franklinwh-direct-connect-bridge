@@ -515,20 +515,12 @@
               </div>
             </div>
           </div>
-          <!-- Region — styled dropdown (explicit set) -->
-          <div class="flex items-center gap-2 text-xs" x-show="tariffEdit.pricing.dynamic.source==='nem'">
+          <!-- Region: the site's (#582), Sites & Meters → Region (AU-NSW → NSW1). -->
+          <div class="flex items-center gap-2 text-xs" x-show="tariffEdit.pricing.dynamic.source==='nem'"
+               data-testid="tariff-nem-region">
             <span class="text-slate-500 w-16 shrink-0">Region</span>
-            <div class="relative flex-1" x-data="{ open:false }" @click.outside="open=false">
-              <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
-                <span :style="tariffEdit.pricing.dynamic.region ? '' : 'color:var(--text-faint)'" x-text="tariffEdit.pricing.dynamic.region || 'choose region…'"></span>
-                <span style="color:var(--text-faint)">&#9662;</span>
-              </button>
-              <div x-show="open" x-cloak class="absolute z-40 mt-1 rounded-lg border shadow-xl py-1 max-h-56 overflow-y-auto" style="background:var(--surface-0);border-color:var(--border);left:0;right:0">
-                <template x-for="rg in nemRegions" :key="rg">
-                  <button type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="tariffEdit.pricing.dynamic.region===rg ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="tariffEdit.pricing.dynamic.region=rg; open=false" x-text="rg"></button>
-                </template>
-              </div>
-            </div>
+            <span class="flex-1" style="color:var(--text-secondary)"
+                  x-text="nemSpot && nemSpot.site_region ? nemSpot.site_region + ', from your site (Sites & Meters → Region)' : 'Set your site\'s Region (e.g. AU-NSW) under Sites & Meters'"></span>
           </div>
           <template x-if="tariffEdit.pricing.dynamic.source==='ha'">
             <div class="space-y-1.5">
@@ -986,6 +978,126 @@
       </div>
     </template>
     <div x-show="!utilities.length" class="text-[11px]" style="color:var(--text-faint)">No utilities yet — add one to define your plan &amp; rates.</div>
+  </div>
+
+  <!-- ══ Prices (#582): one place for the price signal and the price events ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Prices <a :href="$store.app.guideUrl('energy-and-costs/#prices')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+  </div>
+  <div class="card space-y-4" data-testid="prices-section">
+    <div class="space-y-2">
+      <div class="text-xs font-semibold" style="color:var(--text-primary)">Price signal for automation</div>
+      <p class="text-[11px]" style="color:var(--text-faint)">
+        Feeds <span class="font-mono">tariff.spot_price</span> (buy) and <span class="font-mono">tariff.feed_in_price</span>
+        (sell) to the <span class="font-medium">scheduler only</span>, for a fixed or TOU bill that still wants a
+        wholesale signal. To <span class="font-medium">bill</span> at the live price, give your plan the
+        <span class="font-medium">Dynamic (live)</span> rate type above: its source then drives billing and the scheduler.
+      </p>
+      <label class="text-xs text-slate-500 block">Source
+        <select class="form-control form-control-sm w-full mt-1" data-testid="price-signal-source"
+                :value="priceSrc" @change="setPriceSignal($event.target.value)">
+          <option value="off" :selected="priceSrc === 'off'">Off</option>
+          <option value="nem" :selected="priceSrc === 'nem'" :disabled="!(nemSpot && nemSpot.site_region)"
+                  x-text="nemSpot && nemSpot.site_region ? 'AEMO NEM (' + nemSpot.site_region + ', your site\'s region)' : 'AEMO NEM (set your site\'s Region first)'"></option>
+          <option value="ha" :selected="priceSrc === 'ha'">Home Assistant price entities</option>
+        </select></label>
+      <span class="text-[11px] block" style="color:var(--text-faint)" x-show="priceSrc === 'nem'">
+        <template x-if="nemSpot && nemSpot.spot">
+          <span>spot now <span class="font-semibold" :style="nemSpot.spot.price_c_kwh < 0 ? 'color:#34d399' : 'color:var(--text-primary)'" x-text="nemSpot.spot.price_c_kwh + ' c/kWh'"></span> · <span x-text="nemSpot.spot.settlement"></span></span>
+        </template>
+        <template x-if="!(nemSpot && nemSpot.spot)"><span>fetching AEMO spot…</span></template>
+      </span>
+      <div x-show="priceSrc === 'ha'" class="space-y-2">
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div class="text-xs text-slate-500">Buy price entity (Home Assistant)
+        <div class="relative mt-1" x-data="{ open:false, q:'' }" @click.outside="open=false; q=''">
+          <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
+            <span class="truncate" :style="form.tariff_price_entity ? '' : 'color:var(--text-faint)'" x-text="haPriceLabel(form.tariff_price_entity) || 'Choose an entity'"></span>
+            <span style="color:var(--text-faint)">&#9662;</span>
+          </button>
+          <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.gbq && $refs.gbq.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);left:0;right:0">
+            <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="gbq" x-model="q" @click.stop type="text" placeholder="Filter&#8230;" class="form-control form-control-sm w-full"></div>
+            <div class="max-h-56 overflow-y-auto py-1">
+              <button type="button" class="w-full text-left px-3 py-1.5 text-xs" style="color:var(--text-faint)" @click="form.tariff_price_entity=''; saveOne({tariff_price_entity:''}); loadNemSpot(); open=false; q=''">&#8212; None &#8212;</button>
+              <template x-for="it in haPriceItems(q)" :key="'gb'+it.key"><div>
+                <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
+                <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="form.tariff_price_entity===it.id ? { color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-primary)' }" @click="form.tariff_price_entity=it.id; saveOne({tariff_price_entity:it.id}); loadNemSpot(); open=false; q=''" x-text="it.label"></button>
+              </div></template>
+              <div x-show="!haPriceItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No exposed price entities (HA &#8594; Browse entities).</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="text-xs text-slate-500">Feed-in (sell) entity — optional
+        <div class="relative mt-1" x-data="{ open:false, q:'' }" @click.outside="open=false; q=''">
+          <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
+            <span class="truncate" :style="form.tariff_feedin_entity ? '' : 'color:var(--text-faint)'" x-text="haPriceLabel(form.tariff_feedin_entity) || 'None'"></span>
+            <span style="color:var(--text-faint)">&#9662;</span>
+          </button>
+          <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.gfq && $refs.gfq.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);left:0;right:0">
+            <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="gfq" x-model="q" @click.stop type="text" placeholder="Filter&#8230;" class="form-control form-control-sm w-full"></div>
+            <div class="max-h-56 overflow-y-auto py-1">
+              <button type="button" class="w-full text-left px-3 py-1.5 text-xs" style="color:var(--text-faint)" @click="form.tariff_feedin_entity=''; saveOne({tariff_feedin_entity:''}); loadNemSpot(); open=false; q=''">&#8212; None &#8212;</button>
+              <template x-for="it in haPriceItems(q)" :key="'gf'+it.key"><div>
+                <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
+                <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="form.tariff_feedin_entity===it.id ? { color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-primary)' }" @click="form.tariff_feedin_entity=it.id; saveOne({tariff_feedin_entity:it.id}); loadNemSpot(); open=false; q=''" x-text="it.label"></button>
+              </div></template>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="text-[11px]" style="color:var(--text-faint)" x-show="nemSpot && nemSpot.ha && (nemSpot.ha.buy_c_kwh != null || nemSpot.ha.sell_c_kwh != null)">
+      live —
+      <template x-if="nemSpot && nemSpot.ha && nemSpot.ha.buy_c_kwh != null">
+        <span>buy <span class="font-semibold" :style="nemSpot.ha.buy_c_kwh < 0 ? 'color:#34d399' : 'color:var(--text-primary)'" x-text="nemSpot.ha.buy_c_kwh + ' c/kWh'"></span></span>
+      </template>
+      <template x-if="nemSpot && nemSpot.ha && nemSpot.ha.sell_c_kwh != null">
+        <span> · sell <span class="font-semibold" x-text="nemSpot.ha.sell_c_kwh + ' c/kWh'"></span></span>
+      </template>
+    </div>
+    <p class="text-[11px]" style="color:var(--text-faint)">
+      Only <span class="font-medium">exposed</span> HA entities appear here (expose them under HA → Browse entities).
+      Units auto-detect: a <span class="font-mono">$/kWh</span> entity is scaled to cents; <span class="font-mono">c/kWh</span> is used as-is.
+      Works with Amber, Amber&nbsp;Express, ConEd, Localvolts — any retailer that publishes a price sensor.
+    </p>
+      </div>
+    </div>
+
+    <div class="space-y-2 pt-3 border-t" style="border-color:var(--border)">
+      <div class="text-xs font-semibold" style="color:var(--text-primary)">Price events</div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <label class="text-xs text-slate-500">Price spike at or above (c/kWh, 0 = off)
+          <input type="number" step="0.1" min="0" class="form-control form-control-sm w-full mt-1"
+                 data-testid="price-spike-threshold" x-model="form.price_spike_c"
+                 @change="saveOne({price_spike_c: Number(form.price_spike_c) || 0})" placeholder="50"></label>
+        <label class="text-xs text-slate-500">…or a spike sensor (Home Assistant)
+          <select class="form-control form-control-sm w-full mt-1" data-testid="price-spike-entity"
+                  :value="form.price_spike_entity" @change="form.price_spike_entity = $event.target.value; saveOne({price_spike_entity: form.price_spike_entity})">
+            <option value="" :selected="!form.price_spike_entity">None: use the threshold</option>
+            <template x-for="o in haEventOpts" :key="'sp' + o.id">
+              <option :value="o.id" :selected="form.price_spike_entity === o.id" x-text="o.label + ' · ' + o.group"></option>
+            </template>
+          </select></label>
+      </div>
+      <p class="text-[11px]" style="color:var(--text-faint)">
+        Gives <span class="font-mono">tariff.price_spike</span> (1 during a spike) and
+        <span class="font-mono">tariff.spike_threshold</span>. The sensor wins when set.
+      </p>
+      <label class="text-xs text-slate-500 block">Demand / peak window
+        <select class="form-control form-control-sm w-full mt-1" data-testid="demand-window-entity"
+                :value="form.demand_window_entity" @change="form.demand_window_entity = $event.target.value; saveOne({demand_window_entity: form.demand_window_entity})">
+          <option value="" :selected="!form.demand_window_entity">From the tariff's demand window</option>
+          <template x-for="o in haEventOpts" :key="'dw' + o.id">
+            <option :value="o.id" :selected="form.demand_window_entity === o.id" x-text="o.label + ' · ' + o.group"></option>
+          </template>
+        </select></label>
+      <p class="text-[11px]" style="color:var(--text-faint)">
+        Feeds <span class="font-mono">tariff.demand_window_active</span>. A Home Assistant binary sensor,
+        calendar or switch wins over the tariff's window when set. Only exposed entities are listed.
+      </p>
+    </div>
   </div>
 
   </div>
@@ -2343,26 +2455,6 @@
           <button type="button" class="underline" style="color:var(--accent)"
                   @click="form.pv_kwp = derivedPvKwp; saveOne({pv_kwp: derivedPvKwp})">use it</button>
         </span></label>
-      <label class="text-xs text-slate-500">Wholesale region (AEMO NEM)
-        <div class="relative mt-1" x-data="{ open:false }" @click.outside="open=false">
-          <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
-            <span :style="form.nem_region ? '' : 'color:var(--text-faint)'" x-text="form.nem_region || 'Off'"></span>
-            <span style="color:var(--text-faint)">&#9662;</span>
-          </button>
-          <div x-show="open" x-cloak class="absolute z-40 mt-1 rounded-lg border shadow-xl py-1 max-h-56 overflow-y-auto" style="background:var(--surface-0);border-color:var(--border);left:0;right:0">
-            <button type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="!form.nem_region ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="form.nem_region=''; saveOne({nem_region:''}); loadNemSpot(); open=false">Off</button>
-            <template x-for="rg in (nemSpot && nemSpot.regions) || ['NSW1','QLD1','SA1','TAS1','VIC1']" :key="rg">
-              <button type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="form.nem_region===rg ? 'color:var(--accent);font-weight:600' : 'color:var(--text-primary)'" @click="form.nem_region=rg; saveOne({nem_region:rg}); loadNemSpot(); open=false" x-text="rg"></button>
-            </template>
-          </div>
-        </div>
-        <span class="text-[11px] mt-1 block" style="color:var(--text-faint)" x-show="form.nem_region">
-          <template x-if="nemSpot && nemSpot.spot">
-            <span>spot now <span class="font-semibold" :style="nemSpot.spot.price_c_kwh < 0 ? 'color:#34d399' : 'color:var(--text-primary)'" x-text="nemSpot.spot.price_c_kwh + ' c/kWh'"></span> · <span x-text="nemSpot.spot.settlement"></span> · exposes scheduler sensor <span class="font-mono">tariff.spot_price</span></span>
-          </template>
-          <template x-if="form.nem_region && !(nemSpot && nemSpot.spot)"><span>fetching AEMO spot…</span></template>
-        </span>
-      </label>
       <label class="text-xs text-slate-500">Tilt°
         <input type="number" step="1" class="form-control form-control-sm w-full mt-1" x-model="form.pv_tilt"
                @change="saveOne({pv_tilt: Number(form.pv_tilt) || 0})" placeholder="22"></label>
@@ -2376,82 +2468,6 @@
     </p>
   </div>
 
-  <!-- ══ Dynamic price (wholesale) ══ -->
-  <div class="flex items-center gap-3">
-    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Dynamic price (wholesale) <a :href="$store.app.guideUrl('energy-and-costs/#static-or-dynamic')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
-    <div class="flex-1 border-t border-white/[0.08]"></div>
-  </div>
-  <div class="card space-y-3">
-    <div class="flex items-center justify-between gap-2">
-      <p class="text-xs" style="color:var(--text-faint)">
-        Feeds <span class="font-mono">tariff.spot_price</span> (buy) + <span class="font-mono">tariff.feed_in_price</span> (sell)
-        for the scheduler. Two sources — the AusNEM region above, or a Home Assistant price entity. HA wins when set.
-      </p>
-      <span class="text-[11px] px-2 py-0.5 rounded-full shrink-0"
-            x-show="nemSpot && nemSpot.active && nemSpot.active.source"
-            style="background:var(--surface-2);color:var(--text-secondary)"
-            x-text="nemSpot && nemSpot.active ? ('source: ' + (nemSpot.active.source==='ha-entity' ? 'HA entity' : 'AusNEM')) : ''"></span>
-    </div>
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <div class="text-xs text-slate-500">Buy price entity (Home Assistant)
-        <div class="relative mt-1" x-data="{ open:false, q:'' }" @click.outside="open=false; q=''">
-          <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
-            <span class="truncate" :style="form.tariff_price_entity ? '' : 'color:var(--text-faint)'" x-text="haPriceLabel(form.tariff_price_entity) || 'Off (use AusNEM if set)'"></span>
-            <span style="color:var(--text-faint)">&#9662;</span>
-          </button>
-          <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.gbq && $refs.gbq.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);left:0;right:0">
-            <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="gbq" x-model="q" @click.stop type="text" placeholder="Filter&#8230;" class="form-control form-control-sm w-full"></div>
-            <div class="max-h-56 overflow-y-auto py-1">
-              <button type="button" class="w-full text-left px-3 py-1.5 text-xs" style="color:var(--text-faint)" @click="form.tariff_price_entity=''; saveOne({tariff_price_entity:''}); loadNemSpot(); open=false; q=''">&#8212; Off (use AusNEM if set) &#8212;</button>
-              <template x-for="it in haPriceItems(q)" :key="'gb'+it.key"><div>
-                <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
-                <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="form.tariff_price_entity===it.id ? { color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-primary)' }" @click="form.tariff_price_entity=it.id; saveOne({tariff_price_entity:it.id}); loadNemSpot(); open=false; q=''" x-text="it.label"></button>
-              </div></template>
-              <div x-show="!haPriceItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No exposed price entities (HA &#8594; Browse entities).</div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="text-xs text-slate-500">Feed-in (sell) entity — optional
-        <div class="relative mt-1" x-data="{ open:false, q:'' }" @click.outside="open=false; q=''">
-          <button type="button" class="form-control form-control-sm w-full text-left flex items-center justify-between gap-1" @click="open=!open">
-            <span class="truncate" :style="form.tariff_feedin_entity ? '' : 'color:var(--text-faint)'" x-text="haPriceLabel(form.tariff_feedin_entity) || 'None'"></span>
-            <span style="color:var(--text-faint)">&#9662;</span>
-          </button>
-          <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.gfq && $refs.gfq.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);left:0;right:0">
-            <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="gfq" x-model="q" @click.stop type="text" placeholder="Filter&#8230;" class="form-control form-control-sm w-full"></div>
-            <div class="max-h-56 overflow-y-auto py-1">
-              <button type="button" class="w-full text-left px-3 py-1.5 text-xs" style="color:var(--text-faint)" @click="form.tariff_feedin_entity=''; saveOne({tariff_feedin_entity:''}); loadNemSpot(); open=false; q=''">&#8212; None &#8212;</button>
-              <template x-for="it in haPriceItems(q)" :key="'gf'+it.key"><div>
-                <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
-                <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="form.tariff_feedin_entity===it.id ? { color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-primary)' }" @click="form.tariff_feedin_entity=it.id; saveOne({tariff_feedin_entity:it.id}); loadNemSpot(); open=false; q=''" x-text="it.label"></button>
-              </div></template>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <p class="text-[11px] pt-1" style="color:var(--text-faint)">
-      This is the <span class="font-medium">scheduler sensor</span> source (<span class="font-mono">tariff.spot_price</span>)
-      for wholesale-aware automations. To <span class="font-medium">bill</span> at the live rate, set a
-      <span class="font-medium">Utilities &amp; Tariffs</span> plan's rate type to <span class="font-medium">Dynamic (live)</span>
-      with its own provider — that drives billing while it is the active tariff.
-    </p>
-    <div class="text-[11px]" style="color:var(--text-faint)" x-show="nemSpot && nemSpot.ha && (nemSpot.ha.buy_c_kwh != null || nemSpot.ha.sell_c_kwh != null)">
-      live —
-      <template x-if="nemSpot && nemSpot.ha && nemSpot.ha.buy_c_kwh != null">
-        <span>buy <span class="font-semibold" :style="nemSpot.ha.buy_c_kwh < 0 ? 'color:#34d399' : 'color:var(--text-primary)'" x-text="nemSpot.ha.buy_c_kwh + ' c/kWh'"></span></span>
-      </template>
-      <template x-if="nemSpot && nemSpot.ha && nemSpot.ha.sell_c_kwh != null">
-        <span> · sell <span class="font-semibold" x-text="nemSpot.ha.sell_c_kwh + ' c/kWh'"></span></span>
-      </template>
-    </div>
-    <p class="text-[11px]" style="color:var(--text-faint)">
-      Only <span class="font-medium">exposed</span> HA entities appear here (expose them under HA → Browse entities).
-      Units auto-detect: a <span class="font-mono">$/kWh</span> entity is scaled to cents; <span class="font-mono">c/kWh</span> is used as-is.
-      Works with Amber, Amber&nbsp;Express, ConEd, Localvolts — any retailer that publishes a price sensor.
-    </p>
-  </div>
 
   </div>
   <div x-show="sub==='automation'" x-cloak class="space-y-6">

@@ -168,7 +168,7 @@ def test_the_ui_offers_it_rather_than_overwriting():
     from pathlib import Path
     html = (Path(__file__).resolve().parents[1]
             / "src/franklinwh_direct_connect_bridge/templates/tabs/settings.html").read_text()
-    block = html[html.index("PV size (kWp)"):html.index("Wholesale region")]
+    block = html[html.index("PV size (kWp)"):html.index("Tilt°")]   # the region moved (#582)
     assert "derivedPvKwp" in block and "use it" in block
     # shown only when it DIFFERS — no nagging when the two already agree
     assert "Number(form.pv_kwp) !== derivedPvKwp" in block

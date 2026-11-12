@@ -12,6 +12,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Price events: price spike and an HA demand window** (#582, owner). Under Sites &
+  Billing → Prices: a spike at or above a number of c/kWh, or from a Home Assistant spike
+  sensor, gives `tariff.price_spike` and `tariff.spike_threshold`; a Home Assistant binary
+  sensor, calendar or switch can supply the demand / peak window
+  (`tariff.demand_window_active`), winning over the tariff's.
 - **Scheduler timeline: a lane per gateway** (#579, owner), as the Modbus Bridge. Pick a
   gateway or **All gateways**; each lane has its own planned windows, mode band, SoC line
   and fire markers (before, every gateway's markers and schedules showed on one chart).
@@ -80,6 +85,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   purge runs with the hourly history upkeep and when a recording ends.
 
 ### Changed
+- **Prices in one place under Sites & Billing** (#582, owner). The price signal for
+  automation (AEMO NEM or Home Assistant price entities) moves from Integrations to Sites &
+  Billing → Prices, and the AEMO region is your site's (Sites & Meters → Region, AU-NSW →
+  NSW1) for both the price signal and a Dynamic tariff: the region pickers in Location &
+  Solar and in the tariff editor are gone. A saved region is given to sites with none at
+  start-up. The **High wholesale price** template is now **Price spike — ask to export**,
+  using `tariff.price_spike` instead of a fixed 50 c/kWh.
 - **Customise: drag to reorder the top bar, navbar and dashboard cards in one dialog**
   (#585, owner), as the Modbus Bridge. The cog's **Customise top bar, navbar and cards…**
   and the Dashboard's **Cards** button open it. Each row has a drag handle (mouse or
