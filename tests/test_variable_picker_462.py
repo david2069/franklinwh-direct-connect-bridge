@@ -33,7 +33,8 @@ def _target_for(attr_text):
 
 
 def test_every_substituted_text_field_has_a_picker_button():
-    for field in ('data-testid="ask-question"', 'x-model="ha.title"', 'x-model="ha.message"',
+    # An Actionable notification's question is its row's message (#576)
+    for field in ('x-model="ha.title"', 'x-model="ha.message"',
                   'x-model="ha.entity_id"', '@change="ha.data = $event.target.value"'):
         block = _target_for(field)
         assert block is not None, f"no {{x}} picker beside the field with {field}"
