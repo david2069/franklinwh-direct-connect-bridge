@@ -145,7 +145,8 @@ document.addEventListener('alpine:init', () => {
         tab: 'health', link: 'Open Health' },
       COMMAND_REFUSED: {
         means: 'The bridge recorded this command as refused or failed. Check the current state before trying again.',
-        todo: 'The Audit Trail on the Control tab has the detail.', tab: 'control', link: 'Open Control' },
+        todo: 'The Audit trail under Logs has the detail.', tab: 'logs', view: 'audit',
+        link: 'Open Audit trail' },
       COMMAND_UNCONFIRMED: {
         means: 'The command was sent but its result could not be confirmed.',
         todo: 'Check the current state before trying again.', tab: 'control', link: 'Open Control' },
@@ -168,7 +169,9 @@ document.addEventListener('alpine:init', () => {
     help(a) { return this.HELP[a.code] || { means: '', todo: '', tab: 'logs', link: 'Open Logs' }; },
     go(a) {
       this.listOpen = false;
-      Alpine.store('app').setActiveTab(this.help(a).tab);
+      const h = this.help(a);
+      if (h.tab === 'logs') Alpine.store('app').logsView = h.view || 'log';
+      Alpine.store('app').setActiveTab(h.tab);
     },
   });
 });
