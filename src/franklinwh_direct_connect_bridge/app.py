@@ -3766,8 +3766,9 @@ def create_app() -> FastAPI:
         """Per-gateway System Setup: resolved values (default → derived → override) + spec."""
         from . import system_setup
         st = _gw_store()
-        return {"values": system_setup.values(st, get_settings(), gateway, _gw_host(gateway)),
-                "spec": system_setup.spec()}
+        vals = system_setup.values(st, get_settings(), gateway, _gw_host(gateway))
+        return {"values": vals, "spec": system_setup.spec(),
+                "solar_installed": system_setup.solar_installed(vals)}   # the Solar tab
 
     @app.put("/api/system-setup")
     def api_system_setup_put(req: SystemSetupBody, gateway: str = Depends(_gateway_q)):

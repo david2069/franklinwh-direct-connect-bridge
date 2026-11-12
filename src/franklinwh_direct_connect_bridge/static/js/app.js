@@ -272,9 +272,23 @@ document.addEventListener('alpine:init', () => {
     navPinned(key) { return this.NAV_PIN[key] || ''; },
     navLabel(key) { return this.tabTitles[key] || key; },
 
-    //: The registry filtered to hardware this gateway actually has.
-    //: Every tab, always. Nothing is hidden on an inference about hardware (#238).
-    get navAvailable() { return this._navTabsAll; },
+    //: Every tab, except Solar when there is none (owner, 2026-11-13): the gateway's API
+    //  reports no AC PV ports and no remote solar, or System Setup says none (DC is set
+    //  there). Never on a guess (#238): unknown keeps it.
+    get navAvailable() {
+      return this.solarInstalled === false ? this._navTabsAll.filter(t => t.key !== 'solar')
+                                            : this._navTabsAll;
+    },
+    //: true / false / null (not known yet), for the active gateway.
+    solarInstalled: null,
+    async _loadSolarInstalled() {
+      if (!this.selectedGateway) { this.solarInstalled = null; return; }
+      try {
+        const r = await fetch('api/system-setup' + this.gwQuery());
+        this.solarInstalled = r.ok ? ((await r.json()).solar_installed ?? null) : null;
+      } catch (e) { this.solarInstalled = null; }
+      if (this.solarInstalled === false && this.activeTab === 'solar') this.setActiveTab('dashboard');
+    },
 
     navPrefs: [],
     _navDefaults() {
@@ -903,6 +917,7 @@ document.addEventListener('alpine:init', () => {
       // Roster is on the same slow cadence as history — load once, then refresh slowly.
       this.loadGateways();
       this._loadGeneratorInstalled();
+      this._loadSolarInstalled();
       this.poll();
       this._dashStartedAt = Date.now();
       this._interval = setInterval(() => this._dashTick(), 10000);
@@ -1047,6 +1062,7 @@ document.addEventListener('alpine:init', () => {
       this.selectedGateway = id;
       this.poll();
       this._loadGeneratorInstalled();   // generator presence is per-gateway
+      this._loadSolarInstalled();       // so is solar
       this.loadSiteTz();                  // the site zone is per-gateway too (#144)
       this.loadHistory(this.histRange);   // history is scoped per-gateway (by serial)
       this.pollBattery();                 // the topbar Release is per-gateway too (#349)

@@ -199,6 +199,18 @@ def _overrides(store, gateway_id: str) -> dict:
         return {}
 
 
+def solar_installed(vals: dict) -> bool | None:
+    """Is there solar (owner, 2026-11-13)? From your System Setup when you set the type (DC
+    solar is set there), else from the gateway's API (AC PV ports, remote solar); None
+    while neither has said, so nothing is hidden on a guess."""
+    if (vals.get("_overridden") or {}).get("solar_type"):
+        return vals.get("solar_type") not in (None, "", "none")
+    derived = (vals.get("_derived") or {}).get("solar_type")
+    if derived is None:
+        return None
+    return derived != "none"
+
+
 def values(store, settings=None, gateway_id=None, host=None) -> dict:
     """Resolved System Setup: default → derived → user override (override wins).
     Also reports, per field, whether the value is user-set (`_overridden`)."""
