@@ -281,6 +281,7 @@ document.addEventListener('alpine:init', () => {
     blank() {
       return { id: '', name: '', enabled: true, fire_at: '18:00', duration_min: 90,
                match: 'all', gateway_id: this.$store.app.selectedGateway || '',   // #379
+               gateway_scope: 'one',                                            // #578
                conditions: [], exit_conditions: [],
                exit_match: 'all', entry_hold_s: 0, action: { kind: '' }, ha_actions: [],
                days: [], months: [], day_of_month: null, start_date: null, end_date: null,
@@ -359,6 +360,7 @@ document.addEventListener('alpine:init', () => {
         id: s.id, name: s.name, enabled: s.enabled,
         fire_at: s.fire_at || '18:00', duration_min: s.duration_min ?? 0,
         match: s.match || 'all', gateway_id: s.gateway_id || '',
+        gateway_scope: s.gateway_scope || 'one',
         conditions: JSON.parse(JSON.stringify(s.conditions || [])),
         exit_conditions: JSON.parse(JSON.stringify(s.exit_conditions || [])),
         exit_match: s.exit_match || 'all',
@@ -598,12 +600,27 @@ document.addEventListener('alpine:init', () => {
     /** Seed sensible defaults when the force action is first chosen, so an empty
      *  form does not silently dispatch 0 W. */
     onActionKind() {
+      // A battery action is one gateway's (#578): All gateways goes back to the one named.
+      if (this.form.action.kind) this.form.gateway_scope = 'one';
       if (this.form.action.kind !== 'force') return;
       const a = this.form.action;
       if (!a.direction) a.direction = 'discharge';
       if (!a.unit) a.unit = 'pct';
       if (a.power === undefined || a.power === '' || a.power === null) a.power = 100;
       if (a.target_soc === undefined || a.target_soc === null) a.target_soc = '';
+    },
+
+    // The gateway picker (#578): a gateway's id, or "*" for All gateways. The rule keeps
+    // its gateway_id under All gateways; the engine reads gateway_scope.
+    get gwPick() { return this.form.gateway_scope === 'all' ? '*' : this.form.gateway_id; },
+    set gwPick(v) {
+      if (v === '*') { this.form.gateway_scope = 'all'; return; }
+      this.form.gateway_scope = 'one';
+      this.form.gateway_id = v;
+    },
+    gatewayLabel(s) {
+      if (String(s.gateway_scope || 'one').toLowerCase() === 'all') return 'All gateways';
+      return this.gatewayName(s.gateway_id);
     },
 
     // ─── list: status filter, active-now, next-fire, per-entry stop ───
@@ -1014,6 +1031,7 @@ document.addEventListener('alpine:init', () => {
         if (asked) t += `, ask ${asked} first`;
         t += `, ${act}.`;
         if (exits) t += ` End early when ${exits}.`;
+        if (s.gateway_scope === 'all') t += ' On every gateway, each with its own values.';
         return t;
       }
       // full — labelled, multi-line
@@ -1024,8 +1042,7 @@ document.addEventListener('alpine:init', () => {
       if (asked) lines.push(`ASK    ${asked}: "${ask.message}" (Actionable notification; ${ask.if_no_reply === 'continue' ? 'no reply: continue' : 'no reply: skip'}).`);
       lines.push(`DO     ${act}.`);
       if (exits) lines.push(`UNTIL  it ends early when ${exits} (${(s.exit_match || 'all') === 'any' ? 'any' : 'all'}).`);
-      const gw = (this.gateways.find(g => g.id === s.gateway_id) || {});
-      if (s.gateway_id) lines.push(`ON     ${gw.name || s.gateway_id}.`);
+      if (s.gateway_id || s.gateway_scope === 'all') lines.push(`ON     ${this.gatewayLabel(s)}.`);
       if (s.entry_hold_s) lines.push(`HOLD   conditions must stay true for ${s.entry_hold_s}s before firing.`);
       return lines.join('\n');
     },
