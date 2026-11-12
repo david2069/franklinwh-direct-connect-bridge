@@ -114,7 +114,7 @@ reordered, from **Topbar cog → Customise → Top bar** (Centre indicators / Ri
 | **Gateway selector** | Which aGate every tab is scoped to. Only appears when more than one gateway is registered. |
 | **Connection** | Online / offline for the selected gateway. |
 | **Operating mode** | The active mode. Tap to switch. |
-| **OFF-GRID** | Islanded. Distinguishes `OFF-GRID · OUTAGE` (the grid went) from `OFF-GRID · SIMULATED` (someone asked for it). |
+| **OFF-GRID** | Islanded. Distinguishes `OFF-GRID · OUTAGE` (the grid went) from `OFF-GRID · SIMULATED` (someone asked for it). Tap it for the Off-grid dialog: why, how long, time left, and Reconnect. |
 | **FORCE** | This bridge is holding a force (Battery force or a schedule). |
 | **VPP** | Another remote controller has the aGate: its programme id (1707) is 9 and this bridge holds no force. With the Cloud API the tooltip also names the programme. |
 | **DEBUG MODE** | Run status 8. |

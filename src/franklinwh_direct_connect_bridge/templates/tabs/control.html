@@ -386,13 +386,13 @@
            : 'Manually disconnect from the grid and run off battery, or reconnect. Use with care.'"></p>
 
       <div x-show="$store.app.summary.writes_enabled">
-        <!-- Restore / reserve SoC: settable AND displayed. Held while islanded so the
-             battery is not drained below this floor before reconnecting. -->
+        <!-- Reconnect SoC (1723 offgridSoc): a user-requested off-grid returns to the
+             grid when the battery reaches it. Not a floor; an outage does not use it. -->
         <div class="flex items-center justify-between gap-3 mb-4 p-3 rounded-lg"
              style="background:var(--surface-2)" x-show="!$store.app.isOffGrid">
           <div>
-            <div class="text-sm" style="color:var(--text-primary)">Restore SoC floor</div>
-            <div class="text-xs text-slate-500">Battery reserve to hold while off-grid (%).</div>
+            <div class="text-sm" style="color:var(--text-primary)">Reconnect SoC</div>
+            <div class="text-xs text-slate-500">Off-grid you request returns to the grid when the battery reaches this (%).</div>
           </div>
           <div class="flex items-center gap-1">
             <input type="number" min="0" max="100" x-model.number="$store.app.offgridSoc"

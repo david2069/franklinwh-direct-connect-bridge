@@ -1783,7 +1783,9 @@ document.addEventListener('alpine:init', () => {
       this.poll();
     },
 
-    //: Restore/reserve SoC floor to hold while islanded (settable on the Control tab).
+    //: Off-grid (reconnect) SoC: a user-requested off-grid returns to the grid when the
+    //  battery reaches it (1723 offgridSoc; settable on the Control tab). Not a floor the
+    //  battery holds, and an outage does not use it.
     offgridSoc: 5,
 
     async setOffgrid(on) {
@@ -1792,8 +1794,7 @@ document.addEventListener('alpine:init', () => {
       const warn = on
         ? `Disconnect from the grid and run the home entirely on battery.\n\n`
           + `• Grid power is cut until you reconnect.\n`
-          + `• The battery drains under load and will hold no lower than the ${soc}% restore floor.\n`
-          + `• If the battery reaches the floor while off-grid, backed-up loads lose power.\n\n`
+          + `• The aGate returns to the grid when the battery reaches the ${soc}% reconnect SoC.\n\n`
           + `Go off-grid now?`
         : `Reconnect to the grid and resume normal operation?`;
       if (!await this.confirmDialog(warn,
@@ -1808,7 +1809,8 @@ document.addEventListener('alpine:init', () => {
           body: JSON.stringify({ on, soc, confirm: true }),  // dialog above IS the confirm
         }),
         confirmed: () => on ? this.isOffGrid : !this.isOffGrid,
-        doneText: on ? `Off-grid (restore floor ${soc}%)` : 'Back on the grid',
+        doneText: on ? `Off-grid (reconnects at ${soc}%)` : 'Back on the grid',
+        notifyWhenDone: (await this._offgridStatus())?.notify,
       });
       this.loadControlLog();
     },
@@ -2183,8 +2185,10 @@ document.addEventListener('alpine:init', () => {
     // result then comes as a toast.
     cmdProgress: { open: false, title: '', steps: [], result: '', level: '', elapsed: 0, done: false },
     CMD_POLL_MS: 3000,
-    async trackCommand({ title, waitLabel, send, confirmed, doneText, limitS = 120 }) {
+    async trackCommand({ title, waitLabel, send, confirmed, doneText, limitS = 120,
+                         notifyWhenDone = false }) {
       this.cmdProgress = { open: true, title, result: '', level: '', elapsed: 0, done: false,
+                           note: '',
                            steps: [{ label: 'Sent to the aGate', state: 'wait' },
                                    { label: waitLabel, state: 'pending' }] };
       const p = this.cmdProgress;
@@ -2211,19 +2215,62 @@ document.addEventListener('alpine:init', () => {
       }
       p.steps[0].state = 'done';
       p.steps[1].state = 'wait';
+      // The aGate can take over a minute and may drop off the network while it switches:
+      // say it is waiting, show it going offline and coming back, and (when the push for
+      // it is on) that a notification follows, so the dialog can be closed.
+      p.note = 'Waiting for the aGate to respond…'
+        + (notifyWhenDone ? ' You can close this: a notification is sent when it confirms.' : '');
+      let offline = null;
       while (Date.now() - t0 < limitS * 1000) {
         await new Promise(res => setTimeout(res, this.CMD_POLL_MS));
         await this.poll();
+        const back = () => Object.assign(offline, { state: 'done', label: 'aGate online again' });
+        if (this.summary.ok === false && !offline) {
+          p.steps.splice(p.steps.length - 1, 0,
+                         { label: 'aGate offline — waiting for it to come back', state: 'wait' });
+          offline = p.steps[p.steps.length - 2];   // the reactive copy, so edits show
+        } else if (this.summary.ok && offline && offline.state === 'wait') {
+          back();
+        }
         if (confirmed()) {
-          p.steps[1].state = 'done';
+          if (offline && offline.state === 'wait') back();
+          p.note = '';
+          p.steps[p.steps.length - 1].state = 'done';
           return finish('ok', `${doneText} — done in ${Math.round((Date.now() - t0) / 1000)} s.`);
         }
       }
-      p.steps[1].state = 'fail';
+      p.note = '';
+      p.steps[p.steps.length - 1].state = 'fail';
       finish('warn', `No confirmation after ${Math.round(limitS / 60)} min. The aGate may still `
         + `switch: watch the top bar.`);
     },
     closeCmdProgress() { this.cmdProgress.open = false; },
+
+    // ── OFF-GRID pill → modal: every off-grid gateway, why, for how long, the battery
+    //    and time left (same line as the push); Reconnect for a user-requested one.
+    offgridModal: { open: false, rows: [], notify: false, now: Date.now() },
+    async _offgridStatus() {
+      try { return await (await fetch('api/offgrid/status')).json(); } catch (e) { return null; }
+    },
+    async openOffgridModal() {
+      const m = this.offgridModal;
+      Object.assign(m, { open: true, now: Date.now() });
+      const d = await this._offgridStatus();
+      Object.assign(m, { rows: d?.gateways || [], notify: !!d?.notify });
+      clearInterval(this._ogTick);
+      this._ogTick = setInterval(() => { if (m.open) m.now = Date.now(); else clearInterval(this._ogTick); }, 30000);
+    },
+    offgridFor(row) {
+      if (!row.since) return 'Off-grid (start not seen by this bridge)';
+      const min = Math.max(0, Math.floor((this.offgridModal.now / 1000 - row.since) / 60));
+      const h = Math.floor(min / 60);
+      return 'Off-grid for ' + (h ? `${h} h ${min % 60} min` : `${min} min`);
+    },
+    async reconnectFrom(row) {
+      this.offgridModal.open = false;
+      if (row.id !== this.selectedGateway) { this.selectGateway(row.id); await this.poll(); }
+      await this.setOffgrid(false);
+    },
 
     // ── Styled confirm dialog (replaces native confirm()) ──────────────────
     confirmState: { open: false, title: '', message: '', danger: false },
