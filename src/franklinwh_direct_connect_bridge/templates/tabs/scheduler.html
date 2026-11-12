@@ -116,6 +116,8 @@
           <span x-show="s.action && s.action.kind"
                 x-text="(actions[s.action.kind] || {}).label || s.action.kind"></span>
           <span x-show="!(s.action && s.action.kind)">No gateway action</span>
+          <span x-show="gateways.length > 1 || s.gateway_scope === 'all'"
+                x-text="' · ' + gatewayLabel(s)"></span>
           <span x-show="(s.ha_actions || []).length"
                 x-text="` · ${s.ha_actions.length} HA action(s)`"></span>
           <span x-show="askOf(s)"
@@ -612,13 +614,16 @@
                 <option value="wait">wait</option>
               </select></label>
             <!-- The gateway it runs on (#379). Always named; a new schedule starts on the
-                 active gateway. Shown with one gateway too, so you can see which it is. -->
-            <select class="form-control form-control-sm" title="Gateway"
-                    style="width:auto" x-model="form.gateway_id"
-                    x-init="$nextTick(() => { $el.value = form.gateway_id })">
+                 active gateway. Shown with one gateway too, so you can see which it is.
+                 All gateways (#578): only for a rule that moves no battery; each gateway
+                 runs it with its own values. -->
+            <select class="form-control form-control-sm" title="Gateway" data-testid="gateway-pick"
+                    style="width:auto" x-model="gwPick"
+                    x-init="$nextTick(() => { $el.value = gwPick })">
               <template x-for="g in gateways" :key="g.id">
                 <option :value="g.id" x-text="g.name"></option>
               </template>
+              <option value="*" x-show="!form.action.kind || form.gateway_scope === 'all'">All gateways</option>
             </select>
           </div>
         </div>

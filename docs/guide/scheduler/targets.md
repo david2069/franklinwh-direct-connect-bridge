@@ -5,7 +5,7 @@ Direct Connect Bridge. Mirrors the Modbus Bridge page
 section for section.
 
 The target says which gateway a schedule acts on. Here a schedule is bound to one gateway,
-left on the default gateway, or (API only) set to run on every gateway. See also
+or, when it moves no battery, set to run on **All gateways**. See also
 [Multi-gateway and sites](../multi-gateway.md).
 
 ![Binding a rule to a gateway](../../images/scheduler/19-multi-gateway-binding.png)
@@ -13,8 +13,15 @@ left on the default gateway, or (API only) set to run on every gateway. See also
 ## Pick a target
 
 1. In **Add schedule** or **Edit**, find the gateway list next to **Priority** and **If busy**
-   in the **Battery action** box. It is shown only when the bridge has more than one gateway.
-2. Pick a gateway, or leave **Default gateway**.
+   in the **Battery action** box. A new schedule starts on the active gateway.
+2. Pick a gateway. For a rule with **No battery action (HA only)**, such as a low-SoC
+   notification, you can pick **All gateways** instead (#578).
+
+**All gateways** is offered only while the rule has no battery action: a battery action
+(mode, reserve, force, smart circuits, off-grid) stays on one gateway. Choosing a battery
+action on an All gateways rule puts it back on the gateway it names. The schedule list shows
+"All gateways", and **Explain** says the rule runs on every gateway, each with its own
+values. Each notification names the gateway that fired it (#577).
 
 <!-- @b TGT-21 ;; src: templates/tabs/scheduler.html:542-549, static/js/scheduler_tab.js:244-249 ;; untested ;; write: no ;; b: The gateway select appears only with more than one gateway; Default gateway stores gateway_id "" ;; test: browser: with one gateway the select is hidden; with two it lists both plus Default gateway -->
 
@@ -22,7 +29,7 @@ left on the default gateway, or (API only) set to run on every gateway. See also
 |---|---|---|
 | a gateway | `gateway_id`: the gateway id | that gateway only, on its own tick |
 | **Default gateway** | `gateway_id`: `""` | the default gateway (below) |
-| every gateway (API only) | `gateway_scope`: `"all"` | each gateway on its own tick |
+| **All gateways** | `gateway_scope`: `"all"` | each gateway on its own tick |
 
 A schedule bound to a gateway is evaluated only on that gateway's tick, so its action goes to
 that aGate. <!-- @b TGT-01 ;; src: scheduler.py:1978-1988 ;; tested: tests/test_scheduler.py::test_bound_schedule_fires_only_on_its_gateway ;; write: yes ;; b: A bound schedule is skipped on every other gateway's tick ;; test: — -->
@@ -33,13 +40,13 @@ skipped with a debug log line only; nothing is sent and History shows nothing.
 A schedule bound to a gateway id that does not exist (deleted, renamed) never runs, and
 nothing says so. <!-- @b TGT-22 ;; src: scheduler.py:1984-1986 ;; untested ;; write: yes ;; b: A gateway_id matching no registered gateway is skipped on every tick with no log ;; test: unit: schedule bound to "ghost"; tick two real gateways; assert no fire and decide on a warning -->
 
-**Not in this bridge: Site and Service targets.** There is no utility-service target and no
-"Site (all gateways)" choice in the form (#162). The closest is gateway scope *all*.
+**Not in this bridge: a Service target.** There is no utility-service target (#162). The
+form's **All gateways** is the Modbus Bridge's Site target, for rules with no battery action.
 
-**Gateway scope "all" (API only).** With `"gateway_scope": "all"` the schedule is
-evaluated by every gateway on its own tick. The form has no control for it. Since 0.5.2
-(#157) saving from the form keeps it; before 0.5.2 the form turned it off. Any value other
-than exactly `all` means one gateway. <!-- @b TGT-02 ;; src: scheduler.py:2093-2107, scheduler.py:2323, app.py:640-644, scheduler_worker.py:156-163 ;; tested: tests/test_multigw_force.py::test_scope_all_fires_once_on_each_gateway_per_occurrence ;; write: yes ;; b: gateway_scope all makes every eligible gateway (mocks included) evaluate the schedule on its own tick, and each settles its own occurrence, so each fires once (#270) -->
+**Gateway scope "all".** With `"gateway_scope": "all"` the schedule is evaluated by every
+gateway on its own tick. The form sets it with **All gateways** (#578); the API still
+accepts it with a battery action, and the form then keeps it until the action is changed.
+Any value other than exactly `all` means one gateway. <!-- @b TGT-02 ;; src: scheduler.py:2093-2107, scheduler.py:2323, app.py:640-644, scheduler_worker.py:156-163 ;; tested: tests/test_multigw_force.py::test_scope_all_fires_once_on_each_gateway_per_occurrence ;; write: yes ;; b: gateway_scope all makes every eligible gateway (mocks included) evaluate the schedule on its own tick, and each settles its own occurrence, so each fires once (#270) -->
 <!-- @b TGT-23 ;; src: app.py:3111-3127 ;; tested: tests/test_schedule_update_merge.py::test_a_form_save_keeps_api_only_fields ;; write: yes ;; b: A form save (which never sends gateway_scope) keeps gateway_scope all ;; test: — -->
 
 ## How a fan-out works
