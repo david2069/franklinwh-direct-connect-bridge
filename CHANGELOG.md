@@ -74,6 +74,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   purge runs with the hourly history upkeep and when a recording ends.
 
 ### Changed
+- **Customise: drag to reorder the top bar, navbar and dashboard cards in one dialog**
+  (#585, owner), as the Modbus Bridge. The cog's **Customise top bar, navbar and cards…**
+  and the Dashboard's **Cards** button open it. Each row has a drag handle (mouse or
+  finger), up/down arrows kept as the fallback, and a switch. Saved as you go, with Undo
+  and Reset in the dialog. Saved preferences carry over. The Dashboard's Cards panel and
+  the cog's Navbar / Top bar lists are gone; Theme stays in the cog.
 - **A missed schedule run is a warning of its own** (#581, owner): `SCHEDULE_MISSED`,
   worded apart from a failure. A failed run stays the critical `SCHEDULE_FAILED`, which now
   names the gateway; its push follows the Scheduler group's Run failed switch and Send to.
