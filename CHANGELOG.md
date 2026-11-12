@@ -12,6 +12,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Off-grid notification says how long the battery will last.** It now gives the SoC, home load and solar, and an estimate at the current usage (SoC × Battery capacity ÷ net load), or says solar is covering the home. The FranklinWH app estimates from historical usage.
 - **Price events: price spike and an HA demand window** (#582, owner). Under Sites &
   Billing → Prices: a spike at or above a number of c/kWh, or from a Home Assistant spike
   sensor, gives `tariff.price_spike` and `tariff.spike_threshold`; a Home Assistant binary

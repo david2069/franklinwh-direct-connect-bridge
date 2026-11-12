@@ -15,14 +15,14 @@ def _snap(off_grid=False, kind=None):
 def test_off_grid_says_user_requested_or_grid_outage():
     cfg = notify_engine.config(None)
     assert notify_engine.evaluate(_snap(True, "simulated"), _snap(), cfg) == [
-        ("off_grid", {"reason": "user requested"})]
+        ("off_grid", {"reason": "user requested", "metrics": "SoC 50%"})]
     assert notify_engine.evaluate(_snap(True, "outage"), _snap(), cfg) == [
-        ("off_grid", {"reason": "grid outage"})]
+        ("off_grid", {"reason": "grid outage", "metrics": "SoC 50%"})]
     assert notify_engine.evaluate(_snap(True, None), _snap(), cfg) == [
-        ("off_grid", {"reason": "reason unknown"})]
+        ("off_grid", {"reason": "reason unknown", "metrics": "SoC 50%"})]
     _, msg = notify_engine.actionable.templates().render(
-        "off_grid", gateway="Home", reason="user requested")
-    assert msg == "Gateway went OFF-GRID [Home] (user requested) — running on battery."
+        "off_grid", gateway="Home", reason="user requested", metrics="SoC 50%")
+    assert msg == "Gateway went OFF-GRID [Home] (user requested) — running on battery: SoC 50%."
 
 
 # ── bridge lifecycle ─────────────────────────────────────────────────────────
