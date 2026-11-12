@@ -17,6 +17,23 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   sensor, gives `tariff.price_spike` and `tariff.spike_threshold`; a Home Assistant binary
   sensor, calendar or switch can supply the demand / peak window
   (`tariff.demand_window_active`), winning over the tariff's.
+- **Scheduler timeline: a lane per gateway** (#579, owner), as the Modbus Bridge. Pick a
+  gateway or **All gateways**; each lane has its own planned windows, mode band, SoC line
+  and fire markers (before, every gateway's markers and schedules showed on one chart).
+  All gateways rules are drawn once on a **Site** row, and Every N minutes, cron and
+  Always schedules are drawn too. `GET /api/schedules/timeline` returns `lanes` and
+  `site`; `?all=true` gives every gateway.
+- **Scheduler notifications: failed, missed, aborted and no reply** (#581, owner). A
+  **Scheduler** group under Notifications → Auto-notify triggers: **Run failed** (on),
+  **Run missed** (on), **Run aborted** (off: stopped, deferred or ended early) and **No
+  reply to an actionable notification** (on), each with its own switch and Send to. Every
+  message names the gateway, and each also writes a warning to the bridge log in the same
+  words. No reply goes to the devices that were asked.
+- **Scheduler: All gateways for rules that move no battery** (#578, owner). The gateway
+  picker offers **All gateways** when a rule has no battery action, such as a low-SoC
+  notification: each gateway runs it with its own values, and each message names the
+  gateway that fired. A battery action stays on one gateway. The list and Explain say
+  "All gateways" (scheduler guide, Targets).
 - **Analytics → Explain: trends and what to change for your objectives** (#588, owner).
   For the period shown, on Local or Cloud: each total against the previous period and last
   year (with runs of rises or falls), what the period shows, and suggestions for the
@@ -75,6 +92,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   Solar and in the tariff editor are gone. A saved region is given to sites with none at
   start-up. The **High wholesale price** template is now **Price spike — ask to export**,
   using `tariff.price_spike` instead of a fixed 50 c/kWh.
+- **Customise: drag to reorder the top bar, navbar and dashboard cards in one dialog**
+  (#585, owner), as the Modbus Bridge. The cog's **Customise top bar, navbar and cards…**
+  and the Dashboard's **Cards** button open it. Each row has a drag handle (mouse or
+  finger), up/down arrows kept as the fallback, and a switch. Saved as you go, with Undo
+  and Reset in the dialog. Saved preferences carry over. The Dashboard's Cards panel and
+  the cog's Navbar / Top bar lists are gone; Theme stays in the cog.
+- **A missed schedule run is a warning of its own** (#581, owner): `SCHEDULE_MISSED`,
+  worded apart from a failure. A failed run stays the critical `SCHEDULE_FAILED`, which now
+  names the gateway; its push follows the Scheduler group's Run failed switch and Send to.
 - **Actionable Notifications: one notify path** (#576, owner). A schedule notifies only
   from its **Home Assistant actions** notify rows. **Ask before continuing** is now the
   **Actionable notification** option on a notify row (buttons, wait, if no reply, Send
@@ -96,6 +122,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   The questions the gateway can't answer stay open.
 
 ### Fixed
+- **Scheduler timeline: the planned-window bars were drawn empty** (found while building
+  #579): the bar lost its colour and height, so only the grey track showed.
 - **A schedule's notify messages named the wrong gateway** (#577). A **+ notify** row under
   Home Assistant actions named the first gateway, not the one the schedule ran on, on
   entry, on exit and with **Run now**. It now names the gateway that ran it, as the Notify

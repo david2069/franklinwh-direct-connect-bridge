@@ -1343,28 +1343,87 @@ def validate_import(entry: dict, *, gateway_ids: set, device_ids: set,
     return {"name": name, "ok": not errors, "errors": errors, "warnings": warnings}
 
 
-def timeline_segments(entries: list[dict], now: dt.datetime) -> dict[str, Any]:
+def _day_blocks(e: dict, now: dt.datetime) -> list[list[int]]:
+    """Today's [start_min, end_min] slots of an interval or cron rule, as the engine opens
+    them (``_interval_window`` / ``_cron_window``): one per slot, ``duration_min`` long
+    (1 minute when 0). Capped at 288 so a 1-minute interval stays drawable."""
+    tt = e.get("trigger_type")
+    win = int(e.get("duration_min") or 0) or 1
+    starts: list[int] = []
+    if tt == "interval":
+        iv = int(e.get("interval_min") or 0)
+        if iv > 0:
+            # Before the anchor the slots run on from yesterday's anchor, as the engine.
+            anchor = _minutes(e.get("anchor", "")) or 0
+            starts = [m for m in range((anchor - 24 * 60) % iv, anchor, iv)]
+            starts += list(range(anchor, 24 * 60, iv))
+    elif tt == "cron" and cron_available():
+        try:
+            from croniter import croniter
+            expr = (e.get("cron") or "").strip()
+            if croniter.is_valid(expr):
+                midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                it = croniter(expr, midnight - dt.timedelta(seconds=1))
+                while len(starts) < 288:
+                    nxt = it.get_next(dt.datetime)
+                    if nxt.date() != midnight.date():
+                        break
+                    starts.append(nxt.hour * 60 + nxt.minute)
+        except Exception:                                      # noqa: BLE001
+            starts = []
+    return [[s, min(24 * 60, s + win)] for s in starts[:288]]
+
+
+def timeline_segments(entries: list[dict], now: dt.datetime,
+                      gateway_id: str | None = None) -> dict[str, Any]:
     """A day's windows per ENABLED entry, as minutes-from-midnight, for the
-    24-hour bar. Handles windows that wrap past midnight (end <= start)."""
-    segments = []
+    24-hour bar. Handles windows that wrap past midnight (end <= start).
+
+    With ``gateway_id`` (#579), ``segments`` holds that gateway's own rules and ``site``
+    the All gateways ones (``gateway_scope`` all), as the Modbus Bridge's Site row;
+    without it, every rule is in ``segments``. Each segment has a unique ``key`` (one per
+    window) and ``blocks``, its [start, end] slots: interval and cron rules have one per
+    slot, and an always rule one for the whole day, ``conditional`` (it runs while its
+    conditions hold)."""
+    segments, site = [], []
     for e in entries:
         if not e.get("enabled"):
             continue
-        tt = e.get("trigger_type") or "daily"
-        if tt in ("interval", "cron", "always"):    # no fixed daily window to draw
+        scope_all = str(e.get("gateway_scope") or "one").lower() == "all"
+        if gateway_id is not None and not scope_all and (e.get("gateway_id") or "") != gateway_id:
             continue
         if not _calendar_ok(e, now.date())[0]:      # not scheduled to run today
             continue
-        for (start, dur) in _windows_for(e):
-            end = start + dur if dur > 0 else start
-            segments.append({
-                "schedule_id": e["id"], "name": e["name"],
+        tt = e.get("trigger_type") or "daily"
+        base = {"schedule_id": e["id"], "name": e["name"], "trigger_type": tt,
                 "action": (e.get("action") or {}).get("kind") or "notify-only",
                 "gateway_id": e.get("gateway_id") or "",
-                "start_min": start, "end_min": end % (24 * 60) if dur else start,
-                "wraps_midnight": dur > 0 and (start + dur) > 24 * 60,
-            })
-    return {"now_min": now.hour * 60 + now.minute, "segments": segments}
+                "scope": "all" if scope_all else "one"}
+        out = site if (scope_all and gateway_id is not None) else segments
+        if tt in ("interval", "cron"):
+            blocks = _day_blocks(e, now)
+            if blocks:
+                out.append({**base, "key": f"{e['id']}#0", "start_min": blocks[0][0],
+                            "end_min": blocks[-1][1], "wraps_midnight": False,
+                            "blocks": blocks})
+            continue
+        if tt == "always":
+            out.append({**base, "key": f"{e['id']}#0", "start_min": 0, "end_min": 24 * 60,
+                        "wraps_midnight": False, "blocks": [[0, 24 * 60]],
+                        "conditional": True})
+            continue
+        for i, (start, dur) in enumerate(_windows_for(e)):
+            end = start + dur if dur > 0 else start
+            wraps = dur > 0 and end > 24 * 60
+            blocks = ([[start, 24 * 60], [0, end - 24 * 60]] if wraps
+                      else [[start, max(end, start + 1)]])
+            out.append({**base, "key": f"{e['id']}#{i}", "start_min": start,
+                        "end_min": end % (24 * 60) if dur else start,
+                        "wraps_midnight": wraps, "blocks": blocks})
+    out = {"now_min": now.hour * 60 + now.minute, "segments": segments}
+    if gateway_id is not None:
+        out["site"] = site
+    return out
 
 
 #: grid.offgrid_reason text per client._off_grid_kind — the same source as the top-bar chip
@@ -2789,6 +2848,9 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                 store.log_schedule_event(entry["id"], entry["name"], "exit",
                                          (f"{why}: " + "; ".join(exit_res)) if exit_res else why,
                                          gateway_id=gateway_id or "")
+            if time_inside and exit_now:                 # ended early (#581)
+                notify_run(store, "schedule_aborted", entry["name"], gateway_id,
+                           "ended early: exit condition met")
         _window_inside[dkey] = effective_inside
         if effective_inside:
             _window_key[dkey] = wkey or now.date().isoformat()
@@ -2876,6 +2938,7 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                               reason=detail)
                 store.log_schedule_event(loser["id"], loser["name"], "deferred", detail,
                                          gateway_id=gateway_id or "")
+                notify_run(store, "schedule_aborted", loser["name"], gateway_id, detail)
                 mon[loser["id"]] = ("skipped", detail)
         winners.append(group[0])
     # (2) conflict with an ACTIVE dispatch already held by ANOTHER schedule (a force
@@ -2900,6 +2963,7 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                 _settle_loser(w, store=store, gateway_id=gateway_id, now=now, reason=detail)
                 store.log_schedule_event(w["id"], w["name"], "deferred", detail,
                                          gateway_id=gateway_id or "")
+                notify_run(store, "schedule_aborted", w["name"], gateway_id, detail)
                 mon[w["id"]] = ("skipped", detail)
                 continue
             pol = (w.get("conflict") or "override").lower()
@@ -2911,6 +2975,8 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                 store.log_schedule_event(w["id"], w["name"], "deferred",
                     "deferred — the battery is already under another dispatch (conflict=defer)",
                     gateway_id=gateway_id or "")
+                notify_run(store, "schedule_aborted", w["name"], gateway_id,
+                           "deferred — the battery is already under another dispatch")
                 mon[w["id"]] = ("deferred", "the battery is already under another dispatch "
                                             "(conflict=defer)")
                 continue
@@ -3322,10 +3388,32 @@ def _fire_entry(entry: dict, *, settings, client, store, snapshot: dict,
         # SCHEDULE_FAILED (#271). Retries inside the window merge into the same alert.
         alerts.raise_event(
             store, gateway_id, "SCHEDULE_FAILED",
-            f"Schedule '{entry['name']}' failed (attempt {attempts}): {summary}. "
-            "It is retried while its window is open.")
+            f"Schedule '{entry['name']}' failed on {actionable.gateway_name(gateway_id)} "
+            f"(attempt {attempts}): {summary}. It is retried while its window is open.")
     return {"id": entry["id"], "name": entry["name"], "result": summary,
             "ok": ok_all}
+
+
+def notify_run(store, event: str, name: str, gateway_id: str | None, detail: str, *,
+               device_ids: list[str] | None = None) -> None:
+    """A run that missed, was aborted or got no reply (#581): one app-log warning, and the
+    push under its Scheduler trigger (switch and Send to), both in the same words and
+    naming the gateway. ``device_ids``: the devices to tell instead of the trigger's
+    Send to. Never raises."""
+    from . import notify_engine
+    gw = actionable.gateway_name(gateway_id)
+    try:
+        _, msg = actionable.templates().render(event, gateway=gw, schedule=name, detail=detail)
+    except Exception:  # noqa: BLE001
+        msg = f"Schedule '{name}' [{gw}]: {detail}"
+    log.warning("%s", msg)
+    if store is None:
+        return
+    try:
+        notify_engine.fire(store, event, gateway=gw, device_ids=device_ids, logged=True,
+                           schedule=name, detail=detail)
+    except Exception as e:  # noqa: BLE001 — a notification never breaks the run
+        log.warning("notify [%s] failed: %s", event, e)
 
 
 # ── "Ask before continuing" (#374 P4) ─────────────────────────────────────────
@@ -3566,6 +3654,11 @@ def _ask_step(entry: dict, *, store, gateway_id: str | None,
     store.log_schedule_event(entry["id"], entry["name"],
                              "continuing" if step == "fire" else "skipped", detail,
                              gateway_id=gid)
+    if chosen is None:
+        # No reply (#581): told to the devices that were asked.
+        send_to = ask.get("send_to") or {}
+        notify_run(store, "schedule_no_reply", entry["name"], gateway_id, detail,
+                   device_ids=send_to.get("ids") if send_to.get("type") == "device" else None)
     return step, detail
 
 

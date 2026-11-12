@@ -68,14 +68,16 @@ def _label_for_host(host: str) -> str | None:
 
 
 def _ask_from_thread(store, event: str, buttons: list[Button], ttl_s: float, *,
-                     gateway: str | None, meta: dict, **values) -> bool:
-    """Send an ask from a worker thread; True when it reached at least one target."""
+                     gateway: str | None, meta: dict, ids=..., **values) -> bool:
+    """Send an ask from a worker thread; True when it reached at least one target.
+    ``ids``: who to ask, when not the event's own Send to."""
     from . import notify_engine
     n = actionable.notifier()
     if n is None:
         return False
     # Its Send to setting (#281): all enabled devices, or the ones chosen.
-    ids = notify_engine.send_to_ids(store, event)
+    if ids is ...:
+        ids = notify_engine.send_to_ids(store, event)
     fut = actionable.submit(n.ask(event, actionable.targets(store, ids), buttons, ttl_s=ttl_s,
                                   gateway=gateway, meta=meta, **values))
     if fut is None:
@@ -152,14 +154,22 @@ async def _on_release(request, answer) -> str:
 
 # ── Acknowledge / Re-discover ────────────────────────────────────────────────────
 def ask_alert(store, row: dict) -> bool:
-    """Ask Acknowledge (plus Re-discover for an unreachable aGate) about one alert."""
-    from . import state
+    """Ask Acknowledge (plus Re-discover for an unreachable aGate) about one alert. A
+    failed schedule follows the Scheduler group's Run failed switch and Send to (#581);
+    every other alert, Critical alerts' Send to."""
+    from . import notify_engine, state
+    key = ALERT
+    if row.get("code") == "SCHEDULE_FAILED":
+        key = "schedule_failed"
+        if not notify_engine.config(store)["triggers"][key].get("enabled"):
+            return False
     gid = row.get("gateway_id") or ""
     gw = state.get_gateway(gid) if gid else None
     buttons = [Button(ACK, "Acknowledge")]
     if row.get("code") == "GATEWAY_UNREACHABLE" and gw is not None:
         buttons.append(Button(REDISCOVER, "Re-discover"))
     return _ask_from_thread(store, ALERT, buttons, ALERT_TTL_S,
+                            ids=notify_engine.send_to_ids(store, key),
                             gateway=(gw.label or gw.id) if gw else None,
                             meta={"alert_id": row["id"], "gateway_id": gid},
                             title=row.get("title") or "", message=row.get("message") or "")

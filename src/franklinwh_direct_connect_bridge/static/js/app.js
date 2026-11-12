@@ -501,7 +501,6 @@ document.addEventListener('alpine:init', () => {
     // fall back to liveCapDefaults for any surface the user has not set.
     liveCaps: {},
     // ── dashboard card customisation (show/hide; per browser) ──
-    dashCardsOpen: false,
     dashCardDefaults: {
       socRing: true, powerFlow: true, battery: true, energyToday: true, energyFlow: true,
       operatingMode: true, diagnostics: true, solarForecast: true, powerHistory: true, livePoints: true,
@@ -571,7 +570,6 @@ document.addEventListener('alpine:init', () => {
     //  Mirrors the Modbus Bridge "Topbar Preferences". The gateway selector and the
     //  connection status are LOCKED (always shown) and intentionally NOT in these lists.
     topbarPrefsOpen: false,
-    prefsTab: 'appearance',   // which cog view: appearance | nav | topbar
     topbarPrefs: { centre: [], right: [] },
     _topbarDefaults() {
       return {
@@ -638,6 +636,71 @@ document.addEventListener('alpine:init', () => {
       this._saveTopbarPrefs();
     },
     resetTopbarPrefs() { this.topbarPrefs = this._topbarDefaults(); this._saveTopbarPrefs(); },
+
+    // ── Customise dialog (#585, as the Modbus Bridge) ──
+    //  One dialog for the top bar, the navbar and the Dashboard cards (customise.js).
+    //  Saved at once under the keys above; Undo steps back one change at a time.
+    showCustomise: false,
+    customiseSection: 'topbar',      // topbar | nav | cards
+    _custUndo: [],
+    openCustomise(section) {
+      this.customiseSection = section || 'topbar';
+      this._custUndo = [];
+      this.topbarPrefsOpen = false;
+      this.showCustomise = true;
+    },
+    custSnapshot() {
+      this._custUndo.push(JSON.stringify({ nav: this.navPrefs, top: this.topbarPrefs,
+                                           cards: this.dashCards, order: this.dashOrder }));
+    },
+    get canUndoCustomise() { return this._custUndo.length > 0; },
+    undoCustomise() {
+      const s = this._custUndo.pop();
+      if (!s) return;
+      const v = JSON.parse(s);
+      this.navPrefs = v.nav; this.topbarPrefs = v.top;
+      this.dashCards = v.cards; this.dashOrder = v.order;
+      this._saveNavPrefs(); this._saveTopbarPrefs(); this._saveDashOrder();
+      try { localStorage.setItem('fwh-local-dash-cards', JSON.stringify(this.dashCards)); } catch (e) { /**/ }
+    },
+    resetCustomise(section) {
+      this.custSnapshot();
+      if (section === 'nav') this.resetNavPrefs();
+      else if (section === 'cards') this.resetDashCards();
+      else this.resetTopbarPrefs();
+    },
+    //: Put a row at index ``to`` of its list (a drag). Dashboard stays first in the navbar.
+    placeTopbarItem(group, id, to) {
+      const arr = [...(this.topbarPrefs[group] || [])];
+      const from = arr.findIndex(x => x.id === id);
+      if (from < 0 || from === to || to < 0 || to >= arr.length) return;
+      const [it] = arr.splice(from, 1);
+      arr.splice(to, 0, it);
+      this.topbarPrefs = { ...this.topbarPrefs, [group]: arr };
+      this._saveTopbarPrefs();
+    },
+    placeNavItem(id, to) {
+      if (this.navPinned(id) === 'both') return;
+      const keys = this.navOrdered.map(t => t.key);
+      const from = keys.indexOf(id);
+      const first = keys.filter(k => this.navPinned(k) === 'both').length;
+      to = Math.max(first, Math.min(keys.length - 1, to));
+      if (from < 0 || from === to) return;
+      keys.splice(from, 1);
+      keys.splice(to, 0, id);
+      const on = Object.fromEntries(this.navPrefs.map(p => [p.id, p.on]));
+      this.navPrefs = keys.map(k => ({ id: k, on: on[k] !== undefined ? on[k] : true }));
+      this._saveNavPrefs();
+    },
+    placeDashCard(key, to) {
+      const order = [...this.dashOrder];
+      const from = order.indexOf(key);
+      if (from < 0 || from === to || to < 0 || to >= order.length) return;
+      order.splice(from, 1);
+      order.splice(to, 0, key);
+      this.dashOrder = order;
+      this._saveDashOrder();
+    },
     liveCapDefaults: { dashboard: 60, battery: 30, solar: 30, circuits: 30, logs: 30 },
     liveCapOptions: [5, 15, 30, 60, 0],
     liveCapSurfaces: [

@@ -39,6 +39,7 @@ document.addEventListener('alpine:init', () => {
     importReport: null,
     view: 'schedules',       // schedules | timeline | history
     timeline: null,
+    timelineGw: '',          // a gateway's id, or '*' for every gateway (#579)
     logEvents: null,
     logFilter: '',
     // Debug monitor (#345): polled only while the card is open on the History view.
@@ -91,8 +92,22 @@ document.addEventListener('alpine:init', () => {
 
     async setView(v) {
       this.view = v;
-      if (v === 'timeline') this.timeline = await (await fetch('api/schedules/timeline' + this.$store.app.gwQuery())).json();
+      if (v === 'timeline') await this.loadTimeline();
       if (v === 'history') this.logEvents = (await (await fetch('api/schedules/log?limit=200')).json()).events;
+    },
+
+    async loadTimeline() {
+      if (!this.timelineGw) this.timelineGw = this.$store.app.selectedGateway || '';
+      const q = this.timelineGw === '*' ? '?all=true'
+        : (this.timelineGw ? `?gateway=${encodeURIComponent(this.timelineGw)}` : this.$store.app.gwQuery());
+      this.timeline = await (await fetch('api/schedules/timeline' + q)).json();
+    },
+    segLabel(seg) {
+      if (seg.conditional) return 'while its conditions hold';
+      if ((seg.blocks || []).length > 2 || seg.trigger_type === 'interval' || seg.trigger_type === 'cron')
+        return `${seg.blocks.length}× from ${this.hhmm(seg.start_min)}`;
+      return this.hhmm(seg.start_min) + (seg.end_min !== seg.start_min ? '–' + this.hhmm(seg.end_min) : '')
+        + (seg.wraps_midnight ? ' (+1d)' : '');
     },
 
     hhmm(min) {
@@ -130,14 +145,14 @@ document.addEventListener('alpine:init', () => {
     },
     get modeLegend() {
       const seen = {}, out = [];
-      for (const m of (this.timeline?.modes || [])) {
+      for (const m of (this.timeline?.lanes || []).flatMap(l => l.modes || [])) {
         if (!seen[m.mode]) { seen[m.mode] = 1; out.push({ mode: m.mode, color: this.modeColor(m.mode) }); }
       }
       return out;
     },
     /** SoC polyline points in the SVG's 0..1440 x / 0..100 y space (band = top 12). */
-    get socPoints() {
-      return (this.timeline?.soc || [])
+    socPointsFor(lane) {
+      return (lane?.soc || [])
         .map(p => `${p.min},${(98 - (Math.max(0, Math.min(100, p.soc)) / 100) * 82).toFixed(1)}`)
         .join(' ');
     },
@@ -147,8 +162,7 @@ document.addEventListener('alpine:init', () => {
 
     /** The chart interior as an SVG string — <template x-for> does not work inside
      *  an <svg> (SVG namespace), so build the children and inject via x-html. */
-    get svgInner() {
-      const t = this.timeline;
+    svgFor(t) {
       if (!t) return '';
       const L = (x1,y1,x2,y2,stroke,w,dash='') =>
         `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${w}"${dash?` stroke-dasharray="${dash}"`:''} vector-effect="non-scaling-stroke"/>`;
@@ -156,8 +170,9 @@ document.addEventListener('alpine:init', () => {
       for (const h of [6,12,18]) o += L(h*60,0,h*60,100,'rgba(148,163,184,0.22)',1);
       for (const m of (t.modes||[]))
         o += `<rect x="${m.start_min}" y="0" width="${Math.max(0.5,m.end_min-m.start_min)}" height="12" fill="${this.modeColor(m.mode)}" opacity="0.55"/>`;
-      if (this.socPoints)
-        o += `<polyline points="${this.socPoints}" fill="none" stroke="#38bdf8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`;
+      const pts = this.socPointsFor(t);
+      if (pts)
+        o += `<polyline points="${pts}" fill="none" stroke="#38bdf8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`;
       for (const f of (t.fires||[])) o += L(f.min,14,f.min,100,this.fireColor(f.status),1,'2 2');
       o += L(t.now_min,0,t.now_min,100,'#fbbf24',1.5);
       return o;
@@ -266,6 +281,7 @@ document.addEventListener('alpine:init', () => {
     blank() {
       return { id: '', name: '', enabled: true, fire_at: '18:00', duration_min: 90,
                match: 'all', gateway_id: this.$store.app.selectedGateway || '',   // #379
+               gateway_scope: 'one',                                            // #578
                conditions: [], exit_conditions: [],
                exit_match: 'all', entry_hold_s: 0, action: { kind: '' }, ha_actions: [],
                days: [], months: [], day_of_month: null, start_date: null, end_date: null,
@@ -344,6 +360,7 @@ document.addEventListener('alpine:init', () => {
         id: s.id, name: s.name, enabled: s.enabled,
         fire_at: s.fire_at || '18:00', duration_min: s.duration_min ?? 0,
         match: s.match || 'all', gateway_id: s.gateway_id || '',
+        gateway_scope: s.gateway_scope || 'one',
         conditions: JSON.parse(JSON.stringify(s.conditions || [])),
         exit_conditions: JSON.parse(JSON.stringify(s.exit_conditions || [])),
         exit_match: s.exit_match || 'all',
@@ -583,12 +600,27 @@ document.addEventListener('alpine:init', () => {
     /** Seed sensible defaults when the force action is first chosen, so an empty
      *  form does not silently dispatch 0 W. */
     onActionKind() {
+      // A battery action is one gateway's (#578): All gateways goes back to the one named.
+      if (this.form.action.kind) this.form.gateway_scope = 'one';
       if (this.form.action.kind !== 'force') return;
       const a = this.form.action;
       if (!a.direction) a.direction = 'discharge';
       if (!a.unit) a.unit = 'pct';
       if (a.power === undefined || a.power === '' || a.power === null) a.power = 100;
       if (a.target_soc === undefined || a.target_soc === null) a.target_soc = '';
+    },
+
+    // The gateway picker (#578): a gateway's id, or "*" for All gateways. The rule keeps
+    // its gateway_id under All gateways; the engine reads gateway_scope.
+    get gwPick() { return this.form.gateway_scope === 'all' ? '*' : this.form.gateway_id; },
+    set gwPick(v) {
+      if (v === '*') { this.form.gateway_scope = 'all'; return; }
+      this.form.gateway_scope = 'one';
+      this.form.gateway_id = v;
+    },
+    gatewayLabel(s) {
+      if (String(s.gateway_scope || 'one').toLowerCase() === 'all') return 'All gateways';
+      return this.gatewayName(s.gateway_id);
     },
 
     // ─── list: status filter, active-now, next-fire, per-entry stop ───
@@ -999,6 +1031,7 @@ document.addEventListener('alpine:init', () => {
         if (asked) t += `, ask ${asked} first`;
         t += `, ${act}.`;
         if (exits) t += ` End early when ${exits}.`;
+        if (s.gateway_scope === 'all') t += ' On every gateway, each with its own values.';
         return t;
       }
       // full — labelled, multi-line
@@ -1009,8 +1042,7 @@ document.addEventListener('alpine:init', () => {
       if (asked) lines.push(`ASK    ${asked}: "${ask.message}" (Actionable notification; ${ask.if_no_reply === 'continue' ? 'no reply: continue' : 'no reply: skip'}).`);
       lines.push(`DO     ${act}.`);
       if (exits) lines.push(`UNTIL  it ends early when ${exits} (${(s.exit_match || 'all') === 'any' ? 'any' : 'all'}).`);
-      const gw = (this.gateways.find(g => g.id === s.gateway_id) || {});
-      if (s.gateway_id) lines.push(`ON     ${gw.name || s.gateway_id}.`);
+      if (s.gateway_id || s.gateway_scope === 'all') lines.push(`ON     ${this.gatewayLabel(s)}.`);
       if (s.entry_hold_s) lines.push(`HOLD   conditions must stay true for ${s.entry_hold_s}s before firing.`);
       return lines.join('\n');
     },

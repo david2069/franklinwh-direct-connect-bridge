@@ -48,6 +48,7 @@
   <script src="static/js/install_profile.js?v={{ cache_bust }}"></script>
   <script src="static/js/setup_wizard.js?v={{ cache_bust }}"></script>
   <script src="static/js/app.js?v={{ cache_bust }}"></script>
+  <script src="static/js/customise.js?v={{ cache_bust }}"></script>
   <script src="static/js/alerts.js?v={{ cache_bust }}"></script>
   <script src="static/js/live_cap.js?v={{ cache_bust }}"></script>
   <script src="static/js/mqtt_tab.js?v={{ cache_bust }}"></script>
@@ -388,6 +389,7 @@
     </div>
 
     {% include "partials/alerts.html" %}
+    {% include "partials/customise.html" %}
     {% include "partials/all_gateways.html" %}
     {% include "partials/setup_wizard.html" %}
     {% include "partials/terminal.html" %}
