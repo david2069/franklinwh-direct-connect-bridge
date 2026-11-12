@@ -359,7 +359,12 @@
               <span x-show="s.is_default" class="chip ok" style="font-size:.55rem">default</span>
             </div>
             <div class="text-[11px] mt-0.5" style="color:var(--text-faint)"
-                 x-text="[s.region, s.postcode, s.timezone].filter(Boolean).join(' · ') || 'No location set'"></div>
+                 x-text="[s.region, s.postcode, s.timezone].filter(Boolean).join(' · ') || (s.is_default ? '' : 'No location set')"></div>
+            <!-- The site's location is Location & Solar's, below (owner, 2026-11-13). -->
+            <button type="button" x-show="s.is_default" class="text-[11px] underline text-left" style="color:var(--accent)"
+                    data-testid="site-location"
+                    @click="document.getElementById('settings-location').scrollIntoView({ behavior: 'smooth', block: 'start' })"
+                    x-text="'Location & Solar: ' + ((form.pv_latitude !== '' && form.pv_latitude != null) ? (Number(form.pv_latitude).toFixed(3) + ', ' + Number(form.pv_longitude).toFixed(3)) : 'not set') + (Number(form.pv_kwp) > 0 ? ' · ' + Number(form.pv_kwp) + ' kWp' : (derivedPvKwp ? ' · ' + derivedPvKwp + ' kWp from the gateway' : ''))"></button>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
             <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="editSite(s)">Edit</button>
@@ -391,6 +396,60 @@
     </template>
   </div>
 
+  <!-- ══ Location & Solar ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Location &amp; Solar <a :href="$store.app.guideUrl('energy-and-costs/#solar-forecast')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+  </div>
+  <div class="card space-y-3" id="settings-location">
+    <div class="flex items-center justify-between gap-2">
+      <span class="text-xs" style="color:var(--text-faint)">Your site's location and solar array. Set from your gateway, or enter manually.
+        <button type="button" class="underline ml-1" style="color:var(--accent)" data-testid="location-solar-link"
+                @click="$store.app.setActiveTab('solar')">Solar tab</button></span>
+      <button @click="syncLocation()" class="btn btn-secondary btn-sm">⟳ Sync from gateway</button>
+    </div>
+    <p class="text-xs" style="color:var(--text-faint)">
+      Powers the Solar Forecast card + weather/solar sensors (Open-Meteo, free). Auto-saves on change.
+    </p>
+    <div class="grid grid-cols-2 gap-3">
+      <label class="text-xs text-slate-500">Latitude
+        <input type="number" step="0.0001" class="form-control form-control-sm w-full mt-1" x-model="form.pv_latitude"
+               @change="saveOne({pv_latitude: form.pv_latitude === '' ? null : Number(form.pv_latitude)})"
+               placeholder="-33.8688"></label>
+      <label class="text-xs text-slate-500">Longitude
+        <input type="number" step="0.0001" class="form-control form-control-sm w-full mt-1" x-model="form.pv_longitude"
+               @change="saveOne({pv_longitude: form.pv_longitude === '' ? null : Number(form.pv_longitude)})"
+               placeholder="151.2093"></label>
+    </div>
+    <div class="grid grid-cols-3 gap-3">
+      <label class="text-xs text-slate-500" data-testid="pv-size">PV size (kWp)
+        <!-- Derived by default (#583): blank = the gateways' own size. A larger number is
+             for DC panels above the AC rating or remote solar; smaller is allowed. -->
+        <input type="number" step="0.1" min="0" class="form-control form-control-sm w-full mt-1" x-model="form.pv_kwp"
+               @change="saveOne({pv_kwp: Number(form.pv_kwp) > 0 ? Number(form.pv_kwp) : null})"
+               :placeholder="derivedPvKwp ? derivedPvKwp + ' from the gateway' : 'Please confirm'">
+        <span class="block mt-1 text-[10px]" style="color:var(--text-faint)">
+          <span x-show="derivedPvKwp" x-text="'Gateway ' + derivedPvKwp + ' kWp'"></span><span
+                x-show="derivedPvKwp && Number(form.pv_kwp) > 0" x-text="' · You ' + Number(form.pv_kwp) + ' kWp'"></span>
+          <button type="button" x-show="derivedPvKwp && Number(form.pv_kwp) > 0" class="underline ml-1" style="color:var(--accent)"
+                  @click="form.pv_kwp = ''; saveOne({pv_kwp: null})">Use gateway</button>
+          <span x-show="!derivedPvKwp && !(Number(form.pv_kwp) > 0)">Please confirm: the gateway hasn't reported its size. Enter yours.</span>
+        </span>
+        <span x-show="derivedPvKwp && Number(form.pv_kwp) > 0 && Number(form.pv_kwp) < derivedPvKwp" x-cloak
+              data-testid="pv-size-smaller" class="block mt-0.5 text-[10px]" style="color:var(--text-faint)">
+          Smaller than the gateway's: fine for shading or clipping; the forecast uses yours.</span></label>
+      <label class="text-xs text-slate-500">Tilt°
+        <input type="number" step="1" class="form-control form-control-sm w-full mt-1" x-model="form.pv_tilt"
+               @change="saveOne({pv_tilt: Number(form.pv_tilt) || 0})" placeholder="22"></label>
+      <label class="text-xs text-slate-500">Azimuth°
+        <input type="number" step="1" class="form-control form-control-sm w-full mt-1" x-model="form.pv_azimuth"
+               @change="saveOne({pv_azimuth: Number(form.pv_azimuth) || 0})" placeholder="180"></label>
+    </div>
+    <p class="text-[11px]" style="color:var(--text-faint)">
+      Azimuth (Open-Meteo convention): 0=south · −90=east · 90=west · ±180=north. Tilt = degrees
+      from horizontal (roof pitch is typically ~20–25°).
+    </p>
+  </div>
   </div>
   <div x-show="sub==='billing'" x-cloak class="space-y-6">
   <!-- ══ Utilities &amp; Tariffs ══ -->
@@ -2416,62 +2475,6 @@
       </template>
     </div>
   </div>
-
-  </div>
-  <div x-show="sub==='integrations'" x-cloak class="space-y-6">
-  <!-- ══ Location & Solar ══ -->
-  <div class="flex items-center gap-3">
-    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Location &amp; Solar <a :href="$store.app.guideUrl('energy-and-costs/#solar-forecast')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
-    <div class="flex-1 border-t border-white/[0.08]"></div>
-  </div>
-  <div class="card space-y-3">
-    <div class="flex items-center justify-between gap-2">
-      <span class="text-xs" style="color:var(--text-faint)">Set from your gateway, or enter manually.</span>
-      <button @click="syncLocation()" class="btn btn-secondary btn-sm">⟳ Sync from gateway</button>
-    </div>
-    <p class="text-xs" style="color:var(--text-faint)">
-      Powers the Solar Forecast card + weather/solar sensors (Open-Meteo, free). Auto-saves on change.
-    </p>
-    <div class="grid grid-cols-2 gap-3">
-      <label class="text-xs text-slate-500">Latitude
-        <input type="number" step="0.0001" class="form-control form-control-sm w-full mt-1" x-model="form.pv_latitude"
-               @change="saveOne({pv_latitude: form.pv_latitude === '' ? null : Number(form.pv_latitude)})"
-               placeholder="-33.8688"></label>
-      <label class="text-xs text-slate-500">Longitude
-        <input type="number" step="0.0001" class="form-control form-control-sm w-full mt-1" x-model="form.pv_longitude"
-               @change="saveOne({pv_longitude: form.pv_longitude === '' ? null : Number(form.pv_longitude)})"
-               placeholder="151.2093"></label>
-    </div>
-    <div class="grid grid-cols-3 gap-3">
-      <label class="text-xs text-slate-500" data-testid="pv-size">PV size (kWp)
-        <!-- Derived by default (#583): blank = the gateways' own size. A larger number is
-             for DC panels above the AC rating or remote solar; smaller is allowed. -->
-        <input type="number" step="0.1" min="0" class="form-control form-control-sm w-full mt-1" x-model="form.pv_kwp"
-               @change="saveOne({pv_kwp: Number(form.pv_kwp) > 0 ? Number(form.pv_kwp) : null})"
-               :placeholder="derivedPvKwp ? derivedPvKwp + ' from the gateway' : 'Please confirm'">
-        <span class="block mt-1 text-[10px]" style="color:var(--text-faint)">
-          <span x-show="derivedPvKwp" x-text="'Gateway ' + derivedPvKwp + ' kWp'"></span><span
-                x-show="derivedPvKwp && Number(form.pv_kwp) > 0" x-text="' · You ' + Number(form.pv_kwp) + ' kWp'"></span>
-          <button type="button" x-show="derivedPvKwp && Number(form.pv_kwp) > 0" class="underline ml-1" style="color:var(--accent)"
-                  @click="form.pv_kwp = ''; saveOne({pv_kwp: null})">Use gateway</button>
-          <span x-show="!derivedPvKwp && !(Number(form.pv_kwp) > 0)">Please confirm: the gateway hasn't reported its size. Enter yours.</span>
-        </span>
-        <span x-show="derivedPvKwp && Number(form.pv_kwp) > 0 && Number(form.pv_kwp) < derivedPvKwp" x-cloak
-              data-testid="pv-size-smaller" class="block mt-0.5 text-[10px]" style="color:var(--text-faint)">
-          Smaller than the gateway's: fine for shading or clipping; the forecast uses yours.</span></label>
-      <label class="text-xs text-slate-500">Tilt°
-        <input type="number" step="1" class="form-control form-control-sm w-full mt-1" x-model="form.pv_tilt"
-               @change="saveOne({pv_tilt: Number(form.pv_tilt) || 0})" placeholder="22"></label>
-      <label class="text-xs text-slate-500">Azimuth°
-        <input type="number" step="1" class="form-control form-control-sm w-full mt-1" x-model="form.pv_azimuth"
-               @change="saveOne({pv_azimuth: Number(form.pv_azimuth) || 0})" placeholder="180"></label>
-    </div>
-    <p class="text-[11px]" style="color:var(--text-faint)">
-      Azimuth (Open-Meteo convention): 0=south · −90=east · 90=west · ±180=north. Tilt = degrees
-      from horizontal (roof pitch is typically ~20–25°).
-    </p>
-  </div>
-
 
   </div>
   <div x-show="sub==='automation'" x-cloak class="space-y-6">

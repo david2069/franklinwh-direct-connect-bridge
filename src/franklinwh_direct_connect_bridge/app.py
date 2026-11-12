@@ -7223,7 +7223,7 @@ def create_app() -> FastAPI:
         size = pv_size.effective(cfg)                # yours, else the gateways' (#583)
         if not size["kwp"]:
             return {"configured": False,
-                    "reason": "Please confirm your solar size in Settings → Integrations → "
+                    "reason": "Please confirm your solar size in Settings → Sites & Billing → "
                               "Location & Solar: the gateway hasn't reported it yet."}
         fc = solar_forecast.forecast(cfg.pv_latitude, cfg.pv_longitude, kwp=size["kwp"],
                                      tilt=cfg.pv_tilt, azimuth=cfg.pv_azimuth, force=force)

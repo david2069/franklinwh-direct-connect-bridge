@@ -428,7 +428,7 @@ from its meter's tariff. There are no lifetime or today/week/month energy totals
 ### Weather
 
 `weather.temp_c` and `weather.condition` (Weather & Solar group), the **current** weather from
-Open-Meteo. They need a location under **Settings → Integrations → Location & Solar**
+Open-Meteo. They need a location under **Settings → Sites & Billing → Location & Solar**
 (**Sync from gateway** reads it from the aGate).
 <!-- @b SEN-13 ;; src: scheduler.py:1185-1198, solar_forecast.py:111-140 ;; untested ;; write: yes ;; b: weather.* and solar_forecast.* come from the cached Open-Meteo forecast and are absent without a latitude and longitude ;; test: unit: solar_snapshot with no location returns {} -->
 
@@ -478,7 +478,7 @@ grouped by `GET /api/schedules`. *Needs* and *without it* are per group.
 |---|---|---|
 | Gateway | a fresh poll of that gateway | None |
 | Derived Battery | the poll, the battery capacity constant, the SoC constants; at-max-rate ETAs also a rate (Model 702 or the max power constant); the tracker also the solar forecast | None |
-| Weather & Solar | a location (**Settings → Integrations → Location & Solar**, synced from the aGate or typed in); `solar.today_kwh` the poll | None |
+| Weather & Solar | a location (**Settings → Sites & Billing → Location & Solar**, synced from the aGate or typed in); `solar.today_kwh` the poll | None |
 | Tariff & Utility | a meter with a utility and tariff; spot/feed-in a NEM region, an HA price entity or a dynamic tariff | None |
 | Demand / Tariff, Energy, Fixed Charges | a tariff with those charges or windows | None |
 | System Setup | nothing (defaults), better with Setup filled in | a default |

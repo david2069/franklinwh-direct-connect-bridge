@@ -2069,7 +2069,7 @@ ASK_SENSORS = [
 FEATURES = ("gateway", "modbus", "solar_forecast", "spot_price", "feed_in_price",
             "tariff", "utility", "constants", "ask")
 
-_SETUP_SOLAR = "set your location in Settings → Integrations → Location & Solar"
+_SETUP_SOLAR = "set your location in Settings → Sites & Billing → Location & Solar"
 _SETUP_PRICE = "set it in Settings → Sites & Billing → Prices"
 _SETUP_TARIFF = "give the meter a tariff in Settings → Sites & Billing"
 _SETUP_UTILITY = "give the meter a utility in Settings → Sites & Billing"
