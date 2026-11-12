@@ -1342,6 +1342,13 @@ function settingsTab() {
       const n = Math.max(0, Math.min(100, parseInt(val, 10) || 0));
       this._saveTriggers({ triggers: { [key]: { threshold: n } } });
     },
+    // The group heading (#581, Scheduler) before the first trigger of its group.
+    triggerGroupStart(key) {
+      const all = Object.entries(this.triggers.config.triggers || {});
+      const i = all.findIndex(([k]) => k === key);
+      const g = (all[i] || [])[1]?.group;
+      return g && (i === 0 || all[i - 1][1].group !== g) ? g : '';
+    },
     triggerStat(key) {
       const s = (this.triggers.stats || []).find(x => x.event === key);
       return s ? `${s.count}× · last ${this.fmtNotifyTime(s.last_ts)}` : '';

@@ -39,6 +39,7 @@ document.addEventListener('alpine:init', () => {
     importReport: null,
     view: 'schedules',       // schedules | timeline | history
     timeline: null,
+    timelineGw: '',          // a gateway's id, or '*' for every gateway (#579)
     logEvents: null,
     logFilter: '',
     // Debug monitor (#345): polled only while the card is open on the History view.
@@ -91,8 +92,22 @@ document.addEventListener('alpine:init', () => {
 
     async setView(v) {
       this.view = v;
-      if (v === 'timeline') this.timeline = await (await fetch('api/schedules/timeline' + this.$store.app.gwQuery())).json();
+      if (v === 'timeline') await this.loadTimeline();
       if (v === 'history') this.logEvents = (await (await fetch('api/schedules/log?limit=200')).json()).events;
+    },
+
+    async loadTimeline() {
+      if (!this.timelineGw) this.timelineGw = this.$store.app.selectedGateway || '';
+      const q = this.timelineGw === '*' ? '?all=true'
+        : (this.timelineGw ? `?gateway=${encodeURIComponent(this.timelineGw)}` : this.$store.app.gwQuery());
+      this.timeline = await (await fetch('api/schedules/timeline' + q)).json();
+    },
+    segLabel(seg) {
+      if (seg.conditional) return 'while its conditions hold';
+      if ((seg.blocks || []).length > 2 || seg.trigger_type === 'interval' || seg.trigger_type === 'cron')
+        return `${seg.blocks.length}× from ${this.hhmm(seg.start_min)}`;
+      return this.hhmm(seg.start_min) + (seg.end_min !== seg.start_min ? '–' + this.hhmm(seg.end_min) : '')
+        + (seg.wraps_midnight ? ' (+1d)' : '');
     },
 
     hhmm(min) {
@@ -130,14 +145,14 @@ document.addEventListener('alpine:init', () => {
     },
     get modeLegend() {
       const seen = {}, out = [];
-      for (const m of (this.timeline?.modes || [])) {
+      for (const m of (this.timeline?.lanes || []).flatMap(l => l.modes || [])) {
         if (!seen[m.mode]) { seen[m.mode] = 1; out.push({ mode: m.mode, color: this.modeColor(m.mode) }); }
       }
       return out;
     },
     /** SoC polyline points in the SVG's 0..1440 x / 0..100 y space (band = top 12). */
-    get socPoints() {
-      return (this.timeline?.soc || [])
+    socPointsFor(lane) {
+      return (lane?.soc || [])
         .map(p => `${p.min},${(98 - (Math.max(0, Math.min(100, p.soc)) / 100) * 82).toFixed(1)}`)
         .join(' ');
     },
@@ -147,8 +162,7 @@ document.addEventListener('alpine:init', () => {
 
     /** The chart interior as an SVG string — <template x-for> does not work inside
      *  an <svg> (SVG namespace), so build the children and inject via x-html. */
-    get svgInner() {
-      const t = this.timeline;
+    svgFor(t) {
       if (!t) return '';
       const L = (x1,y1,x2,y2,stroke,w,dash='') =>
         `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${w}"${dash?` stroke-dasharray="${dash}"`:''} vector-effect="non-scaling-stroke"/>`;
@@ -156,8 +170,9 @@ document.addEventListener('alpine:init', () => {
       for (const h of [6,12,18]) o += L(h*60,0,h*60,100,'rgba(148,163,184,0.22)',1);
       for (const m of (t.modes||[]))
         o += `<rect x="${m.start_min}" y="0" width="${Math.max(0.5,m.end_min-m.start_min)}" height="12" fill="${this.modeColor(m.mode)}" opacity="0.55"/>`;
-      if (this.socPoints)
-        o += `<polyline points="${this.socPoints}" fill="none" stroke="#38bdf8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`;
+      const pts = this.socPointsFor(t);
+      if (pts)
+        o += `<polyline points="${pts}" fill="none" stroke="#38bdf8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`;
       for (const f of (t.fires||[])) o += L(f.min,14,f.min,100,this.fireColor(f.status),1,'2 2');
       o += L(t.now_min,0,t.now_min,100,'#fbbf24',1.5);
       return o;
