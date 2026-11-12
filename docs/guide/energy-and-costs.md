@@ -342,11 +342,16 @@ disagrees keeps its own, and the bridge log says so.
 
 ## Solar forecast
 
-![Settings → Integrations → Location & Solar](../images/energy-and-costs/08-solar-forecast.png)
+![Settings → Sites & Billing → Location & Solar](../images/energy-and-costs/08-solar-forecast.png)
 
 Optional, and off until the bridge has a location. The forecast comes from Open-Meteo.
 
-Under **Settings → Integrations → Location & Solar**, press **Sync from gateway**. The
+**Location & Solar** sits with your site under **Settings → Sites & Billing**, right after
+Sites & Meters: the default site shows its location and solar size and links to it, the card
+links to the **Solar** tab, and the Solar tab's **Location & array settings** link comes back
+here. (Before 0.5.42 it was under Integrations.)
+
+Under **Settings → Sites & Billing → Location & Solar**, press **Sync from gateway**. The
 bridge reads the location your installer configured on the aGate, over the local API
 (`cmdType 1201`), and saves it as the latitude and longitude. No cloud account is needed,
 and nothing needs typing. If the aGate has no location configured, the sync says so and

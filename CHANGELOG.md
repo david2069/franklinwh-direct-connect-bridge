@@ -85,6 +85,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   purge runs with the hourly history upkeep and when a recording ends.
 
 ### Changed
+- **Location & Solar moves to Sites & Billing, with the site** (owner, #582 follow-up). It
+  sits right after Sites & Meters; the default site shows its location and solar size and
+  links to it; the card links to the Solar tab, and the Solar tab links back.
 - **Scheduler editor tidied** (#580, owner-approved review). The action box is **Gateway
   action** (it also holds smart circuits and off-grid); **Priority** shows only with a
   gateway action and **If busy** only with a force; **Quick preset** is **Repeat pattern**

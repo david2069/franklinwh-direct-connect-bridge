@@ -18,6 +18,9 @@
         PV inputs, remote solar (aPbox), relays and export limit
         <span class="font-mono text-xs opacity-70" x-show="$store.app.showRawKeys">· 1903/1301</span>
       </p>
+      <!-- The site's location and array, with the site (owner, 2026-11-13). -->
+      <button type="button" class="text-xs underline" style="color:var(--accent)" data-testid="solar-location-link"
+              @click="$store.app.setActiveTab('settings'); setTimeout(() => window.dispatchEvent(new CustomEvent('fwh-open-settings', { detail: { sub: 'billing', card: 'settings-location' } })), 50)">Location &amp; array settings</button>
     </div>
     <div class="flex flex-wrap items-center gap-2">
       <button class="btn btn-secondary btn-sm" @click="loadRaw()"

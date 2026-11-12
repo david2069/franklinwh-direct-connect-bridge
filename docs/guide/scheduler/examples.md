@@ -105,7 +105,7 @@ How it behaves:
 
 Top the battery up when Open-Meteo reports a thunderstorm.
 
-Needs: a location under **Settings → Integrations → Location & Solar** (**Sync from gateway**
+Needs: a location under **Settings → Sites & Billing → Location & Solar** (**Sync from gateway**
 reads it from the aGate).
 
 | Field | Value |
