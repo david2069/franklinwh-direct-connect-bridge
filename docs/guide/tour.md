@@ -56,8 +56,8 @@ gateway's address with the Modbus TCP Server port (`modbus_port`, or a port type
 gateway added as `address:port` uses that port for Direct Connect only; its Modbus TCP
 Server is still reached on the Modbus port. **Test** connects to it now.
 
-Every change made here, and every Test, writes a line to **Logs** and a row to the Control
-tab's **Audit Trail**, saying whether it worked. None of them needs a restart.
+Every change made here, and every Test, writes a line to **Logs** and a row to the
+**Audit trail** (Logs → Audit trail), saying whether it worked. None of them needs a restart.
 
 **Settings → Setup** is the same content, reachable for ever: every step reports whether it
 is already satisfied, so a second pass shows current state rather than blank fields.
@@ -153,7 +153,7 @@ protocol documentation.
 | **Analytics** | Longer-horizon charts from the bridge's own SQLite history. |
 | **Energy Costs** | Period-to-date cost and closed-period history, priced against your tariff. |
 | **Scheduler** | Time-based automation. See [Scheduler](scheduler/index.md). |
-| **Control** | Everything you can *do* to the selected gateway, in one place, plus the audit trail. See [Control](control.md). |
+| **Control** | Everything you can *do* to the selected gateway, in one place. Its audit trail is under Logs. See [Control](control.md). |
 | **Grid & Inverter** | The grid power-plane limits (import/export enables, soft and hard limits). Advanced, and the write is **unverified** — see [Control](control.md). |
 | **Home Assistant** | HA instances, which HA entities to expose to the scheduler, notification devices, and a dashboard-card YAML generator. |
 | **MQTT** | What the bridge publishes, which entity groups are enabled, and a scan for other FranklinWH publishers on the same broker. |
@@ -176,8 +176,10 @@ get an implicit `--host`, and anything that writes requires `--yes`.
 
 <!-- screenshot needed: the Logs tab, with the level tiles, filters and table -->
 
-The **Logs** tab shows the bridge's own log lines, newest first, in bridge-host time.
-It refreshes every 10 seconds.
+The **Logs** tab has two sub-tabs. **Bridge log** shows the bridge's own log lines, newest
+first, in bridge-host time, and refreshes every 10 seconds. **Audit trail** lists every
+consequential control (off-grid, reconnect, reboot, mode and Modbus changes, cloud sign-ins,
+setup) with its source, detail and result; see [Control](control.md).
 
 - **Level tiles** — DEBUG, INFO, WARNING, ERROR and CRITICAL, each with its count. Click a
   tile to show only that level; click it again to clear it.

@@ -55,6 +55,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   purge runs with the hourly history upkeep and when a recording ends.
 
 ### Changed
+- **The Audit trail moved to Logs, and is easier to read** (owner). It is now a sub-tab,
+  **Logs → Audit trail**, next to **Bridge log**, instead of a card at the bottom of
+  Control. Its rows are no longer shaded, the detail wraps instead of being cut off, and
+  its text is brighter. A refused-command alert's **Open Audit trail** goes straight there.
 - **A gateway's port is never its Modbus port** (owner). A gateway added as `address:port`
   (an emulator, say) uses that port for Direct Connect only; the Modbus client reaches it
   on the Modbus TCP Server port (`modbus_port`, or the override). Before, it tried the
