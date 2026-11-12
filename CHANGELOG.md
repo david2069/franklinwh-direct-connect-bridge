@@ -12,6 +12,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Scheduler notifications: failed, missed, aborted and no reply** (#581, owner). A
+  **Scheduler** group under Notifications → Auto-notify triggers: **Run failed** (on),
+  **Run missed** (on), **Run aborted** (off: stopped, deferred or ended early) and **No
+  reply to an actionable notification** (on), each with its own switch and Send to. Every
+  message names the gateway, and each also writes a warning to the bridge log in the same
+  words. No reply goes to the devices that were asked.
+- **Scheduler: All gateways for rules that move no battery** (#578, owner). The gateway
+  picker offers **All gateways** when a rule has no battery action, such as a low-SoC
+  notification: each gateway runs it with its own values, and each message names the
+  gateway that fired. A battery action stays on one gateway. The list and Explain say
+  "All gateways" (scheduler guide, Targets).
 - **Analytics → Explain: trends and what to change for your objectives** (#588, owner).
   For the period shown, on Local or Cloud: each total against the previous period and last
   year (with runs of rises or falls), what the period shows, and suggestions for the
@@ -69,6 +80,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   finger), up/down arrows kept as the fallback, and a switch. Saved as you go, with Undo
   and Reset in the dialog. Saved preferences carry over. The Dashboard's Cards panel and
   the cog's Navbar / Top bar lists are gone; Theme stays in the cog.
+- **A missed schedule run is a warning of its own** (#581, owner): `SCHEDULE_MISSED`,
+  worded apart from a failure. A failed run stays the critical `SCHEDULE_FAILED`, which now
+  names the gateway; its push follows the Scheduler group's Run failed switch and Send to.
 - **Actionable Notifications: one notify path** (#576, owner). A schedule notifies only
   from its **Home Assistant actions** notify rows. **Ask before continuing** is now the
   **Actionable notification** option on a notify row (buttons, wait, if no reply, Send

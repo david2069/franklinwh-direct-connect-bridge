@@ -4115,6 +4115,8 @@ def create_app() -> FastAPI:
                 st.end_dispatch(d["id"], status="stopped")
             st.log_schedule_event(sid, entry["name"], "stopped",
                                   f"dispatch released by user: {out.get('result', '')}")
+            scheduler.notify_run(st, "schedule_aborted", entry["name"],     # #581
+                                 entry.get("gateway_id") or "", "stopped by hand")
             return {"stopped": True, "result": out.get("result", "")}
         st.log_schedule_event(sid, entry["name"], "stopped", "no active dispatch to stop")
         return {"stopped": False, "result": "no active dispatch for this schedule"}

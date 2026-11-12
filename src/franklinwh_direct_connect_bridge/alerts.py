@@ -67,6 +67,9 @@ CATALOGUE: dict[str, dict] = {
                       "title": "Write ignored by the aGate"},
     "SCHEDULE_FAILED": {"kind": EVENT, "severity": CRITICAL,
                         "title": "Scheduled action failed"},
+    # A window that closed with no success (#581): a warning, worded apart from a failure.
+    "SCHEDULE_MISSED": {"kind": EVENT, "severity": WARNING,
+                        "title": "Scheduled run missed"},
     "RESTART_DURING_COMMAND": {"kind": EVENT, "severity": CRITICAL,
                                "title": "Bridge restarted during a command"},
     "EXTERNAL_SETPOINT": {"kind": EVENT, "severity": WARNING,

@@ -2739,6 +2739,9 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                 store.log_schedule_event(entry["id"], entry["name"], "exit",
                                          (f"{why}: " + "; ".join(exit_res)) if exit_res else why,
                                          gateway_id=gateway_id or "")
+            if time_inside and exit_now:                 # ended early (#581)
+                notify_run(store, "schedule_aborted", entry["name"], gateway_id,
+                           "ended early: exit condition met")
         _window_inside[dkey] = effective_inside
         if effective_inside:
             _window_key[dkey] = wkey or now.date().isoformat()
@@ -2826,6 +2829,7 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                               reason=detail)
                 store.log_schedule_event(loser["id"], loser["name"], "deferred", detail,
                                          gateway_id=gateway_id or "")
+                notify_run(store, "schedule_aborted", loser["name"], gateway_id, detail)
                 mon[loser["id"]] = ("skipped", detail)
         winners.append(group[0])
     # (2) conflict with an ACTIVE dispatch already held by ANOTHER schedule (a force
@@ -2850,6 +2854,7 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                 _settle_loser(w, store=store, gateway_id=gateway_id, now=now, reason=detail)
                 store.log_schedule_event(w["id"], w["name"], "deferred", detail,
                                          gateway_id=gateway_id or "")
+                notify_run(store, "schedule_aborted", w["name"], gateway_id, detail)
                 mon[w["id"]] = ("skipped", detail)
                 continue
             pol = (w.get("conflict") or "override").lower()
@@ -2861,6 +2866,8 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                 store.log_schedule_event(w["id"], w["name"], "deferred",
                     "deferred — the battery is already under another dispatch (conflict=defer)",
                     gateway_id=gateway_id or "")
+                notify_run(store, "schedule_aborted", w["name"], gateway_id,
+                           "deferred — the battery is already under another dispatch")
                 mon[w["id"]] = ("deferred", "the battery is already under another dispatch "
                                             "(conflict=defer)")
                 continue
@@ -3272,10 +3279,32 @@ def _fire_entry(entry: dict, *, settings, client, store, snapshot: dict,
         # SCHEDULE_FAILED (#271). Retries inside the window merge into the same alert.
         alerts.raise_event(
             store, gateway_id, "SCHEDULE_FAILED",
-            f"Schedule '{entry['name']}' failed (attempt {attempts}): {summary}. "
-            "It is retried while its window is open.")
+            f"Schedule '{entry['name']}' failed on {actionable.gateway_name(gateway_id)} "
+            f"(attempt {attempts}): {summary}. It is retried while its window is open.")
     return {"id": entry["id"], "name": entry["name"], "result": summary,
             "ok": ok_all}
+
+
+def notify_run(store, event: str, name: str, gateway_id: str | None, detail: str, *,
+               device_ids: list[str] | None = None) -> None:
+    """A run that missed, was aborted or got no reply (#581): one app-log warning, and the
+    push under its Scheduler trigger (switch and Send to), both in the same words and
+    naming the gateway. ``device_ids``: the devices to tell instead of the trigger's
+    Send to. Never raises."""
+    from . import notify_engine
+    gw = actionable.gateway_name(gateway_id)
+    try:
+        _, msg = actionable.templates().render(event, gateway=gw, schedule=name, detail=detail)
+    except Exception:  # noqa: BLE001
+        msg = f"Schedule '{name}' [{gw}]: {detail}"
+    log.warning("%s", msg)
+    if store is None:
+        return
+    try:
+        notify_engine.fire(store, event, gateway=gw, device_ids=device_ids, logged=True,
+                           schedule=name, detail=detail)
+    except Exception as e:  # noqa: BLE001 — a notification never breaks the run
+        log.warning("notify [%s] failed: %s", event, e)
 
 
 # ── "Ask before continuing" (#374 P4) ─────────────────────────────────────────
@@ -3516,6 +3545,11 @@ def _ask_step(entry: dict, *, store, gateway_id: str | None,
     store.log_schedule_event(entry["id"], entry["name"],
                              "continuing" if step == "fire" else "skipped", detail,
                              gateway_id=gid)
+    if chosen is None:
+        # No reply (#581): told to the devices that were asked.
+        send_to = ask.get("send_to") or {}
+        notify_run(store, "schedule_no_reply", entry["name"], gateway_id, detail,
+                   device_ids=send_to.get("ids") if send_to.get("type") == "device" else None)
     return step, detail
 
 
