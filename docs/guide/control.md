@@ -31,6 +31,13 @@ One page per gateway, scoped to whichever gateway the top-bar selector names.
 - **The OFF-GRID pill** in the top bar opens the Off-grid dialog: each off-grid gateway, why
   (user requested / grid outage), how long it has been off-grid, SoC, stored kWh and time
   left at the current usage, and **Go on-grid (reconnect)** for an off-grid you requested.
+  **Details** expands mode, SoC, battery (charging / discharging), grid, solar, home, the
+  smart circuits (on/off and watts), and the generator (state, kW, kWh today) and V2L
+  (on/off, kW) when installed. Opening Details reads the circuits (and generator) from the
+  aGate; a read that fails is shown, and the rest still appears.
+- The go-off-grid and reconnect dialogs name the aGate, and each switch is saved in the
+  Audit Trail with the same snapshot (from the last poll; nothing extra is read before the
+  write).
 - **Modbus** — enable the Modbus path, override host and port, and **Test** it. The
   override applies to every Modbus path in the bridge, not just this tab.
 - **Gateway** — reboot the aGate.

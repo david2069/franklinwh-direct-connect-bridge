@@ -1797,11 +1797,12 @@ document.addEventListener('alpine:init', () => {
           + `• The aGate returns to the grid when the battery reaches the ${soc}% reconnect SoC.\n\n`
           + `Go off-grid now?`
         : `Reconnect to the grid and resume normal operation?`;
+      const gw = this.selectedGatewayLabel;   // name the aGate: with two, it matters which
       if (!await this.confirmDialog(warn,
-            { title: on ? 'Go off-grid' : 'Reconnect to grid', danger: on })) return;
+            { title: (on ? 'Go off-grid' : 'Reconnect to grid') + ` — ${gw}`, danger: on })) return;
       // The dialog stays until the aGate confirms, refuses or times out (#288).
       await this.trackCommand({
-        title: on ? 'Going off-grid' : 'Reconnecting to grid',
+        title: (on ? 'Going off-grid' : 'Reconnecting to grid') + ` — ${gw}`,
         waitLabel: on ? 'aGate reports off-grid' : 'aGate reports on-grid',
         send: () => fetch('api/offgrid' + this.gwQuery('?'), {
           method: 'POST',
@@ -2248,13 +2249,13 @@ document.addEventListener('alpine:init', () => {
 
     // ── OFF-GRID pill → modal: every off-grid gateway, why, for how long, the battery
     //    and time left (same line as the push); Reconnect for a user-requested one.
-    offgridModal: { open: false, rows: [], notify: false, now: Date.now() },
+    offgridModal: { open: false, rows: [], notify: false, now: Date.now(), details: {} },
     async _offgridStatus() {
       try { return await (await fetch('api/offgrid/status')).json(); } catch (e) { return null; }
     },
     async openOffgridModal() {
       const m = this.offgridModal;
-      Object.assign(m, { open: true, now: Date.now() });
+      Object.assign(m, { open: true, now: Date.now(), details: {} });
       const d = await this._offgridStatus();
       Object.assign(m, { rows: d?.gateways || [], notify: !!d?.notify });
       clearInterval(this._ogTick);
@@ -2265,6 +2266,19 @@ document.addEventListener('alpine:init', () => {
       const min = Math.max(0, Math.floor((this.offgridModal.now / 1000 - row.since) / 60));
       const h = Math.floor(min / 60);
       return 'Off-grid for ' + (h ? `${h} h ${min % 60} min` : `${min} min`);
+    },
+    // Details (expandable): read when first opened, per gateway — a live read of the
+    // circuits (and generator), so not on every open of the dialog.
+    async toggleOffgridDetails(row) {
+      const d = this.offgridModal.details;
+      if (d[row.id]) { d[row.id] = { ...d[row.id], open: !d[row.id].open }; return; }
+      d[row.id] = { open: true, loading: true, rows: [], errors: {} };
+      try {
+        const r = await (await fetch(`api/offgrid/details?gateway=${encodeURIComponent(row.id)}`)).json();
+        d[row.id] = { open: true, loading: false, rows: r.rows || [], errors: r.errors || {} };
+      } catch (e) {
+        d[row.id] = { open: true, loading: false, rows: [], errors: { read: e.message } };
+      }
     },
     async reconnectFrom(row) {
       this.offgridModal.open = false;
