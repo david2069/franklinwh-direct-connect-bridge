@@ -227,7 +227,8 @@ honoured) and logs *manual*. <!-- @b ACT-28 ;; src: app.py:3441-3455 ;; untested
 Under **Home Assistant actions (optional)**:
 
 - **+ notify** adds a message to a saved notification device. It is disabled until you add
-  one.
+  one. The message names the gateway the rule ran on, on entry, on exit
+  and with **Run now**. <!-- @b HAA-19 ;; src: scheduler.py _fire_ha_phase, app.py api_schedule_run ;; tested: tests/test_notify_row_gateway.py ;; write: no ;; b: notify rows pass the schedule's gateway, so the message names it (#577) ;; test: — -->
 - **+ entity** adds a service call. It is disabled until a Home Assistant instance exists.
   The guided picker lists the controllable entities you **exposed** on the Home Assistant
   tab (switch, input_boolean, light, select, input_select, number, input_number, button,
