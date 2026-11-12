@@ -148,12 +148,13 @@ def test_a_successful_scheduled_action_raises_nothing(monkeypatch):
     assert store.alerts() == []
 
 
-def test_a_missed_window_raises_schedule_failed(monkeypatch):
+def test_a_missed_window_raises_schedule_missed(monkeypatch):
+    """A missed run is its own warning, not SCHEDULE_FAILED (#581, owner 2026-11-12)."""
     s = config.get_settings()
     store = db.get_store(s)
     monkeypatch.setattr(store, "sweep_missed", lambda **k: [
         {"schedule_id": "s1", "name": "nightly", "gateway_id": "gw1", "attempts": 3}])
     scheduler_worker.sweep(s)
     rows = store.alerts()
-    assert [(r["code"], r["gateway_id"]) for r in rows] == [("SCHEDULE_FAILED", "gw1")]
+    assert [(r["code"], r["gateway_id"]) for r in rows] == [("SCHEDULE_MISSED", "gw1")]
     assert "missed its window" in rows[0]["message"]

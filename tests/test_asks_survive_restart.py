@@ -264,7 +264,8 @@ def test_a_question_that_expired_while_down_follows_if_no_reply_once(store, sent
     assert [f["id"] for f in first + later] == (["s1"] if fires else [])
     assert _occ(store)["status"] == ("ok" if fires else "skipped")
     assert sum(f"(if no reply: {rule})" in r for _, r in _log(store)) == 1
-    assert len(sent) == 1
+    # The question, then the No reply notification (#581): one each, no buttons on the second.
+    assert len(sent) == 2 and sent[1]["verbs"] == []
 
 
 def test_a_run_whose_window_ended_while_down_is_neither_asked_nor_run(store, sent, bridge):

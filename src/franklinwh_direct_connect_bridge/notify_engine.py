@@ -32,6 +32,13 @@ DEFAULT_TRIGGERS: dict = {
     "soc_low": {"enabled": False, "label": "Battery SoC drops below", "threshold": 20},
     "soc_full": {"enabled": False, "label": "Battery SoC reaches", "threshold": 100},
     "bridge": {"enabled": True, "label": "Bridge started / restarted / stopped"},
+    # The scheduler's own (#581). Failed is the SCHEDULE_FAILED critical alert's push.
+    "schedule_failed": {"enabled": True, "label": "Run failed", "group": "Scheduler"},
+    "schedule_missed": {"enabled": True, "label": "Run missed", "group": "Scheduler"},
+    "schedule_aborted": {"enabled": False, "group": "Scheduler",
+                         "label": "Run aborted (stopped, deferred or ended early)"},
+    "schedule_no_reply": {"enabled": True, "group": "Scheduler",
+                          "label": "No reply to an actionable notification"},
 }
 
 #: Notifications with buttons that have only a Send to setting (#281): critical alerts
@@ -122,9 +129,11 @@ def valid_target(target) -> dict:
 
 
 def send_to_ids(store, key: str) -> list[str] | None:
-    """Who a notification with buttons (:data:`ASKS`) goes to: None for all enabled
+    """Who a notification with buttons (:data:`ASKS`, or a trigger's alert such as
+    ``schedule_failed``) goes to: None for all enabled
     devices, else the enabled ones among those chosen (a switched-off device stays off)."""
-    target = config(store)["asks"].get(key, {}).get("target") or ALL
+    cfg = config(store)
+    target = (cfg["asks"].get(key) or cfg["triggers"].get(key) or {}).get("target") or ALL
     if target["type"] != "device":
         return None
     on = {d["id"] for d in store.notify_devices() if d.get("enabled")}
@@ -178,6 +187,12 @@ EVENTS = (
           "{gateway}: {detail}", ("action", "detail")),
     Event("schedule_notify", "{title}", "{message} [{gateway}]", ("title", "message")),
     Event("broadcast", "{title}", "{message}", ("title", "message")),
+    Event("schedule_missed", "FranklinWH schedule missed",
+          "Schedule '{schedule}' missed its window [{gateway}]: {detail}.", ("schedule", "detail")),
+    Event("schedule_aborted", "FranklinWH schedule aborted",
+          "Schedule '{schedule}' did not finish [{gateway}]: {detail}.", ("schedule", "detail")),
+    Event("schedule_no_reply", "FranklinWH schedule: no reply",
+          "Schedule '{schedule}' got no reply [{gateway}]: {detail}.", ("schedule", "detail")),
     Event("bridge_started", "FranklinWH bridge", "Bridge started (v{version}).", ("version",)),
     Event("bridge_restarted", "FranklinWH bridge",
           "Bridge restarted (v{version}{update}) after {down} down.", ("version", "update", "down")),
@@ -270,19 +285,21 @@ def stats_by_trigger(stats: list[dict]) -> list[dict]:
 
 
 def fire(store, event: str, *, gateway: str | None = None, cfg: dict | None = None,
-         device_ids: list[str] | None = None, **values) -> int:
+         device_ids: list[str] | None = None, logged: bool = False, **values) -> int:
     """Send ``event`` to every ENABLED companion device (or ``device_ids``) through the one
     Notifier, which honours the Push notifications switch (#171) and records the send.
     Respects the trigger's enable flag (so callers like the VPP monitor honour the user's
-    config too). Returns the number of devices that accepted it."""
+    config too). ``logged``: the caller has already written the app-log line. Returns the
+    number of devices that accepted it."""
     cfg = cfg or config(store)
     trigger = TRIGGER.get(event, event)
     if trigger in (cfg.get("triggers") or {}) and not _enabled(cfg, trigger):
         return 0
     # Every notification is also a line in the app log (Logs tab), whether or not any
     # device receives it: with no companion devices it was recorded nowhere else.
-    _, message = actionable.templates().render(event, gateway=gateway or "", **values)
-    (log.info if event == "test" else log.warning)("notify [%s]: %s", event, message)
+    if not logged:
+        _, message = actionable.templates().render(event, gateway=gateway or "", **values)
+        (log.info if event == "test" else log.warning)("notify [%s]: %s", event, message)
     target = (cfg.get("triggers") or {}).get(trigger, {}).get("target") or ALL
     if device_ids is None and target["type"] == "device":
         # A switched-off device stays off for its triggers too.
