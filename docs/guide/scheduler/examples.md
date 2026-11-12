@@ -8,7 +8,7 @@ the ones in the **Add schedule** dialog. There are no screenshots of these recip
 !!! tip "Before you start"
     - Force charge / discharge / standby needs the **Modbus client (this bridge)** switched
       on and the aGate's Modbus TCP Server (aGate :502) answering. Otherwise **Force** is
-      greyed *unavailable* in the **Battery action** list.
+      greyed *unavailable* in the **Gateway action** list.
     - Set the [constants](conditions.md#constants) first: several recipes compare against
       them with **Lookup**. The ETA sensors also need the battery capacity constant.
     - Untick **Enabled** while you try things out, and press **Test** under each condition
@@ -28,7 +28,7 @@ Force charge on weekday afternoons if SoC is below 80 %, up to 90 %.
 | Field | Value |
 |---|---|
 | Trigger type | **Weekly at time**, Days **Mon**–**Fri**, Fire at `16:00`, Duration (min) `60` |
-| Battery action | **Force charge / discharge / standby**: Direction **Force charge**, Power unit **kW**, Power `2`, Target SoC `90` |
+| Gateway action | **Force charge / discharge / standby**: Direction **Force charge**, Power unit **kW**, Power `2`, Target SoC `90` |
 | Entry conditions (Match ALL) | Battery SoC (%) `<` `80` |
 
 How it behaves:
@@ -49,7 +49,7 @@ your plan forbids it.
 | Field | Value |
 |---|---|
 | Trigger type | **Daily at time**, Fire at `17:00`, Duration (min) `240` |
-| Battery action | **Force charge / discharge / standby**: **Force discharge**, **kW**, Power `5` |
+| Gateway action | **Force charge / discharge / standby**: **Force discharge**, **kW**, Power `5` |
 | Entry conditions (Match ALL) | Battery SoC (%) `>` **Lookup** Const: min discharge SoC (%) |
 | | Utility: battery export allowed `==` `1` |
 | End early when… (Match ANY) | Battery SoC (%) `<=` **Lookup** Const: min discharge SoC (%) |
@@ -78,7 +78,7 @@ Needs: a NEM region (or a Home Assistant price entity) under **Settings → Inte
 | Field | Value |
 |---|---|
 | Trigger type | **Custom cron** `*/30 * * * *`, Duration (min) `29` |
-| Battery action | **Force charge**, **% of inverter power**, Power `60` |
+| Gateway action | **Force charge**, **% of inverter power**, Power `60` |
 | Entry conditions (Match ALL) | Wholesale spot price (AEMO NEM or HA entity, c/kWh) `<` `5` |
 | | Battery SoC (%) `<` **Lookup** Const: max charge SoC (%) |
 | Hold (HH:MM:SS) | `00:02:00` |
@@ -111,7 +111,7 @@ reads it from the aGate).
 | Field | Value |
 |---|---|
 | Trigger type | **Custom cron** `0 * * * *`, Duration (min) `59` |
-| Battery action | **Force charge**, **% of inverter power**, Power `60`, Target SoC `95` |
+| Gateway action | **Force charge**, **% of inverter power**, Power `60`, Target SoC `95` |
 | Entry conditions (Match ALL) | Battery SoC (%) `<` `95` |
 | | Weather: condition `like` `*thunder*` |
 
@@ -139,7 +139,7 @@ SoC constant.
 | Field | Value |
 |---|---|
 | Trigger type | **Custom cron** `*/30 * * * *`, Duration (min) `29` |
-| Battery action | **Force discharge**, **kW**, Power `2.5` |
+| Gateway action | **Force discharge**, **kW**, Power `2.5` |
 | Entry conditions (Match ALL) | Tariff: in peak-demand window `==` `1` |
 | | Grid power (W) `>` `1000` |
 | | Battery SoC (%) `>` **Lookup** Const: demand-charge min SoC (%) |
@@ -177,7 +177,7 @@ Needs: a Home Assistant instance, with the helper **exposed** on the **Home Assi
 | Field | Value |
 |---|---|
 | Trigger type | **Weekly at time**, Days **Sat**, **Sun**, Fire at `18:00`, Duration (min) `120` |
-| Battery action | **Force discharge**, **kW**, Power `3` |
+| Gateway action | **Force discharge**, **kW**, Power `3` |
 | Entry conditions (Match ALL) | *your HA instance*: `input_boolean.home_mode` `==` `1` |
 | | Battery SoC (%) `>` `50` |
 | End early when… (Match ANY) | Battery SoC (%) `<=` **Lookup** Const: min discharge SoC (%) |
@@ -276,10 +276,10 @@ A mode change stays until something changes it, so this takes two schedules.
 1. **Templates → Time-of-Use at peak (only if charged) → Use**. It switches to Time-of-Use at
    16:00, only if SoC is above 50 %. Save it.
 2. **Add schedule**. **Trigger type:** **Daily at time**, **Fire at** `21:00`, **Duration
-   (min)** `0`. **Battery action:** **Set operating mode**, Self-Consumption. Save it.
+   (min)** `0`. **Gateway action:** **Set operating mode**, Self-Consumption. Save it.
 
 A duration of 0 is a one-minute window. Alternatively give the first schedule a duration to
-21:00 and set `"restore_on_exit": true` through the API: at the window's end the bridge puts
+21:00 and tick **Put the previous mode back when the window ends**: at the window's end the bridge puts
 back the mode it replaced. See [Exit and release](exit-and-conflicts.md).
 
 !!! note "On/off actions saved before 0.5.5"

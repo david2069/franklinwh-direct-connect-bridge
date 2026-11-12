@@ -85,6 +85,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   purge runs with the hourly history upkeep and when a recording ends.
 
 ### Changed
+- **Scheduler editor tidied** (#580, owner-approved review). The action box is **Gateway
+  action** (it also holds smart circuits and off-grid); **Priority** shows only with a
+  gateway action and **If busy** only with a force; **Quick preset** is **Repeat pattern**
+  (Templates fill a whole rule); a One-off no longer shows Time windows, which it never
+  used; **Put the previous mode back when the window ends** (`restore_on_exit`) is in the
+  form. Fields the trigger doesn't show are cleared on change and on save, so a Weekly made
+  Daily no longer runs only on the old weekdays. **Test** and **Test against live** read the
+  schedule's own gateway. Test, Evaluate and **Run now** build their values as the tick does,
+  so Run now's guards and `%vars%` see tariff, constants and derived values. The Modbus Bridge
+  export defaults **If busy** to override and says what it drops. The "Not available here"
+  note for a kind the form never offered is gone, and the scheduler docs no longer describe
+  the Default gateway choice removed in #379.
 - **Solar size comes from your gateways; yours wins when set** (#583, owner). Location &
   Solar's PV size is the gateways' own rating (summed over the site) unless you enter a
   number: larger for DC panels or remote solar, smaller allowed with a note. The field

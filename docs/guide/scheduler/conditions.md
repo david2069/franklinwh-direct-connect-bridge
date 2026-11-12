@@ -225,8 +225,8 @@ This bridge has two ways to test conditions against live values. Neither fires a
 |---|---|---|
 | Endpoint | `POST /api/schedules/evaluate` | `POST /api/schedules/{id}/test` |
 | What it checks | the **unsaved** block as it is in the form | the **saved** schedule: window, calendar, fired-this-occurrence and entry conditions (`due()`) |
-| Which gateway's values | the gateway selected in the top bar when there are several, else the default gateway — **not** the schedule's own gateway | always the **default gateway's** last poll |
-| Clock | — | the container's clock, not the site's (#161) |
+| Which gateway's values | the schedule's gateway in the form (the top bar's for **All gateways**) (#580) | the schedule's gateway (#580) |
+| Clock | — | that gateway's site clock (#161) |
 | Result | each row outlined: green *passes*, red *fails*, amber *no value*, with `live <value>`; summary *conditions currently PASS/FAIL* or, for the exit block, *exit WOULD end the window now* / *exit would NOT fire now* | *Would fire* / *Would not fire* with the reason and the window state, plus one line per **top-level** row with its live value |
 
 <!-- @b CND-30 ;; src: app.py:3397-3422, static/js/scheduler_tab.js:901-939 ;; tested: tests/test_constants.py::test_api_constants_get_put_and_sensor_group ;; write: no ;; b: POST /api/schedules/evaluate evaluates an unsaved tree against live values and returns result plus a per-leaf trace (the editor maps rows by cid) ;; test: — -->
@@ -236,9 +236,11 @@ This bridge has two ways to test conditions against live values. Neither fires a
 !!! note "Test is close to, not the same as, the engine's view"
     - The engine adds the run variables (`%run.*%`, `%schedule.*%`) and feeds the billing
       trackers; the tests read them without feeding.
-    - **Test against live** reads the default gateway even for a schedule bound to another
-      gateway, uses the container clock (#161), and does not check exit conditions, the hold,
-      priority or **If busy**. A schedule can say *Would fire* and still not fire.
+    - **Test against live** reads the schedule's gateway on its site clock, and does not
+      check exit conditions, the hold, priority or **If busy**. A schedule can say *Would
+      fire* and still not fire.
+    - Both, and **Run now**, build their values as the tick does (#580): tariff, constants
+      and derived values included.
 
 ## Home Assistant entities
 

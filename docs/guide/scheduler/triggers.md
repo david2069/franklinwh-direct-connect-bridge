@@ -104,8 +104,9 @@ play no part.
 | Date | a calendar date | Saving copies it to both Start date and End date. |
 | Fire at, Duration (min) | `HH:MM`, minutes | The window that runs on that date. |
 
-- The schedule runs only on that date. The form hides **Days**, but a Days list saved earlier
-  on the schedule still applies.
+- The schedule runs only on that date. Since #580 a field the trigger doesn't show (Days,
+  Months, Day of month, Time windows) is cleared when you change the trigger and when you
+  save, so nothing hidden restricts it.
   <!-- @b TRG-11 ;; src: static/js/scheduler_tab.js:546, scheduler.py:430-445 ;; tested: tests/test_scheduler.py::test_recurrence_date_range_and_one_off ;; write: yes ;; b: A one-off is start_date == end_date; it is open only on that date (days, if stored, still restrict) ;; test: -->
 - It never fires after the date. **Next:** shows "—" afterwards; the card keeps saying
   "once on <date>".
@@ -115,11 +116,10 @@ play no part.
   opened.
   <!-- @b TRG-13 ;; src: scheduler.py:324-329, scheduler.py:385-391 ;; untested ;; write: yes ;; b: An overnight one-off runs past midnight into the next date, attributed to its own date ;; test: unit: once 22:00+240 on D, due at D+1 01:00 is true -->
 
-!!! warning "One-off: the Time windows in the form are ignored, and no date means every day"
-    For **One-off date** the form shows **Time windows** as well as **Fire at** and
-    **Duration (min)**. The engine uses only Fire at and Duration: windows are read for
-    **Recurring windows** alone. And a One-off saved **without a date** has no date
-    restriction, so it fires **every day**. Issue #198.
+!!! note "One-off: Fire at and Duration only"
+    **One-off date** uses **Fire at** and **Duration (min)**; since #580 the form no longer
+    shows **Time windows** for it, which the engine never read. A One-off needs a date to
+    save (#198).
     <!-- @b TRG-51 ;; src: scheduler.py:297-311, templates/tabs/scheduler.html:435-464, scheduler.py:430-442 ;; unclear ;; write: yes ;; b: A once entry ignores its windows list (only window type reads windows) and with no start_date it fires every day ;; test: unit: once with windows [18:00-19:00] and fire_at 06:00 is open at 06:00, not 18:30; once with no date is due daily -->
 
 ## Daily at time
@@ -244,9 +244,10 @@ action this schedule still holds, a Release is sent.
 <!-- @b TRG-28 ;; src: scheduler.py:378-379, scheduler.py:2147-2150, db.py:1935-1962 ;; unclear ;; write: yes ;; b: An always entry's occurrence key is the constant 'always'; once it finishes ok it is terminal, so the entry never fires again ;; test: unit: tick an always force entry through two rising edges; assert a second Force (fails today) -->
 <!-- @b TRG-29 ;; src: db.py:1935-1962, db.py:2202-2212 ;; unclear ;; write: yes ;; b: The fired-once mark for always is a stored occurrence row per schedule and gateway; it survives restart, edit and disable, and prune_occurrences is never called ;; test: unit: after restart (fresh in-memory state, same DB) the always entry still does not fire -->
 
-## Quick presets
+## Repeat patterns
 
-A **Quick preset** fills the trigger fields; you can edit them afterwards. It clears Days,
+A **Repeat pattern** (named Quick preset before #580, to tell it from **Templates**, which
+fill a whole rule) fills the trigger fields; you can edit them afterwards. It clears Days,
 Months, Day of month and Time windows first.
 <!-- @b TRG-31 ;; src: static/js/scheduler_tab.js:676-697 ;; untested ;; write: no ;; b: Quick presets reset days, months, day_of_month and windows, then set only trigger fields ;; test: browser: apply 'Weekdays 18:00' over a monthly form; assert months cleared -->
 
@@ -292,6 +293,10 @@ occurrence. It is never shown for Always schedules.
   <!-- @b TRG-34 ;; src: static/js/scheduler_tab.js:243-250, static/js/scheduler_tab.js:656, scheduler.py:2409-2413, scheduler.py:1578-1581 ;; unclear ;; write: yes ;; b: A window entry keeps a hidden duration_min (default 90) that becomes the force's duration_s, so a force stops before a longer window ends ;; test: unit: window 17:00-20:00 force; assert duration_s covers the window (fails today: 5400) -->
 - **Not in this bridge:** an API-only one-off type (`oneoff` with an ISO `fire_at`). Saving a
   **One-off date** schedule copies the date into **Start date** and **End date**.
+- Changing the trigger clears what the new one doesn't show (#580): Days unless Recurring
+  windows or Weekly; Months and Day of month unless Monthly; Time windows unless Recurring
+  windows; the date range for Always. Saving clears them too, so a Weekly changed to Daily
+  no longer runs only on the old weekdays.
 - Switching to **Recurring windows** with no window adds `06:00 → 09:00`; switching to Every N
   minutes or Custom cron fills 30 minutes or `0 3 * * *` when empty.
   <!-- @b TRG-53 ;; src: static/js/scheduler_tab.js:669-674 ;; untested ;; write: no ;; b: Changing the trigger type seeds a 06:00-09:00 window, 30 min interval or '0 3 * * *' cron when empty ;; test: browser: switch types and read the form -->

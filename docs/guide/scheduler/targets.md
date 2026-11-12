@@ -13,8 +13,8 @@ or, when it moves no battery, set to run on **All gateways**. See also
 ## Pick a target
 
 1. In **Add schedule** or **Edit**, find the gateway list next to **Priority** and **If busy**
-   in the **Battery action** box. A new schedule starts on the active gateway.
-2. Pick a gateway. For a rule with **No battery action (HA only)**, such as a low-SoC
+   in the **Gateway action** box. A new schedule starts on the active gateway.
+2. Pick a gateway. For a rule with **No gateway action (HA only)**, such as a low-SoC
    notification, you can pick **All gateways** instead (#578).
 
 **All gateways** is offered only while the rule has no battery action: a battery action
@@ -23,12 +23,11 @@ action on an All gateways rule puts it back on the gateway it names. The schedul
 "All gateways", and **Explain** says the rule runs on every gateway, each with its own
 values. Each notification names the gateway that fired it (#577).
 
-<!-- @b TGT-21 ;; src: templates/tabs/scheduler.html:542-549, static/js/scheduler_tab.js:244-249 ;; untested ;; write: no ;; b: The gateway select appears only with more than one gateway; Default gateway stores gateway_id "" ;; test: browser: with one gateway the select is hidden; with two it lists both plus Default gateway -->
+<!-- @b TGT-21 ;; src: templates/tabs/scheduler.html, static/js/scheduler_tab.js gwPick ;; tested: tests/test_all_gateways_578.py ;; write: no ;; b: The gateway select is always shown; a new schedule starts on the active gateway; All gateways only without a gateway action ;; test: — -->
 
 | Target | API | Acts on |
 |---|---|---|
 | a gateway | `gateway_id`: the gateway id | that gateway only, on its own tick |
-| **Default gateway** | `gateway_id`: `""` | the default gateway (below) |
 | **All gateways** | `gateway_scope`: `"all"` | each gateway on its own tick |
 
 A schedule bound to a gateway is evaluated only on that gateway's tick, so its action goes to
@@ -80,17 +79,8 @@ watchdog's time limit or target SoC ends it (each gateway's force keeps its own 
 
 ## Entries with no target id
 
-A schedule left on **Default gateway** (`gateway_id` empty) runs on the default gateway's
-tick only, so it does not run once per gateway. The default gateway is the
-**first-registered** gateway in the bridge's memory. Nothing is stored or shown; deleting or
-re-ordering gateways moves it (#182). <!-- @b TGT-10 ;; src: scheduler.py:1858-1866, scheduler.py:1987-1988, state.py:84-94 ;; untested ;; write: yes ;; b: An unbound schedule runs only when the tick's gateway is state.gateways()[0] ;; test: unit: two registered gateways, unbound schedule; assert it fires only on the first -->
-In the same tick an unbound schedule claims that gateway's id, so it competes on priority with
-schedules bound to that gateway. <!-- @b TGT-11 ;; src: scheduler.py:2088-2089 ;; untested ;; write: yes ;; b: An unbound schedule claims <tick gateway>/battery, the same resource as one bound to that gateway ;; test: unit: unbound and bound force entries on gw1 in one tick; assert one deferred -->
-
-!!! warning "A disabled first gateway stops every unbound schedule"
-    The default is the first-registered gateway whether or not it is enabled. A disabled
-    gateway is not evaluated, and every other gateway refuses unbound schedules, so they run
-    nowhere and History shows nothing. Bind them to a gateway (#182). <!-- @b TGT-17 ;; src: scheduler.py:1858-1866, scheduler_worker.py:96-97 ;; unclear ;; write: yes ;; b: The default-gateway test ignores enabled, so a disabled first gateway leaves unbound schedules unevaluated ;; test: unit: first gateway disabled, second enabled; unbound schedule never fires (fails today) -->
+Since #379 every schedule names its gateway, and the form has no "Default gateway" choice. A
+schedule saved before then with none was bound to the default gateway at start-up.
 
 ## In the form
 
@@ -100,17 +90,16 @@ schedules bound to that gateway. <!-- @b TGT-11 ;; src: scheduler.py:2088-2089 ;
   bridge). <!-- @b TGT-18 ;; src: scheduler_worker.py:107-116, scheduler.py:1967-1969 ;; tested: tests/test_scheduler_worker.py::test_mock_gateways_skip_the_modbus_read ;; write: no ;; b: A mock gateway's tick passes an empty Modbus host, so no 702 ratings read ;; test: — -->
   Whether a force to a mock reaches anything depends on the mock's address answering SunSpec
   (**unverified**).
-- **Test** under a condition block evaluates against the gateway selected in the top bar (with
-  one gateway, that gateway). **⋮ → Test against live** on a card
-  always uses the default gateway's values, whatever gateway the schedule is bound to
+- **Test** under a condition block, and **⋮ → Test against live** on a card, read the
+  schedule's own gateway (#580; for **All gateways**, the top bar's)
   (see [Conditions → Test Verification](conditions.md#test-verification)). <!-- @b TGT-19 ;; src: static/js/scheduler_tab.js:606-613, static/js/scheduler_tab.js:921-931, app.py:3360-3369, app.py:3397-3402 ;; untested ;; write: no ;; b: Editor Test uses the top-bar gateway; Test against live reads get_state(), the default gateway ;; test: unit (API): /test on a schedule bound to gw2 uses gw2's state (fails today) -->
-- **Import** points an entry whose gateway does not exist here at **Default gateway**, warns
-  "gateway '…' not found — will use the default gateway", and creates it disabled. A Modbus
-  Bridge entry with target `default` maps to **Default gateway**. <!-- @b TGT-14 ;; src: scheduler.py:852-854, scheduler.py:728-729, app.py:3294-3309 ;; tested: tests/test_scheduler.py::test_import_maps_modbus_automations_bundle ;; write: no ;; b: Import maps a default/unknown gateway to "" and creates the entry disabled ;; test: — -->
+- **Import** puts an entry whose gateway does not exist here on the gateway you import into,
+  warns "gateway '…' not found — will run on the gateway you import into", and creates it
+  disabled. A Modbus Bridge entry with target `default` does the same. <!-- @b TGT-14 ;; src: scheduler.py:852-854, scheduler.py:728-729, app.py:3294-3309 ;; tested: tests/test_scheduler.py::test_import_maps_modbus_automations_bundle ;; write: no ;; b: Import maps a default/unknown gateway to "" and creates the entry disabled ;; test: — -->
 
 **Run now** on a schedule bound to a gateway runs on that gateway, whatever gateway the top
-bar shows. For a schedule on **Default gateway** or with scope *all*, it runs on the gateway
-selected in the top bar, else the default (#193).
+bar shows. For a schedule with scope *all*, it runs on the gateway selected in the top bar
+(#193).
 <!-- @b TGT-09 ;; src: static/js/scheduler_tab.js:632-640, app.py:3553-3566 ;; tested: tests/test_multigw_force.py::test_run_now_uses_the_schedules_gateway_not_the_viewed_one ;; write: yes ;; b: Run now uses the schedule's bound gateway; the ?gateway= query is used only for an unbound or scope-all schedule -->
 
 ## On the timeline
