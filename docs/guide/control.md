@@ -27,11 +27,10 @@ One page per gateway, scoped to whichever gateway the top-bar selector names.
 - **Modbus** — enable the Modbus path, override host and port, and **Test** it. The
   override applies to every Modbus path in the bridge, not just this tab.
 - **Gateway** — reboot the aGate.
-- **Audit trail** — every consequential action taken here and its result, newest first,
-  in bridge-host time.
 
-Every consequential control is recorded **twice**: once as a structured row in the audit
-trail, and once as a line in the **Logs** tab, so there is a single place to look even
+Every consequential control is recorded **twice**: once as a structured row in the
+**Audit trail** (Logs → Audit trail: each action and its result, newest first, in
+bridge-host time), and once as a line in **Logs → Bridge log**, so there is a single place to look even
 when the action came from the scheduler rather than from you.
 
 ---
