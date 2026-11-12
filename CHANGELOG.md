@@ -18,6 +18,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   reply to an actionable notification** (on), each with its own switch and Send to. Every
   message names the gateway, and each also writes a warning to the bridge log in the same
   words. No reply goes to the devices that were asked.
+- **Scheduler: All gateways for rules that move no battery** (#578, owner). The gateway
+  picker offers **All gateways** when a rule has no battery action, such as a low-SoC
+  notification: each gateway runs it with its own values, and each message names the
+  gateway that fired. A battery action stays on one gateway. The list and Explain say
+  "All gateways" (scheduler guide, Targets).
 - **Analytics → Explain: trends and what to change for your objectives** (#588, owner).
   For the period shown, on Local or Cloud: each total against the previous period and last
   year (with runs of rises or falls), what the period shows, and suggestions for the
