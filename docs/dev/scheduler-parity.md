@@ -182,7 +182,7 @@ a group, the order is a judgement of likelihood times effect, not a measurement.
 | 99 | CND-30 | display | editor Test evaluates the top-bar gateway, not the schedule's |  |
 | 100 | CND-31 | display | Test against live: default gateway, container clock, top-level rows only | [#161](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/161) |
 | 101 | TGT-02 | display | site fan-out only through the API | [#162](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/162) |
-| 102 | TGT-15 | display | timeline is one list, not per gateway | [#161](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/161) |
+| 102 | TGT-15 | display | timeline: a lane per gateway since #579 | [#161](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/161) |
 | 103 | OUT-19 | display | Stop shown on a different rule, container clock | [#161](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/161) |
 | 104 | CLK-02 | display | previews on the container clock | [#161](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/161) |
 
@@ -427,7 +427,7 @@ a group, the order is a judgement of likelihood times effect, not a measurement.
 | TGT-12 | [targets](../guide/scheduler/targets.md) · In the form | yes / unclear | no | **missing here**: no service select | **Depends on**: service target (TGT-03) |  |  |
 | TGT-13 | [targets](../guide/scheduler/targets.md) · In the form | yes / untested | no | **missing here**: no mock warning in the form | **Unknown**: none found |  |  |
 | TGT-14 | [targets](../guide/scheduler/targets.md) · In the form | yes / tested | yes / tested | same: none |  |  |  |
-| TGT-15 | [targets](../guide/scheduler/targets.md) · On the timeline | yes / untested | yes / untested | **differs**: DC timeline ignores gateway; one list |  | **behavioural** (display): timeline is one list, not per gateway | [#161](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/161) |
+| TGT-15 | [targets](../guide/scheduler/targets.md) · On the timeline | yes / untested | yes / untested | same since #579: a lane per gateway, Site row for scope-all |  |  | [#161](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/161) |
 | TGT-16 | [targets](../guide/scheduler/targets.md) · How a fan-out works | yes / unclear | no | **missing here**: n/a; see TGT-07 | **Depends on**: run ownership (EXT-06, [#189](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/189)) and site/service targets |  |  |
 | TGT-17 | [targets](../guide/scheduler/targets.md) · Entries with no target id | no | yes / unclear | Direct Connect only: Disabled first gateway: unbound schedules run nowhere |  |  | [#182](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/182) |
 | TGT-18 | [targets](../guide/scheduler/targets.md) · In the form | no | yes / tested | Direct Connect only: Mock gateways skip the 702 ratings read |  |  |  |

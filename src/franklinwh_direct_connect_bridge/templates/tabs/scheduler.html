@@ -202,12 +202,41 @@
     </template>
   </div>
 
-  <!-- Timeline: SoC line + work-mode band + fire markers, then planned windows -->
+  <!-- Timeline (#579): a lane per gateway, as the Modbus Bridge: its SoC line, work-mode
+       band and fire markers, then its planned windows. All gateways rules sit once on the
+       Site row. -->
+  {% macro seg_rows(list_expr, now_expr) %}
+          <template x-for="seg in {{ list_expr }}" :key="seg.key">
+            <div>
+              <div class="flex items-center justify-between gap-2 text-xs mb-0.5">
+                <span class="min-w-0 break-words" style="color:var(--text-primary)" x-text="seg.name"></span>
+                <span class="font-mono shrink-0" style="color:var(--text-secondary)" x-text="segLabel(seg)"></span>
+              </div>
+              <div class="relative rounded" style="height:14px;background:var(--surface-2)">
+                <template x-for="(b, bi) in seg.blocks" :key="bi">
+                  <div class="absolute rounded"
+                       :style="`height:14px;background:#34d399;left:${b[0]/1440*100}%;width:${Math.max(0.3,(b[1]-b[0])/1440*100)}%;opacity:${seg.conditional ? .22 : .6}`"></div>
+                </template>
+                <div class="absolute"
+                     :style="`top:0;bottom:0;width:2px;background:#fbbf24;left:${ {{ now_expr }} /1440*100}%`"></div>
+              </div>
+            </div>
+          </template>
+  {% endmacro %}
   <div x-show="view === 'timeline'" x-cloak class="space-y-2">
     <template x-if="timeline">
       <div class="card p-4 space-y-3">
         <div class="flex items-center justify-between text-xs flex-wrap gap-2" style="color:var(--text-secondary)">
-          <span>Today · now <span class="font-mono" x-text="hhmm(timeline.now_min)"></span></span>
+          <span class="flex items-center gap-2">Today · now <span class="font-mono" x-text="hhmm(timeline.now_min)"></span>
+            <select class="form-control form-control-sm" style="width:auto" title="Gateway"
+                    data-testid="timeline-gateway" x-show="gateways.length > 1"
+                    x-model="timelineGw" @change="loadTimeline()">
+              <template x-for="g in gateways" :key="g.id">
+                <option :value="g.id" x-text="g.name" :selected="g.id === timelineGw"></option>
+              </template>
+              <option value="*" :selected="timelineGw === '*'">All gateways</option>
+            </select>
+          </span>
           <span class="flex items-center gap-3 flex-wrap text-[11px]">
             <template x-for="m in modeLegend" :key="m.mode">
               <span class="flex items-center gap-1"><span class="inline-block w-2.5 h-2.5 rounded-sm" :style="`background:${m.color}`"></span><span x-text="m.mode"></span></span>
@@ -217,48 +246,35 @@
           </span>
         </div>
 
-        <!-- chart: SVG stretched full width (viewBox x = minute-of-day); interior via x-html -->
-        <div class="relative" style="height:132px">
-          <svg viewBox="0 0 1440 100" preserveAspectRatio="none" style="width:100%;height:100%;display:block" x-html="svgInner"></svg>
-          <div class="absolute left-0 text-[9px] font-mono" style="top:12px;color:var(--text-faint)">100%</div>
-          <div class="absolute left-0 text-[9px] font-mono" style="bottom:2px;color:var(--text-faint)">0%</div>
-          <div x-show="!(timeline.soc || []).length" class="absolute inset-0 flex items-center justify-center text-xs"
-               style="color:var(--text-secondary)">No history recorded yet today.</div>
-        </div>
-        <div class="flex justify-between text-[10px]" style="color:var(--text-faint)">
-          <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
-        </div>
-
-        <!-- planned schedule windows -->
-        <div class="space-y-2 pt-2 border-t" style="border-color:var(--border)">
-          <div class="text-[10px] uppercase tracking-wide" style="color:var(--text-secondary)">Planned windows <a :href="$store.app.guideUrl('scheduler/#visual-timeline')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></div>
-          <template x-for="seg in timeline.segments" :key="seg.schedule_id">
-            <div>
-              <div class="flex items-center justify-between text-xs mb-0.5">
-                <span style="color:var(--text-primary)" x-text="seg.name"></span>
-                <span class="font-mono" style="color:var(--text-secondary)"
-                      x-text="hhmm(seg.start_min) + (seg.end_min !== seg.start_min ? '–' + hhmm(seg.end_min) : '') + (seg.wraps_midnight ? ' (+1d)' : '')"></span>
-              </div>
-              <div class="relative rounded" style="height:14px;background:var(--surface-2)">
-                <template x-if="!seg.wraps_midnight">
-                  <div class="absolute rounded" style="height:14px;background:#34d399;opacity:.6"
-                       :style="`left:${seg.start_min/1440*100}%;width:${Math.max(1,(seg.end_min-seg.start_min)/1440*100)}%`"></div>
-                </template>
-                <template x-if="seg.wraps_midnight">
-                  <div>
-                    <div class="absolute rounded" style="height:14px;background:#34d399;opacity:.6"
-                         :style="`left:${seg.start_min/1440*100}%;right:0`"></div>
-                    <div class="absolute rounded" style="height:14px;background:#34d399;opacity:.6"
-                         :style="`left:0;width:${seg.end_min/1440*100}%`"></div>
-                  </div>
-                </template>
-                <div class="absolute" style="top:0;bottom:0;width:2px;background:#fbbf24"
-                     :style="`left:${timeline.now_min/1440*100}%`"></div>
-              </div>
+        <template x-for="lane in timeline.lanes" :key="lane.gateway_id">
+          <div class="space-y-2 pt-2 border-t first:border-t-0 first:pt-0" style="border-color:var(--border)"
+               data-testid="timeline-lane">
+            <div x-show="timeline.lanes.length > 1 || gateways.length > 1"
+                 class="text-xs font-semibold" style="color:var(--text-primary)" x-text="lane.name"></div>
+            <!-- chart: SVG stretched full width (viewBox x = minute-of-day); interior via x-html -->
+            <div class="relative" style="height:132px">
+              <svg viewBox="0 0 1440 100" preserveAspectRatio="none" style="width:100%;height:100%;display:block" x-html="svgFor(lane)"></svg>
+              <div class="absolute left-0 text-[9px] font-mono" style="top:12px;color:var(--text-faint)">100%</div>
+              <div class="absolute left-0 text-[9px] font-mono" style="bottom:2px;color:var(--text-faint)">0%</div>
+              <div x-show="!(lane.soc || []).length" class="absolute inset-0 flex items-center justify-center text-xs"
+                   style="color:var(--text-secondary)">No history recorded yet today.</div>
             </div>
-          </template>
-          <div x-show="!timeline.segments.length" class="text-sm py-3 text-center"
-               style="color:var(--text-secondary)">No enabled schedules to show.</div>
+            <div class="flex justify-between text-[10px]" style="color:var(--text-faint)">
+              <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
+            </div>
+            <!-- this gateway's planned windows -->
+            <div class="text-[10px] uppercase tracking-wide" style="color:var(--text-secondary)">Planned windows <a :href="$store.app.guideUrl('scheduler/#visual-timeline')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></div>
+{{ seg_rows('lane.segments', 'lane.now_min') }}
+            <div x-show="!lane.segments.length" class="text-sm py-2 text-center"
+                 style="color:var(--text-secondary)">No enabled schedules for this gateway today.</div>
+          </div>
+        </template>
+
+        <!-- All gateways rules: once, on the Site row -->
+        <div x-show="(timeline.site || []).length" class="space-y-2 pt-2 border-t" style="border-color:var(--border)"
+             data-testid="timeline-site">
+          <div class="text-[10px] uppercase tracking-wide" style="color:var(--text-secondary)">Site · All gateways</div>
+{{ seg_rows('timeline.site', 'timeline.now_min') }}
         </div>
       </div>
     </template>

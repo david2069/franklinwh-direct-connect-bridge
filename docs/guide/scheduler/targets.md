@@ -108,9 +108,9 @@ selected in the top bar, else the default (#193).
 
 ## On the timeline
 
-The **Timeline** view draws every enabled schedule's planned windows, for all gateways, in
-one list. It does not split by gateway, and the fire markers come from every gateway's
-History. The tab asks for the timeline without a gateway, so the mode band and SoC line are the default gateway's. <!-- @b TGT-15 ;; src: app.py:3327-3358, scheduler.py:864-885, static/js/scheduler_tab.js:71-74 ;; untested ;; write: no ;; b: Timeline segments ignore the gateway; markers come from the whole log; the tab sends no gateway ;; test: unit (API): timeline?gateway=gw2 still lists a schedule bound to gw1 -->
+The **Timeline** view has a lane per gateway (#579): each with its own planned windows,
+mode band, SoC line and fire markers. Pick a gateway or **All gateways** next to "now".
+Rules with gateway scope *all* are drawn once, on the **Site · All gateways** row. <!-- @b TGT-15 ;; src: app.py api_schedule_timeline, scheduler.py timeline_segments, static/js/scheduler_tab.js loadTimeline ;; tested: tests/test_timeline_lanes_579.py::test_the_api_gives_a_lane_per_gateway_with_its_own_fires ;; write: no ;; b: Each lane holds its gateway's segments and fires; scope-all rules are on the Site row ;; test: — -->
 
 Related pages: [Multi-gateway and sites](../multi-gateway.md),
 [Priorities and conflicts](priorities.md), [Actions](actions.md).
