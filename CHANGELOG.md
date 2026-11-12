@@ -12,6 +12,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Analytics → Explain: trends and what to change for your objectives** (#588, owner).
+  For the period shown, on Local or Cloud: each total against the previous period and last
+  year (with runs of rises or falls), what the period shows, and suggestions for the
+  objectives you pick (lowest bill, most self-sufficiency, backup ready, most export
+  earnings, battery care) with the numbers, why and an estimated effect a month. Nothing is
+  applied; each suggestion opens Control or the Scheduler. Objectives are remembered per
+  gateway. `GET /api/analytics/insights`, `PUT /api/analytics/insights/objectives`
+  (franklinwh-ha-cloud-analytics 0.1.27).
 - **Analytics: more cards, on Local and Cloud, and how much history there is** (owner).
   Under the chart: battery discharged and charged, self-sufficiency, solar used on site,
   battery cycles (with the capacity set) and **History**, how long the shown source has data

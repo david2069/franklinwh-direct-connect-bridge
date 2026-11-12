@@ -94,7 +94,7 @@ def test_from_and_to_buttons_open_a_calendar_with_a_styled_time_grid():
 
 
 def test_the_cloud_extra_has_custom_ranges():
-    assert "franklinwh-ha-cloud-analytics==0.1.26" in (PKG.parents[1] / "pyproject.toml").read_text()
+    assert "franklinwh-ha-cloud-analytics==0.1.27" in (PKG.parents[1] / "pyproject.toml").read_text()
 
 
 def test_hourly_slots_start_at_the_ranges_own_hour():
