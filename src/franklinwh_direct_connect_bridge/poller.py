@@ -14,6 +14,7 @@ import time
 
 from . import alerts
 from . import client
+from . import constants
 from . import providers
 from .config import Settings, metrics_active
 from .db import get_store, maybe_maintain
@@ -498,7 +499,9 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                     _st = get_store(settings)
                     if _st is not None:
                         _cfg = notify_engine.config(_st)
-                        for ev, vals in notify_engine.evaluate(summ, prev, _cfg):
+                        _cap = constants.values(_st).get("battery_capacity_kwh")
+                        for ev, vals in notify_engine.evaluate(summ, prev, _cfg,
+                                                               capacity_kwh=_cap):
                             await asyncio.to_thread(notify_engine.fire, _st, ev,
                                                     gateway=gw.label or gw.id, cfg=_cfg, **vals)
                 except Exception as e:  # noqa: BLE001 — never let notifications break the poll
