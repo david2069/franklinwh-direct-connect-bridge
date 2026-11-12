@@ -1087,6 +1087,9 @@ def create_app() -> FastAPI:
                     log.info("default gateway: marked '%s' (it was the default by roster order)",
                              default_id)
                 _log_adopted(store.adopt_default_data(default_id), default_id)   # #379
+                moved = scheduler.migrate_notify_paths(store)      # one notify path (#576)
+                if moved:
+                    log.info("schedules: %d moved to Actionable notify rows (#576)", moved)
                 db_rows = store.gateways()
             except Exception:  # noqa: BLE001 — roster must never block startup
                 db_rows = []
@@ -3996,11 +3999,11 @@ def create_app() -> FastAPI:
         # leave it on: the form starts on the active gateway.
         gid = spec.get("gateway_id") or ""
         st = _gw_store()
-        send_to = (spec.get("ask") or {}).get("send_to")
+        send_to = scheduler.entry_ask(spec).get("send_to")
         if isinstance(send_to, dict) and send_to.get("type") == "device" \
                 and isinstance(send_to.get("ids"), list):
             known = {d["id"] for d in _ha_store().notify_devices()}
-            errors = [*errors, *(f"ask before continuing: unknown device '{i}'"
+            errors = [*errors, *(f"actionable notification: unknown device '{i}'"
                                  for i in send_to["ids"]
                                  if isinstance(i, str) and i not in known and i not in kept_devices)]
         if not gid:
@@ -4016,7 +4019,7 @@ def create_app() -> FastAPI:
         _guard_writes()
         import uuid
         st = _ha_store()
-        spec = req.model_dump(exclude={"name", "enabled"})
+        spec = scheduler.normalize_spec(req.model_dump(exclude={"name", "enabled"}))  # #576
         spec["action"] = _normalized_action(spec.get("action"))
         _valid_spec(spec)
         sid = uuid.uuid4().hex[:12]
@@ -4045,11 +4048,12 @@ def create_app() -> FastAPI:
         prior_spec = {k: prior[k] for k in ScheduleReq.model_fields
                       if k in prior and k not in ("name", "enabled")}
         sent = req.model_dump(exclude_unset=True, exclude={"name", "enabled"})
-        spec = {**req.model_dump(exclude={"name", "enabled"}), **prior_spec, **sent}
+        spec = scheduler.normalize_spec(                     # one notify path (#576)
+            {**req.model_dump(exclude={"name", "enabled"}), **prior_spec, **sent})
         spec["action"] = _normalized_action(spec.get("action"))
         # A schedule saved before the Ask wait had to fit its window stays editable as
         # long as the edit leaves that wait and window as they were.
-        prior_send = (prior_spec.get("ask") or {}).get("send_to") or {}
+        prior_send = scheduler.entry_ask(prior_spec).get("send_to") or {}
         _valid_spec(spec, saved_as=tuple(scheduler._ask_window_errors(
             {**req.model_dump(exclude={"name", "enabled"}), **prior_spec})),
             kept_devices=tuple(prior_send.get("ids") or ()))
@@ -4230,7 +4234,8 @@ def create_app() -> FastAPI:
                         f"'{scheduler.IMPORT_TYPE_AUTOMATIONS}' (the Modbus bridge)."))
         # Normalise a foreign bundle (Modbus 'franklinwh-automations') to our schema; our
         # own bundle passes through unchanged.
-        entries = scheduler.import_entries(req.type, req.entries)
+        entries = [scheduler.normalize_spec(e)              # one notify path (#576)
+                   for e in scheduler.import_entries(req.type, req.entries)]
         st = _ha_store()
         gw_ids = {g.id for g in get_gateways()}
         dev_ids = {d["id"] for d in st.notify_devices()}

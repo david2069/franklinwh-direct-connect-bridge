@@ -22,7 +22,7 @@ def _calls(html: str) -> int:
 
 def test_every_send_to_picker_uses_it():
     sch = (PKG / "templates/tabs/scheduler.html").read_text()
-    box = sch[sch.index('data-testid="ask-send-to"'):sch.index("<!-- entry conditions")]
+    box = sch[sch.index('data-testid="ask-send-to"'):sch.index("<!-- service GUIDED: domain-aware")]
     assert _calls(box) == 1
     st = (PKG / "templates/tabs/settings.html").read_text()
     for start, end in (('data-testid="trigger-target-devices"', "</template>\n      <!-- Notifications with buttons"),

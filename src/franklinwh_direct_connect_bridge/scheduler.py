@@ -61,11 +61,6 @@ ACTIONS: dict[str, dict[str, Any]] = {
         "requires_provider": "cloud",
         "note": "No local write path exists; needs cloud credentials.",
     },
-    "notify": {
-        "label": "Notify (Home Assistant)",
-        "params": ["device_id", "title", "message"],
-        "note": "Sends through a configured notification device.",
-    },
     "force": {
         "label": "Force charge / discharge / standby",
         "params": ["direction", "power", "unit", "target_soc"],
@@ -1024,7 +1019,14 @@ def validate_spec(entry: dict) -> list[str]:
     for label, key in (("condition", "conditions"), ("exit condition", "exit_conditions")):
         errors += _condition_errors(entry.get(key) or [], label)
     errors += _action_errors(entry.get("action") or {})
-    errors += _ask_errors(entry.get("ask") or {})
+    errors += _ask_errors(entry_ask(entry))
+    actionable = [h for h in entry.get("ha_actions") or []
+                  if isinstance(h, dict) and h.get("actionable")]
+    if len(actionable) > 1:
+        errors.append("only one actionable notification per schedule: the run waits for "
+                      "one answer")
+    if any((h.get("when") or "fire") != "fire" for h in actionable):
+        errors.append("an actionable notification goes on entry, before the action")
     errors += _ask_window_errors(entry)
     for i, ha in enumerate(entry.get("ha_actions") or [], 1):
         errors += [f"HA action {i}: {e}" for e in _ha_action_errors(ha)]
@@ -1094,8 +1096,6 @@ def _action_errors(action: dict) -> list[str]:
         c = _num(action.get("circuit"))
         if c is None or c < 1 or c != int(c):
             out.append("smart_circuit needs a circuit number")
-    if kind == "notify" and not action.get("device_id"):
-        out.append("notify needs a device")
     if kind == "force":
         direction = (action.get("direction") or "").lower()
         unit = (action.get("unit") or "pct").lower()
@@ -1130,58 +1130,114 @@ def _run_window_min(entry: dict) -> int | None:
     return dur if _is_int(dur, lo=1) else 1
 
 
+#: An Actionable notification's own fields on its notify row (#576); its question is the
+#: row's message, its title the row's title.
+ACTIONABLE_KEYS = ("timeout_min", "if_no_reply", "choices", "send_to")
+
+
+def entry_ask(entry: dict) -> dict:
+    """The schedule's ask step, from its Actionable notify row (#576). A schedule saved
+    before then may still carry it as ``ask`` until it is moved over. Empty = none."""
+    for ha in entry.get("ha_actions") or []:
+        if isinstance(ha, dict) and ha.get("actionable"):
+            out = {"question": ha.get("message") or "",
+                   **{k: ha[k] for k in ACTIONABLE_KEYS if k in ha}}
+            if ha.get("title"):
+                out["title"] = ha["title"]
+            return out
+    ask = entry.get("ask")
+    return ask if isinstance(ask, dict) else {}
+
+
+def normalize_spec(spec: dict) -> dict:
+    """One notify path (#576): the Notify battery action becomes an On entry notify row,
+    and an ``ask`` becomes the Actionable notify row. Already moved: unchanged."""
+    spec = dict(spec)
+    rows = [dict(h) if isinstance(h, dict) else h for h in spec.get("ha_actions") or []]
+    action = spec.get("action")
+    if isinstance(action, dict) and action.get("kind") == "notify":
+        rows.append({"ha_kind": "notify", "device_id": action.get("device_id") or "",
+                     "title": action.get("title") or "", "message": action.get("message") or "",
+                     "when": "fire"})
+        spec["action"] = {}
+    ask = spec.pop("ask", None)
+    if isinstance(ask, dict) and ask:          # sent as ``ask``: it is the Actionable row
+        row = {"ha_kind": "notify", "when": "fire", "actionable": True,
+               "title": ask.get("title") or "", "message": ask.get("question") or "",
+               **{k: ask[k] for k in ACTIONABLE_KEYS if k in ask}}
+        at = next((i for i, h in enumerate(rows) if isinstance(h, dict) and h.get("actionable")),
+                  None)
+        if at is None:
+            rows.insert(0, row)
+        else:
+            rows[at] = {**{k: v for k, v in rows[at].items() if k == "guard"}, **row}
+    spec["ha_actions"] = rows
+    return spec
+
+
+def migrate_notify_paths(store) -> int:
+    """Move saved schedules to the one notify path (#576), once, at start-up. Returns how
+    many changed."""
+    n = 0
+    for sid, spec in store.schedule_specs():
+        if spec.get("ask") or (spec.get("action") or {}).get("kind") == "notify":
+            store.update_schedule(sid, spec=normalize_spec(spec))
+            n += 1
+    return n
+
+
 def _ask_window_errors(entry: dict) -> list[str]:
     """The Ask's wait must fit the schedule's window: a reply after the window closes
     never runs the action. Checked on save only, so saved schedules keep running."""
-    ask = entry.get("ask")
-    if not isinstance(ask, dict) or not ask or not _is_int(ask.get("timeout_min"), lo=1):
+    ask = entry_ask(entry)
+    if not ask or not _is_int(ask.get("timeout_min"), lo=1):
         return []
     win = _run_window_min(entry)
     if win is None or ask["timeout_min"] <= win:
         return []
-    return [f"ask before continuing: the wait ({ask['timeout_min']} min) is longer than the "
+    return [f"actionable notification: the wait ({ask['timeout_min']} min) is longer than the "
             f"schedule's window ({win} min); a reply after the window closes cannot run it"]
 
 
 def _ask_errors(ask: Any) -> list[str]:
-    """The "Ask before continuing" step: empty means the schedule has none."""
+    """The Actionable notification (#576): empty means the schedule has none."""
     if not isinstance(ask, dict):
         return ["ask must be an object"]
     if not ask:
         return []
     out: list[str] = []
     if not str(ask.get("question") or "").strip():
-        out.append("ask before continuing needs a question")
+        out.append("actionable notification needs a message")
     if not _is_int(ask.get("timeout_min"), lo=1):
-        out.append("ask before continuing: the wait must be 1 minute or more")
+        out.append("actionable notification: the wait must be 1 minute or more")
     if ask.get("if_no_reply") not in ("continue", "skip"):
-        out.append("ask before continuing: if no reply must be continue or skip")
+        out.append("actionable notification: if no reply must be continue or skip")
     choices = ask.get("choices") or []
     if not isinstance(choices, list):
-        return out + ["ask before continuing: choices must be a list"]
+        return out + ["actionable notification: choices must be a list"]
     if choices and not 2 <= len(choices) <= ASK_MAX_CHOICES:
-        out.append(f"ask before continuing: give 2 to {ASK_MAX_CHOICES} choices")
+        out.append(f"actionable notification: give 2 to {ASK_MAX_CHOICES} choices")
     labels = []
     for i, c in enumerate(choices, 1):
         if not isinstance(c, dict):
-            out.append(f"ask before continuing: choice {i} must be an object")
+            out.append(f"actionable notification: choice {i} must be an object")
             continue
         label = str(c.get("label") or "").strip()
         if not label:
-            out.append(f"ask before continuing: choice {i} needs a label")
+            out.append(f"actionable notification: choice {i} needs a label")
         labels.append(label.casefold())
         if c.get("then") not in ("run", "skip"):
-            out.append(f"ask before continuing: choice {i} must run or skip the action")
+            out.append(f"actionable notification: choice {i} must run or skip the action")
     if len(set(labels)) < len(labels):
-        out.append("ask before continuing: each choice needs its own label")
+        out.append("actionable notification: each choice needs its own label")
     if sum(1 for c in choices if isinstance(c, dict) and c.get("reply")) > 1:
-        out.append("ask before continuing: only one choice can take a text reply")
+        out.append("actionable notification: only one choice can take a text reply")
     if "send_to" in ask:
         from . import notify_engine
         try:
             notify_engine.valid_target(ask["send_to"])
         except ValueError as e:
-            out.append(f"ask before continuing: send to: {e}")
+            out.append(f"actionable notification: send to: {e}")
     return out
 
 
@@ -1202,7 +1258,7 @@ def _ha_action_errors(ha: Any) -> list[str]:
                 _json.loads(data)
             except ValueError:
                 out.append("data is not valid JSON")
-    elif not ha.get("device_id"):
+    elif not ha.get("device_id") and not ha.get("actionable"):   # actionable: its Send to
         out.append("notify needs a device")
     guard = ha.get("guard")
     if guard:
@@ -1269,10 +1325,11 @@ def validate_import(entry: dict, *, gateway_ids: set, device_ids: set,
         did = ha.get("device_id")
         if did and did not in device_ids:
             warnings.append(f"notify device '{did}' not found — set it after import")
-    send_to = (entry.get("ask") or {}).get("send_to") or {}
+    send_to = entry_ask(entry).get("send_to") or {}
     for did in (send_to.get("ids") or []) if send_to.get("type") == "device" else []:
         if did not in device_ids:
-            warnings.append(f"Ask device '{did}' not found — choose it again after import")
+            warnings.append(f"actionable notification device '{did}' not found — choose "
+                            "it again after import")
 
     return {"name": name, "ok": not errors, "errors": errors, "warnings": warnings}
 
@@ -2535,6 +2592,8 @@ def _fire_ha_phase(entry: dict, phase: str, *, settings, client, store,
     ``gateway_id``, the gateway the schedule ran on (#577)."""
     out: list[str] = []
     for ha in entry.get("ha_actions") or []:
+        if ha.get("actionable"):        # sent by the ask step, with its buttons (#576)
+            continue
         if (ha.get("when") or "fire") not in (phase, "both"):
             continue
         if not _guard_ok(ha.get("guard"), snapshot):
@@ -2628,7 +2687,7 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
         else:
             time_inside = bool(entry.get("enabled") and cal_ok and state == "inside")
         entry["_wkey"], entry["_wend"] = wkey, wend
-        if entry.get("ask") and time_inside:
+        if entry_ask(entry) and time_inside:
             _restore_ask(entry, store=store, gateway_id=gateway_id, wkey=wkey)
         exit_conds = entry.get("exit_conditions") or []
         exit_now = bool(exit_conds) and time_inside and evaluate(
@@ -2832,7 +2891,7 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                 mon[entry["id"]] = ("retrying", f"{n} attempt(s); last: "
                                     f"{occ.get('reason') or 'failed'}; next try in {wait:.0f}s")
                 continue                       # backing off; the window is still open
-        if entry.get("ask"):
+        if entry_ask(entry):
             step, detail = _ask_step(entry, store=store, gateway_id=gateway_id, now=now,
                                      snapshot=snapshot, occ=occ)
             if step == "wait":
@@ -2863,7 +2922,7 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                                     entry.get("id"), e)
         res = _fire_entry(entry, settings=settings, client=client, store=store,
                           snapshot=snapshot, host=host, gateway_id=gateway_id, now=now)
-        if entry.get("ask"):
+        if entry_ask(entry):
             _asks[f"{gateway_id or ''}:{entry['id']}"]["open"] = False
         fired.append(res)
         mon[entry["id"]] = (("running", f"fired: {res.get('result')}") if res.get("ok")
@@ -3364,7 +3423,7 @@ def _ask_step(entry: dict, *, store, gateway_id: str | None,
     ``occ`` is this run's row: the question and the decision are recorded on it, so a
     restart waits for the same question for the time it has left, applies "if no reply"
     once if it expired meanwhile, and never decides the run twice."""
-    ask = entry["ask"]
+    ask = entry_ask(entry)
     dkey = f"{gateway_id or ''}:{entry['id']}"
     wkey = entry.get("_wkey") or now.date().isoformat()
     timeout_min = int(ask["timeout_min"])
@@ -3458,3 +3517,8 @@ def _ask_step(entry: dict, *, store, gateway_id: str | None,
                              "continuing" if step == "fire" else "skipped", detail,
                              gateway_id=gid)
     return step, detail
+
+
+# Templates in the one notify shape (#576): their asks are Actionable notify rows.
+for _p in PRESETS:
+    _p["spec"] = normalize_spec(_p["spec"])

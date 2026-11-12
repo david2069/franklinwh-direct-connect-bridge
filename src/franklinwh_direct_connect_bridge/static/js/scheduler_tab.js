@@ -189,8 +189,7 @@ document.addEventListener('alpine:init', () => {
                     action: { ...(p.spec?.action || { kind: '' }) },
                     conditions: JSON.parse(JSON.stringify(p.spec?.conditions || [])),
                     entry_hold_s: p.spec?.entry_hold_s ?? 0,
-                    ha_actions: this._haToForm(p.spec?.ha_actions),
-                    ask: this._askToForm(p.spec?.ask) };
+                    ha_actions: this._haToForm(this._rowsWithAsk(p.spec)) };
       this.presetOpen = false;
       this.testResult = null;
       this.traceByCid = {};
@@ -271,25 +270,37 @@ document.addEventListener('alpine:init', () => {
                exit_match: 'all', entry_hold_s: 0, action: { kind: '' }, ha_actions: [],
                days: [], months: [], day_of_month: null, start_date: null, end_date: null,
                priority: 0, conflict: 'override',
-               trigger_type: 'daily', windows: [], interval_min: 30, anchor: '', cron: '0 3 * * *',
-               ask: this._askToForm(null) };
+               trigger_type: 'daily', windows: [], interval_min: 30, anchor: '', cron: '0 3 * * *' };
     },
-    // "Ask before continuing" (#374 P4): the saved step is {} (none) or
-    // {question, timeout_min, if_no_reply, choices?, send_to?}; the form adds an on/off box.
-    // No choices means Yes / No; each choice is {label, then: run|skip, reply}.
-    // send_to (#281): absent or {type: all} = every enabled device; {type: device, ids}.
-    _askToForm(a) {
-      const choices = ((a && a.choices) || []).map(c => ({
-        label: c.label || '', then: c.then || 'run', reply: !!c.reply }));
-      const st = a && a.send_to;
-      const send_to = st && st.type === 'device'
-        ? { to: 'device', ids: [...(st.ids || [])] } : { to: 'all', ids: [] };
-      return a && a.question
-        ? { on: true, question: a.question, timeout_min: a.timeout_min,
-            if_no_reply: a.if_no_reply, choices, send_to }
-        : { on: false, question: 'Run this schedule now?', timeout_min: 5, if_no_reply: 'skip',
-            choices: [], send_to };
+    // Actionable notification (#576): a notify row with actionable: true carries the
+    // buttons ({label, then: run|skip, reply}; none = Yes / No), the wait, what no reply
+    // does and who is asked (send_to: absent or {type: all}, or {type: device, ids}). Its
+    // message is the question. One per schedule, On entry.
+    _actionableToForm(h) {
+      const st = h && h.send_to;
+      return {
+        timeout_min: (h && h.timeout_min) || 5, if_no_reply: (h && h.if_no_reply) || 'skip',
+        choices: ((h && h.choices) || []).map(c => ({ label: c.label || '', then: c.then || 'run', reply: !!c.reply })),
+        send_to: st && st.type === 'device' ? { to: 'device', ids: [...(st.ids || [])] } : { to: 'all', ids: [] },
+      };
     },
+    /** A schedule's rows, with a not-yet-moved ``ask`` shown as its Actionable row. */
+    _rowsWithAsk(spec) {
+      const rows = [...((spec && spec.ha_actions) || [])];
+      const a = spec && spec.ask;
+      if (a && a.question && !rows.some(h => h.actionable)) {
+        rows.unshift({ ha_kind: 'notify', when: 'fire', actionable: true, title: a.title || '',
+                       message: a.question, timeout_min: a.timeout_min, if_no_reply: a.if_no_reply,
+                       choices: a.choices, send_to: a.send_to });
+      }
+      return rows;
+    },
+    /** The schedule's Actionable notification row (saved or in the form), or null. */
+    askOf(s) {
+      return this._rowsWithAsk(s).find(h => h.actionable && h.ha_kind !== 'service') || null;
+    },
+    actionableTaken(i) { return !!this.form && this.form.ha_actions.some((h, j) => j !== i && h.actionable); },
+    onActionable(ha) { if (ha.actionable) { ha.when = 'fire'; ha.guard.enabled = false; } },
     // Who Ask before continuing asks (owner, 2026-11-12: it never said). Only Companion apps
     // (mobile_app) show the buttons, so only they are listed and asked.
     _showsButtons(d) { return (d.service || '').replace(/^notify\./, '').startsWith('mobile_app_'); },
@@ -302,9 +313,9 @@ document.addEventListener('alpine:init', () => {
         .forEach(i => out.push({ id: i, label: `${i} (removed)` }));
       return out;
     },
-    /** The names of the devices a schedule's Ask goes to, from the form or a saved one. */
+    /** The names of the phones an Actionable notification goes to (a form or saved row). */
     askedNames(a) {
-      if (!a || !(a.on || a.question)) return '';
+      if (!a || !a.actionable) return '';
       const st = a.send_to || {};
       const chosen = (st.to || st.type) === 'device' ? (st.ids || []) : null;
       return this.devices.filter(d => d.enabled && this._showsButtons(d)
@@ -313,25 +324,12 @@ document.addEventListener('alpine:init', () => {
     },
     /** What the schedule's notify rows send, shown beside Ask so the two are read together. */
     alsoNotified(f) {
+      if (!f) return '';
       const when = { fire: 'On entry, once the answer runs it', exit: 'On exit', both: 'On entry and exit' };
-      return (f.ha_actions || []).filter(h => h.ha_kind !== 'service' && h.device_id).map(h => {
+      return (f.ha_actions || []).filter(h => h.ha_kind !== 'service' && !h.actionable && h.device_id).map(h => {
         const d = this.devices.find(x => x.id === h.device_id);
         return `${d ? d.alias : h.device_id} (${when[h.when || 'fire'] || h.when})`;
       }).join(', ');
-    },
-    _askFromForm(a) {
-      if (!a || !a.on) return {};
-      const out = { question: a.question, timeout_min: Number(a.timeout_min) || 0,
-                    if_no_reply: a.if_no_reply };
-      if ((a.choices || []).length) {
-        out.choices = a.choices.map(c => c.reply
-          ? { label: c.label, then: c.then, reply: true }
-          : { label: c.label, then: c.then });
-      }
-      if (a.send_to && a.send_to.to === 'device') {
-        out.send_to = { type: 'device', ids: [...a.send_to.ids] };
-      }
-      return out;
     },
     newEntry() {
       this.formMsg = null;
@@ -358,8 +356,7 @@ document.addEventListener('alpine:init', () => {
         interval_min: s.interval_min ?? 30, anchor: s.anchor || '', cron: s.cron || '0 3 * * *',
         entry_hold_s: s.entry_hold_s ?? 0,
         action: JSON.parse(JSON.stringify(s.action || { kind: '' })),
-        ha_actions: this._haToForm(s.ha_actions),
-        ask: this._askToForm(s.ask),
+        ha_actions: this._haToForm(this._rowsWithAsk(s)),
         // (advRepeat toggled below once form is built)
       };
       this.traceByCid = {};
@@ -501,6 +498,7 @@ document.addEventListener('alpine:init', () => {
         // guided data is an object; raw data is a JSON string. Keep whatever was saved.
         data: (h.data && typeof h.data === 'object') ? JSON.parse(JSON.stringify(h.data)) : (h.data || (h.entity_id ? {} : '')),
         raw: !!h.raw,
+        actionable: !!h.actionable, ...this._actionableToForm(h),
         guard: this._guardToForm(h.guard) }));
     },
     /** Editor form -> stored ha_action (guard {enabled,...} -> leaf|omitted). */
@@ -512,6 +510,15 @@ document.addEventListener('alpine:init', () => {
                   instance_id: h.instance_id || '', domain: h.domain || '', service: h.service || '',
                   entity_id: h.entity_id || '',
                   data: (h.data && typeof h.data === 'object') ? h.data : (h.data || '') };
+        } else if (h.actionable) {       // Actionable notification (#576): goes On entry
+          out = { ha_kind: 'notify', actionable: true, when: 'fire', title: h.title || '',
+                  message: h.message || '', timeout_min: Number(h.timeout_min) || 0,
+                  if_no_reply: h.if_no_reply };
+          if ((h.choices || []).length) {
+            out.choices = h.choices.map(c => c.reply ? { label: c.label, then: c.then, reply: true }
+                                                     : { label: c.label, then: c.then });
+          }
+          if (h.send_to && h.send_to.to === 'device') out.send_to = { type: 'device', ids: [...h.send_to.ids] };
         } else {
           out = { ha_kind: 'notify', device_id: h.device_id, when: h.when || 'fire',
                   title: h.title || '', message: h.message || '' };
@@ -646,8 +653,7 @@ document.addEventListener('alpine:init', () => {
           exit_conditions: this._buildTree(this.form.exit_conditions, false),
           exit_match: this.form.exit_match || 'all',
           entry_hold_s: Number(this.form.entry_hold_s) || 0,
-          ha_actions: this._haFromForm(this.form.ha_actions),
-          ask: this._askFromForm(this.form.ask) };
+          ha_actions: this._haFromForm(this.form.ha_actions) };
         delete body.id;
         const url = this.form.id ? `api/schedules/${this.form.id}` : 'api/schedules';
         const r = await fetch(url, {
@@ -970,7 +976,7 @@ document.addEventListener('alpine:init', () => {
           const ent = this.haNames[h.entity_id] || h.entity_id || 'an entity';
           const svc = (h.service || 'call').replace(/_/g, ' ');
           out.push(`${svc} “${ent}”${at}`);
-        } else {
+        } else if (!h.actionable) {     // the actionable one is the ASK step
           out.push(`notify a companion device${at}`);
         }
       }
@@ -982,7 +988,8 @@ document.addEventListener('alpine:init', () => {
       const act = this._actionPhrase(s);
       const conds = this._condPhrase(s.conditions, s.match || 'all', 0);
       const exits = this._condPhrase(s.exit_conditions, s.exit_match || 'all', 0);
-      const asked = s.ask && s.ask.question ? (this.askedNames(s.ask) || 'no Companion app') : '';
+      const ask = this.askOf(s);
+      const asked = ask ? (this.askedNames(ask) || 'no Companion app') : '';
       if (level === 'min') {
         return asked ? `${trig} → ask ${asked} → ${act}.` : `${trig} → ${act}.`;
       }
@@ -999,7 +1006,7 @@ document.addEventListener('alpine:init', () => {
       lines.push(`WHEN   ${trig}.`);
       lines.push(conds ? `IF     ${conds} (${(s.match || 'all') === 'any' ? 'any' : 'all'} must hold).`
                        : `IF     no extra conditions — fires whenever the schedule is due.`);
-      if (asked) lines.push(`ASK    ${asked}: "${s.ask.question}" (${s.ask.if_no_reply === 'continue' ? 'no reply: continue' : 'no reply: skip'}).`);
+      if (asked) lines.push(`ASK    ${asked}: "${ask.message}" (Actionable notification; ${ask.if_no_reply === 'continue' ? 'no reply: continue' : 'no reply: skip'}).`);
       lines.push(`DO     ${act}.`);
       if (exits) lines.push(`UNTIL  it ends early when ${exits} (${(s.exit_match || 'all') === 'any' ? 'any' : 'all'}).`);
       const gw = (this.gateways.find(g => g.id === s.gateway_id) || {});

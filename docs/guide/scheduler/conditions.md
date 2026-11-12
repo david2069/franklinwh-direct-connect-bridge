@@ -476,7 +476,7 @@ grouped by `GET /api/schedules`. *Needs* and *without it* are per group.
 | Demand / Tariff, Energy, Fixed Charges | a tariff with those charges or windows | None |
 | System Setup | nothing (defaults), better with Setup filled in | a default |
 | Automation Constants | nothing | the default |
-| Ask before continuing (`ask.answer`) | the schedule's Ask before continuing step, answered in this run; read by exit conditions and HA action guards | None |
+| Actionable notification (`ask.answer`) | the schedule's Actionable notification, answered in this run; read by exit conditions and HA action guards | None |
 | an HA instance | the instance enabled and the entity exposed | None (also while the entity is `unavailable` or `unknown`, since 0.5.4, #167) |
 
 ??? example "All sensor ids (84 + your Home Assistant entities)"

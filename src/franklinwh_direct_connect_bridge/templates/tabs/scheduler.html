@@ -118,8 +118,8 @@
           <span x-show="!(s.action && s.action.kind)">No gateway action</span>
           <span x-show="(s.ha_actions || []).length"
                 x-text="` · ${s.ha_actions.length} HA action(s)`"></span>
-          <span x-show="s.ask && s.ask.question"
-                x-text="` · asks ${askedNames(s.ask) || 'no Companion app'} first`"></span>
+          <span x-show="askOf(s)"
+                x-text="` · asks ${askedNames(askOf(s)) || 'no Companion app'} first`"></span>
         </div>
 
         <!-- Explain (min / medium / full) — plain-language "what will this do?" -->
@@ -662,111 +662,6 @@
            x-text="(actions[form.action.kind] || {}).note"></p>
       </div>
 
-      <!-- Ask before continuing (#374 P4): Yes / No, or the user's own buttons, on the
-           enabled notification devices, or the ones chosen in Send to (#281) -->
-      <div class="rounded-lg border p-3 space-y-2" style="border-color:var(--border)">
-        <label class="flex items-center gap-2 text-xs font-semibold" style="color:var(--text-secondary)">
-          <input type="checkbox" x-model="form.ask.on" data-testid="ask-on">
-          Ask before continuing
-        </label>
-        <div x-show="form.ask.on" class="space-y-2">
-          <p class="text-xs" style="color:var(--text-secondary)">
-            Before the action runs, the devices in Send to get this question
-            with Yes and No, or your own buttons. Yes runs it, No skips this run. Only Home
-            Assistant Companion apps (mobile_app) show the buttons.</p>
-          <div class="text-xs" style="color:var(--text-secondary)">Question
-            <div class="flex items-center gap-1 mt-1" data-var-field>
-              <input class="form-control form-control-sm flex-1 min-w-0" type="text" aria-label="Question"
-                     placeholder="%sensor.id% ok" x-model="form.ask.question"
-                     data-testid="ask-question" data-var-target @blur="noteCaret($el)">
-              <button type="button" class="btn btn-secondary btn-sm shrink-0 font-mono" style="padding:2px 7px"
-                    title="Insert a value" aria-label="Insert a value" data-testid="var-picker-btn"
-                    @click="openVarPicker($el)">{x}</button>
-            </div></div>
-          <div class="space-y-1">
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-xs" style="color:var(--text-secondary)">Buttons</span>
-              <span class="flex items-center gap-2">
-                <button type="button" class="btn btn-secondary btn-sm" x-show="!form.ask.choices.length"
-                        @click="form.ask.choices = [{ label: 'Yes', then: 'run', reply: false },
-                                                    { label: 'No', then: 'skip', reply: false }]"
-                        data-testid="ask-own-buttons">Use my own buttons</button>
-                <button type="button" class="btn btn-secondary btn-sm"
-                        x-show="form.ask.choices.length && form.ask.choices.length < 4"
-                        @click="form.ask.choices.push({ label: '', then: 'run', reply: false })"
-                        data-testid="ask-add-choice">+ Button</button>
-              </span>
-            </div>
-            <p x-show="!form.ask.choices.length" class="text-xs" style="color:var(--text-secondary)">
-              Yes and No.</p>
-            <template x-for="(c, ci) in form.ask.choices" :key="ci">
-              <div class="flex items-center gap-2 flex-wrap" data-testid="ask-choice">
-                <input class="form-control form-control-sm" style="flex:1 1 8rem" type="text"
-                       placeholder="Button label" x-model="c.label" data-testid="ask-choice-label">
-                <select class="form-control form-control-sm" style="width:auto" x-model="c.then"
-                        data-testid="ask-choice-then">
-                  <option value="run">Runs the action</option>
-                  <option value="skip">Skips this run</option>
-                </select>
-                <label class="flex items-center gap-1 text-xs" style="color:var(--text-secondary)"
-                       title="The phone asks for text when this button is tapped">
-                  <input type="checkbox" x-model="c.reply"
-                         :disabled="!c.reply && form.ask.choices.some(o => o.reply)"
-                         data-testid="ask-choice-reply"> Text reply</label>
-                <button type="button" class="btn btn-secondary btn-sm" title="Remove this button"
-                        @click="form.ask.choices.splice(ci, 1)">&times;</button>
-              </div>
-            </template>
-            <p class="text-xs" style="color:var(--text-secondary)">
-              The answer (the button's label, or the text of a reply) is the
-              <span class="font-mono">Ask: answer</span> sensor in exit conditions and HA
-              action guards, and <span class="font-mono">%ask.answer%</span> in messages.</p>
-          </div>
-          <div class="grid grid-cols-2 gap-2">
-            <label class="block text-xs" style="color:var(--text-secondary)">Wait for a reply (minutes)
-              <input class="form-control form-control-sm w-full mt-1" type="number" min="1"
-                     x-model.number="form.ask.timeout_min" data-testid="ask-timeout"></label>
-            <label class="block text-xs" style="color:var(--text-secondary)">If no reply
-              <select class="form-control form-control-sm w-full mt-1" x-model="form.ask.if_no_reply"
-                      data-testid="ask-no-reply">
-                <option value="skip">Skip this run</option>
-                <option value="continue">Continue</option>
-              </select></label>
-          </div>
-          <div class="space-y-1" data-testid="ask-send-to">
-            <div class="flex items-center gap-x-3 gap-y-1 flex-wrap text-xs" style="color:var(--text-secondary)">
-              <span>Send to</span>
-              <label class="flex items-center gap-1">
-                <input type="radio" value="all" x-model="form.ask.send_to.to"> All enabled devices</label>
-              <label class="flex items-center gap-1">
-                <input type="radio" value="device" x-model="form.ask.send_to.to"> Chosen devices</label>
-            </div>
-            <div x-show="form.ask.send_to.to === 'device'" class="pl-1 max-w-sm">
-              {% call device_multiselect("askDeviceChoices(form.ask.send_to.ids).filter(x => form.ask.send_to.ids.includes(x.id)).map(x => x.label).join(', ')") %}
-              <template x-for="d in askDeviceChoices(form.ask.send_to.ids)" :key="d.id">
-                <label class="flex items-center gap-2 text-xs py-0.5" style="color:var(--text-secondary)">
-                  <input type="checkbox" :value="d.id" x-model="form.ask.send_to.ids"
-                         data-testid="ask-send-to-device">
-                  <span x-text="d.label"></span>
-                </label>
-              </template>
-              <span x-show="!askDeviceChoices(form.ask.send_to.ids).length" class="text-xs" style="color:var(--text-secondary)">
-                No Companion app devices. Add one in Settings → Integrations → HA notifications.</span>
-              {% endcall %}
-            </div>
-            <!-- who is asked, by name, and what else this schedule sends (owner, 2026-11-12) -->
-            <p class="text-xs" style="color:var(--text-secondary)" data-testid="ask-asked-names">
-              Asks: <span x-text="askedNames(form.ask) || 'nobody: no Companion app (mobile_app) is enabled'"
-                          :style="askedNames(form.ask) ? 'color:var(--text-primary)' : 'color:var(--warn, #f59e0b)'"></span>.
-              Only Companion apps show the buttons, so only they are asked.</p>
-            <p class="text-xs" style="color:var(--text-secondary)" x-show="alsoNotified(form)"
-               data-testid="ask-also-notified">
-              This schedule also notifies <span x-text="alsoNotified(form)"></span> (Home Assistant
-              actions below). A No skips this run's On entry and On exit messages too.</p>
-          </div>
-        </div>
-      </div>
-
       <!-- entry conditions (nestable ALL/ANY gate + Value|Lookup + Test Verify) -->
       <div class="rounded-lg border p-3 space-y-2" style="border-color:var(--border)">
         <div class="flex items-center justify-between flex-wrap gap-2">
@@ -1015,9 +910,9 @@
         <template x-for="(ha, i) in form.ha_actions" :key="i">
           <div class="space-y-2 border-b pb-2 last:border-0" style="border-color:var(--border)">
             <div class="flex items-center gap-2 flex-wrap">
-              <span class="chip muted" style="font-size:.6rem" x-text="ha.ha_kind==='service' ? (ha.raw ? 'SERVICE' : 'ENTITY') : 'NOTIFY'"></span>
+              <span class="chip muted" style="font-size:.6rem" x-text="ha.ha_kind==='service' ? (ha.raw ? 'SERVICE' : 'ENTITY') : (ha.actionable ? 'ACTIONABLE' : 'NOTIFY')"></span>
               <!-- notify target -->
-              <select x-show="ha.ha_kind!=='service'" class="form-control form-control-sm flex-1" style="min-width:130px" x-model="ha.device_id"
+              <select x-show="ha.ha_kind!=='service' && !ha.actionable" class="form-control form-control-sm flex-1" style="min-width:130px" x-model="ha.device_id"
                       x-init="$nextTick(() => { $el.value = ha.device_id })">
                 <template x-for="d in devices" :key="d.id">
                   <option :value="d.id" x-text="d.alias + (d.enabled ? '' : ' (off)')"></option>
@@ -1042,7 +937,7 @@
                   <option :value="inst.id" x-text="inst.name + (inst.enabled ? '' : ' (off)')"></option>
                 </template>
               </select>
-              <select class="form-control form-control-sm" style="width:auto" x-model="ha.when"
+              <select class="form-control form-control-sm" style="width:auto" x-model="ha.when" :disabled="ha.actionable"
                       x-init="$nextTick(() => { $el.value = ha.when })" title="When this action fires">
                 <option value="fire">On entry</option>
                 <option value="exit">On exit</option>
@@ -1052,6 +947,15 @@
             </div>
             <!-- notify fields -->
             <div x-show="ha.ha_kind!=='service'" class="space-y-2">
+              <!-- Actionable notification (#576): this row carries the buttons, and the run
+                   waits for the answer before the action. One per schedule, On entry. -->
+              <label class="flex items-center gap-2 text-xs" style="color:var(--text-secondary)"
+                     :title="actionableTaken(i) ? 'Another notification on this schedule is already actionable' : ''">
+                <input type="checkbox" x-model="ha.actionable" :disabled="actionableTaken(i)"
+                       @change="onActionable(ha)" data-testid="notify-actionable">
+                <span><span class="font-medium" style="color:var(--text-primary)">Actionable notification</span>:
+                  buttons on the phone, and the action waits for the answer</span>
+              </label>
               <div class="flex items-center gap-1" data-var-field>
                 <input class="form-control form-control-sm flex-1 min-w-0" placeholder="Title (optional)"
                        x-model="ha.title" data-testid="notify-title" data-var-target @blur="noteCaret($el)">
@@ -1061,12 +965,96 @@
               </div>
               <div class="flex items-start gap-1" data-var-field>
                 <textarea class="form-control form-control-sm flex-1 min-w-0" rows="1" style="resize:vertical"
-                          placeholder="Message — e.g. SoC is %battery.soc_pct%%, mode %mode.name%"
+                          :placeholder="ha.actionable ? 'Question — e.g. Charge now? Battery %battery.soc_pct%%' : 'Message — e.g. SoC is %battery.soc_pct%%, mode %mode.name%'"
                           x-model="ha.message" data-testid="notify-message" data-var-target @blur="noteCaret($el)"
                           x-init="$nextTick(() => fitTextarea($el))" @input="fitTextarea($el)"></textarea>
                 <button type="button" class="btn btn-secondary btn-sm shrink-0 font-mono" style="padding:2px 7px"
                     title="Insert a value" aria-label="Insert a value" data-testid="var-picker-btn"
                     @click="openVarPicker($el)">{x}</button>
+              </div>
+            </div>
+            <div x-show="ha.ha_kind!=='service' && ha.actionable" class="space-y-2 pl-2 border-l" style="border-color:var(--border)">
+              <div class="space-y-1">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-xs" style="color:var(--text-secondary)">Buttons</span>
+                  <span class="flex items-center gap-2">
+                    <button type="button" class="btn btn-secondary btn-sm" x-show="!ha.choices.length"
+                            @click="ha.choices = [{ label: 'Yes', then: 'run', reply: false },
+                                                  { label: 'No', then: 'skip', reply: false }]"
+                            data-testid="ask-own-buttons">Use my own buttons</button>
+                    <button type="button" class="btn btn-secondary btn-sm"
+                            x-show="ha.choices.length && ha.choices.length < 4"
+                            @click="ha.choices.push({ label: '', then: 'run', reply: false })"
+                            data-testid="ask-add-choice">+ Button</button>
+                  </span>
+                </div>
+                <p x-show="!ha.choices.length" class="text-xs" style="color:var(--text-secondary)">
+                  Yes runs the action, No skips this run.</p>
+                <template x-for="(c, ci) in ha.choices" :key="ci">
+                  <div class="flex items-center gap-2 flex-wrap" data-testid="ask-choice">
+                    <input class="form-control form-control-sm" style="flex:1 1 8rem" type="text"
+                           placeholder="Button label" x-model="c.label" data-testid="ask-choice-label">
+                    <select class="form-control form-control-sm" style="width:auto" x-model="c.then"
+                            data-testid="ask-choice-then">
+                      <option value="run">Runs the action</option>
+                      <option value="skip">Skips this run</option>
+                    </select>
+                    <label class="flex items-center gap-1 text-xs" style="color:var(--text-secondary)"
+                           title="The phone asks for text when this button is tapped">
+                      <input type="checkbox" x-model="c.reply"
+                             :disabled="!c.reply && ha.choices.some(o => o.reply)"
+                             data-testid="ask-choice-reply"> Text reply</label>
+                    <button type="button" class="btn btn-secondary btn-sm" title="Remove this button"
+                            @click="ha.choices.splice(ci, 1)">&times;</button>
+                  </div>
+                </template>
+                <p class="text-xs" style="color:var(--text-secondary)">
+                  The answer (the button's label, or the text of a reply) is the
+                  <span class="font-mono">Ask: answer</span> sensor in exit conditions and guards,
+                  and <span class="font-mono">%ask.answer%</span> in messages.</p>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <label class="block text-xs" style="color:var(--text-secondary)">Wait for a reply (minutes)
+                  <input class="form-control form-control-sm w-full mt-1" type="number" min="1"
+                         x-model.number="ha.timeout_min" data-testid="ask-timeout"></label>
+                <label class="block text-xs" style="color:var(--text-secondary)">If no reply
+                  <select class="form-control form-control-sm w-full mt-1" x-model="ha.if_no_reply"
+                          data-testid="ask-no-reply">
+                    <option value="skip">Skip this run</option>
+                    <option value="continue">Continue</option>
+                  </select></label>
+              </div>
+              <div class="space-y-1" data-testid="ask-send-to">
+                <div class="flex items-center gap-x-3 gap-y-1 flex-wrap text-xs" style="color:var(--text-secondary)">
+                  <span>Send to</span>
+                  <label class="flex items-center gap-1">
+                    <input type="radio" value="all" :name="'send-to-' + i" x-model="ha.send_to.to"
+                           :checked="ha.send_to.to === 'all'"> All enabled phones</label>
+                  <label class="flex items-center gap-1">
+                    <input type="radio" value="device" :name="'send-to-' + i" x-model="ha.send_to.to"
+                           :checked="ha.send_to.to === 'device'"> Chosen phones</label>
+                </div>
+                <div x-show="ha.send_to.to === 'device'" class="pl-1 max-w-sm">
+                  {% call device_multiselect("askDeviceChoices(ha.send_to.ids).filter(x => ha.send_to.ids.includes(x.id)).map(x => x.label).join(', ')") %}
+                  <template x-for="d in askDeviceChoices(ha.send_to.ids)" :key="d.id">
+                    <label class="flex items-center gap-2 text-xs py-0.5" style="color:var(--text-secondary)">
+                      <input type="checkbox" :value="d.id" x-model="ha.send_to.ids"
+                             data-testid="ask-send-to-device">
+                      <span x-text="d.label"></span>
+                    </label>
+                  </template>
+                  <span x-show="!askDeviceChoices(ha.send_to.ids).length" class="text-xs" style="color:var(--text-secondary)">
+                    No Companion app devices. Add one in Settings → Integrations → HA notifications.</span>
+                  {% endcall %}
+                </div>
+                <p class="text-xs" style="color:var(--text-secondary)" data-testid="ask-asked-names">
+                  Asks: <span x-text="askedNames(ha) || 'nobody: no Companion app (mobile_app) is enabled'"
+                              :style="askedNames(ha) ? 'color:var(--text-primary)' : 'color:var(--warn, #f59e0b)'"></span>.
+                  Only Companion apps show the buttons, so only they are asked.</p>
+                <p class="text-xs" style="color:var(--text-secondary)" x-show="alsoNotified(form)"
+                   data-testid="ask-also-notified">
+                  The other notifications here (<span x-text="alsoNotified(form)"></span>) are
+                  skipped too when the answer skips this run.</p>
               </div>
             </div>
             <!-- service GUIDED: domain-aware control widget -->
@@ -1130,8 +1118,9 @@
               </div>
               <button type="button" class="text-[11px]" style="color:var(--accent)" @click="ha.raw = false">← Back to guided picker</button>
             </div>
-            <!-- optional guard: fire this action only if a condition holds right now -->
-            <div class="flex items-center gap-2 flex-wrap text-xs">
+            <!-- optional guard: fire this action only if a condition holds right now. Not on
+                 an Actionable notification: the entry conditions decide whether it asks. -->
+            <div class="flex items-center gap-2 flex-wrap text-xs" x-show="!ha.actionable">
               <button x-show="!ha.guard.enabled" class="btn btn-secondary btn-sm" @click="ha.guard.enabled = true">+ guard</button>
               <span x-show="ha.guard.enabled" class="flex items-center gap-2 flex-wrap">
                 <span style="color:var(--text-secondary)">Only if</span>

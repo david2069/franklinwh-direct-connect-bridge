@@ -96,7 +96,7 @@ def test_the_api_saves_send_to_and_refuses_unknown_devices_and_roles(c):
             "gateway_id": "g1"}
     ok = {**ASK, "send_to": {"type": "device", "ids": [dev]}}
     r = c.post("/api/schedules", json={**body, "ask": ok})
-    assert r.status_code == 201 and r.json()["ask"] == ok
+    assert r.status_code == 201 and sch.entry_ask(r.json()) == ok      # the Actionable row (#576)
     r = c.post("/api/schedules", json={**body, "ask": {**ASK, "send_to": {
         "type": "device", "ids": ["nope"]}}})
     assert r.status_code == 422 and "unknown device 'nope'" in r.json()["detail"]
@@ -108,10 +108,10 @@ def test_the_api_saves_send_to_and_refuses_unknown_devices_and_roles(c):
 def test_the_ask_box_has_a_send_to_picker():
     html = (PKG / "templates/tabs/scheduler.html").read_text()
     box = html[html.index('data-testid="ask-send-to"'):]
-    box = box[:box.index("<!-- entry conditions")]
-    assert 'x-model="form.ask.send_to.to"' in box and 'x-model="form.ask.send_to.ids"' in box
+    box = box[:box.index("<!-- service GUIDED: domain-aware")]           # in the Actionable notify row (#576)
+    assert 'x-model="ha.send_to.to"' in box and 'x-model="ha.send_to.ids"' in box
     # Companion apps, off and removed ones marked (owner, 2026-11-12; was enabled only)
-    assert "askDeviceChoices(form.ask.send_to.ids)" in box
+    assert "askDeviceChoices(ha.send_to.ids)" in box
     assert "mobile_app" in box and "flex-wrap" in box
     js = (PKG / "static/js/scheduler_tab.js").read_text()
     assert "out.send_to = { type: 'device'" in js
