@@ -621,6 +621,7 @@ function settingsTab() {
         const d = await r.json(); if (!r.ok) throw new Error(d.detail || 'save failed');
         this.systemSetup = d.values || this.systemSetup;
         this.systemLoaded = this.sysFields();
+        this.$store.app._loadSolarInstalled();    // the Solar tab follows the solar type
         this.$store.app.toast('System Setup saved', 'success');
       } catch (e) { this.$store.app.toast('System Setup save failed: ' + e.message, 'error'); }
       finally { this.systemSaving = false; }

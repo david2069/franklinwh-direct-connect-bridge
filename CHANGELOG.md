@@ -85,6 +85,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   purge runs with the hourly history upkeep and when a recording ends.
 
 ### Changed
+- **No solar, no Solar tab** (owner). The Solar tab and the Dashboard's Solar Forecast card
+  are hidden when the gateway's API reports no AC PV ports and no remote solar, or System
+  Setup says none (DC solar is set there). Unknown, before the gateway is read, keeps them.
 - **Location & Solar moves to Sites & Billing, with the site** (owner, #582 follow-up). It
   sits right after Sites & Meters; the default site shows its location and solar size and
   links to it; the card links to the Solar tab, and the Solar tab links back.

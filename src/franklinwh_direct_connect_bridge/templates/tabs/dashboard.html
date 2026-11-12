@@ -581,7 +581,7 @@
   </div>
 
   <!-- Solar Forecast (Open-Meteo weather + PV production) -->
-  <div class="card lg:col-span-3" x-data="solarForecastCard()" x-show="$store.app.dashCards.solarForecast" :style="$store.app.dashCardStyle('solarForecast')">
+  <div class="card lg:col-span-3" x-data="solarForecastCard()" x-show="$store.app.dashCards.solarForecast && $store.app.solarInstalled !== false" :style="$store.app.dashCardStyle('solarForecast')">
     <div class="flex items-center justify-between gap-2 flex-wrap mb-3">
       <div class="flex items-center gap-2">
         <span class="card-label" style="margin-bottom:0">Solar Forecast <a :href="$store.app.guideUrl('energy-and-costs/#solar-forecast')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
