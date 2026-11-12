@@ -110,8 +110,9 @@ def test_the_ask_box_has_a_send_to_picker():
     box = html[html.index('data-testid="ask-send-to"'):]
     box = box[:box.index("<!-- entry conditions")]
     assert 'x-model="form.ask.send_to.to"' in box and 'x-model="form.ask.send_to.ids"' in box
-    assert "devices.filter(x => x.enabled)" in box          # the enabled devices
-    assert "mobile_app_" in box and "flex-wrap" in box
+    # Companion apps, off and removed ones marked (owner, 2026-11-12; was enabled only)
+    assert "askDeviceChoices(form.ask.send_to.ids)" in box
+    assert "mobile_app" in box and "flex-wrap" in box
     js = (PKG / "static/js/scheduler_tab.js").read_text()
     assert "out.send_to = { type: 'device'" in js
 

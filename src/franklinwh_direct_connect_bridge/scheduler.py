@@ -1269,6 +1269,10 @@ def validate_import(entry: dict, *, gateway_ids: set, device_ids: set,
         did = ha.get("device_id")
         if did and did not in device_ids:
             warnings.append(f"notify device '{did}' not found — set it after import")
+    send_to = (entry.get("ask") or {}).get("send_to") or {}
+    for did in (send_to.get("ids") or []) if send_to.get("type") == "device" else []:
+        if did not in device_ids:
+            warnings.append(f"Ask device '{did}' not found — choose it again after import")
 
     return {"name": name, "ok": not errors, "errors": errors, "warnings": warnings}
 
@@ -2633,11 +2637,21 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
         # condition) — fire the exit-tagged HA actions once (guarded), regardless of
         # whether the entry action ran, and release a force dispatch as a safety net.
         if was_inside and not effective_inside:
-            exit_res = _fire_ha_phase(
-                entry, "exit", settings=settings, client=client, store=store,
-                snapshot={**snapshot, **run_context(entry, gateway_id=gateway_id,
-                                                    now=now, phase="exit")},
-                host=host)
+            asked = _asks.get(dkey) or {}
+            if (asked.get("decided") or ("",))[0] == "skip" and any(
+                    (ha.get("when") or "fire") in ("exit", "both") for ha in entry.get("ha_actions") or []):
+                # Ask skipped this run: nothing started, so nothing ends (owner,
+                # 2026-11-12: no conflicts between Ask and the notify rows).
+                exit_res = []
+                store.log_schedule_event(entry["id"], entry["name"], "skipped",
+                                         "On exit actions not sent: Ask skipped this run",
+                                         gateway_id=gateway_id or "")
+            else:
+                exit_res = _fire_ha_phase(
+                    entry, "exit", settings=settings, client=client, store=store,
+                    snapshot={**snapshot, **run_context(entry, gateway_id=gateway_id,
+                                                        now=now, phase="exit")},
+                    host=host)
             # BR-50: put back what this rule overrode. Opt-in, because "leave it where
             # the rule left it" is a legitimate intent and changing it under existing
             # rules would be a silent behaviour change.
@@ -3133,8 +3147,12 @@ def _fire_entry(entry: dict, *, settings, client, store, snapshot: dict,
             gateway_id=gateway_id, schedule_id=entry["id"], schedule_name=entry["name"],
             window_end_ts=entry.get("_wend") if entry.get("_wend") is not None else _window_end_ts(entry, now))
         results.append(outcome.detail or outcome.render())
-    results += _fire_ha_phase(entry, "fire", settings=settings, client=client,
-                              store=store, snapshot=snapshot, host=host)
+    # The On entry messages go once per run: a failed action is retried each tick, and
+    # its messages would go again every time (owner, 2026-11-12: no conflicts).
+    # The run's attempt count is on its occurrence row, so this holds across a restart.
+    if int(entry.get("_occ_attempts") or 1) <= 1:
+        results += _fire_ha_phase(entry, "fire", settings=settings, client=client,
+                                  store=store, snapshot=snapshot, host=host)
     summary = "; ".join(results) or "nothing to do"
     # Decide on the VERDICT, not on the words. This used to be
     # `"failed" not in r`, so an action whose failure text did not happen to
@@ -3256,9 +3274,13 @@ def _ask_targets(store, send_to: dict | None = None) -> list[Target]:
     Only ``mobile_app_*`` ones can show the buttons."""
     ids = (send_to or {}).get("ids") if (send_to or {}).get("type") == "device" else None
     if ids is None:
-        return actionable.targets(store)
-    on = {d["id"] for d in store.notify_devices() if d.get("enabled")}
-    return actionable.targets(store, [i for i in ids if i in on])
+        found = actionable.targets(store)
+    else:
+        on = {d["id"] for d in store.notify_devices() if d.get("enabled")}
+        found = actionable.targets(store, [i for i in ids if i in on])
+    # Only a Companion app shows the buttons; anything else would get a question it
+    # cannot answer (owner, 2026-11-12).
+    return [t for t in found if t.buttons]
 
 
 async def _ask(targets: list[Target], buttons: list[Button], timeout_s: int, gateway: str,
@@ -3370,8 +3392,9 @@ def _ask_step(entry: dict, *, store, gateway_id: str | None,
         question = substitute(ask["question"], {
             **(snapshot or {}), **run_context(entry, gateway_id=gateway_id, now=now,
                                               phase="fire")})
+        targets = _ask_targets(store, ask.get("send_to"))
         fut = actionable.submit(_ask(
-            _ask_targets(store, ask.get("send_to")), [Button(c["verb"], c["label"], c["reply"]) for c in choices],
+            targets, [Button(c["verb"], c["label"], c["reply"]) for c in choices],
             timeout_min * 60, getattr(gw, "label", None) or gid,
             remember=(None if occ_id is None else
                       lambda rid: store.set_occurrence_ask(occ_id, request_id=rid)),
@@ -3382,8 +3405,9 @@ def _ask_step(entry: dict, *, store, gateway_id: str | None,
         if fut is not None:
             store.log_schedule_event(
                 entry["id"], entry["name"],
-                "asking", f"asked \"{question}\"; waiting up to {timeout_min} min "
-                f"for a reply", gateway_id=gid)
+                "asking", f"asked \"{question}\" on "
+                f"{', '.join(t.label for t in targets) or 'no device that shows the buttons'}; "
+                f"waiting up to {timeout_min} min for a reply", gateway_id=gid)
     if held["decided"] is not None:
         return held["decided"]
     fut = held["fut"]

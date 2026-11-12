@@ -1811,6 +1811,8 @@ document.addEventListener('alpine:init', () => {
     //: Set by a link elsewhere in the UI; the Device tab picks it up and opens that
     //  reading. Keeps firmware (and anything else) documented in ONE place.
     deviceReadRequest: '',
+    //: Logs tab sub-view: 'log' (bridge log lines) or 'audit' (the audit trail).
+    logsView: 'log',
 
     openDeviceRead(name) {
       this.deviceReadRequest = name;

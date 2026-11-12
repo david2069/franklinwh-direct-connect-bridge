@@ -290,6 +290,35 @@ document.addEventListener('alpine:init', () => {
         : { on: false, question: 'Run this schedule now?', timeout_min: 5, if_no_reply: 'skip',
             choices: [], send_to };
     },
+    // Who Ask before continuing asks (owner, 2026-11-12: it never said). Only Companion apps
+    // (mobile_app) show the buttons, so only they are listed and asked.
+    _showsButtons(d) { return (d.service || '').replace(/^notify\./, '').startsWith('mobile_app_'); },
+    /** The Chosen devices list: every Companion app, a switched-off one marked (off), and a
+     *  chosen one removed since marked (removed), so it can still be unticked. */
+    askDeviceChoices(ids) {
+      const out = this.devices.filter(d => this._showsButtons(d))
+        .map(d => ({ id: d.id, label: d.alias + (d.enabled ? '' : ' (off)') }));
+      (ids || []).filter(i => !this.devices.some(d => d.id === i))
+        .forEach(i => out.push({ id: i, label: `${i} (removed)` }));
+      return out;
+    },
+    /** The names of the devices a schedule's Ask goes to, from the form or a saved one. */
+    askedNames(a) {
+      if (!a || !(a.on || a.question)) return '';
+      const st = a.send_to || {};
+      const chosen = (st.to || st.type) === 'device' ? (st.ids || []) : null;
+      return this.devices.filter(d => d.enabled && this._showsButtons(d)
+                                      && (chosen === null || chosen.includes(d.id)))
+        .map(d => d.alias).join(', ');
+    },
+    /** What the schedule's notify rows send, shown beside Ask so the two are read together. */
+    alsoNotified(f) {
+      const when = { fire: 'On entry, once the answer runs it', exit: 'On exit', both: 'On entry and exit' };
+      return (f.ha_actions || []).filter(h => h.ha_kind !== 'service' && h.device_id).map(h => {
+        const d = this.devices.find(x => x.id === h.device_id);
+        return `${d ? d.alias : h.device_id} (${when[h.when || 'fire'] || h.when})`;
+      }).join(', ');
+    },
     _askFromForm(a) {
       if (!a || !a.on) return {};
       const out = { question: a.question, timeout_min: Number(a.timeout_min) || 0,
@@ -953,12 +982,14 @@ document.addEventListener('alpine:init', () => {
       const act = this._actionPhrase(s);
       const conds = this._condPhrase(s.conditions, s.match || 'all', 0);
       const exits = this._condPhrase(s.exit_conditions, s.exit_match || 'all', 0);
+      const asked = s.ask && s.ask.question ? (this.askedNames(s.ask) || 'no Companion app') : '';
       if (level === 'min') {
-        return `${trig} → ${act}.`;
+        return asked ? `${trig} → ask ${asked} → ${act}.` : `${trig} → ${act}.`;
       }
       if (level === 'medium') {
         let t = `When ${trig}`;
         if (conds) t += `, and only if ${conds}`;
+        if (asked) t += `, ask ${asked} first`;
         t += `, ${act}.`;
         if (exits) t += ` End early when ${exits}.`;
         return t;
@@ -968,6 +999,7 @@ document.addEventListener('alpine:init', () => {
       lines.push(`WHEN   ${trig}.`);
       lines.push(conds ? `IF     ${conds} (${(s.match || 'all') === 'any' ? 'any' : 'all'} must hold).`
                        : `IF     no extra conditions — fires whenever the schedule is due.`);
+      if (asked) lines.push(`ASK    ${asked}: "${s.ask.question}" (${s.ask.if_no_reply === 'continue' ? 'no reply: continue' : 'no reply: skip'}).`);
       lines.push(`DO     ${act}.`);
       if (exits) lines.push(`UNTIL  it ends early when ${exits} (${(s.exit_match || 'all') === 'any' ? 'any' : 'all'}).`);
       const gw = (this.gateways.find(g => g.id === s.gateway_id) || {});
