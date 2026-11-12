@@ -129,8 +129,17 @@ def site(store, settings, gw, host, month: int) -> dict:
     except Exception:  # noqa: BLE001
         cfg = None
     return {"mode": mode, "reserve_pct": reserve, "capacity_kwh": cap or None,
-            "solar_kwp": getattr(settings, "pv_kwp", None) or None,
+            "solar_kwp": _pv_kwp(settings),
             "tariff": tariff_summary((cfg or {}).get("pricing"), month) if cfg else None}
+
+
+def _pv_kwp(settings) -> float | None:
+    """The solar size: yours, else the gateways' (#583)."""
+    from . import pv_size
+    try:
+        return pv_size.kwp(settings)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def saved_objectives(store, gw_id: str) -> list[str]:

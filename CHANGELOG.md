@@ -85,6 +85,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   purge runs with the hourly history upkeep and when a recording ends.
 
 ### Changed
+- **Solar size comes from your gateways; yours wins when set** (#583, owner). Location &
+  Solar's PV size is the gateways' own rating (summed over the site) unless you enter a
+  number: larger for DC panels or remote solar, smaller allowed with a note. The field
+  shows both with **Use gateway**. The forecast, Analytics → Explain and the Solar tab use
+  it. With neither, the field asks you to confirm and there is no forecast: the 5 kWp
+  default is gone.
 - **Prices in one place under Sites & Billing** (#582, owner). The price signal for
   automation (AEMO NEM or Home Assistant price entities) moves from Integrations to Sites &
   Billing → Prices, and the AEMO region is your site's (Sites & Meters → Region, AU-NSW →

@@ -2443,18 +2443,22 @@
                placeholder="151.2093"></label>
     </div>
     <div class="grid grid-cols-3 gap-3">
-      <label class="text-xs text-slate-500">PV size (kWp)
-        <input type="number" step="0.1" class="form-control form-control-sm w-full mt-1" x-model="form.pv_kwp"
-               @change="saveOne({pv_kwp: Number(form.pv_kwp) || 0})" placeholder="6.6">
-        <!-- The gateway knows the array size (1903 solar_pv). Offered, not applied: a
-             deliberately different number (shaded array, clipped inverter) is a real
-             answer and must not be overwritten. -->
-        <span x-show="derivedPvKwp && Number(form.pv_kwp) !== derivedPvKwp" x-cloak
-              class="block mt-1 text-[10px]" style="color:var(--text-faint)">
-          Gateway reports <span class="font-mono" x-text="derivedPvKwp + ' kWp'"></span> —
-          <button type="button" class="underline" style="color:var(--accent)"
-                  @click="form.pv_kwp = derivedPvKwp; saveOne({pv_kwp: derivedPvKwp})">use it</button>
-        </span></label>
+      <label class="text-xs text-slate-500" data-testid="pv-size">PV size (kWp)
+        <!-- Derived by default (#583): blank = the gateways' own size. A larger number is
+             for DC panels above the AC rating or remote solar; smaller is allowed. -->
+        <input type="number" step="0.1" min="0" class="form-control form-control-sm w-full mt-1" x-model="form.pv_kwp"
+               @change="saveOne({pv_kwp: Number(form.pv_kwp) > 0 ? Number(form.pv_kwp) : null})"
+               :placeholder="derivedPvKwp ? derivedPvKwp + ' from the gateway' : 'Please confirm'">
+        <span class="block mt-1 text-[10px]" style="color:var(--text-faint)">
+          <span x-show="derivedPvKwp" x-text="'Gateway ' + derivedPvKwp + ' kWp'"></span><span
+                x-show="derivedPvKwp && Number(form.pv_kwp) > 0" x-text="' · You ' + Number(form.pv_kwp) + ' kWp'"></span>
+          <button type="button" x-show="derivedPvKwp && Number(form.pv_kwp) > 0" class="underline ml-1" style="color:var(--accent)"
+                  @click="form.pv_kwp = ''; saveOne({pv_kwp: null})">Use gateway</button>
+          <span x-show="!derivedPvKwp && !(Number(form.pv_kwp) > 0)">Please confirm: the gateway hasn't reported its size. Enter yours.</span>
+        </span>
+        <span x-show="derivedPvKwp && Number(form.pv_kwp) > 0 && Number(form.pv_kwp) < derivedPvKwp" x-cloak
+              data-testid="pv-size-smaller" class="block mt-0.5 text-[10px]" style="color:var(--text-faint)">
+          Smaller than the gateway's: fine for shading or clipping; the forecast uses yours.</span></label>
       <label class="text-xs text-slate-500">Tilt°
         <input type="number" step="1" class="form-control form-control-sm w-full mt-1" x-model="form.pv_tilt"
                @change="saveOne({pv_tilt: Number(form.pv_tilt) || 0})" placeholder="22"></label>

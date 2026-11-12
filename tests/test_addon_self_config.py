@@ -169,9 +169,10 @@ def test_the_ui_offers_it_rather_than_overwriting():
     html = (Path(__file__).resolve().parents[1]
             / "src/franklinwh_direct_connect_bridge/templates/tabs/settings.html").read_text()
     block = html[html.index("PV size (kWp)"):html.index("Tilt°")]   # the region moved (#582)
-    assert "derivedPvKwp" in block and "use it" in block
-    # shown only when it DIFFERS — no nagging when the two already agree
-    assert "Number(form.pv_kwp) !== derivedPvKwp" in block
+    # Since #583 the gateway's size is used when you set none; yours is never
+    # overwritten, and Use gateway (only shown while you have one) clears it.
+    assert "derivedPvKwp" in block and "Use gateway" in block
+    assert 'x-show="derivedPvKwp && Number(form.pv_kwp) > 0" class="underline' in block
 
 
 # -- publishing works out of the box in the add-on ----------------------------------------

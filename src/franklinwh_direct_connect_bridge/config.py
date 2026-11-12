@@ -91,7 +91,7 @@ class Settings(BaseSettings):
     # lat/lon unset = feature off. Azimuth uses Open-Meteo's convention (0=S, -90=E, 90=W).
     pv_latitude: float | None = None
     pv_longitude: float | None = None
-    pv_kwp: float = 5.0
+    pv_kwp: float | None = None       # yours; None = the gateways' own size (#583)
     nem_region: str = ""              # AEMO NEM region for wholesale spot (NSW1/QLD1/SA1/TAS1/VIC1)
     tariff_price_entity: str = ""     # HA entity (ha:<inst>:<eid>) -> tariff.spot_price (buy, dynamic)
     tariff_feedin_entity: str = ""    # HA entity (ha:<inst>:<eid>) -> tariff.feed_in_price (sell, dynamic)

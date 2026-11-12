@@ -352,7 +352,20 @@ bridge reads the location your installer configured on the aGate, over the local
 and nothing needs typing. If the aGate has no location configured, the sync says so and
 leaves the fields as they were. Only then type the coordinates in yourself.
 
-Then set the array: size in kWp, tilt, and azimuth.
+Then set the array: tilt and azimuth, and check the size.
+
+**Size (kWp)** comes from your gateways by default (#583): their rated PV inputs (1903),
+added up over the site's gateways, shown as "Gateway 6.6 kWp". Leave the field blank to
+use it. Enter a number of your own when the gateway's is not the whole story: DC panels
+larger than the inverter's AC rating (common in Australia, such as 8 kWp on a 6.6 kW
+inverter), or remote or third-party solar the aGate doesn't rate. The field then shows both
+("Gateway 6.6 kWp · You 8 kWp") with **Use gateway** to go back. A number below the
+gateway's is allowed, for shading or clipping, with a one-line note. The forecast and
+Analytics → Explain use your number when set, else the gateway's; the Solar tab shows
+"Forecast uses … kWp (yours)" under **Installed** when they differ.
+
+With neither (the gateway hasn't reported its size yet, and you entered none) the field
+says **Please confirm** and there is no forecast: before 0.5.42 the bridge assumed 5 kWp.
 
 **Azimuth uses Open-Meteo's convention**, which is not the one most people assume:
 `0` is south, `-90` is east, `90` is west.
