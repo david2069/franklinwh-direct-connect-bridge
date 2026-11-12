@@ -1876,6 +1876,9 @@
       <p class="text-[11px] text-slate-500">Fire automatically on these events, delivered to the enabled devices below.</p>
       <template x-for="[key, t] in Object.entries((triggers.config && triggers.config.triggers) || {})" :key="key">
         <div class="flex items-center justify-between gap-2 py-0.5 flex-wrap">
+          <!-- Scheduler (#581): failed, missed, aborted and unanswered runs. -->
+          <p x-show="triggerGroupStart(key)" data-testid="trigger-group"
+             class="w-full metric-label pt-2" x-text="triggerGroupStart(key)"></p>
           <span class="text-xs flex items-center gap-1.5" style="color:var(--text-secondary)">
             <span x-text="t.label"></span>
             <template x-if="'threshold' in t">

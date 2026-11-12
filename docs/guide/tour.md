@@ -66,7 +66,7 @@ is already satisfied, so a second pass shows current state rather than blank fie
 
 ## Getting around
 
-![Topbar cog → Navbar: show, hide and reorder tabs](../images/tour/03-getting-around.png)
+![Customise → Navbar: show, hide and reorder tabs](../images/tour/03-getting-around.png)
 
 The bridge has one navigation registry and renders it two ways. On a wide screen you get
 the **sidebar**; below roughly 768 px you get a **bottom bar** that fits as many tabs as
@@ -78,7 +78,8 @@ You can change all of this:
 
 - **Settings → General → Navigation** — `Auto` (by width), `Sidebar only`, or
   `Bottom bar only`.
-- **Topbar cog → Navigation** — show/hide tabs and reorder them. **Dashboard** is pinned
+- **Topbar cog → Customise → Navbar** — show/hide tabs and reorder them (see
+  [Customise](#customise) below). **Dashboard** is pinned
   first everywhere and cannot be hidden; **Settings** cannot be hidden either and is
   hoisted to second place in the sidebar (in the bottom bar it floats, because bar slots
   are scarce). A tab you hide is still reachable under **More**.
@@ -87,12 +88,26 @@ You can change all of this:
 Preferences are stored in your browser (`localStorage`), so they are per-device and not
 shared between phone and desktop.
 
+### Customise
+
+**Topbar cog → Customise top bar, navbar and cards…** opens one dialog with three tabs:
+**Top bar**, **Navbar** and **Dashboard cards** (#585). The Dashboard's **Cards** button
+opens it on **Dashboard cards**. Each row has:
+
+- a **drag handle** (≡): drag the row to its new place, with a mouse or a finger;
+- **up / down arrows**, to move it one place (also from the keyboard);
+- a **switch** to show or hide it.
+
+Changes are saved as you make them. **Undo** steps back one change at a time, and
+**Reset** puts the tab you're on back to its defaults. **Done** closes it. Theme and
+accent stay in the cog.
+
 ## The top bar
 
 ![The top bar with the gateway selector open](../images/tour/04-the-top-bar.png)
 
-Everything here except the connection chip and the cog can be turned on or off from
-**Topbar cog → Centre indicators / Right buttons**.
+Everything here except the connection chip and the cog can be turned on or off, and
+reordered, from **Topbar cog → Customise → Top bar** (Centre indicators / Right buttons).
 
 | Item | What it tells you |
 |---|---|
@@ -104,10 +119,10 @@ Everything here except the connection chip and the cog can be turned on or off f
 | **VPP** | Another remote controller has the aGate: its programme id (1707) is 9 and this bridge holds no force. With the Cloud API the tooltip also names the programme. |
 | **DEBUG MODE** | Run status 8. |
 | **Run status / SoC / latency** | Charging / discharging / standby, state of charge, round-trip time to the aGate. |
-| **Cards** | On the Dashboard only: opens the card show/reorder panel. |
+| **Cards** | On the Dashboard only: opens Customise on **Dashboard cards**. |
 | **`</>`** | Raw-key toggle — reveals the underlying `cmdType` behind each displayed value. |
 | **Release** | Appears *only while a force dispatch is active*, on every tab, so you can stop it from anywhere. |
-| **Refresh · theme · cog** | Re-poll, light/dark and accent, and the preferences popover. |
+| **Refresh · theme · cog** | Re-poll, light/dark, and the cog: theme, accent and **Customise**. |
 
 **System view** (its top-bar button, or System view in the sidebar) opens a picture of the
 site over the page: grid, aGate,

@@ -23,7 +23,7 @@ import asyncio
 import logging
 import time
 
-from . import alerts
+from . import actionable, alerts
 from . import scheduler as _sched
 from . import workers as _workers
 from .config import Settings
@@ -133,10 +133,11 @@ def sweep(settings: Settings, *, now: float | None = None) -> list[dict]:
         log.warning("missed-run sweep failed: %s", e)
         return []
     for m in missed:
+        name = m.get("name") or m.get("schedule_id")
+        detail = f"{m.get('attempts') or 0} attempt(s), none succeeded"
         # WARNING, not info: a schedule that did not run is the thing the owner wanted
-        # to be told about, and it has no other voice.
-        log.warning("[%s] schedule %r MISSED its window — %d attempt(s), no success",
-                    m.get("gateway_id") or "-", m.get("name"), m.get("attempts") or 0)
+        # to be told about. The app log and the push say the same (#581).
+        _sched.notify_run(store, "schedule_missed", name, m.get("gateway_id") or "", detail)
         try:
             store.log_schedule_event(
                 m["schedule_id"], m.get("name") or "", "missed",
@@ -144,11 +145,11 @@ def sweep(settings: Settings, *, now: float | None = None) -> list[dict]:
                 gateway_id=m.get("gateway_id") or "")
         except Exception:  # noqa: BLE001
             pass
-        # SCHEDULE_FAILED (#271): a scheduled action that was never sent.
+        # SCHEDULE_MISSED (#581): a warning of its own, not SCHEDULE_FAILED.
         alerts.raise_event(
-            store, m.get("gateway_id") or "", "SCHEDULE_FAILED",
-            f"Schedule '{m.get('name') or m.get('schedule_id')}' missed its window: "
-            f"{m.get('attempts') or 0} attempt(s), none succeeded.")
+            store, m.get("gateway_id") or "", "SCHEDULE_MISSED",
+            f"Schedule '{name}' missed its window on "
+            f"{actionable.gateway_name(m.get('gateway_id') or '')}: {detail}.")
     return missed
 
 
