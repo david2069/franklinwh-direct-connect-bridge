@@ -33,7 +33,7 @@ flowchart LR
 | **Trigger** | When is the window open? | Trigger type, its time fields, Duration (min) | [Triggers](triggers.md) |
 | **Conditions** | May it act now? | Entry conditions (must hold to fire), Hold (HH:MM:SS) | [Conditions](conditions.md) |
 | **Action** | What does it send? | Battery action and its parameters, Home Assistant actions | [Actions](actions.md) |
-| **Gateway** | Which gateway or gateways? | the gateway picker (shown with more than one gateway); `gateway_scope` (API only) | [Targets](targets.md) |
+| **Gateway** | Which gateway or gateways? | the gateway picker; **All gateways** for a rule with no battery action (`gateway_scope`) | [Targets](targets.md) |
 | **Exit** | When does the window end, and what then? | End early when… (exit conditions); `restore_on_exit` (API only) | [Exit and release](exit-and-conflicts.md) |
 | **Outcome** | What happened? | — (History, `GET /api/schedules/runs`, Logs) | [Outcomes and audit](outcomes.md) |
 
