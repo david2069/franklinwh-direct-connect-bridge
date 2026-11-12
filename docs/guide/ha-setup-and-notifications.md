@@ -244,6 +244,20 @@ has a switch and a **Send to**; the two SoC triggers also have a threshold.
 A trigger fires on a **change** between one poll and the next, not on every poll. There
 is no other rate limit.
 
+#### Scheduler
+
+Under the same triggers, the **Scheduler** group tells you about runs that didn't go as
+planned (#581). Each has its own switch and **Send to**, and every message names the
+gateway. Each also writes a warning to the bridge log (Logs) in the same words, whether or
+not the push is on, and the schedule's activity has its own row.
+
+| Trigger | Default | Sent when | Message |
+|---|---|---|---|
+| Run failed | on | A scheduled action fails. It is the `SCHEDULE_FAILED` critical alert's push, with **Acknowledge**: this switch and Send to steer that push; the alert window and the Home Assistant notification stay. | "Schedule 'Evening peak' failed on House (attempt 1): …" |
+| Run missed | on | A schedule's window closes with no successful run. Also a `SCHEDULE_MISSED` warning in the alert list. | "Schedule 'Evening peak' missed its window [House]: 3 attempt(s), none succeeded." |
+| Run aborted (stopped, deferred or ended early) | off | **Stop** on a schedule with a running dispatch; a run deferred to a higher-priority rule or a busy battery; a window ended early by its exit condition. | "Schedule 'Evening peak' did not finish [House]: stopped by hand." |
+| No reply to an actionable notification | on | An [actionable notification](#actionable-notifications) got no reply in time, couldn't be delivered, or was lost in a restart. It goes to the devices the question went to (its Send to), else to this trigger's Send to. | "Schedule 'Evening peak' got no reply [House]: no reply in 10 min: skipped this run (if no reply: skip)." |
+
 **Send test** at the top of the triggers sends a test to all enabled devices or to the
 ones you choose. It says how many devices it reached, and when none, why: "No devices
 are on", "No device chosen" or "Push notifications are off".
@@ -300,7 +314,8 @@ What raises one today:
 | `HA_UNREACHABLE` | condition | warning | Home Assistant has failed to take an alert notification for 5 minutes | One goes through and 2 minutes pass |
 | `WORKER_STALLED` | condition | critical | A background worker stops responding or crashes (Health → Workers) | Every worker for that gateway is beating again |
 | `COMMAND_REFUSED` | event | critical | The Audit Trail records a control as failed or refused. Cloud sign-ins are not counted. | Acknowledged |
-| `SCHEDULE_FAILED` | event | critical | A scheduled action fails, or its window closes without success | Acknowledged |
+| `SCHEDULE_FAILED` | event | critical | A scheduled action fails | Acknowledged |
+| `SCHEDULE_MISSED` | event | warning | A schedule's window closes without a successful run (#581) | Acknowledged |
 
 The same event again within 10 minutes is added to the open alert (its count goes up)
 rather than raising a new one. The other codes in the shared list (`COMMAND_UNCONFIRMED`,

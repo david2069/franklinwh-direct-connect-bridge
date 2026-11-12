@@ -12,6 +12,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Scheduler notifications: failed, missed, aborted and no reply** (#581, owner). A
+  **Scheduler** group under Notifications → Auto-notify triggers: **Run failed** (on),
+  **Run missed** (on), **Run aborted** (off: stopped, deferred or ended early) and **No
+  reply to an actionable notification** (on), each with its own switch and Send to. Every
+  message names the gateway, and each also writes a warning to the bridge log in the same
+  words. No reply goes to the devices that were asked.
 - **Analytics → Explain: trends and what to change for your objectives** (#588, owner).
   For the period shown, on Local or Cloud: each total against the previous period and last
   year (with runs of rises or falls), what the period shows, and suggestions for the
@@ -63,6 +69,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   purge runs with the hourly history upkeep and when a recording ends.
 
 ### Changed
+- **A missed schedule run is a warning of its own** (#581, owner): `SCHEDULE_MISSED`,
+  worded apart from a failure. A failed run stays the critical `SCHEDULE_FAILED`, which now
+  names the gateway; its push follows the Scheduler group's Run failed switch and Send to.
 - **Actionable Notifications: one notify path** (#576, owner). A schedule notifies only
   from its **Home Assistant actions** notify rows. **Ask before continuing** is now the
   **Actionable notification** option on a notify row (buttons, wait, if no reply, Send

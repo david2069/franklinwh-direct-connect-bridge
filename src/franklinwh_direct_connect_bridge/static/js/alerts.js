@@ -154,8 +154,11 @@ document.addEventListener('alpine:init', () => {
         means: 'The aGate accepted the write but the value did not change.',
         todo: 'Check the current state before trying again.', tab: 'control', link: 'Open Control' },
       SCHEDULE_FAILED: {
-        means: 'A scheduled action did not complete. A failure is retried while its window is open; a missed window is not.',
+        means: 'A scheduled action did not complete. It is retried while its window is open.',
         todo: 'The schedule\'s activity shows each attempt.', tab: 'scheduler', link: 'Open Scheduler' },
+      SCHEDULE_MISSED: {
+        means: 'A schedule\'s window closed without a successful run, so it did not run this time.',
+        todo: 'The schedule\'s activity shows why each attempt did not run.', tab: 'scheduler', link: 'Open Scheduler' },
       RESTART_DURING_COMMAND: {
         means: 'The bridge restarted while a command was in progress.',
         todo: 'Check the current state.', tab: 'control', link: 'Open Control' },
