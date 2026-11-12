@@ -586,9 +586,8 @@ _ASK_HIGH = (
      "tariff.sell_rate is 0.5 $/kWh or more"),
 )
 
-#: Built-in schedule templates. Every action here is hardware-verified on the
-#: local channel — no force-charge presets, because the local protocol cannot do
-#: that (see UNAVAILABLE). A preset is loaded into the editor, not fired blind.
+#: Built-in schedule templates. A force one ``requires`` the Modbus client (this bridge);
+#: the rest use the local channel. A preset is loaded into the editor, not fired blind.
 PRESETS: list[dict[str, Any]] = [
     {"id": "self_consumption", "name": "Self-Consumption all day",
      "description": "Switch to Self-Consumption at midnight.",
@@ -960,9 +959,29 @@ def to_automations(entry: dict) -> dict:
         "duration_s": int(dur * 60) if isinstance(dur, (int, float)) else None,
         "entry_hold_s": entry.get("entry_hold_s") or 0,
         "priority": entry.get("priority") or 0,
-        "conflict": entry.get("conflict") or "defer",
+        "conflict": entry.get("conflict") or "override",   # this bridge's default (#580)
         "ha_actions": entry.get("ha_actions") or [],
     }
+
+
+def automations_export_warnings(entry: dict) -> list[str]:
+    """What the ``franklinwh-automations`` export can't carry for one schedule (#580),
+    so it is said rather than silently dropped."""
+    lost = []
+    if entry.get("months"):
+        lost.append("months")
+    if entry.get("day_of_month"):
+        lost.append("day of month")
+    if entry.get("start_date") or entry.get("end_date"):
+        lost.append("start and end dates")
+    if str(entry.get("gateway_scope") or "one").lower() == "all":
+        lost.append("All gateways")
+    if entry.get("restore_on_exit"):
+        lost.append("restore the mode when the window ends")
+    if entry_ask(entry):
+        lost.append("the actionable notification's wait and buttons")
+    return ([f"'{entry.get('name') or entry.get('id')}': the Modbus Bridge format has no "
+             f"{', '.join(lost)}; not exported"] if lost else [])
 
 
 def validate_spec(entry: dict) -> list[str]:
@@ -2657,6 +2676,43 @@ def _fire_ha_phase(entry: dict, phase: str, *, settings, client, store,
     return out
 
 
+def build_snapshot(settings, store, state: dict, *, host: str | None, gateway_id: str | None,
+                   now: dt.datetime, modbus_host: str | None = None,
+                   tick: bool = False) -> dict[str, Any]:
+    """Every value a condition or a ``%var%`` can read, for one gateway (#580): the tick,
+    the editor's Test / Evaluate and Run now all use this one. ``tick``: this is the
+    scheduler's own tick, which feeds the billing accumulators; anything else only reads
+    them."""
+    from . import billing
+    snapshot = snapshot_from_state(state)
+    snapshot["grid.offgrid_min"] = offgrid_min(state, now.timestamp())   # on the tick's clock
+    snapshot.update(ha_snapshot(store))     # exposed HA entities are conditions too
+    snapshot.update(solar_snapshot(settings))   # weather + solar-forecast sensors
+    snapshot.update(nem_snapshot(settings, store, gateway_id))   # tariff.spot_price (AEMO NEM, the site's region)
+    snapshot.update(ha_price_snapshot(settings, store))   # HA price entity -> tariff.spot_price/feed_in_price (wins over NEM)
+    snapshot.update(tariff_snapshot(store, gateway_id, now))   # tariff.* + service.*
+    snapshot.update(billing_snapshot(store, gateway_id, now))   # tariff.*_window_active
+    _dyn = apply_dynamic_pricing(snapshot, settings, store, gateway_id)   # per-tariff wholesale override
+    price_events(snapshot, settings)            # tariff.price_spike, HA demand window (#582)
+    if tick:
+        snapshot.update(billing.billing_tick(store, gateway_id, snapshot.get("grid.power_w"),
+                                             now, dynamic_rate=_dyn))   # demand/energy/bonus/charge
+    else:
+        snapshot.update(billing.billing_read(store, gateway_id))    # read only: never accrues
+    snapshot.update(billing.fixed_snapshot(store, gateway_id, now))   # fixed.* (pure accrual)
+    try:
+        from . import system_setup
+        snapshot.update(system_setup.snapshot(store, settings, gateway_id, host))   # system.* (derived+override)
+    except Exception:  # noqa: BLE001
+        pass
+    snapshot.update(const_snapshot(store))   # const.* automation constants
+    # Modbus (SunSpec 702) target: an explicit modbus_host when the poller resolved one
+    # (empty string = skip, e.g. a mock with no Modbus); else fall back to host.
+    snapshot.update(ratings_snapshot(modbus_host if modbus_host is not None else host))   # ratings.* from Modbus 702 (cached)
+    snapshot.update(derived_snapshot(snapshot))   # battery.* derived (needs const.* + ratings.*)
+    return snapshot
+
+
 def tick(*, settings, client, store, state: dict, host: str | None = None,
          gateway_id: str | None = None, now: dt.datetime | None = None,
          modbus_host: str | None = None) -> list[dict]:
@@ -2675,30 +2731,8 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
     # did everywhere before.
     if now is None:
         now, _ = site_time.now_site(settings, host)
-    snapshot = snapshot_from_state(state)
-    snapshot["grid.offgrid_min"] = offgrid_min(state, now.timestamp())   # on the tick's clock
-    snapshot.update(ha_snapshot(store))     # exposed HA entities are conditions too
-    snapshot.update(solar_snapshot(settings))   # weather + solar-forecast sensors
-    snapshot.update(nem_snapshot(settings, store, gateway_id))   # tariff.spot_price (AEMO NEM, the site's region)
-    snapshot.update(ha_price_snapshot(settings, store))   # HA price entity -> tariff.spot_price/feed_in_price (wins over NEM)
-    snapshot.update(tariff_snapshot(store, gateway_id, now))   # tariff.* + service.*
-    snapshot.update(billing_snapshot(store, gateway_id, now))   # tariff.*_window_active
-    from . import billing
-    _dyn = apply_dynamic_pricing(snapshot, settings, store, gateway_id)   # per-tariff wholesale override
-    price_events(snapshot, settings)            # tariff.price_spike, HA demand window (#582)
-    snapshot.update(billing.billing_tick(store, gateway_id, snapshot.get("grid.power_w"),
-                                         now, dynamic_rate=_dyn))   # demand/energy/bonus/charge
-    snapshot.update(billing.fixed_snapshot(store, gateway_id, now))   # fixed.* (pure accrual)
-    try:
-        from . import system_setup
-        snapshot.update(system_setup.snapshot(store, settings, gateway_id, host))   # system.* (derived+override)
-    except Exception:  # noqa: BLE001
-        pass
-    snapshot.update(const_snapshot(store))   # const.* automation constants
-    # Modbus (SunSpec 702) target: an explicit modbus_host when the poller resolved one
-    # (empty string = skip, e.g. a mock with no Modbus); else fall back to host.
-    snapshot.update(ratings_snapshot(modbus_host if modbus_host is not None else host))   # ratings.* from Modbus 702 (cached)
-    snapshot.update(derived_snapshot(snapshot))   # battery.* derived (needs const.* + ratings.*)
+    snapshot = build_snapshot(settings, store, state, host=host, gateway_id=gateway_id,
+                              now=now, modbus_host=modbus_host, tick=True)
     fired: list[dict] = []
     ready: list[dict] = []
     # Debug monitor (#345): each enabled schedule's state as this tick decided it.

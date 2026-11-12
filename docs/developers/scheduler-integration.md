@@ -113,7 +113,7 @@ interpreted by `scheduler.py`:
 | `ha_actions` | three | `ha_kind` `notify` or `service`; `when` `fire`, `exit` or `both`; optional `guard`. |
 | `days`, `months`, `start_date`, `end_date`, `day_of_month` | omitted | Calendar restrictions. Empty means no restriction (`_calendar_ok()`). |
 | `priority`, `conflict` | omitted | Which rule wins a contested gateway. |
-| `gateway_id`, `gateway_scope` | omitted | Empty runs on the default gateway only; `gateway_scope: "all"` runs on each gateway. |
+| `gateway_id`, `gateway_scope` | required / `one` | Every schedule names its gateway (#379); `gateway_scope: "all"` runs on each gateway. |
 
 Why `daily` and not a recurring window (`window`): see
 [the pitfalls](#known-issues-and-pitfalls).

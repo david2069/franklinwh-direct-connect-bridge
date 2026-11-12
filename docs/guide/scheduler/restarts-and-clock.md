@@ -93,8 +93,8 @@ If the gateway cannot be read, the bridge falls back to the container's clock fo
 `time.tz_ok`) and a recorded-timezone check at start-up.
 
 !!! note "Several gateways, several clocks"
-    Each gateway's schedules run on that gateway's clock. An unbound schedule runs on the
-    default gateway's clock (#182). The Modbus Bridge uses one clock for all gateways.
+    Each gateway's schedules run on that gateway's clock; an **All gateways** rule runs on
+    each gateway's own. The Modbus Bridge uses one clock for all gateways.
 
 ### Daylight saving
 

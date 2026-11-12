@@ -116,7 +116,8 @@ you report a result: it says which source the running build came from.
 ## Choosing a gateway
 
 Most read and control endpoints take an optional `gateway` query parameter, a gateway
-id from `GET /api/gateways`. Without it, the request goes to the default gateway.
+id from `GET /api/gateways`. A request that acts on an aGate must name one; none goes to
+the default gateway (#379).
 `_gw_or_404()` in `app.py` returns **404** for an unknown id, before any device I/O.
 
 ```bash

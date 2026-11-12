@@ -32,9 +32,9 @@ flowchart LR
 |---|---|---|---|
 | **Trigger** | When is the window open? | Trigger type, its time fields, Duration (min) | [Triggers](triggers.md) |
 | **Conditions** | May it act now? | Entry conditions (must hold to fire), Hold (HH:MM:SS) | [Conditions](conditions.md) |
-| **Action** | What does it send? | Battery action and its parameters, Home Assistant actions | [Actions](actions.md) |
+| **Action** | What does it send? | Gateway action and its parameters, Home Assistant actions | [Actions](actions.md) |
 | **Gateway** | Which gateway or gateways? | the gateway picker; **All gateways** for a rule with no battery action (`gateway_scope`) | [Targets](targets.md) |
-| **Exit** | When does the window end, and what then? | End early when… (exit conditions); `restore_on_exit` (API only) | [Exit and release](exit-and-conflicts.md) |
+| **Exit** | When does the window end, and what then? | End early when… (exit conditions); **Put the previous mode back when the window ends** (`restore_on_exit`) | [Exit and release](exit-and-conflicts.md) |
 | **Outcome** | What happened? | — (History, `GET /api/schedules/runs`, Logs) | [Outcomes and audit](outcomes.md) |
 
 Two more settings decide what happens when schedules meet: **Priority** and **If busy**. See
@@ -70,7 +70,7 @@ On each tick, for **each gateway** in turn:
 |---|---|
 | 1 | Skip the gateway if it is disabled, has never polled, or its stored values are older than max(90 s, 3 × poll interval). |
 | 2 | Build one sensor snapshot from the values the poller last stored, plus Home Assistant, tariff, forecast, constants and the derived sensors. |
-| 3 | Read every schedule. Keep those that apply to this gateway: bound to it, unbound and this is the default gateway, or `gateway_scope` `all`. |
+| 3 | Read every schedule. Keep those that apply to this gateway: bound to it, or `gateway_scope` `all` (**All gateways**). |
 | 4 | For each: window open? already fired? entry conditions? hold? Collect those ready to fire. |
 | 5 | Among the ready ones, one winner per resource by **Priority**; then **If busy** for force actions. |
 | 6 | Run the winners, and write every decision to **History**. |
@@ -88,7 +88,7 @@ gateway), the Model 702 ratings over the Modbus client (this bridge) (cached for
 and Home Assistant's state list.
 <!-- @b CON-03 ;; src: scheduler_worker.py:107-116, scheduler.py:1947-1970, site_time.py:25, battery_control.py:449-475 ;; tested: tests/test_scheduler_worker.py::test_context_carries_the_snapshot_the_poller_wrote ;; write: no ;; b: The tick's snapshot is built from the poller's last_state for that gateway, not from a device read ;; test: -->
 
-A schedule with **No battery action (HA only)** claims no resource and never competes with
+A schedule with **No gateway action (HA only)** claims no resource and never competes with
 battery schedules.
 <!-- @b CON-04 ;; src: scheduler.py:2183-2212, scheduler.py:2084-2094 ;; tested: tests/test_scheduler.py::test_a_notify_rule_claims_nothing ;; write: yes ;; b: An entry without a gateway action claims no resource and never contends ;; test: -->
 
@@ -142,4 +142,3 @@ evaluated by the same code. Release behaviour does not depend on the format: see
 | **Dispatch** | A force command a schedule (or the Battery Control widget) started, recorded until it is released. |
 | **Manual control** | A force from the Battery Control widget. A force from another tool (the Modbus Bridge, a VPP) is not seen. |
 | **Release** | Clearing the force setpoint so the gateway returns to its own mode. |
-| **Default gateway** | The gateway an unbound schedule runs on: the first-registered gateway (#182). |

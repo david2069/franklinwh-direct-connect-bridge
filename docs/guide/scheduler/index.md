@@ -28,7 +28,7 @@ You find it on the **Scheduler** tab. It has three views: **Schedules** (the car
 | [Triggers](triggers.md) | Every trigger type, calendar restrictions, Next, what happens to a window that is missed. |
 | [Conditions](conditions.md) | Operators, Value vs Lookup, groups (ALL/ANY), scope, hold, Test, every sensor. |
 | [Actions](actions.md) | Battery actions, mode, reserve, off-grid and circuits, HA-only schedules, Home Assistant actions and notifications. |
-| [Targets](targets.md) | Bound and unbound schedules, the default gateway, `gateway_scope` `all`. |
+| [Targets](targets.md) | The gateway a schedule runs on, and **All gateways** (`gateway_scope` `all`). |
 | [Exit and release](exit-and-conflicts.md) | How a window ends, End early when…, release, restore on exit. |
 | [Priorities and conflicts](priorities.md) | Which schedule gets a resource, If busy, manual control. |
 | [Outcomes and audit](outcomes.md) | History, runs, retries, the dispatch record, Run now, Stop, Pause and Resume. |
@@ -64,11 +64,11 @@ spare, and stops at your minimum discharge SoC.
 2. **Name:** `Evening discharge`.
 3. **Trigger type:** **Weekly at time**. Under **Days**, tick **Mon** to **Fri** (none
    ticked means every day). Set **Fire at** to `17:00` and **Duration (min)** to `180`.
-4. **Battery action:** **Force charge / discharge / standby**. Set **Direction** to
+4. **Gateway action:** **Force charge / discharge / standby**. Set **Direction** to
    **Force discharge**, **Power unit** to **% of inverter power**, and **Power** to `50`.
    Leave **Target SoC** empty.
-5. Leave **Priority** at `0`, **If busy** at `override` and the gateway at
-   **Default gateway** (the picker appears only with more than one gateway).
+5. Leave **Priority** at `0`, **If busy** at `override` and the gateway on the one the
+   form starts on, the active gateway.
 6. **Entry conditions (must hold to fire):** press **+ row**. Pick **Battery SoC (%)**,
    operator `>`, value `40`.
 7. **End early when…:** press **+ row**. Pick **Battery SoC (%)**, operator `<=`, press
@@ -190,12 +190,15 @@ the stored schedule, so nothing else changes (#157).
   <!-- @b IDX-10 ;; src: scheduler.py:554-623 ;; tested: tests/test_scheduler.py::test_dispatch_presets_present_and_valid ;; write: yes ;; b: Eleven presets; the four force presets need Modbus, carry an SoC gate and a target SoC, and validate as imports ;; test: -->
 - **Export ▾** downloads every schedule, as **This bridge** (`franklinwh-local-schedules`)
   or **Modbus bridge** (`franklinwh-automations`). Through the API,
-  `GET /api/schedules/export?ids=<id>,<id>` exports some.
+  `GET /api/schedules/export?ids=<id>,<id>` exports some. The Modbus bridge format has no
+  months, day of month, start and end dates, **All gateways**, mode restore or actionable
+  notification; an export that drops any of them says so (`warnings`), and **If busy**
+  defaults to `override`, as here (#580).
 - **Import** takes a file. The bridge first validates it (a dry run) and shows, per entry,
   errors (a missing name, a Fire at that is not `HH:MM`, an unknown action) and warnings (a
   gateway or notify device that does not exist here). **Import valid** creates the valid
-  entries **disabled**. An entry whose gateway does not exist here is pointed at the default
-  gateway. Both bundle types are read; a Modbus bridge bundle is mapped field by field.
+  entries **disabled**. An entry whose gateway does not exist here goes on the gateway you
+  import into. Both bundle types are read; a Modbus bridge bundle is mapped field by field.
   <!-- @b IDX-05 ;; src: app.py:3251-3310, scheduler.py:631-861 ;; tested: tests/test_scheduler.py::test_import_maps_modbus_automations_bundle ;; write: no ;; b: Import is a dry run unless dry_run=false, creates valid entries disabled and maps a franklinwh-automations bundle field by field ;; test: -->
 
 **Not in this bridge:** a per-entry **Export** in the card menu.

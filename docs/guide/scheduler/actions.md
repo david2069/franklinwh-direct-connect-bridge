@@ -4,24 +4,24 @@ Direct Connect Bridge. Mirrors the Modbus Bridge page
 [Actions](https://david2069.github.io/franklinwh-modbus-bridge/user/scheduler/actions/)
 section for section.
 
-The action is what a schedule does when it fires. Each schedule has one **Battery action**
-(or *No battery action (HA only)*) plus any number of **Home Assistant actions**.
+The action is what a schedule does when it fires. Each schedule has one **Gateway action**
+(or *No gateway action (HA only)*) plus any number of **Home Assistant actions**.
 
 ![The battery action list](../../images/scheduler/13-actions.png)
 
 ## Summary
 
-The **Battery action** list comes from the bridge (`GET /api/schedules` → `actions`). Each
+The **Gateway action** list comes from the bridge (`GET /api/schedules` → `actions`). Each
 action shows a note from the code under the list.
 
-| Battery action (UI) | API `action.kind` | Parameters | What the bridge sends |
+| Gateway action (UI) | API `action.kind` | Parameters | What the bridge sends |
 |---|---|---|---|
 | Set operating mode | `set_mode` | `mode`: `tou`, `self` or `backup` | an operating-mode change (Direct Connect 1727) |
 | Smart circuit on/off | `smart_circuit` | `circuit` (1–3), `on` | a smart-circuit write (1409, read back) — **Direct Connect only** |
 | Go off-grid / reconnect | `offgrid` | `on`, `soc` | an off-grid switch (1723) — **Direct Connect only** |
 | Set reserve SoC | `reserve_soc` | `mode`, `soc` | nothing: always skipped (see below, #129) |
 | Force charge / discharge / standby | `force` | `direction`, `power`, `unit`, `target_soc` | a WSet power setpoint through the Modbus client (this bridge) to the Modbus TCP Server (aGate :502) |
-| No battery action (HA only) | `""` (empty) | — | nothing; only the Home Assistant actions run |
+| No gateway action (HA only) | `""` (empty) | — | nothing; only the Home Assistant actions run |
 
 Every action except a force is a **one-shot**: it is sent once per occurrence (one opening of
 the window) and is not sent again until the next occurrence. Nothing a one-shot changed is
@@ -206,9 +206,9 @@ schedule's force is running. In the same tick, though, a mode schedule and a for
 on one gateway compete for the same resource and only the higher priority runs (see
 [Priorities and conflicts](priorities.md)). <!-- @b ACT-26 ;; src: scheduler.py:2126-2140, scheduler.py:2183-2190 ;; untested ;; write: yes ;; b: The If busy check runs only for force winners; set_mode and reserve_soc still contend as the battery resource in the same tick ;; test: unit: active dispatch owned by A, set_mode entry B with conflict defer; assert set_mode is sent -->
 
-## No battery action (HA only)
+## No gateway action (HA only)
 
-Choose *No battery action (HA only)*. The schedule sends nothing to the gateway and only its
+Choose *No gateway action (HA only)*. The schedule sends nothing to the gateway and only its
 Home Assistant actions run. It claims no resource, so it never competes with other schedules.
 With no HA actions either, it still fires and logs *fired — nothing to do*.
 <!-- @b ACT-27 ;; src: scheduler.py:2183-2212, scheduler.py:2408-2417 ;; tested: tests/test_scheduler.py::test_a_notify_rule_claims_nothing ;; write: no ;; b: An empty action claims no resource and only runs the HA actions ;; test: — -->
@@ -275,12 +275,11 @@ an **Actionable notification** (buttons, a wait, what no reply does); see
 - They run once per successful occurrence. <!-- @b HAA-03 ;; src: scheduler.py:2397-2458 ;; untested ;; write: no ;; b: Fire-phase HA actions run inside _fire_entry after the battery action ;; test: unit: two ticks inside one window; assert one notify -->
 - **Stop** does not run the exit actions; **Run now** runs the on-entry actions.
 
-!!! warning "On-entry actions run even when the battery action failed, and again on each retry"
-    The bridge runs the on-entry HA actions right after the battery action, whatever its
-    result. If the action failed, the run is retried later in the window (30 s, then
-    doubling), and the HA actions run again each time. A "Discharge started" notification can
-    therefore arrive several times for a discharge that never started. Issue #203.
-    <!-- @b HAA-07 ;; src: scheduler.py:2408-2417, scheduler.py:2459-2466 ;; unclear ;; write: no ;; b: Fire-phase HA actions run after a failed battery action and on every retry ;; test: unit: failing force plus notify, two retries; assert one notify (fails today) -->
+!!! note "On-entry actions run once per run, even when the battery action failed"
+    The bridge runs the on-entry HA actions right after the battery action, on the run's
+    first attempt only, whatever its result. A failed action is retried later in the window
+    (30 s, then doubling) without running the HA actions again (#203).
+    <!-- @b HAA-07 ;; src: scheduler.py _fire_entry (_occ_attempts <= 1) ;; tested: — ;; write: no ;; b: Fire-phase HA actions run on the first attempt only, after the battery action whatever its result ;; test: — -->
 
 !!! note "On-exit actions run when the window closes, fired or not"
     This is by design: exit-time actions run at the closing edge of the window, not at the

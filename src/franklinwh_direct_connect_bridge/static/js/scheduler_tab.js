@@ -212,6 +212,9 @@ document.addEventListener('alpine:init', () => {
         a.click();
         URL.revokeObjectURL(a.href);
         this.exportOpen = false;
+        // What the Modbus Bridge format can't carry, said rather than dropped (#580).
+        if ((bundle.warnings || []).length)
+          this.$store.app.toast(`Exported. ${bundle.warnings.join(' ')}`, 'info');
       } catch (e) { this.$store.app.toast(`Export failed: ${e.message}`, 'error'); }
     },
 
@@ -267,6 +270,7 @@ document.addEventListener('alpine:init', () => {
       return { id: '', name: '', enabled: true, fire_at: '18:00', duration_min: 90,
                match: 'all', gateway_id: this.$store.app.selectedGateway || '',   // #379
                gateway_scope: 'one',                                            // #578
+               restore_on_exit: false,                                          // #580
                conditions: [], exit_conditions: [],
                exit_match: 'all', entry_hold_s: 0, action: { kind: '' }, ha_actions: [],
                days: [], months: [], day_of_month: null, start_date: null, end_date: null,
@@ -346,6 +350,7 @@ document.addEventListener('alpine:init', () => {
         fire_at: s.fire_at || '18:00', duration_min: s.duration_min ?? 0,
         match: s.match || 'all', gateway_id: s.gateway_id || '',
         gateway_scope: s.gateway_scope || 'one',
+        restore_on_exit: !!s.restore_on_exit,
         conditions: JSON.parse(JSON.stringify(s.conditions || [])),
         exit_conditions: JSON.parse(JSON.stringify(s.exit_conditions || [])),
         exit_match: s.exit_match || 'all',
@@ -655,6 +660,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     async save() {
+      this._clearHidden();
       if (this.form.trigger_type === 'once') this.form.end_date = this.form.start_date;
       if (this.form.id) {
         const live = (this.schedules || []).find(x => x.id === this.form.id);
@@ -719,7 +725,8 @@ document.addEventListener('alpine:init', () => {
       this.busy = true;
       try {
         // The schedule's own gateway, else the one on screen (#379).
-        const r = await fetch(`api/schedules/${s.id}/test` + this.$store.app.gwQuery(), { method: 'POST' });
+        // The schedule's own gateway, not the top bar's (#580).
+        const r = await fetch(`api/schedules/${s.id}/test` + (s.gateway_id ? `?gateway=${encodeURIComponent(s.gateway_id)}` : this.$store.app.gwQuery()), { method: 'POST' });
         this.testResult = { id: s.id, ...(await r.json()) };
       } catch (e) { this.$store.app.toast(`Test failed: ${e.message}`, 'error'); }
       finally { this.busy = false; }
@@ -839,7 +846,7 @@ document.addEventListener('alpine:init', () => {
     },
     get showFireAt() { return ['daily', 'weekly', 'monthly', 'once'].includes(this.form.trigger_type); },
     get showDays() { return ['window', 'weekly'].includes(this.form.trigger_type); },
-    get showWindows() { return ['window', 'once'].includes(this.form.trigger_type); },
+    get showWindows() { return this.form.trigger_type === 'window'; },   // a one-off uses Fire at (#580)
     get showDate() { return this.form.trigger_type === 'once'; },
     get showMonthly() { return this.form.trigger_type === 'monthly'; },
     get showInterval() { return this.form.trigger_type === 'interval'; },
@@ -851,10 +858,27 @@ document.addEventListener('alpine:init', () => {
 
     /** Seed sensible defaults when the trigger type changes so no field is left empty. */
     onTriggerType() {
+      this._clearHidden();
       const t = this.form.trigger_type;
       if (t === 'window' && !(this.form.windows || []).length) this.addWindow();
       if (t === 'interval' && !this.form.interval_min) this.form.interval_min = 30;
       if (t === 'cron' && !this.form.cron) this.form.cron = '0 3 * * *';
+    },
+
+    /** The editor's gateway for Test and live values (#580): the schedule's, else the
+     *  top bar's (All gateways, or no form open). */
+    _formGwQuery() {
+      const g = this.form && this.form.gateway_scope !== 'all' && this.form.gateway_id;
+      return g ? `?gateway=${encodeURIComponent(g)}` : this.$store.app.gwQuery();
+    },
+    /** Clear what the trigger doesn't show (#580): a hidden field still restricts the
+     *  run, so weekly → daily kept running on the old weekdays. */
+    _clearHidden() {
+      const f = this.form;
+      if (!this.showDays) f.days = [];
+      if (!this.showMonthly) { f.months = []; f.day_of_month = null; }
+      if (!this.showWindows) f.windows = [];
+      if (this.showAlways) { f.start_date = null; f.end_date = null; }
     },
 
     get triggerPresets() {
@@ -1174,7 +1198,7 @@ document.addEventListener('alpine:init', () => {
         this._ensureCids(this.form.exit_conditions);
         const body = { match: this.form.exit_match || 'all',
                        conditions: this._buildTree(this.form.exit_conditions, true) };
-        const r = await fetch('api/schedules/evaluate' + this.$store.app.gwQuery(), {
+        const r = await fetch('api/schedules/evaluate' + this._formGwQuery(), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
@@ -1193,7 +1217,7 @@ document.addEventListener('alpine:init', () => {
         this._ensureCids();
         const body = { match: this.form.match || 'all',
                        conditions: this._buildTree(this.form.conditions, true) };
-        const r = await fetch('api/schedules/evaluate' + this.$store.app.gwQuery(), {
+        const r = await fetch('api/schedules/evaluate' + this._formGwQuery(), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
@@ -1328,7 +1352,7 @@ document.addEventListener('alpine:init', () => {
       this.varPick.liveMsg = '';
       try {
         const conditions = this.sensors.map((x, i) => ({ sensor: x.id, op: '==', value: null, cid: 'var' + i }));
-        const r = await fetch('api/schedules/evaluate' + this.$store.app.gwQuery(), {
+        const r = await fetch('api/schedules/evaluate' + this._formGwQuery(), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ match: 'any', conditions }),
         });

@@ -63,14 +63,6 @@
   <div class="card px-4 py-3 text-xs" style="color:var(--text-secondary)">
     <span style="color:var(--text-primary)">Schedules run on the poll tick</span>, so they
     react no faster than the bridge reads the gateway.
-    <template x-if="Object.keys(unavailable).length">
-      <span>
-        Not available here:
-        <template x-for="[k, why] in Object.entries(unavailable)" :key="k">
-          <span><span class="font-mono" x-text="k"></span> (<span x-text="why"></span>)&nbsp;</span>
-        </template>
-      </span>
-    </template>
   </div>
 
   <div x-show="view === 'schedules' && schedules.length" class="flex items-center flex-wrap gap-2 mb-3">
@@ -484,8 +476,8 @@
             <option value="cron" :disabled="!cron_available" x-text="cron_available ? 'Custom cron' : 'Custom cron — unavailable'"></option>
             <option value="always">Always (sensor-driven)</option>
           </select></label>
-        <label class="block text-xs" style="color:var(--text-secondary)">Quick preset
-          <span style="color:var(--text-faint)">(fills fields)</span>
+        <label class="block text-xs" style="color:var(--text-secondary)">Repeat pattern
+          <span style="color:var(--text-faint)">(fills the trigger)</span>
           <select class="form-control form-control-sm w-full mt-1" x-model="presetSel" @change="applyPreset()">
             <template x-for="pr in triggerPresets" :key="pr.id"><option :value="pr.id" x-text="pr.label"></option></template>
           </select></label>
@@ -597,15 +589,19 @@
       <!-- gateway action -->
       <div class="rounded-lg border p-3 space-y-2" style="border-color:var(--border)">
         <div class="flex items-center justify-between flex-wrap gap-2">
-          <div class="text-xs font-semibold" style="color:var(--text-secondary)">Battery action <a :href="$store.app.guideUrl('scheduler/actions/#battery-actions-force-charge-and-force-discharge')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></div>
+          <div class="text-xs font-semibold" style="color:var(--text-secondary)">Gateway action <a :href="$store.app.guideUrl('scheduler/actions/#battery-actions-force-charge-and-force-discharge')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></div>
           <div class="flex items-center gap-2 flex-wrap">
             <!-- Priority: higher wins when several schedules fire the same tick for the
                  same gateway; the rest are deferred for the day. -->
+            <!-- Priority and If busy only where they act (#580): Priority for a gateway
+                 action, If busy for a force. -->
             <label class="flex items-center gap-1 text-[11px]" style="color:var(--text-faint)"
+                   x-show="form.action.kind"
                    title="Higher priority wins when schedules collide on the same gateway">Priority
               <input type="number" step="1" class="form-control form-control-sm w-16 text-center"
                      x-model.number="form.priority"></label>
             <label class="flex items-center gap-1 text-[11px]" style="color:var(--text-faint)"
+                   x-show="form.action.kind === 'force'"
                    title="If the battery is already under another schedule's dispatch">If busy
               <select class="form-control form-control-sm" style="width:auto" x-model="form.conflict"
                       x-init="$nextTick(() => { $el.value = form.conflict })">
@@ -629,7 +625,7 @@
         </div>
         <select class="form-control form-control-sm w-full" x-model="form.action.kind"
                 @change="onActionKind()">
-          <option value="">No battery action (HA only)</option>
+          <option value="">No gateway action (HA only)</option>
           <template x-for="[k, a] in Object.entries(actions)" :key="k">
             <!-- Force is offered only when the direct-Modbus path is reachable; when it
                  is not, it is shown disabled with the reason rather than hidden. -->
@@ -637,6 +633,11 @@
                     x-text="a.label + (k === 'force' && !force_available ? ' — unavailable' : '')"></option>
           </template>
         </select>
+        <!-- restore_on_exit (BR-50), in the form since #580: put the mode back after. -->
+        <label x-show="form.action.kind === 'set_mode'" class="flex items-center gap-2 text-xs"
+               style="color:var(--text-secondary)" data-testid="restore-on-exit">
+          <input type="checkbox" x-model="form.restore_on_exit">
+          Put the previous mode back when the window ends</label>
         <p x-show="form.action.kind === 'force' && !force_available"
            class="text-xs" style="color:var(--danger)"
            x-text="'Modbus unavailable: ' + force_reason"></p>

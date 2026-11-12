@@ -728,11 +728,10 @@ class ScheduleReq(BaseModel):
     duration_min: int = 0
     match: str = "all"                  # all | any
     entry_hold_s: int = 0               # dwell: conditions must hold this long (s)
-    # Which gateway a battery action targets. "" / None = the default gateway.
-    # Ignored for a notify-only schedule, which touches no gateway at all.
+    # The gateway the schedule runs on. Required (#379): there is no default gateway.
     gateway_id: str = ""
-    # One-or-all targeting (BR-45). "one" honours gateway_id (or the default when it is
-    # blank); "all" runs the rule on EVERY enabled gateway, as its own run per gateway
+    # One-or-all targeting (BR-45). "one" honours gateway_id; "all" (the form's All
+    # gateways, #578) runs the rule on EVERY enabled gateway, as its own run per gateway
     # with its own resource claim — so a site-wide rule is one rule, not N copies to
     # keep in step. Anything unrecognised is read as "one": the narrower claim.
     gateway_scope: str = "one"
@@ -3914,6 +3913,13 @@ def create_app() -> FastAPI:
                result="saved", ok=True)
         return {"values": vals, "spec": constants.spec()}
 
+    def _live_snapshot(st, gw) -> dict:
+        """What a condition reads on this gateway now, as the tick builds it (#580), on
+        its site clock. Reads the billing accumulators; never feeds them."""
+        return scheduler.build_snapshot(get_settings(), st, getattr(gw, "last_state", {}) or {},
+                                        host=_gw_host(gw.id), gateway_id=gw.id,
+                                        now=_site_now(gw.id), tick=False)
+
     def _sched_gateway(gateway_id: str | None) -> GatewayState | None:
         """The gateway a schedule runs on: its own (#379). None if it isn't running."""
         return state.get_gateway(gateway_id) if gateway_id else None
@@ -4198,8 +4204,8 @@ def create_app() -> FastAPI:
     @app.get("/api/schedules/presets")
     def api_schedule_presets():
         """Built-in schedule templates for the Load Preset dialog. Every action is
-        one the local channel can actually do — no force-charge preset. Each says why it
-        can't run right now (#471), or None."""
+        one this bridge can do; the force ones need the Modbus client (``requires``). Each
+        says why it can't run right now (#471), or None."""
         _features = scheduler.feature_states(get_settings(), _ha_store())
         return {"presets": [{**p, "inactive": scheduler.template_inactive(p, _features)}
                             for p in scheduler.PRESETS]}
@@ -4215,7 +4221,9 @@ def create_app() -> FastAPI:
             rows = [r for r in rows if r["id"] in want]
         if fmt == "automations":
             return {"type": scheduler.IMPORT_TYPE_AUTOMATIONS, "version": 1,
-                    "entries": [scheduler.to_automations(r) for r in rows]}
+                    "entries": [scheduler.to_automations(r) for r in rows],
+                    "warnings": [w for r in rows                       # #580
+                                 for w in scheduler.automations_export_warnings(r)]}
         return {"type": scheduler.EXPORT_TYPE, "version": scheduler.EXPORT_VERSION,
                 "entries": [scheduler.portable(r) for r in rows]}
 
@@ -4344,24 +4352,7 @@ def create_app() -> FastAPI:
         # to test against — never the default gateway (#379).
         gateway = gateway or _gw_or_404(entry.get("gateway_id") or None).id
         gw = _gw_or_404(gateway)
-        snap = scheduler.snapshot_from_state(getattr(gw, "last_state", {}) or {})
-        snap.update(scheduler.ha_snapshot(st))
-        snap.update(scheduler.solar_snapshot(get_settings()))
-        snap.update(scheduler.nem_snapshot(get_settings(), st, gateway))
-        snap.update(scheduler.ha_price_snapshot(get_settings(), st))
-        snap.update(scheduler.tariff_snapshot(st, gateway))
-        scheduler.apply_dynamic_pricing(snap, get_settings(), st, gateway)   # per-tariff wholesale override
-        snap.update(scheduler.billing_snapshot(st, gateway))
-        scheduler.price_events(snap, get_settings())                      # #582
-        snap.update(__import__("franklinwh_direct_connect_bridge.billing", fromlist=["billing"]).billing_read(st, gateway))
-        snap.update(__import__("franklinwh_direct_connect_bridge.billing", fromlist=["billing"]).fixed_snapshot(st, gateway))
-        try:
-            snap.update(__import__("franklinwh_direct_connect_bridge.system_setup", fromlist=["system_setup"]).snapshot(st, get_settings(), gateway, _gw_host(gateway)))
-        except Exception:  # noqa: BLE001
-            pass
-        snap.update(scheduler.const_snapshot(st))
-        snap.update(scheduler.ratings_snapshot(_gw_host(gateway)))
-        snap.update(scheduler.derived_snapshot(snap))
+        snap = _live_snapshot(st, gw)        # one builder for Test / Evaluate / Run (#580)
         now = _site_now(gateway)
         would, reason = scheduler.due(entry, now, snap, entry.get("last_fired_day"))
         rows = []
@@ -4379,24 +4370,7 @@ def create_app() -> FastAPI:
         the UI can outline each row green/red/amber, plus the overall result."""
         st = _ha_store()
         gw = _gw_or_404(gateway)
-        snap = scheduler.snapshot_from_state(getattr(gw, "last_state", {}) or {})
-        snap.update(scheduler.ha_snapshot(st))
-        snap.update(scheduler.solar_snapshot(get_settings()))
-        snap.update(scheduler.nem_snapshot(get_settings(), st, gateway))
-        snap.update(scheduler.ha_price_snapshot(get_settings(), st))
-        snap.update(scheduler.tariff_snapshot(st, gateway))
-        scheduler.apply_dynamic_pricing(snap, get_settings(), st, gateway)   # per-tariff wholesale override
-        snap.update(scheduler.billing_snapshot(st, gateway))
-        scheduler.price_events(snap, get_settings())                      # #582
-        snap.update(__import__("franklinwh_direct_connect_bridge.billing", fromlist=["billing"]).billing_read(st, gateway))
-        snap.update(__import__("franklinwh_direct_connect_bridge.billing", fromlist=["billing"]).fixed_snapshot(st, gateway))
-        try:
-            snap.update(__import__("franklinwh_direct_connect_bridge.system_setup", fromlist=["system_setup"]).snapshot(st, get_settings(), gateway, _gw_host(gateway)))
-        except Exception:  # noqa: BLE001
-            pass
-        snap.update(scheduler.const_snapshot(st))
-        snap.update(scheduler.ratings_snapshot(_gw_host(gateway)))
-        snap.update(scheduler.derived_snapshot(snap))
+        snap = _live_snapshot(st, gw)        # one builder for Test / Evaluate / Run (#580)
         trace: list[dict] = []
         result = scheduler.evaluate(req.conditions, snap, req.match, trace)
         return {"result": result, "per_condition": trace}
@@ -4417,8 +4391,9 @@ def create_app() -> FastAPI:
                  if str(entry.get("gateway_scope") or "one").lower() != "all" else None)
         gw = _gw_or_404(bound or gateway)
         target_gw = gw.id
-        snap = scheduler.snapshot_from_state(getattr(gw, "last_state", {}) or {})
-        snap.update(scheduler.ha_snapshot(st))
+        # Tariff, const.* and derived values too, so guards and %vars% read as on the tick
+        # (#580); before, Run now had only the gateway's and Home Assistant's values.
+        snap = _live_snapshot(st, gw)
         host = _gw_host(target_gw)
         results = []
         if (entry.get("action") or {}).get("kind"):
