@@ -264,9 +264,14 @@
           <div class="text-sm font-semibold" style="color:var(--text-primary)" x-text="$store.app.confirmState.title"></div>
         </div>
         <div class="px-5 py-4 text-sm" style="color:var(--text-secondary);white-space:pre-line" x-text="$store.app.confirmState.message"></div>
+        <div x-show="$store.app.confirmState.expect" class="px-5 pb-4">
+          <input data-testid="confirm-typed" class="form-control form-control-sm w-full" x-model="$store.app.confirmState.typed"
+                 :placeholder="$store.app.confirmState.expect" autocomplete="off">
+        </div>
         <div class="px-5 py-3 border-t flex justify-end gap-2" style="border-color:var(--border)">
           <button class="btn btn-secondary btn-sm" @click="$store.app.confirmResolve(false)">Cancel</button>
           <button class="btn btn-primary btn-sm" @click="$store.app.confirmResolve(true)"
+                  :disabled="!!$store.app.confirmState.expect && $store.app.confirmState.typed !== $store.app.confirmState.expect"
                   :style="$store.app.confirmState.danger ? 'background:var(--danger);border-color:var(--danger)' : ''">OK</button>
         </div>
       </div>

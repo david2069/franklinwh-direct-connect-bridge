@@ -561,6 +561,7 @@ class TariffCreate(BaseModel):
 
 
 class TariffUpdate(BaseModel):
+    unlock: bool = False                    # a retired (ended) plan is locked until unlocked
     utility_id: str | None = None
     meter_id: str | None = None             # move it to a meter (date-checked)
     name: str | None = None
@@ -2503,6 +2504,13 @@ def create_app() -> FastAPI:
             raise HTTPException(404, f"no tariff '{tid}'")
         from . import tariff_plans
         body = req.model_dump(exclude_unset=True)
+        # Locked: anything that changes its rates, charges, dates or retailer. Putting it on
+        # a meter changes none of that, so it needs no unlock.
+        if tariff_plans.retired(cur) and not body.pop("unlock", False) and set(body) - {"meter_id"}:
+            raise HTTPException(409, f"\"{cur.get('name') or tid}\" ended on {cur['effective_end']}: "
+                                     "a retired plan is locked so past bills can be reconciled. "
+                                     "Unlock it to change it.")
+        body.pop("unlock", None)
         old_mid = cur.get("meter_id")
         mid = body.get("meter_id", old_mid) or None       # moving it to a meter (phase 3)
         if mid and st.meter(mid) is None:
@@ -2524,13 +2532,17 @@ def create_app() -> FastAPI:
         return st.tariff(tid) or out
 
     @app.delete("/api/tariffs/{tid}")
-    def api_tariff_delete(tid: str):
+    def api_tariff_delete(tid: str, confirm_name: str | None = Query(None)):
         _guard_writes()
         st = _gw_store()
         t = st.tariff(tid) if st is not None else None
         if t is None:
             raise HTTPException(404, f"no tariff '{tid}'")
         from . import tariff_plans
+        if tariff_plans.recently_retired(t) and confirm_name != (t.get("name") or tid):
+            raise HTTPException(409, f"\"{t.get('name') or tid}\" ended on {t['effective_end']}, under "
+                                     f"{tariff_plans.RECONCILE_MONTHS} months ago: past bills may still "
+                                     "need it. Confirm with its exact name to delete it.")
         st.delete_tariff(tid)
         tariff_plans.repoint(st, t.get("meter_id"))
         return {"ok": True, "id": tid}

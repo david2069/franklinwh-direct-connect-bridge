@@ -2287,13 +2287,15 @@ document.addEventListener('alpine:init', () => {
     },
 
     // ── Styled confirm dialog (replaces native confirm()) ──────────────────
-    confirmState: { open: false, title: '', message: '', danger: false },
+    confirmState: { open: false, title: '', message: '', danger: false, expect: '', typed: '' },
     _confirmResolve: null,
-    // Await a themed yes/no modal; resolves true (OK) / false (Cancel).
-    confirmDialog(message, { title = 'Please confirm', danger = false } = {}) {
-      this.confirmState = { open: true, title, message, danger };
+    // Await a themed yes/no modal; resolves true (OK) / false (Cancel). ``expect``: OK stays
+    // disabled until exactly that text is typed (confirmTyped).
+    confirmDialog(message, { title = 'Please confirm', danger = false, expect = '' } = {}) {
+      this.confirmState = { open: true, title, message, danger, expect, typed: '' };
       return new Promise((resolve) => { this._confirmResolve = resolve; });
     },
+    confirmTyped(message, expect, opts = {}) { return this.confirmDialog(message, { ...opts, expect }); },
     confirmResolve(ok) {
       this.confirmState.open = false;
       const r = this._confirmResolve; this._confirmResolve = null;

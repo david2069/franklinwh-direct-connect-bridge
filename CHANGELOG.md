@@ -20,6 +20,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 - **A billing period closed by a tariff switch** was stamped with the new tariff's name, ended at the cycle's end, and carried the new tariff's fixed charges for the whole period. It now carries the tariff that priced it, ends at the switch, and has that tariff's fixed charges for its own days.
 
+### Added
+
+- **Retired tariffs are locked** (owner). A plan whose end date has passed opens as View, so its rates and charges stay as they were for reconciling past bills. Unlock to edit, or delete: ended under 13 months ago takes two warnings and the plan's name typed; older takes one confirm. The server refuses a change without `unlock` (409) and such a delete without `?confirm_name=` (409).
+
 ## [0.5.42] — 2026-11-13
 
 A grouped release: the owner overrode one-release-a-day because the backlog was large.

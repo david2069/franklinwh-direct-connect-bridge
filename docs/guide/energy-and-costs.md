@@ -309,6 +309,17 @@ with that tariff's fixed charges for its own days.
   instead of a second utility. The import preview says which tariff it replaces.
 - Deleting a utility lists its tariffs and deletes them with it.
 
+**Retired plans are locked.** Once a plan's end date has passed, it opens as **View**:
+its rates and charges stay visible, unchanged, so bills from that time can be reconciled
+against what applied. To change one, **Unlock to edit**; to remove one, delete it:
+
+- Ended under 13 months ago: two warnings that past bills can no longer be checked, then
+  type the plan's name.
+- Ended 13 or more months ago: one confirm.
+
+Saving an unlocked plan locks it again. Moving a retired plan onto a meter (**Use on
+meter**) changes none of its rates or dates, so it needs no unlock.
+
 ### Static or dynamic
 
 ![The tariff editor's Rate type set to Dynamic (live)](../images/energy-and-costs/07b-dynamic.png)
