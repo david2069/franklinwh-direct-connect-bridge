@@ -18,6 +18,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **A failing FranklinWH cloud link raised `WORKER_STALLED` (critical) every 30 min** (#616). The cloud status check backs off up to 30 min while the link fails, longer than the watchdog waits, so each back-off read as a stalled worker. The worker now tells the watchdog when its next beat is due; a worker that really hangs still raises `WORKER_STALLED`.
 - **A billing period closed by a tariff switch** was stamped with the new tariff's name, ended at the cycle's end, and carried the new tariff's fixed charges for the whole period. It now carries the tariff that priced it, ends at the switch, and has that tariff's fixed charges for its own days.
 
 ### Added

@@ -1319,8 +1319,13 @@ def create_app() -> FastAPI:
                                            detail="cloud auth locked — re-enter credentials")
                     return
                 # Never faster than the interval, and slower with each failure (#233): a
-                # rate-limited account (HTTP 429) must not be polled harder.
-                _t.sleep(interval if ok else cloud_status.retry_delay(interval, _fail_streak))
+                # rate-limited account (HTTP 429) must not be polled harder. A back-off is
+                # announced to the watchdog, so it is not mistaken for a stall (#616).
+                delay = interval if ok else cloud_status.retry_delay(interval, _fail_streak)
+                _workers.registry.beat(
+                    "cloud-status", state=_workers.WorkerState.RUNNING, next_beat_in_s=delay,
+                    detail="cloud link ok" if ok else f"backing off {delay}s: {reason}")
+                _t.sleep(delay)
         _th.Thread(target=_cloud_status_loop, daemon=True).start()
 
         # ── L0 supervision (RUNTIME_DESIGN phase 0) ──────────────────────────
