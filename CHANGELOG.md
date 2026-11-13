@@ -11,6 +11,30 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.42] — 2026-11-13
+
+A grouped release: the owner overrode one-release-a-day because the backlog was large.
+Everything merged since 0.5.41, by area:
+
+- **Off-grid:** the notification gives stored kWh and time left at the current usage; the
+  OFF-GRID pill opens an Off-grid dialog (why, how long, Details, Reconnect); the Reconnect
+  SoC wording; the dialogs name the aGate and show the aGate going offline and back; each
+  switch is saved in the Audit Trail with a snapshot.
+- **Scheduler:** All gateways for rules that move no battery; failed / missed / aborted /
+  no-reply notifications; a timeline lane per gateway; the editor tidied.
+- **Prices, tariffs and solar:** prices in one place under Sites & Billing (price spike, HA
+  demand window); Location & Solar moves to Sites & Billing; solar size from your gateways;
+  no solar, no Solar tab; Import tariff takes pasted JSON.
+- **Analytics:** more cards on Local and Cloud, and Explain (trends and what to change).
+- **Setup and support:** the setup list (FranklinWH Gateway Emulator, Modbus TCP), confirm
+  what's installed, the `modbus_port` setting and ports never typed into the UI, support
+  info says which installation it is.
+- **Battery:** Record on the live trend, scheduled recordings, recordings purged after 90
+  days.
+- **UI:** Customise (drag the top bar, navbar and dashboard cards), one notify path for
+  Actionable Notifications, and the Home Assistant panel no longer shows "404: Not Found"
+  after the app was in the background.
+
 ### Added
 - **Import tariff takes pasted JSON** (owner). Import tariff opens a dialog: paste the tariff or choose a file, Check previews it, Import creates it; results stay in the dialog. On a phone a tariff no longer needs a file.
 - **Off-grid Details** (owner). The OFF-GRID dialog has an expandable Details section per gateway: mode, SoC, battery, grid, solar, home, smart circuits (on/off, watts), and the generator and V2L when installed. `GET /api/offgrid/details`. The go-off-grid and reconnect dialogs name the aGate, and each switch is saved in the Audit Trail with that snapshot.
