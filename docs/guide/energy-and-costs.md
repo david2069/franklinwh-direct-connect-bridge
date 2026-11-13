@@ -285,8 +285,22 @@ than the gateway.)
 **Import tariff** takes a tariff as JSON (`franklinwh-bridge/tariff-profile`, the same
 format a tariff's Export writes and the Modbus Bridge uses): paste it into the box or
 choose a file. **Check** shows what it contains (retailer, network, plan, seasons, fixed
-charges); **Import** creates the utility and tariff and attaches them to the default meter.
+charges); **Import** adds it as a plan of the default meter (rules below).
 The result, or why it was not accepted, is shown in the dialog.
+
+**One tariff in force per meter.** A tariff has **Effective from** and **Effective to**
+(blank = current). A meter has one tariff in force on any day, and prices from the one in
+force today:
+
+- Adding or importing a tariff for a meter ends its current tariff the day before the new
+  one starts. With no start date, the new one starts today.
+- A tariff whose dates would overlap another on the same meter is refused, with the
+  reason shown in the editor.
+- **New plan** (↻ on a tariff) starts a copy from today; Save ends the old one the day
+  before.
+- Importing a tariff from the same retailer and network adds a plan to that utility
+  instead of a second utility. The import preview says which tariff it replaces.
+- Deleting a utility lists its tariffs and deletes them with it.
 
 ### Static or dynamic
 

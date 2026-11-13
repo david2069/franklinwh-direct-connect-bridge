@@ -1019,10 +1019,15 @@
       <template x-if="tariffProblems.length"><div class="text-[11px]" style="color:var(--warn)">
         <template x-for="pr in tariffProblems" :key="pr"><div x-text="'• ' + pr"></div></template>
       </div></template>
+      <div data-testid="tariff-msg" x-show="tariffMsg" class="text-[11px]"
+           :style="{ color: tariffMsg?.kind === 'info' ? 'var(--text-secondary)' : 'var(--danger,#f87171)' }">
+        <span x-text="tariffMsg?.text"></span>
+        <button x-show="tariffMsg?.kind === 'gone'" class="btn btn-secondary btn-sm ml-2" @click="saveTariffAsNew()">Save as new</button>
+      </div>
       <div class="flex gap-2">
         <button class="btn btn-primary btn-sm" @click="saveTariff()">Save</button>
         <button class="btn btn-secondary btn-sm" @click="validateTariff()">Validate</button>
-        <button class="btn btn-secondary btn-sm" @click="tariffEdit = null">Cancel</button>
+        <button class="btn btn-secondary btn-sm" @click="tariffEdit = null; tariffMsg = null">Cancel</button>
       </div>
     </div></template>
 

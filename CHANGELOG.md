@@ -113,6 +113,7 @@ Everything merged since 0.5.41, by area:
   purge runs with the hourly history upkeep and when a recording ends.
 
 ### Changed
+- **One tariff in force per meter, by date** (owner; same rules as the Modbus Bridge). Adding or importing a tariff ends the meter's current one the day before it starts and moves the meter to the tariff in force today; overlapping dates are refused. Import reuses the utility with the same retailer + network, says which tariff it replaces, and import/export carry `profile.effective_start` / `effective_end`. New plan (↻) no longer end-dates the old tariff before you save.
 - **Off-grid SoC is the Reconnect SoC, not a floor** (owner). An off-grid you request returns to the grid when the battery reaches it; the go-off-grid dialog, the Control card ("Reconnect SoC") and the done line say so. The off-grid notification adds stored kWh and, for a requested off-grid, gives the time until it reconnects. While the aGate switches, the dialog says it is waiting, shows the aGate going offline and back online, and says a notification follows when that push is on.
 - **No solar, no Solar tab** (owner). The Solar tab and the Dashboard's Solar Forecast card
   are hidden when the gateway's API reports no AC PV ports and no remote solar, or System
@@ -175,6 +176,7 @@ Everything merged since 0.5.41, by area:
   The questions the gateway can't answer stay open.
 
 ### Fixed
+- **Saving a tariff that was deleted while its editor was open** now says so in the editor and offers Save as new, instead of "Tariff save failed: no tariff 'tar_…'". Tariff save errors show in the editor, not as a toast. Deleting a utility with tariffs lists them and deletes them with it.
 - **Home Assistant panel no longer shows "404: Not Found" after the app was in the background** (owner). Home Assistant's ingress session had ended and its 401 sent the page to the absolute `/signin`, which is on Home Assistant's origin. Under ingress the page now stays (Home Assistant renews the session), and the sign-in links are relative.
 - **Scheduler timeline: the planned-window bars were drawn empty** (found while building
   #579): the bar lost its colour and height, so only the grey track showed.

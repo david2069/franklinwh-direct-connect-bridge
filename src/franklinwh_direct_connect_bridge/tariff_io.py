@@ -43,6 +43,9 @@ def to_local(profile: dict) -> tuple[dict, dict, str | None]:
         "bonus_window": profile.get("bonus_window") or None,
         "charge_window": charge_window,
         "fixed_charges": fixed,
+        # Optional (aligned with the Modbus Bridge): the plan's dates, ISO YYYY-MM-DD.
+        "effective_start": profile.get("effective_start") or None,
+        "effective_end": profile.get("effective_end") or None,
     }
     return utility, tariff, profile.get("timezone")
 
@@ -77,4 +80,7 @@ def from_local(utility: dict | None, tariff: dict, timezone: str | None = None) 
         "bonus_window": tariff.get("bonus_window") or None,
         "pricing": pr,
     }
+    for k in ("effective_start", "effective_end"):
+        if tariff.get(k):
+            profile[k] = tariff[k]
     return {"type": PROFILE_TYPE, "version": PROFILE_VERSION, "profile": profile}

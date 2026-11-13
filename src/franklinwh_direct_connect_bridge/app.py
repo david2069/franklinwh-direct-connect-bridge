@@ -542,6 +542,7 @@ class TariffProfileImport(BaseModel):
     version: int | None = None
     profile: dict
     effective_start: str | None = None      # optional retailer-from date for the new utility
+    meter_id: str | None = None             # the meter it prices (default: the default meter)
 
 
 class TariffCreate(BaseModel):
@@ -556,6 +557,7 @@ class TariffCreate(BaseModel):
     plan_version: str = ""
     effective_start: str | None = None
     effective_end: str | None = None
+    meter_id: str | None = None             # the meter it prices; dated, one in force per day
 
 
 class TariffUpdate(BaseModel):
@@ -2400,6 +2402,9 @@ def create_app() -> FastAPI:
         body = req.model_dump(exclude_unset=True)
         if body.get("ac_type") and body["ac_type"] not in _AC_TYPES:
             raise HTTPException(422, f"ac_type must be one of {', '.join(_AC_TYPES)}")
+        tid = body.get("tariff_id")
+        if tid and st.tariff(tid) is not None and not st.tariff(tid).get("meter_id"):
+            st.update_tariff(tid, meter_id=mid)      # the tariff now prices this meter
         return st.update_meter(mid, **body)
 
     @app.delete("/api/meters/{mid}")
@@ -2468,27 +2473,59 @@ def create_app() -> FastAPI:
         if st.utility(req.utility_id) is None:
             raise HTTPException(422, f"no utility '{req.utility_id}'")
         import uuid
+        from . import tariff_plans
         body = req.model_dump()
-        return st.create_tariff(tid="tariff_" + uuid.uuid4().hex[:8],
-                                utility_id=body.pop("utility_id"), name=body.pop("name", ""),
-                                billing_cycle_day=body.pop("billing_cycle_day", 1),
-                                plan_version=body.pop("plan_version", ""), **body)
+        mid = body.get("meter_id")
+        pl = None
+        if mid:
+            if st.meter(mid) is None:
+                raise HTTPException(422, f"no meter '{mid}'")
+            try:
+                pl = tariff_plans.plan(st, mid, body.get("effective_start"), body.get("effective_end"))
+            except tariff_plans.Overlap as e:
+                raise HTTPException(400, str(e))
+            body["effective_start"] = pl["start"]
+        tid = "tariff_" + uuid.uuid4().hex[:8]
+        st.create_tariff(tid=tid, utility_id=body.pop("utility_id"), name=body.pop("name", ""),
+                         billing_cycle_day=body.pop("billing_cycle_day", 1),
+                         plan_version=body.pop("plan_version", ""), **body)
+        if pl is not None:
+            tariff_plans.apply(st, mid, pl)
+        return st.tariff(tid)
 
     @app.patch("/api/tariffs/{tid}")
     def api_tariff_update(tid: str, req: TariffUpdate):
         _guard_writes()
         st = _gw_store()
-        if st is None or st.tariff(tid) is None:
+        cur = st.tariff(tid) if st is not None else None
+        if cur is None:
             raise HTTPException(404, f"no tariff '{tid}'")
-        return st.update_tariff(tid, **req.model_dump(exclude_unset=True))
+        from . import tariff_plans
+        body = req.model_dump(exclude_unset=True)
+        mid = cur.get("meter_id")
+        if mid and ("effective_start" in body or "effective_end" in body):
+            start = body.get("effective_start", cur.get("effective_start")) or None
+            end = body.get("effective_end", cur.get("effective_end")) or None
+            try:
+                tariff_plans.plan(st, mid, start, end, exclude=tid, adding=False)
+            except tariff_plans.Overlap as e:
+                raise HTTPException(400, str(e))
+            st.set_tariff_dates(tid, start, end)
+        out = st.update_tariff(tid, **{k: v for k, v in body.items()
+                                       if k not in ("effective_start", "effective_end")})
+        tariff_plans.repoint(st, mid)
+        return st.tariff(tid) or out
 
     @app.delete("/api/tariffs/{tid}")
     def api_tariff_delete(tid: str):
         _guard_writes()
         st = _gw_store()
-        if st is None or st.tariff(tid) is None:
+        t = st.tariff(tid) if st is not None else None
+        if t is None:
             raise HTTPException(404, f"no tariff '{tid}'")
+        from . import tariff_plans
         st.delete_tariff(tid)
+        tariff_plans.repoint(st, t.get("meter_id"))
         return {"ok": True, "id": tid}
 
     @app.post("/api/tariffs/validate")
@@ -2533,8 +2570,10 @@ def create_app() -> FastAPI:
 
     @app.post("/api/tariffs/import")
     def api_tariff_import(req: TariffProfileImport, dry_run: bool = Query(False)):
-        """Import a Modbus ``franklinwh-bridge/tariff-profile`` — creates the utility + tariff
-        and attaches them to the default meter (with the profile's timezone). dry_run previews."""
+        """Import a ``franklinwh-bridge/tariff-profile`` as a plan of a meter (default: the
+        default meter). Reuses the utility with the same retailer + network; closes the
+        meter's current plan the day before this one starts (no start: today); an overlap is
+        400. dry_run previews, including what it replaces."""
         from . import tariff_io
         if req.type and req.type != tariff_io.PROFILE_TYPE:
             raise HTTPException(
@@ -2542,8 +2581,29 @@ def create_app() -> FastAPI:
                 detail=(f"unexpected bundle type '{req.type}' — this importer reads "
                         f"'{tariff_io.PROFILE_TYPE}' (a Modbus-bridge tariff export)."))
         util_f, tar_f, tz = tariff_io.to_local(req.profile or {})
+        from . import tariff_plans
+        st = _ha_store()
+        meters = st.meters()
+        mid = req.meter_id or next((m["id"] for m in meters if m.get("is_default")),
+                                   (meters[0]["id"] if meters else None))
+        if req.meter_id and st.meter(req.meter_id) is None:
+            raise HTTPException(422, f"no meter '{req.meter_id}'")
+        # The same retailer + network is the same utility: importing again adds a plan to
+        # it rather than a second "AGL Energy".
+        def _k(x):
+            return (x or "").strip().casefold()
+        same = next((u for u in st.utilities() if _k(u.get("name")) == _k(util_f["name"])
+                     and _k(u.get("network_dnsp")) == _k(util_f["network_dnsp"])), None)
+        pl = None
+        if mid:
+            try:
+                pl = tariff_plans.plan(st, mid, tar_f.get("effective_start"), tar_f.get("effective_end"))
+            except tariff_plans.Overlap as e:
+                raise HTTPException(400, str(e))
+            tar_f["effective_start"] = pl["start"]
         if dry_run:
             pr = tar_f.get("pricing") or {}
+            close = (pl or {}).get("close") or {}
             return {"preview": {
                 "retailer": util_f["name"], "network": util_f["network_dnsp"],
                 "plan_type": util_f["plan_type"], "tariff_name": tar_f["name"],
@@ -2552,31 +2612,30 @@ def create_app() -> FastAPI:
                 "fixed_charges": len(tar_f.get("fixed_charges") or []),
                 "has_demand": bool(tar_f.get("demand_window")),
                 "has_export_bonus": bool(tar_f.get("bonus_window")),
-                "has_export_charge": bool(tar_f.get("charge_window"))}}
+                "has_export_charge": bool(tar_f.get("charge_window")),
+                "effective_start": tar_f.get("effective_start"),
+                "effective_end": tar_f.get("effective_end"),
+                "meter_id": mid, "reuses_utility": same is not None,
+                "replaces": close.get("name"), "replaces_end": close.get("end")}}
         _guard_writes()
-        st = _ha_store()
         import uuid
-        uid = "util_" + uuid.uuid4().hex[:8]
-        if req.effective_start:
-            util_f["effective_start"] = req.effective_start
-        st.create_utility(uid=uid, name=util_f.pop("name"), **util_f)
+        if same:
+            uid = same["id"]
+        else:
+            uid = "util_" + uuid.uuid4().hex[:8]
+            if req.effective_start:
+                util_f["effective_start"] = req.effective_start
+            st.create_utility(uid=uid, name=util_f.pop("name"), **util_f)
         tid = "tar_" + uuid.uuid4().hex[:8]
         st.create_tariff(tid=tid, utility_id=uid, name=tar_f.pop("name"),
-                         billing_cycle_day=tar_f.pop("billing_cycle_day"), **tar_f)
-        # attach to the default meter so it prices immediately
+                         billing_cycle_day=tar_f.pop("billing_cycle_day"), meter_id=mid, **tar_f)
+        # the meter prices from it (when in force today) and takes its timezone
         attached = None
-        try:
-            meters = st.meters()
-            mid = next((m["id"] for m in meters if m.get("is_default")),
-                       (meters[0]["id"] if meters else None))
-            if mid:
-                upd = {"utility_id": uid, "tariff_id": tid}
-                if tz:
-                    upd["timezone"] = tz
-                st.update_meter(mid, **upd)
-                attached = mid
-        except Exception:  # pragma: no cover
-            attached = None
+        if mid:
+            tariff_plans.apply(st, mid, pl)
+            if tz:
+                st.update_meter(mid, timezone=tz)
+            attached = mid
         return {"ok": True, "utility_id": uid, "tariff_id": tid, "attached_meter": attached}
 
     # ── Energy Costs / billing view (FEAT-BILLING-SERVICE) ────────────────────
