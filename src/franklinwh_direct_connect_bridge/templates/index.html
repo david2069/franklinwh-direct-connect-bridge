@@ -16,13 +16,18 @@
   <script>window.FWH_BOOT = { gateway: {{ boot_gateway | tojson }}, ports: {{ ports | tojson }} };</script>
   <script>
     // #457: with Security on, a request whose session has ended gets 401 on the HTTPS port;
-    // go to the sign-in page and come back here afterwards.
+    // go to the sign-in page and come back here afterwards. Not under Home Assistant
+    // ingress: there the bridge never asks for a sign-in, and a 401 is Home Assistant's
+    // ingress session ending while the app was in the background. Its panel renews that
+    // session; leaving for /signin landed on Home Assistant's origin as "404: Not Found".
     (function () {
       const f = window.fetch;
+      const ingress = location.pathname.includes('/api/hassio_ingress/');
       window.fetch = async function (...args) {
         const r = await f.apply(this, args);
-        if (r.status === 401 && location.protocol === 'https:' && !location.pathname.startsWith('/signin')) {
-          location.href = '/signin?next=' + encodeURIComponent(location.pathname + location.search);
+        if (r.status === 401 && !ingress && location.protocol === 'https:'
+            && !location.pathname.startsWith('/signin')) {
+          location.href = 'signin?next=' + encodeURIComponent(location.pathname + location.search);
         }
         return r;
       };

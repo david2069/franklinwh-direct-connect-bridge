@@ -324,7 +324,7 @@ function settingsTab() {
     },
     async signOut() {
       await fetch('api/auth/logout', { method: 'POST' });
-      location.href = '/signin';
+      location.href = 'signin';
     },
     async saveTrustedNetworks() {
       const s = this.security;
