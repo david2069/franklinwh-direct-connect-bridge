@@ -239,6 +239,23 @@ function networkTab() {
       } catch (e) { this.$store.app.toast('Export failed: ' + e.message, 'error'); }
     },
     edgeColor(ok) { return ok === true ? '#34d399' : (ok === false ? '#ef4444' : '#475569'); },
+    // :502 from the last REAL result, judged by the server against the link's uptime (#617):
+    // 'up' green, 'down' red, 'unknown' grey + dashed, null not probed. Never probed (#221).
+    mb502Color(p) {
+      const s = p && p.modbus_502_state;
+      return this.edgeColor(s === 'up' ? true : (s === 'down' ? false : null));
+    },
+    mb502Dash(p) { return (p && p.modbus_502_state === 'unknown') ? '4 3' : ''; },
+    mb502Label(p) {
+      const s = p && p.modbus_502_state;
+      if (s === 'up') return 'open';
+      if (s === 'down') return 'closed';
+      if (s !== 'unknown') return 'not probed';
+      if (!p.modbus_502_at) return 'unknown';
+      const hm = new Date(p.modbus_502_at * 1000)
+        .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+      return 'unknown · last ' + (p.modbus_502 ? 'OK ' : 'failed ') + hm;
+    },
     linkLabel(l) { return { wifi: 'WiFi', eth: 'Ethernet', '4g': '4G' }[l] || '—'; },
 
     // Home Assistant node in the topology diagram. HA gets aGate entities via MQTT discovery

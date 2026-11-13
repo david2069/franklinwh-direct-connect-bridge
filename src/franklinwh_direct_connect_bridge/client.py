@@ -265,12 +265,15 @@ def network_bundle(s: Settings, host: str | None = None) -> dict[str, Any]:
     (1119), and the AWS-IoT cloud config (1121). Each block is best-effort — a failed sub-read
     is left None so a partial view still returns. Credentials are redacted by the caller."""
     host = _need_host(host)
+    _mb = _modbus_last(host)                 # last real result, no socket (#221, #32)
     reach: dict[str, Any] = {
         "host": host,
         "ping": discover.ping(host, timeout=1.0),
         "sendmqtt_9000": False,
         "latency_ms": None,
-        "modbus_502": _probe_modbus(host),   # last real result, no socket (#221, #32)
+        "modbus_502": None if _mb is None else bool(_mb.get("reachable")),
+        # When it was measured: the diagram judges it against the link's uptime (#617).
+        "modbus_502_at": None if _mb is None else _mb.get("ts"),
     }
     out: dict[str, Any] = {"host": host, "reachability": reach,
                            "connectivity": None, "interfaces_raw": None,
@@ -878,6 +881,28 @@ def _modbus_last(host: str, *, mock: bool = False) -> dict | None:
         return battery_control.last_result(host)
     except Exception:  # noqa: BLE001 — never fail a poll over the probe
         return None
+
+
+def modbus_502_state(ok: bool | None, at: float | None, *, link_up: bool,
+                     up_since: float | None) -> str | None:
+    """What the diagram may say about :502, given only the last REAL result (#617).
+
+    The bridge never probes :502 (#221), so a success from before an outage would
+    otherwise keep the line green while the aGate is unreachable. ``up_since`` is when
+    the aGate's LAN link (:9000) last came up — the end of its last recorded outage.
+
+    None not measured; "up" a success since the link came up, with the link up now;
+    "down" the last attempt failed (since the link came up); "unknown" anything older,
+    or a success while the link is down.
+    """
+    if ok is None:
+        return None
+    stale = up_since is not None and (at is None or float(at) < float(up_since))
+    if stale:
+        return "unknown"
+    if ok:
+        return "up" if link_up else "unknown"
+    return "down"
 
 
 #: Off-grid run_status codes. Kept because the enum IS right — what is wrong is the

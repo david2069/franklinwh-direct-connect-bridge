@@ -124,6 +124,7 @@ class Worker:
     state: WorkerState = WorkerState.INIT
     started_ts: float = field(default_factory=time.time)
     last_beat_ts: float = field(default_factory=time.time)
+    next_beat_in_s: float = 0.0                # a deliberate wait the worker announced
     restarts: int = 0
     last_error: str = ""
     detail: str = ""
@@ -132,9 +133,15 @@ class Worker:
     _task: asyncio.Task | None = field(default=None, repr=False)
 
     # ── liveness ──────────────────────────────────────────────────────────────
-    def beat(self, *, state: WorkerState | None = None, detail: str = "") -> None:
-        """Called by the worker each cycle. The only proof of life that counts."""
+    def beat(self, *, state: WorkerState | None = None, detail: str = "",
+             next_beat_in_s: float = 0.0) -> None:
+        """Called by the worker each cycle. The only proof of life that counts.
+
+        ``next_beat_in_s`` announces a deliberate wait longer than the cadence (a back-off,
+        #616): the grace runs from then, so a worker that misses even that is still stale.
+        Every beat sets it afresh, so a plain beat returns to the normal cadence."""
         self.last_beat_ts = time.time()
+        self.next_beat_in_s = max(0.0, float(next_beat_in_s))
         if state is not None:
             self.state = state
         if detail:
@@ -156,7 +163,8 @@ class Worker:
         "alive and waiting" rather than "did work", so an idle watchdog is not stale —
         but one that has stopped beating entirely still is.
         """
-        return self.state in _BEATING and self.beat_age_s > self.beat_grace_s
+        return (self.state in _BEATING
+                and self.beat_age_s > self.next_beat_in_s + self.beat_grace_s)
 
     @property
     def stopping_too_long(self) -> bool:
@@ -341,11 +349,12 @@ class Registry:
             return sorted(self._workers.values(),
                           key=lambda w: (w.band, w.name.split(':', 1)[0], w.name))
 
-    def beat(self, name: str, *, state: WorkerState | None = None, detail: str = "") -> None:
+    def beat(self, name: str, *, state: WorkerState | None = None, detail: str = "",
+             next_beat_in_s: float = 0.0) -> None:
         """Beat by name, so a worker need not hold a reference to its own record."""
         w = self.get(name)
         if w is not None:
-            w.beat(state=state, detail=detail)
+            w.beat(state=state, detail=detail, next_beat_in_s=next_beat_in_s)
 
     def snapshot(self) -> dict:
         ws = self.all()

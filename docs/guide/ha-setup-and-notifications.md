@@ -313,7 +313,7 @@ What raises one today:
 | `LIVE_DATA_MISSING` | condition | critical | No live power reading for 2 minutes | Readings for 1 minute |
 | `MQTT_DOWN` | condition | warning | The MQTT broker has been disconnected for 5 minutes, on a gateway that publishes | Connected for 2 minutes |
 | `HA_UNREACHABLE` | condition | warning | Home Assistant has failed to take an alert notification for 5 minutes | One goes through and 2 minutes pass |
-| `WORKER_STALLED` | condition | critical | A background worker stops responding or crashes (Health → Workers) | Every worker for that gateway is beating again |
+| `WORKER_STALLED` | condition | critical | A background worker stops responding or crashes (Health → Workers). A worker that is deliberately backing off, such as the cloud status check while the FranklinWH cloud link fails, is not stalled until it misses the beat it announced | Every worker for that gateway is beating again |
 | `COMMAND_REFUSED` | event | critical | The Audit Trail records a control as failed or refused. Cloud sign-ins are not counted. | Acknowledged |
 | `SCHEDULE_FAILED` | event | critical | A scheduled action fails | Acknowledged |
 | `SCHEDULE_MISSED` | event | warning | A schedule's window closes without a successful run (#581) | Acknowledged |

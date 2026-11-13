@@ -1327,8 +1327,13 @@ def create_app() -> FastAPI:
                                            detail="cloud auth locked — re-enter credentials")
                     return
                 # Never faster than the interval, and slower with each failure (#233): a
-                # rate-limited account (HTTP 429) must not be polled harder.
-                _t.sleep(interval if ok else cloud_status.retry_delay(interval, _fail_streak))
+                # rate-limited account (HTTP 429) must not be polled harder. A back-off is
+                # announced to the watchdog, so it is not mistaken for a stall (#616).
+                delay = interval if ok else cloud_status.retry_delay(interval, _fail_streak)
+                _workers.registry.beat(
+                    "cloud-status", state=_workers.WorkerState.RUNNING, next_beat_in_s=delay,
+                    detail="cloud link ok" if ok else f"backing off {delay}s: {reason}")
+                _t.sleep(delay)
         _th.Thread(target=_cloud_status_loop, daemon=True).start()
 
         # ── L0 supervision (RUNTIME_DESIGN phase 0) ──────────────────────────
@@ -4970,6 +4975,18 @@ def create_app() -> FastAPI:
         nb["interfaces"] = cloud_compat.network_from_interfaces(raw_if) if isinstance(raw_if, dict) else None
         nb["cloud"] = _redact_cloud_config(nb.get("cloud"))
         reach = nb.get("reachability") or {}
+        # :502 judged against the time the aGate's link last came up: a success from
+        # before an outage is "unknown", not green (#617). Still no :502 probe (#221).
+        try:
+            _ls = _ha_store().link_state(gateway) or {}
+            _last_out = _ha_store().link_outages(gateway, leg="local_9000", limit=1)
+        except Exception:  # noqa: BLE001 — link history is optional; never fail the diagram
+            _ls, _last_out = {}, []
+        _up_since = _last_out[0].get("ended_ts") if _last_out else None
+        _link_up = bool(reach.get("sendmqtt_9000")) and _ls.get("state") != "down"
+        reach["modbus_502_state"] = client.modbus_502_state(
+            reach.get("modbus_502"), reach.get("modbus_502_at"),
+            link_up=_link_up, up_since=_up_since)
         aws_connected = bool((nb.get("interfaces") or {}).get("awsStatus") == 1)
         cloud = nb.get("cloud") or {}
         host_ip = (host or "").split(":")[0]
@@ -4997,7 +5014,9 @@ def create_app() -> FastAPI:
                       # modbus_502 is deliberately NOT cast: None means "not probed"
                       # and bool() would turn that into a confident "down" (#30).
                       "ports": {"local_api_9000": bool(reach.get("sendmqtt_9000")),
-                                "modbus_502": reach.get("modbus_502")},
+                                "modbus_502": reach.get("modbus_502"),
+                                "modbus_502_state": reach.get("modbus_502_state"),
+                                "modbus_502_at": reach.get("modbus_502_at")},
                       "latency_ms": reach.get("latency_ms")},
             "bridge": {"ip": _bridge_ip_toward(host_ip), "http_port": 8101,
                        "uptime_s": round(time.time() - _STARTED_AT, 1),

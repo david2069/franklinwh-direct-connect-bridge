@@ -135,3 +135,92 @@ def test_network_topology_preserves_not_probed(tmp_path, monkeypatch):
     monkeypatch.setattr(client_mod, "network_bundle", lambda s, host=None: dict(fx))
     ports = c.get("/api/network?" + G).json()["topology"]["agate"]["ports"]
     assert ports["modbus_502"] is None, f"not-probed was flattened to {ports['modbus_502']!r}"
+
+
+# ---- #617: the :502 edge must not stay green on a result older than the link -----------
+# The bridge never probes :502 (#221), so the diagram can only judge the Modbus client's
+# last real result by its timestamp against the time the aGate's LAN link last came up.
+
+T_UP = 10_000.0     # the :9000 link came back up here, after an outage
+
+
+def _outage_then_up(st):
+    """A recorded :9000 outage that ended at T_UP — what the poller logs as RECOVERED."""
+    for i in range(st.LINK_STRIKES):
+        st.record_link_probe(GW, "failed", leg="local_9000", now=T_UP - 300 + 30 * i)
+    st.record_link_probe(GW, "ok", leg="local_9000", now=T_UP)
+
+
+def _get_502(tmp_path, monkeypatch, reach, *, outage=True, down=False):
+    fx = dict(FIXTURE, reachability=dict(FIXTURE["reachability"], **reach))
+    st = MetricsStore(str(tmp_path / "m.db"))
+    monkeypatch.setattr(environment, "DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(config, "_settings", None)
+    monkeypatch.setattr(db, "get_store", lambda s: st)
+    monkeypatch.setattr(client_mod, "network_bundle", lambda s, host=None: dict(fx))
+    if outage:
+        _outage_then_up(st)
+    if down:
+        for i in range(st.LINK_STRIKES):
+            st.record_link_probe(GW, "failed", leg="local_9000", now=T_UP + 600 + 30 * i)
+    out = TestClient(app_module.create_app()).get("/api/network?" + G).json()
+    return out["topology"]["agate"]["ports"], out["reachability"]
+
+
+def test_502_unknown_while_link_down(tmp_path, monkeypatch):
+    """Link down + an old success: unknown (grey), never green — the outage screenshot."""
+    ports, reach = _get_502(tmp_path, monkeypatch,
+                            {"modbus_502": True, "modbus_502_at": T_UP + 60,
+                             "sendmqtt_9000": False, "ok": False}, down=True)
+    assert ports["modbus_502_state"] == "unknown"
+    assert ports["modbus_502_at"] == T_UP + 60          # for "last OK HH:MM"
+    assert reach["modbus_502_state"] == "unknown"
+
+
+def test_502_up_after_link_came_up(tmp_path, monkeypatch):
+    ports, reach = _get_502(tmp_path, monkeypatch,
+                            {"modbus_502": True, "modbus_502_at": T_UP + 60})
+    assert ports["modbus_502_state"] == "up" and reach["modbus_502_state"] == "up"
+
+
+def test_502_unknown_when_success_predates_outage(tmp_path, monkeypatch):
+    ports, reach = _get_502(tmp_path, monkeypatch,
+                            {"modbus_502": True, "modbus_502_at": T_UP - 3600})
+    assert ports["modbus_502_state"] == "unknown" and reach["modbus_502_state"] == "unknown"
+
+
+def test_502_down_when_last_attempt_failed(tmp_path, monkeypatch):
+    ports, reach = _get_502(tmp_path, monkeypatch,
+                            {"modbus_502": False, "modbus_502_at": T_UP + 60})
+    assert ports["modbus_502_state"] == "down" and reach["modbus_502_state"] == "down"
+
+
+def test_502_not_probed_stays_none(tmp_path, monkeypatch):
+    ports, _ = _get_502(tmp_path, monkeypatch, {"modbus_502": None}, outage=False)
+    assert ports["modbus_502_state"] is None
+
+
+def test_502_up_with_no_recorded_outage(tmp_path, monkeypatch):
+    """No outage on record: the link has been up all along, so a success counts."""
+    ports, _ = _get_502(tmp_path, monkeypatch,
+                        {"modbus_502": True, "modbus_502_at": 500.0}, outage=False)
+    assert ports["modbus_502_state"] == "up"
+
+
+def test_network_bundle_carries_502_timestamp(monkeypatch):
+    """The reachability block needs the result's time, not just its value, and still
+    opens no :502 socket (#221)."""
+    monkeypatch.setattr(client_mod, "_modbus_last",
+                        lambda h, mock=False: {"reachable": True, "ts": 123.0, "source": "force"})
+    monkeypatch.setattr(client_mod.discover, "ping", lambda h, timeout=1.0: False)
+
+    class _Boom:
+        def __enter__(self):
+            raise OSError("unreachable")
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(client_mod, "_client", lambda s, host: _Boom())
+    reach = client_mod.network_bundle(config.Settings(), host="127.0.0.1:1")["reachability"]
+    assert reach["modbus_502"] is True and reach["modbus_502_at"] == 123.0
