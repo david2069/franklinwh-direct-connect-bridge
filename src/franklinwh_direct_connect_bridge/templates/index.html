@@ -318,6 +318,22 @@
               </div>
               <div data-testid="offgrid-for" style="color:var(--text-secondary)" x-text="$store.app.offgridFor(r)"></div>
               <div data-testid="offgrid-metrics" style="color:var(--text-secondary)" x-text="r.metrics"></div>
+              <button type="button" data-testid="offgrid-details-toggle" class="text-xs underline"
+                      style="color:var(--text-muted)" @click="$store.app.toggleOffgridDetails(r)"
+                      x-text="$store.app.offgridModal.details[r.id]?.open ? 'Hide details' : 'Details'"></button>
+              <div data-testid="offgrid-details" x-show="$store.app.offgridModal.details[r.id]?.open"
+                   class="text-xs rounded-lg p-2 space-y-0.5" style="background:var(--surface-2)">
+                <div x-show="$store.app.offgridModal.details[r.id]?.loading" style="color:var(--text-muted)">Reading…</div>
+                <template x-for="d in ($store.app.offgridModal.details[r.id]?.rows || [])" :key="d.key">
+                  <div class="flex justify-between gap-3">
+                    <span style="color:var(--text-muted)" x-text="d.label"></span>
+                    <span class="text-right" style="color:var(--text-primary)" x-text="d.value"></span>
+                  </div>
+                </template>
+                <template x-for="[k, e] in Object.entries($store.app.offgridModal.details[r.id]?.errors || {})" :key="k">
+                  <div style="color:var(--warning, #fbbf24)" x-text="'Not read (' + k + '): ' + e"></div>
+                </template>
+              </div>
               <button data-testid="offgrid-reconnect" class="btn btn-sm mt-2"
                       style="background:rgba(16,185,129,.2);color:#6ee7b7;border:1px solid rgba(16,185,129,.5)"
                       x-show="r.kind === 'simulated' && $store.app.summary.writes_enabled"

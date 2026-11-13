@@ -5333,12 +5333,52 @@ def create_app() -> FastAPI:
                 "metrics": notify_engine.off_grid_metrics(p, cap)})
         return {"gateways": rows, "notify": notify_engine.notify_on(store, s)}
 
+    @app.get("/api/offgrid/details")
+    def api_offgrid_details(gateway: str = Depends(_gateway_q)):
+        """The OFF-GRID dialog's Details for one gateway: the cached summary plus a live
+        read of the smart circuits (watts, V2L) and, when installed, the generator. Reads
+        only; a read that fails leaves its rows out and says so in ``errors``."""
+        from . import offgrid_details, system_setup
+        s = get_settings()
+        gw = _gw_or_404(gateway)
+        host = _gw_host(gateway)
+        errors: dict[str, str] = {}
+        circ = gen = None
+        try:
+            circ = client.circuits(s, host=host, override=s.smart_circuit_count)
+        except (OSError, TransportError, TimeoutError) as e:
+            errors["circuits"] = str(e)
+        if getattr(gw, "generator_installed", False):
+            try:
+                gen = client.generator(s, host=host)
+            except (OSError, TransportError, TimeoutError) as e:
+                errors["generator"] = str(e)
+        v2l = None
+        try:
+            v2l = system_setup._overrides(db.get_store(s), gw.id).get("v2l")
+        except Exception:  # noqa: BLE001 — no override: read it from the meter below
+            pass
+        if v2l is None and circ:
+            car = circ.get("carsw") or {}
+            used = sum(v for v in (car.get("export_lifetime_kwh"), car.get("import_lifetime_kwh"))
+                       if isinstance(v, (int, float)))
+            v2l = bool(car.get("enabled")) or used > 0
+        return {"rows": offgrid_details.rows(gw.last_summary or {}, circuits=circ,
+                                             generator=gen, v2l_installed=bool(v2l)),
+                "errors": errors}
+
     @app.post("/api/offgrid")
     def api_set_offgrid(req: OffgridReq, gateway: str = Depends(_gateway_q)):
         _guard_consequential(req.confirm, "go off-grid / reconnect")
         host = _gw_host(gateway)   # SAFETY: the write must hit the SELECTED gateway
         action = "go_off_grid" if req.on else "reconnect_grid"
         detail = f"reconnect_soc={req.soc}%" if req.on else "reconnect to grid"
+        # The site at the switch, from the cached summary (no extra read before a write).
+        from . import offgrid_details
+        gw = state.get_gateway(gateway)
+        snap = offgrid_details.line(offgrid_details.rows(gw.last_summary if gw else {}))
+        if snap:
+            detail += f" · {snap}"
         try:
             res = client.set_offgrid(get_settings(), req.on, req.soc, host=host)
             _audit(action, gateway=gateway, detail=detail, result=res,
