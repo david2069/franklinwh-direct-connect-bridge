@@ -304,6 +304,6 @@ def test_settings_has_the_switch_accounts_and_your_password():
               "dialog_msg('security.acctMsg')"):
         assert s in html, s
     idx = (root / "templates/index.html").read_text()
-    assert "r.status === 401" in idx and "/signin?next=" in idx
+    assert "r.status === 401" in idx and "'signin?next=" in idx   # relative (ingress)
     sign = (root / "templates/signin.html").read_text()
     assert "!raw.startsWith('//')" in sign                      # no redirect to another site
