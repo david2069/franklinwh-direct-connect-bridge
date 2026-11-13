@@ -282,6 +282,20 @@ utility and is assigned to a meter; the meter is what a gateway connects to. (Se
 [Multi-gateway and sites](multi-gateway.md) for why the tariff hangs off the meter rather
 than the gateway.)
 
+**One tariff in force per meter.** A tariff has **Effective from** and **Effective to**
+(blank = current). A meter has one tariff in force on any day, and prices from the one in
+force today:
+
+- Adding or importing a tariff for a meter ends its current tariff the day before the new
+  one starts. With no start date, the new one starts today.
+- A tariff whose dates would overlap another on the same meter is refused, with the
+  reason shown in the editor.
+- **New plan** (↻ on a tariff) starts a copy from today; Save ends the old one the day
+  before.
+- Importing a tariff from the same retailer and network adds a plan to that utility
+  instead of a second utility. The import preview says which tariff it replaces.
+- Deleting a utility lists its tariffs and deletes them with it.
+
 ### Static or dynamic
 
 ![The tariff editor's Rate type set to Dynamic (live)](../images/energy-and-costs/07b-dynamic.png)

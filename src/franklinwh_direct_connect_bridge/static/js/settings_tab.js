@@ -35,7 +35,7 @@ function settingsTab() {
     gateways: [],
     // ── Sites + Meters ──
     sites: [], meters: [], siteEdit: null, meterEdit: null,
-    utilities: [], tariffs: [], utilEdit: null, tariffEdit: null,
+    utilities: [], tariffs: [], utilEdit: null, tariffEdit: null, tariffMsg: null,
     // ── Automation constants (const.* sensors) ──
     constants: {}, constSpec: {}, constModes: [], constSaving: false,
     systemSetup: {}, systemSpec: {}, systemSaving: false, systemLoaded: {},
@@ -639,18 +639,17 @@ function settingsTab() {
       if (!t.effective_start && !t.effective_end) return '';
       return (t.effective_start || '…') + ' → ' + (t.effective_end || 'now');
     },
+    // A new plan for the same meter: the server closes this one the day before the new
+    // one starts and moves the meter over, so nothing is changed until Save.
     async supersedeTariff(t) {
-      if (!this.canWrite()) { this.$store.app.toast('Enable writes to supersede', 'error'); return; }
-      const today = new Date().toISOString().slice(0, 10);
-      try { await fetch('api/tariffs/' + t.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ effective_end: today }) }); } catch (e) {}
+      if (!this.canWrite()) return;
       await this.loadUtilitiesTariffs();
       const fresh = this.tariffs.find(x => x.id === t.id) || t;
-      this.editTariff(fresh);            // pre-fill from the old plan…
-      this.tariffEdit.id = '';           // …but save as a NEW tariff (the old is kept, end-dated)
-      this.tariffEdit.name = (t.name || 'Tariff') + ' v2';
-      this.tariffEdit.effective_start = today;
-      this.tariffEdit.effective_end = '';
-      this.$store.app.toast('Old tariff end-dated ' + today + ' — edit + save the new one', 'info');
+      this.editTariff(fresh);            // pre-fill from the current plan…
+      Object.assign(this.tariffEdit, { id: '', name: (t.name || 'Tariff') + ' v2',
+        meter_id: t.meter_id || this._meterFor(t.utility_id),
+        effective_start: new Date().toISOString().slice(0, 10), effective_end: '' });
+      this.tariffMsg = { kind: 'info', text: `Saving ends "${t.name}" the day before this one starts.` };
     },
 
     newUtility() { this.utilEdit = { id: '', name: '', network_dnsp: '', country: '', plan_type: 'unknown', export_allowed: true, solar_export_allowed: true, battery_export_allowed: true, charging_allowed: true, discharging_allowed: true, export_limit_kw: '', export_note: '', effective_start: '', effective_end: '' }; },
@@ -714,15 +713,30 @@ function settingsTab() {
       } catch (e) { this.$store.app.toast('Utility save failed: ' + e.message, 'error'); }
     },
     async deleteUtility(u) {
-      if (!await this.$store.app.confirmDialog(`Delete utility "${u.name}"?`, { danger: true })) return;
+      // A utility with tariffs: list them, and delete them with it on OK.
+      const ts = this.tariffsForUtility(u.id);
+      const msg = ts.length
+        ? `Delete utility "${u.name}" and its ${ts.length} tariff(s)?\n\n` + ts.map(t => '• ' + t.name).join('\n')
+          + '\n\nA meter priced by one of them is left with the tariff in force on another date, or none.'
+        : `Delete utility "${u.name}"?`;
+      if (!await this.$store.app.confirmDialog(msg, { danger: true })) return;
       try {
+        for (const t of ts) {
+          const rt = await fetch('api/tariffs/' + t.id, { method: 'DELETE' });
+          if (!rt.ok && rt.status !== 404) throw new Error((await rt.json().catch(() => ({}))).detail || rt.statusText);
+        }
         const r = await fetch('api/utilities/' + u.id, { method: 'DELETE' });
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
-        await this.loadUtilitiesTariffs();
+        await this.loadUtilitiesTariffs(); await this.loadSitesMeters();
       } catch (e) { this.$store.app.toast('Delete failed: ' + e.message, 'error'); }
     },
 
-    newTariff(uid) { this.tariffEdit = { id: '', utility_id: uid, name: '', billing_cycle_day: 1, effective_start: '', effective_end: '',
+    // The meter a new tariff prices: the one on this utility, else the default meter.
+    _meterFor(uid) {
+      const m = this.meters.find(x => x.utility_id === uid) || this.meters.find(x => x.is_default) || this.meters[0];
+      return m ? m.id : '';
+    },
+    newTariff(uid) { this.tariffMsg = null; this.tariffEdit = { id: '', utility_id: uid, meter_id: this._meterFor(uid), name: '', billing_cycle_day: 1, effective_start: '', effective_end: '',
       pricing: { default_rate: { buy: '', sell: '' }, seasons: [], kind: 'static', dynamic: { source: 'nem', region: '', buy_entity: '', feedin_entity: '' } },
       demand: { on: false, start: '15:00', end: '21:00', rate: '', interval_min: 30, basis: 'per_kw_day', months: [], days: [] },
       bonus: { on: false, start: '17:00', end: '21:00', rate: '', months: [], days: [] },
@@ -738,7 +752,7 @@ function settingsTab() {
       if (!this.nemSpot) this.loadNemSpot();   // populate region options for the wholesale picker
       this.loadHaPriceOpts();   // friendly HA price-entity names for the combobox
       const dw = t.demand_window || {}, bw = t.bonus_window || {}, cw = t.charge_window || {};
-      this.tariffEdit = { id: t.id, utility_id: t.utility_id, name: t.name, billing_cycle_day: t.billing_cycle_day || 1, effective_start: t.effective_start || '', effective_end: t.effective_end || '', pricing: pr,
+      this.tariffEdit = { id: t.id, utility_id: t.utility_id, meter_id: t.meter_id || '', name: t.name, billing_cycle_day: t.billing_cycle_day || 1, effective_start: t.effective_start || '', effective_end: t.effective_end || '', pricing: pr,
         demand: { on: !!dw.start, start: dw.start || '15:00', end: dw.end || '21:00', rate: pr.demand_rate ?? '', interval_min: pr.demand_interval_min || 30, basis: pr.demand_charge_basis || 'per_kw_day', months: dw.months || [], days: dw.days || [] },
         bonus: { on: !!bw.start, start: bw.start || '17:00', end: bw.end || '21:00', rate: pr.export_bonus_rate ?? '', months: bw.months || [], days: bw.days || [] },
         charge: { on: !!cw.start, start: cw.start || '10:00', end: cw.end || '15:00', rate: pr.export_charge_rate ?? '', free_kwh_per_day: pr.export_charge_free_kwh_per_day ?? '', months: cw.months || [], days: cw.days || [] },
@@ -988,12 +1002,13 @@ function settingsTab() {
       } catch (e) { this.$store.app.toast('Validate failed: ' + e.message, 'error'); }
     },
     async saveTariff() {
-      if (!this.canWrite()) { this.$store.app.toast('Enable writes to change tariffs', 'error'); return; }
+      if (!this.canWrite()) { this.tariffMsg = { kind: 'err', text: 'Enable writes to change tariffs.' }; return; }
       const t = this.tariffEdit;
+      this.tariffMsg = null;
       const win = o => (o && o.on ? { start: o.start, end: o.end,
         ...(o.months && o.months.length ? { months: o.months.map(Number) } : {}),
         ...(o.days && o.days.length ? { days: o.days.map(Number) } : {}) } : {});
-      const body = { utility_id: t.utility_id, name: t.name, billing_cycle_day: Number(t.billing_cycle_day) || 1,
+      const body = { utility_id: t.utility_id, name: t.name, ...(t.id ? {} : { meter_id: t.meter_id || null }), billing_cycle_day: Number(t.billing_cycle_day) || 1,
         effective_start: t.effective_start || null, effective_end: t.effective_end || null,
         pricing: this._tariffPricing(),
         demand_window: win(t.demand), bonus_window: win(t.bonus), charge_window: win(t.charge),
@@ -1002,16 +1017,25 @@ function settingsTab() {
       try {
         const r = await fetch(t.id ? 'api/tariffs/' + t.id : 'api/tariffs',
           { method: t.id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (r.status === 404 && t.id) {
+          // Deleted while this form was open: say so, and offer to add it again.
+          this.tariffMsg = { kind: 'gone', text: 'This tariff no longer exists (it was deleted). Save as new adds it again.' };
+          return;
+        }
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
-        this.tariffEdit = null; await this.loadUtilitiesTariffs();
-      } catch (e) { this.$store.app.toast('Tariff save failed: ' + e.message, 'error'); }
+        this.tariffEdit = null; await this.loadUtilitiesTariffs(); await this.loadSitesMeters();
+      } catch (e) { this.tariffMsg = { kind: 'err', text: 'Not saved: ' + e.message }; }
+    },
+    async saveTariffAsNew() {
+      Object.assign(this.tariffEdit, { id: '', meter_id: this.tariffEdit.meter_id || this._meterFor(this.tariffEdit.utility_id) });
+      await this.saveTariff();
     },
     async deleteTariff(t) {
       if (!await this.$store.app.confirmDialog(`Delete tariff "${t.name}"?`, { danger: true })) return;
       try {
         const r = await fetch('api/tariffs/' + t.id, { method: 'DELETE' });
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
-        await this.loadUtilitiesTariffs();
+        await this.loadUtilitiesTariffs(); await this.loadSitesMeters();
       } catch (e) { this.$store.app.toast('Delete failed: ' + e.message, 'error'); }
     },
     async saveEditGateway() {

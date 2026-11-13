@@ -99,6 +99,7 @@ class MetricsStore:
         self._migrate_app_config()
         self._migrate_tariff_dates()
         self._migrate_service_details()
+        self._migrate_tariff_meter()
         self._migrate_alerts()
         self._conn.commit()
 
@@ -998,6 +999,7 @@ class MetricsStore:
     def create_tariff(self, *, tid: str, utility_id: str, name: str = "",
                       billing_cycle_day: int = 1, plan_version: str = "",
                       effective_start: str | None = None, effective_end: str | None = None,
+                      meter_id: str | None = None,
                       now: float | None = None, **json_fields) -> dict:
         import json as _json
         ts = float(now if now is not None else time.time())
@@ -1007,17 +1009,18 @@ class MetricsStore:
             self._conn.execute(
                 "INSERT INTO tariffs(id,utility_id,name,pricing,demand_window,bonus_window,"
                 "charge_window,fixed_charges,billing_cycle_day,plan_version,effective_start,"
-                "effective_end,created_at,updated_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "effective_end,meter_id,created_at,updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (tid, utility_id, name, j["pricing"], j["demand_window"], j["bonus_window"],
                  j["charge_window"], j["fixed_charges"], int(billing_cycle_day), plan_version,
-                 effective_start or None, effective_end or None, ts, ts))
+                 effective_start or None, effective_end or None, meter_id or None, ts, ts))
             self._conn.commit()
         return self.tariff(tid)
 
     def update_tariff(self, tid: str, **fields) -> dict | None:
         import json as _json
-        scalar = {"utility_id", "name", "billing_cycle_day", "plan_version", "effective_start", "effective_end"}
+        scalar = {"utility_id", "name", "billing_cycle_day", "plan_version", "effective_start",
+                  "effective_end", "meter_id"}
         sets: dict = {}
         for k, v in fields.items():
             if k in scalar and v is not None:
@@ -1032,6 +1035,21 @@ class MetricsStore:
                                (*sets.values(), time.time(), tid))
             self._conn.commit()
         return self.tariff(tid)
+
+    def set_tariff_dates(self, tid: str, start: str | None, end: str | None) -> None:
+        """Set both effective dates, None included (update_tariff skips None: an open end
+        must be writable)."""
+        with self._lock:
+            self._conn.execute("UPDATE tariffs SET effective_start=?, effective_end=?, "
+                               "updated_at=? WHERE id=?", (start, end, time.time(), tid))
+            self._conn.commit()
+
+    def set_meter_plan(self, mid: str, utility_id: str | None, tariff_id: str | None) -> None:
+        """Point a meter at a tariff (and its utility), or at none (update_meter skips None)."""
+        with self._lock:
+            self._conn.execute("UPDATE meters SET utility_id=?, tariff_id=?, updated_at=? "
+                               "WHERE id=?", (utility_id, tariff_id, time.time(), mid))
+            self._conn.commit()
 
     def delete_tariff(self, tid: str) -> bool:
         with self._lock:
@@ -2822,6 +2840,20 @@ class MetricsStore:
         for c in ("effective_start", "effective_end"):
             if c not in cols:
                 self._conn.execute(f"ALTER TABLE tariffs ADD COLUMN {c} TEXT")
+        self._conn.commit()
+
+    def _migrate_tariff_meter(self) -> None:
+        """Which meter a tariff prices (owner 2026-11-13: one tariff in force per meter,
+        dated). Backfilled from each meter's current tariff."""
+        cols = [r[1] for r in self._conn.execute("PRAGMA table_info(tariffs)")]
+        if "meter_id" not in cols:
+            self._conn.execute("ALTER TABLE tariffs ADD COLUMN meter_id TEXT")
+        mcols = [r[1] for r in self._conn.execute("PRAGMA table_info(meters)")]
+        if "tariff_id" in mcols:      # a very old meters table has no tariff yet
+            order = "ORDER BY m.is_default DESC " if "is_default" in mcols else ""
+            self._conn.execute(
+                "UPDATE tariffs SET meter_id=(SELECT m.id FROM meters m WHERE "
+                f"m.tariff_id=tariffs.id {order}LIMIT 1) WHERE meter_id IS NULL")
         self._conn.commit()
 
     def _migrate_service_details(self) -> None:
