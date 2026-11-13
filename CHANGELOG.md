@@ -152,6 +152,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 - **Saving a tariff that was deleted while its editor was open** now says so in the editor and offers Save as new, instead of "Tariff save failed: no tariff 'tar_…'". Tariff save errors show in the editor, not as a toast. Deleting a utility with tariffs lists them and deletes them with it.
+- **Home Assistant panel no longer shows "404: Not Found" after the app was in the background** (owner). Home Assistant's ingress session had ended and its 401 sent the page to the absolute `/signin`, which is on Home Assistant's origin. Under ingress the page now stays (Home Assistant renews the session), and the sign-in links are relative.
 - **Scheduler timeline: the planned-window bars were drawn empty** (found while building
   #579): the bar lost its colour and height, so only the grey track showed.
 - **A schedule's notify messages named the wrong gateway** (#577). A **+ notify** row under

@@ -104,6 +104,11 @@ turning it back on restores them.
 Opening the bridge through Home Assistant's sidebar or **Open Web UI** goes through HA
 ingress. Home Assistant has already signed you in, so the bridge doesn't ask again.
 
+- Left in the background in the Home Assistant app, the panel's ingress session can end.
+  The bridge never sends an ingress page to its sign-in page: Home Assistant renews the
+  session when the panel is shown again, and the page carries on (a poll or two may fail
+  first).
+
 - The bridge trusts ingress only when three checks pass: it is running as an add-on, the
   request comes from the Supervisor's ingress address (`172.30.32.2`), and HA's ingress
   headers are present.
