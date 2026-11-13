@@ -12,6 +12,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Import tariff takes pasted JSON** (owner). Import tariff opens a dialog: paste the tariff or choose a file, Check previews it, Import creates it; results stay in the dialog. On a phone a tariff no longer needs a file.
 - **Off-grid Details** (owner). The OFF-GRID dialog has an expandable Details section per gateway: mode, SoC, battery, grid, solar, home, smart circuits (on/off, watts), and the generator and V2L when installed. `GET /api/offgrid/details`. The go-off-grid and reconnect dialogs name the aGate, and each switch is saved in the Audit Trail with that snapshot.
 - **OFF-GRID pill opens an Off-grid dialog** (owner). It lists each off-grid gateway with why, how long it has been off-grid, SoC, stored kWh and time left, and Go on-grid (reconnect) for an off-grid you requested. `GET /api/offgrid/status`.
 - **Off-grid notification says how long the battery will last.** It now gives the SoC, home load and solar, and an estimate at the current usage (SoC × Battery capacity ÷ net load), or says solar is covering the home. The FranklinWH app estimates from historical usage.

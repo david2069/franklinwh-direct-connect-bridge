@@ -282,6 +282,12 @@ utility and is assigned to a meter; the meter is what a gateway connects to. (Se
 [Multi-gateway and sites](multi-gateway.md) for why the tariff hangs off the meter rather
 than the gateway.)
 
+**Import tariff** takes a tariff as JSON (`franklinwh-bridge/tariff-profile`, the same
+format a tariff's Export writes and the Modbus Bridge uses): paste it into the box or
+choose a file. **Check** shows what it contains (retailer, network, plan, seasons, fixed
+charges); **Import** creates the utility and tariff and attaches them to the default meter.
+The result, or why it was not accepted, is shown in the dialog.
+
 ### Static or dynamic
 
 ![The tariff editor's Rate type set to Dynamic (live)](../images/energy-and-costs/07b-dynamic.png)
