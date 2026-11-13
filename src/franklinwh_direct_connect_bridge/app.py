@@ -562,6 +562,7 @@ class TariffCreate(BaseModel):
 
 class TariffUpdate(BaseModel):
     utility_id: str | None = None
+    meter_id: str | None = None             # move it to a meter (date-checked)
     name: str | None = None
     pricing: dict | None = None
     demand_window: dict | None = None
@@ -2502,18 +2503,24 @@ def create_app() -> FastAPI:
             raise HTTPException(404, f"no tariff '{tid}'")
         from . import tariff_plans
         body = req.model_dump(exclude_unset=True)
-        mid = cur.get("meter_id")
-        if mid and ("effective_start" in body or "effective_end" in body):
-            start = body.get("effective_start", cur.get("effective_start")) or None
-            end = body.get("effective_end", cur.get("effective_end")) or None
+        old_mid = cur.get("meter_id")
+        mid = body.get("meter_id", old_mid) or None       # moving it to a meter (phase 3)
+        if mid and st.meter(mid) is None:
+            raise HTTPException(422, f"no meter '{mid}'")
+        dates = "effective_start" in body or "effective_end" in body
+        start = body.get("effective_start", cur.get("effective_start")) or None
+        end = body.get("effective_end", cur.get("effective_end")) or None
+        if mid and (dates or mid != old_mid):
             try:
                 tariff_plans.plan(st, mid, start, end, exclude=tid, adding=False)
             except tariff_plans.Overlap as e:
                 raise HTTPException(400, str(e))
+        if dates:
             st.set_tariff_dates(tid, start, end)
         out = st.update_tariff(tid, **{k: v for k, v in body.items()
                                        if k not in ("effective_start", "effective_end")})
-        tariff_plans.repoint(st, mid)
+        for m in {old_mid, mid} - {None}:
+            tariff_plans.repoint(st, m)
         return st.tariff(tid) or out
 
     @app.delete("/api/tariffs/{tid}")
