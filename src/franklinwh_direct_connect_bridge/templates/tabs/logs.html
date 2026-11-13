@@ -126,8 +126,10 @@
     </select>
     <select x-model="range" @change="load()" class="form-control" style="width:auto"
             title="How far back to load (over persisted history)">
+      <!-- :selected, not x-model alone: these options are made by x-for after x-model
+           ran, so the select showed its first option ("Last 1h") over a 24 h load (#614). -->
       <template x-for="r in ranges" :key="r.v">
-        <option :value="r.v" x-text="r.label"></option>
+        <option :value="r.v" x-text="r.label" :selected="r.v === range"></option>
       </template>
     </select>
     <button @click="paused = !paused" class="btn btn-secondary btn-sm"

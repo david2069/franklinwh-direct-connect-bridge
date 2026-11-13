@@ -18,7 +18,7 @@ def test_location_and_solar_is_under_sites_and_billing():
     i = HTML.index("<!-- ══ Location & Solar ══ -->")
     assert _sub_of(i) == "billing"
     sites = HTML.index("Sites &amp; Meters")
-    tariffs = HTML.index("<!-- ══ Utilities &amp; Tariffs ══ -->")
+    tariffs = HTML.index("<!-- ══ Prices (#582)")   # the next section (the tariffs are on the meters now)
     assert sites < i < tariffs, "right after Sites & Meters"
 
 
@@ -29,7 +29,7 @@ def test_messages_point_to_the_new_place():
 
 def test_the_card_and_the_solar_tab_link_each_other():
     i = HTML.index("<!-- ══ Location & Solar ══ -->")
-    card = HTML[i:HTML.index("<!-- ══ Utilities &amp; Tariffs ══ -->")]
+    card = HTML[i:HTML.index("<!-- ══ Prices (#582)")]
     assert 'id="settings-location"' in card
     assert "setActiveTab('solar')" in card and 'data-testid="location-solar-link"' in card
     solar = (PKG / "templates" / "tabs" / "solar.html").read_text()

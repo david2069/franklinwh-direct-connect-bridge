@@ -175,7 +175,8 @@ Site  →  Meter  →  (Utility  →  Tariff)
 - A **meter** is a billing point at that site. A gateway is attached to a meter
   (`meter_id`), and more than one gateway can share one.
 - A **utility** is the retailer; a **tariff** is the plan, which belongs to a utility and
-  is assigned to a meter.
+  prices one meter, with **Effective from / to** dates. A meter has one tariff in force
+  per day; its card shows that tariff and its other plans.
 
 This is what makes costs meaningful on a site with two gateways behind one meter: the
 tariff is a property of the meter, not of the gateway, so the cost is computed once for

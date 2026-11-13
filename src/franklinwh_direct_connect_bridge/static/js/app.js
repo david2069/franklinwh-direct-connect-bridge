@@ -1287,6 +1287,20 @@ document.addEventListener('alpine:init', () => {
     get isOnline() {
       return this.summary && this.summary.ok === true;
     },
+    //: The aGate is offline and the summary is the poller's last-good copy (#615). The
+    //  values are kept on screen, greyed, with when they were read; the battery state
+    //  becomes "Unknown (offline)" because Charging/Discharging would claim it is live.
+    get isLastGood() {
+      return !!this.summary && this.summary.ok === false && this.summary.last_good === true;
+    },
+    //: "Last reading 14:02 (10 min ago)", in the site zone like the dashboard's charts.
+    get lastGoodText() {
+      if (!this.isLastGood) return '';
+      const ts = this.summary.last_good_ts;
+      if (!ts) return 'Last reading time unknown';
+      const hhmm = this._fmtSiteTime(ts, { hour: '2-digit', minute: '2-digit', hour12: false });
+      return `Last reading ${hhmm} (${this.agoText(ts)})`;
+    },
     get power() {
       return this.summary.power || {};
     },
@@ -1307,6 +1321,7 @@ document.addEventListener('alpine:init', () => {
       // falls back to the battery_w power-sign heuristic when no run_status is reported.
       // VPP is shown separately (its own badge + the run-status line) so both read together,
       // exactly like the official app: "Discharging" + "VPP Mode".
+      if (this.isLastGood) return 'Unknown (offline)';
       if (this.power.agate_starting === true) return 'Reconnecting';
       const d = this.power.run_status_desc;
       if (d) return d;
@@ -1329,6 +1344,7 @@ document.addEventListener('alpine:init', () => {
       return this._runStatus[1];
     },
     get _runStatus() {
+      if (this.isLastGood) return ['Unknown (offline)', 'aGate offline — ' + this.lastGoodText];
       if (this.isDebugMode) return ['Debug Mode', 'Debug Mode — 1301 run_status 8'];
       if (this.isOffGrid) return ['Off-grid', 'Off-grid — 1723 offgridState and the main relays'];
       if (this.isOwnForce) {
@@ -1453,6 +1469,10 @@ document.addEventListener('alpine:init', () => {
     get battery() {
       return this.summary.battery || {};
     },
+    //: The Battery card's state chip: the 1301 text, or "Unknown (offline)" (#615).
+    get batteryChip() {
+      return this.isLastGood ? 'Unknown (offline)' : (this.battery.run_status_desc || '--');
+    },
     get energyToday() {
       return this.summary.energy_today || {};
     },
@@ -1466,6 +1486,8 @@ document.addEventListener('alpine:init', () => {
     //  battery_w > 0 is discharge; no reading says nothing.
     flowText(kind, w) {
       if (w == null) return '';
+      // Offline (#615): a last-good watt reading says nothing about what is flowing now.
+      if (this.isLastGood) return kind === 'battery' ? 'Unknown (offline)' : '—';
       const words = {
         grid: ['Importing', 'Exporting'],
         battery: ['Discharging', 'Charging'],
@@ -1889,6 +1911,7 @@ document.addEventListener('alpine:init', () => {
         go_off_grid: 'Go off-grid', reconnect_grid: 'Reconnect to grid',
         reboot_gateway: 'Reboot gateway', set_mode: 'Set operating mode',
         modbus_toggle: 'Modbus toggle', set_reserve: 'Set reserve SoC',
+        wifi_reconnect: 'Reconnect aGate to Wi-Fi',
       })[a] || a;
     },
     fmtTime(ts) {                                   // control audit trail — HOST zone (system of record)
@@ -2287,13 +2310,15 @@ document.addEventListener('alpine:init', () => {
     },
 
     // ── Styled confirm dialog (replaces native confirm()) ──────────────────
-    confirmState: { open: false, title: '', message: '', danger: false },
+    confirmState: { open: false, title: '', message: '', danger: false, expect: '', typed: '' },
     _confirmResolve: null,
-    // Await a themed yes/no modal; resolves true (OK) / false (Cancel).
-    confirmDialog(message, { title = 'Please confirm', danger = false } = {}) {
-      this.confirmState = { open: true, title, message, danger };
+    // Await a themed yes/no modal; resolves true (OK) / false (Cancel). ``expect``: OK stays
+    // disabled until exactly that text is typed (confirmTyped).
+    confirmDialog(message, { title = 'Please confirm', danger = false, expect = '' } = {}) {
+      this.confirmState = { open: true, title, message, danger, expect, typed: '' };
       return new Promise((resolve) => { this._confirmResolve = resolve; });
     },
+    confirmTyped(message, expect, opts = {}) { return this.confirmDialog(message, { ...opts, expect }); },
     confirmResolve(ok) {
       this.confirmState.open = false;
       const r = this._confirmResolve; this._confirmResolve = null;

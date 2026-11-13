@@ -2135,7 +2135,8 @@ def feature_states(settings, store, gateway_id=None) -> dict[str, dict[str, str]
     out["feed_in_price"] = (_entity(feed) if feed
                             else _feature("not_set_up", "feed-in price — " + _SETUP_PRICE))
     meter = _meter_for_gateway(store, gateway_id) or {}
-    if not meter.get("tariff_id"):
+    from . import tariff_plans
+    if not tariff_plans.tariff_for(store, meter or None):
         out["tariff"] = _feature("not_set_up", "tariff — " + _SETUP_TARIFF)
     if not meter.get("utility_id"):
         out["utility"] = _feature("not_set_up", "utility — " + _SETUP_UTILITY)
@@ -2207,7 +2208,8 @@ def billing_snapshot(store, gateway_id=None, now: dt.datetime | None = None) -> 
     if not meter:
         return {}
     try:
-        tar = store.tariff(meter.get("tariff_id")) if meter.get("tariff_id") else None
+        from . import tariff_plans
+        tar = tariff_plans.tariff_for(store, meter, now.date())
     except Exception:                                          # noqa: BLE001
         tar = None
     if not tar:
@@ -2262,7 +2264,8 @@ def tariff_snapshot(store, gateway_id=None, now: dt.datetime | None = None) -> d
                 "service.export_limit_kw": util.get("export_limit_kw"),
                 "service.plan_type": util.get("plan_type"),
             })
-        tar = store.tariff(meter.get("tariff_id")) if meter.get("tariff_id") else None
+        from . import tariff_plans
+        tar = tariff_plans.tariff_for(store, meter, now.date())
         if tar and isinstance(tar.get("pricing"), dict):
             from . import rate_model
             pr = tar["pricing"]

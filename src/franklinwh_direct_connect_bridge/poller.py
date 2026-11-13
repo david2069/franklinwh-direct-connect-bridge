@@ -16,6 +16,7 @@ from . import alerts
 from . import client
 from . import constants
 from . import providers
+from . import troubleshoot
 from .config import Settings, metrics_active
 from .db import get_store, maybe_maintain
 from .notify import Notifier, transitions
@@ -61,6 +62,20 @@ def _fmt_outage(seconds: float | None) -> str:
     if s < 3600:
         return f"{s // 60}m {s % 60}s"
     return f"{s // 3600}h {(s % 3600) // 60}m"
+
+
+def _cache_summary(gw: GatewayState, summ: dict) -> None:
+    """Cache one poll's summary for the REST layer. A good poll replaces the cache; a failed
+    one keeps the last-good values but marks them: stale, last_good, and last_good_ts (when
+    the gateway was last read), so the Dashboard can grey them out instead of showing them
+    as live (#615). With no good reading yet, the failed summary is cached as it is."""
+    prev = gw.last_summary
+    if summ.get("ok") or not prev:
+        gw.last_summary = summ
+        return
+    gw.last_summary = {**prev, "ok": False, "stale": True, "error": summ.get("error")}
+    if prev.get("ok") or prev.get("last_good"):
+        gw.last_summary.update(last_good=True, last_good_ts=gw.state_ts or None)
 
 
 #: Re-discovery (#123): failed polls in a row before a sweep is even considered, and the
@@ -369,6 +384,9 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                         net_state = _ns(nb.get("connectivity"),
                                         _nfi(raw) if isinstance(raw, dict) else None,
                                         nb.get("switches"), nb.get("cloud"))
+                        # On 4G while the LAN works (#614): only the aGate's own
+                        # report shows it, since :9000 keeps answering.
+                        troubleshoot.note_local_network(gw.id, True, net_state)
                     except Exception as e:  # noqa: BLE001 — a network read never breaks the poll
                         log.debug("[%s] network read failed: %s", gw.id, e)
                 st.update(net_state)
@@ -421,6 +439,8 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                 # monitor applies the thresholds. No address means not set up yet (#265),
                 # which is not an outage.
                 if gw.active_host:
+                    if outcome != "ok":
+                        troubleshoot.note_local_network(gw.id, False, None)
                     alerts.set_condition(
                         gw.id, "GATEWAY_UNREACHABLE", outcome != "ok",
                         detail=f"{gw.label or gw.id} is not answering on the LAN: "
@@ -474,7 +494,6 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                     if fail_streak:
                         log.info("[%s] poll recovered after %d failed cycle(s)", gw.id, fail_streak)
                         fail_streak = 0
-                    gw.last_summary = summ
                 else:
                     fail_streak += 1
                     # First failure + every 10th thereafter — so an outage is self-evident in
@@ -483,11 +502,7 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                         log.warning("[%s] poll failed (%d in a row): %s — recording paused, "
                                     "last-good cached", gw.id, fail_streak,
                                     summ.get("error") or "unreachable")
-                    if gw.last_summary:
-                        gw.last_summary = {**gw.last_summary, "ok": False,
-                                           "stale": True, "error": summ.get("error")}
-                    else:
-                        gw.last_summary = summ
+                _cache_summary(gw, summ)
                 if pub:
                     if not starting:
                         pub.publish_state(st)

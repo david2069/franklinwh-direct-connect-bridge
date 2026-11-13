@@ -330,18 +330,6 @@
           <input class="form-control form-control-sm w-full mt-1" x-model="meterEdit.pto_reference" placeholder="approval / NMI ref (optional)"></label>
         <label class="text-[11px]" style="color:var(--text-secondary)">Timezone
           <input class="form-control form-control-sm w-full mt-1" x-model="meterEdit.timezone" placeholder="e.g. Australia/Sydney"></label>
-        <label class="text-[11px]" style="color:var(--text-secondary)">Utility
-          <select class="form-control form-control-sm w-full mt-1" x-model="meterEdit.utility_id"
-                  x-init="$nextTick(() => { $el.value = meterEdit.utility_id })" @change="meterEdit.tariff_id = ''">
-            <option value="">— none —</option>
-            <template x-for="u in utilities" :key="u.id"><option :value="u.id" x-text="u.name"></option></template>
-          </select></label>
-        <label class="text-[11px]" style="color:var(--text-secondary)">Tariff
-          <select class="form-control form-control-sm w-full mt-1" x-model="meterEdit.tariff_id"
-                  x-init="$nextTick(() => { $el.value = meterEdit.tariff_id })" :disabled="!meterEdit.utility_id">
-            <option value="">— none —</option>
-            <template x-for="t in tariffsForUtility(meterEdit.utility_id)" :key="t.id"><option :value="t.id" x-text="t.name"></option></template>
-          </select></label>
       </div>
       <div class="flex gap-2">
         <button class="btn btn-primary btn-sm" @click="saveMeter()">Save</button>
@@ -374,7 +362,8 @@
         </div>
         <div class="space-y-1.5">
           <template x-for="m in metersForSite(s.id)" :key="m.id">
-            <div class="flex items-center justify-between gap-3 rounded-md px-2.5 py-2" style="background:var(--surface-1)">
+            <div class="rounded-md" style="background:var(--surface-1)">
+            <div class="flex items-center justify-between gap-3 px-2.5 py-2">
               <div class="min-w-0">
                 <span class="font-medium text-sm" style="color:var(--text-primary)" x-text="m.name"></span>
                 <div class="text-[11px] mt-0.5" style="color:var(--text-faint)">
@@ -388,117 +377,90 @@
                         :disabled="!canWrite()" @click="deleteMeter(m)" aria-label="Delete meter" title="Delete meter"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
               </div>
             </div>
+            <!-- The meter's tariff (owner 2026-11-13; as the Modbus Bridge's services): the one
+                 in force today, its actions, and the meter's other plans, collapsed. -->
+            <div data-testid="meter-plan" class="px-2.5 pb-2.5 space-y-1.5">
+              <div class="flex items-start justify-between gap-2 flex-wrap border-t pt-2" style="border-color:var(--border)">
+                <div data-testid="meter-plan-current" class="min-w-0 text-[11px]">
+                  <template x-if="planNow(m)"><div>
+                    <span class="text-[10px] uppercase tracking-wider" style="color:var(--text-faint)">Tariff</span>
+                    <div class="text-sm font-medium" style="color:var(--text-primary)" x-text="planNow(m).name || '(unnamed tariff)'"></div>
+                    <div style="color:var(--text-faint)" x-text="[utilName(planNow(m).utility_id), tariffDateLabel(planNow(m)) || 'no dates', 'billing day ' + planNow(m).billing_cycle_day].filter(Boolean).join(' · ')"></div>
+                  </div></template>
+                  <div x-show="!planNow(m)" style="color:var(--text-faint)">No tariff in force. Add one or import it.</div>
+                </div>
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <button data-testid="meter-plan-new" class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="newPlanForMeter(m)"
+                          :title="planNow(m) ? 'A new plan from today; Save ends this one the day before' : 'Add a tariff for this meter'"
+                          x-text="planNow(m) ? 'New plan' : '+ Add tariff'"></button>
+                  <button data-testid="meter-plan-import" class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="openTariffImport(m.id)">Import</button>
+                  <template x-if="planNow(m)"><span class="inline-flex gap-1.5">
+                    <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="editTariff(planNow(m))">Edit</button>
+                    <button class="btn btn-secondary btn-sm" @click="exportTariffProfile(planNow(m))" title="Export as a tariff profile (Modbus Bridge format)">Export</button>
+                  </span></template>
+                </div>
+              </div>
+              <template x-if="planHistory(m).length"><div>
+                <button type="button" data-testid="meter-plan-history-toggle" class="text-[11px] underline" style="color:var(--text-secondary)"
+                        @click="planHist[m.id] = !planHist[m.id]"
+                        x-text="(planHist[m.id] ? 'Hide' : 'Show') + ' other plans (' + planHistory(m).length + ')'"></button>
+                <div data-testid="meter-plan-history" x-show="planHist[m.id]" class="space-y-1 mt-1">
+                  <template x-for="t in planHistory(m)" :key="t.id">
+                    <div class="flex items-center justify-between gap-2 rounded px-2 py-1.5" style="background:var(--surface-2)">
+                      <div class="min-w-0 text-[11px]">
+                        <span style="color:var(--text-primary)" x-text="t.name || '(unnamed tariff)'"></span>
+                        <span style="color:var(--text-faint)" x-text="' · ' + [utilName(t.utility_id), tariffDateLabel(t)].filter(Boolean).join(' · ')"></span>
+                        <span class="uppercase font-semibold" :style="{ color: tariffStatus(t) === 'past' ? 'var(--text-faint)' : 'var(--warn)' }" x-text="' · ' + tariffStatus(t)"></span>
+                      </div>
+                      <div class="flex items-center gap-1 shrink-0">
+                        <button class="btn btn-secondary btn-sm" @click="exportTariffProfile(t)">Export</button>
+                        <button class="btn btn-secondary btn-sm" :disabled="!canWrite() && !tariffRetired(t)" @click="editTariff(t)" x-text="tariffRetired(t) ? 'View' : 'Edit'"></button>
+                        <button class="btn btn-danger btn-sm btn-icon" :disabled="!canWrite()" @click="deleteTariff(t)" aria-label="Delete tariff" title="Delete tariff"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div></template>
+            </div>
+            </div>
           </template>
           <div x-show="!metersForSite(s.id).length" class="text-[11px]" style="color:var(--text-faint)">No meters.</div>
         </div>
         <button class="btn btn-secondary btn-sm w-full" :disabled="!canWrite()" @click="newMeter(s.id)">+ Add meter</button>
       </div>
     </template>
-  </div>
 
-  <!-- ══ Location & Solar ══ -->
-  <div class="flex items-center gap-3">
-    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Location &amp; Solar <a :href="$store.app.guideUrl('energy-and-costs/#solar-forecast')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
-    <div class="flex-1 border-t border-white/[0.08]"></div>
-  </div>
-  <div class="card space-y-3" id="settings-location">
-    <div class="flex items-center justify-between gap-2">
-      <span class="text-xs" style="color:var(--text-faint)">Your site's location and solar array. Set from your gateway, or enter manually.
-        <button type="button" class="underline ml-1" style="color:var(--accent)" data-testid="location-solar-link"
-                @click="$store.app.setActiveTab('solar')">Solar tab</button></span>
-      <button @click="syncLocation()" class="btn btn-secondary btn-sm">⟳ Sync from gateway</button>
-    </div>
-    <p class="text-xs" style="color:var(--text-faint)">
-      Powers the Solar Forecast card + weather/solar sensors (Open-Meteo, free). Auto-saves on change.
-    </p>
-    <div class="grid grid-cols-2 gap-3">
-      <label class="text-xs text-slate-500">Latitude
-        <input type="number" step="0.0001" class="form-control form-control-sm w-full mt-1" x-model="form.pv_latitude"
-               @change="saveOne({pv_latitude: form.pv_latitude === '' ? null : Number(form.pv_latitude)})"
-               placeholder="-33.8688"></label>
-      <label class="text-xs text-slate-500">Longitude
-        <input type="number" step="0.0001" class="form-control form-control-sm w-full mt-1" x-model="form.pv_longitude"
-               @change="saveOne({pv_longitude: form.pv_longitude === '' ? null : Number(form.pv_longitude)})"
-               placeholder="151.2093"></label>
-    </div>
-    <div class="grid grid-cols-3 gap-3">
-      <label class="text-xs text-slate-500" data-testid="pv-size">PV size (kWp)
-        <!-- Derived by default (#583): blank = the gateways' own size. A larger number is
-             for DC panels above the AC rating or remote solar; smaller is allowed. -->
-        <input type="number" step="0.1" min="0" class="form-control form-control-sm w-full mt-1" x-model="form.pv_kwp"
-               @change="saveOne({pv_kwp: Number(form.pv_kwp) > 0 ? Number(form.pv_kwp) : null})"
-               :placeholder="derivedPvKwp ? derivedPvKwp + ' from the gateway' : 'Please confirm'">
-        <span class="block mt-1 text-[10px]" style="color:var(--text-faint)">
-          <span x-show="derivedPvKwp" x-text="'Gateway ' + derivedPvKwp + ' kWp'"></span><span
-                x-show="derivedPvKwp && Number(form.pv_kwp) > 0" x-text="' · You ' + Number(form.pv_kwp) + ' kWp'"></span>
-          <button type="button" x-show="derivedPvKwp && Number(form.pv_kwp) > 0" class="underline ml-1" style="color:var(--accent)"
-                  @click="form.pv_kwp = ''; saveOne({pv_kwp: null})">Use gateway</button>
-          <span x-show="!derivedPvKwp && !(Number(form.pv_kwp) > 0)">Please confirm: the gateway hasn't reported its size. Enter yours.</span>
-        </span>
-        <span x-show="derivedPvKwp && Number(form.pv_kwp) > 0 && Number(form.pv_kwp) < derivedPvKwp" x-cloak
-              data-testid="pv-size-smaller" class="block mt-0.5 text-[10px]" style="color:var(--text-faint)">
-          Smaller than the gateway's: fine for shading or clipping; the forecast uses yours.</span></label>
-      <label class="text-xs text-slate-500">Tilt°
-        <input type="number" step="1" class="form-control form-control-sm w-full mt-1" x-model="form.pv_tilt"
-               @change="saveOne({pv_tilt: Number(form.pv_tilt) || 0})" placeholder="22"></label>
-      <label class="text-xs text-slate-500">Azimuth°
-        <input type="number" step="1" class="form-control form-control-sm w-full mt-1" x-model="form.pv_azimuth"
-               @change="saveOne({pv_azimuth: Number(form.pv_azimuth) || 0})" placeholder="180"></label>
-    </div>
-    <p class="text-[11px]" style="color:var(--text-faint)">
-      Azimuth (Open-Meteo convention): 0=south · −90=east · 90=west · ±180=north. Tilt = degrees
-      from horizontal (roof pitch is typically ~20–25°).
-    </p>
-  </div>
-  </div>
-  <div x-show="sub==='billing'" x-cloak class="space-y-6">
-  <!-- Import tariff: paste the JSON or choose a file; Check previews, Import creates it -->
-  <div x-show="tariffImp.open" x-cloak class="fixed inset-0 z-[110] flex items-center justify-center p-4"
-       @keydown.escape.window="tariffImp.open=false" data-testid="tariff-import-dialog">
-    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="tariffImp.open=false"></div>
-    <div class="relative w-full max-w-md rounded-xl border shadow-2xl"
-         style="background:var(--surface-0,#0f172a);border-color:var(--border)">
-      <div class="px-5 py-3 border-b flex items-center justify-between" style="border-color:var(--border)">
-        <div class="text-sm font-semibold" style="color:var(--text-primary)">Import tariff</div>
-        <button class="text-slate-400 hover:text-slate-200" @click="tariffImp.open=false"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>
-      </div>
-      <div class="px-5 py-4 space-y-3">
-        <div class="text-xs text-slate-500">Paste a tariff (franklinwh-bridge/tariff-profile JSON), or choose a file.</div>
-        <textarea data-testid="tariff-import-paste" x-model="tariffImp.text" rows="8"
-                  @input="tariffImp.preview=null; tariffImp.msg=null"
-                  class="form-control w-full font-mono text-xs" placeholder='{"type": "franklinwh-bridge/tariff-profile", ...}'></textarea>
-        <input type="file" accept="application/json,.json" class="hidden" x-ref="tariffImportFile" @change="tariffImportFile($event)">
-        <div class="flex flex-wrap gap-2">
-          <button data-testid="tariff-import-file" class="btn btn-secondary btn-sm" @click="$refs.tariffImportFile.click()">Choose file</button>
-          <button data-testid="tariff-import-check" class="btn btn-secondary btn-sm"
-                  :disabled="tariffImp.busy || !tariffImp.text.trim()" @click="tariffImportCheck()">Check</button>
-          <button data-testid="tariff-import-apply" class="btn btn-primary btn-sm"
-                  :disabled="tariffImp.busy || !tariffImp.preview || tariffImp.done" @click="tariffImportApply()">Import</button>
+    <!-- Tariffs on no meter, and retailers with no tariff: kept visible to assign or tidy. -->
+    <template x-if="unassignedTariffs().length || unusedUtilities().length"><div data-testid="unassigned-tariffs"
+         class="rounded-lg border p-3 space-y-1.5" style="border-color:var(--border)">
+      <div class="text-[10px] uppercase tracking-wider" style="color:var(--text-faint)">Not on a meter</div>
+      <template x-for="t in unassignedTariffs()" :key="t.id">
+        <div class="flex items-center justify-between gap-2 rounded px-2 py-1.5" style="background:var(--surface-1)">
+          <div class="min-w-0 text-[11px]">
+            <span style="color:var(--text-primary)" x-text="t.name || '(unnamed tariff)'"></span>
+            <span style="color:var(--text-faint)" x-text="' · ' + [utilName(t.utility_id), tariffDateLabel(t)].filter(Boolean).join(' · ')"></span>
+          </div>
+          <div class="flex items-center gap-1 shrink-0">
+            <button data-testid="tariff-assign" class="btn btn-secondary btn-sm" :disabled="!canWrite() || !meters.length" @click="assignTariff(t)"
+                    :title="'Put it on ' + (meters.find(x => x.is_default) || meters[0] || {}).name">Use on meter</button>
+            <button class="btn btn-secondary btn-sm" :disabled="!canWrite() && !tariffRetired(t)" @click="editTariff(t)" x-text="tariffRetired(t) ? 'View' : 'Edit'"></button>
+            <button class="btn btn-danger btn-sm btn-icon" :disabled="!canWrite()" @click="deleteTariff(t)" aria-label="Delete tariff" title="Delete tariff"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+          </div>
         </div>
-        <div x-show="tariffImp.preview" class="text-xs rounded-lg p-2 whitespace-pre-line"
-             style="background:var(--surface-2);color:var(--text-secondary)" x-text="tariffImportSummary()"></div>
-        <div data-testid="tariff-import-result" x-show="tariffImp.msg" class="text-sm"
-             :style="{ color: tariffImp.msg?.kind === 'ok' ? 'var(--success,#34d399)' : 'var(--danger,#f87171)' }"
-             x-text="tariffImp.msg?.text"></div>
-      </div>
-    </div>
-  </div>
+      </template>
+      <template x-for="u in unusedUtilities()" :key="u.id">
+        <div class="flex items-center justify-between gap-2 rounded px-2 py-1.5" style="background:var(--surface-1)">
+          <div class="text-[11px]"><span style="color:var(--text-primary)" x-text="u.name"></span>
+            <span style="color:var(--text-faint)"> · retailer with no tariff</span></div>
+          <div class="flex items-center gap-1 shrink-0">
+            <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="editUtility(u)">Edit</button>
+            <button class="btn btn-danger btn-sm btn-icon" :disabled="!canWrite()" @click="deleteUtility(u)" aria-label="Delete retailer" title="Delete retailer"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+          </div>
+        </div>
+      </template>
+    </div></template>
 
-  <!-- ══ Utilities &amp; Tariffs ══ -->
-  <div class="flex items-center gap-3">
-    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Utilities &amp; Tariffs <a :href="$store.app.guideUrl('energy-and-costs/#tariffs')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
-    <div class="flex-1 border-t border-white/[0.08]"></div>
-    <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="openTariffImport()"
-            title="Import a tariff (franklinwh-bridge/tariff-profile): paste it or choose a file">Import tariff</button>
-    <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="newUtility()">+ Add Utility</button>
-  </div>
-  <div class="card space-y-3">
-    <p class="text-[11px]" style="color:var(--text-faint)">
-      A utility is your electricity supplier + its plan permissions (export/charge). A tariff is a rate
-      plan under it. Assign a utility + tariff to a meter (on the meter's Edit) to power the
-      <span class="font-mono">tariff.*</span> / <span class="font-mono">service.*</span> schedule sensors.</p>
-
-    <!-- utility editor -->
+    <!-- retailer (utility) editor: opened from the tariff editor -->
     <template x-if="utilEdit"><div class="rounded-lg border p-3 space-y-2" style="border-color:var(--accent)"
          x-init="$nextTick(() => $el.scrollIntoView({ behavior: 'smooth', block: 'center' }))">
       <div class="text-xs font-semibold" style="color:var(--text-secondary)" x-text="utilEdit.id ? 'Edit utility' : 'New utility'"></div>
@@ -543,7 +505,27 @@
     <template x-if="tariffEdit"><div class="rounded-lg border p-3 space-y-2" style="border-color:var(--accent)"
          x-data="{ tariffTab: 'rates' }"
          x-init="$nextTick(() => $el.scrollIntoView({ behavior: 'smooth', block: 'start' }))">
-      <div class="text-xs font-semibold" style="color:var(--text-secondary)" x-text="tariffEdit.id ? 'Edit tariff' : 'New tariff'"></div>
+      <div class="text-xs font-semibold" style="color:var(--text-secondary)"
+           x-text="(tariffEdit.id ? 'Edit tariff' : 'New tariff') + (tariffEdit.meter_id ? ' · ' + ((meters.find(x => x.id === tariffEdit.meter_id) || {}).name || '') : '')"></div>
+      <!-- A retired plan (its end date has passed) is locked, so past bills can be reconciled
+           against what applied (owner 2026-11-13). Unlock asks first. -->
+      <div x-show="tariffEdit.locked" class="flex items-center justify-between gap-2 flex-wrap rounded-md px-2.5 py-2 text-[11px]"
+           style="background:var(--surface-2);color:var(--text-secondary)">
+        <span x-text="'Retired ' + tariffEdit.effective_end + ': locked, view only. Its rates and charges are kept so bills from then can be reconciled.'"></span>
+        <button type="button" data-testid="tariff-unlock" class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="unlockTariff()">Unlock to edit</button>
+      </div>
+      <fieldset :disabled="tariffEdit.locked" class="space-y-2">
+      <div class="flex items-end gap-2 flex-wrap">
+        <label class="text-[11px] flex-1 min-w-[10rem]" style="color:var(--text-secondary)">Retailer
+          <select data-testid="tariff-retailer" class="form-control form-control-sm w-full mt-1" x-model="tariffEdit.utility_id"
+                  x-init="$nextTick(() => { $el.value = tariffEdit.utility_id })">
+            <option value="">— choose —</option>
+            <template x-for="u in utilities" :key="u.id"><option :value="u.id" x-text="[u.name, u.network_dnsp].filter(Boolean).join(' · ')"></option></template>
+          </select></label>
+        <button type="button" class="btn btn-secondary btn-sm" x-show="tariffEdit.utility_id" :disabled="!canWrite()"
+                @click="editUtility(utilities.find(u => u.id === tariffEdit.utility_id))">Edit retailer</button>
+        <button type="button" data-testid="tariff-new-retailer" class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="newUtility()">+ New retailer</button>
+      </div>
       <div class="grid grid-cols-3 gap-2">
         <label class="text-[11px] col-span-2" style="color:var(--text-secondary)">Name
           <input class="form-control form-control-sm w-full mt-1" x-model="tariffEdit.name" placeholder="AGL Home"></label>
@@ -556,6 +538,7 @@
         <label class="text-[11px]" style="color:var(--text-secondary)">Effective to <span style="color:var(--text-faint)">(blank = current)</span>
           <input type="date" class="form-control form-control-sm w-full mt-1" x-model="tariffEdit.effective_end"></label>
       </div>
+      </fieldset>
       <!-- Modbus-style sub-tabs (Peak demand · Export bonus · Export charge · Standing charges · Energy rates) -->
       <div class="flex flex-wrap gap-0.5 border-b pt-1" style="border-color:var(--border)">
         <template x-for="tt in [
@@ -576,6 +559,7 @@
       </div>
 
       <!-- Energy rates tab (cloned from the Modbus bridge) -->
+      <fieldset :disabled="tariffEdit.locked" class="space-y-2">
       <div x-show="tariffTab==='rates'" x-cloak class="space-y-2">
         <!-- Rate type: Static vs Wholesale (live) — per-tariff dynamic pricing -->
         <div class="flex items-center gap-2 text-xs">
@@ -1016,59 +1000,118 @@
         <p x-show="!(tariffEdit.fixed||[]).length" class="text-[10px]" style="color:var(--text-faint)">No standing charges. Add a daily supply charge, meter fee, etc.</p>
       </div>
 
+      </fieldset>
       <template x-if="tariffProblems.length"><div class="text-[11px]" style="color:var(--warn)">
         <template x-for="pr in tariffProblems" :key="pr"><div x-text="'• ' + pr"></div></template>
       </div></template>
+      <div data-testid="tariff-msg" x-show="tariffMsg" class="text-[11px]"
+           :style="{ color: tariffMsg?.kind === 'info' ? 'var(--text-secondary)' : 'var(--danger,#f87171)' }">
+        <span x-text="tariffMsg?.text"></span>
+        <button x-show="tariffMsg?.kind === 'gone'" class="btn btn-secondary btn-sm ml-2" @click="saveTariffAsNew()">Save as new</button>
+      </div>
       <div class="flex gap-2">
-        <button class="btn btn-primary btn-sm" @click="saveTariff()">Save</button>
-        <button class="btn btn-secondary btn-sm" @click="validateTariff()">Validate</button>
-        <button class="btn btn-secondary btn-sm" @click="tariffEdit = null">Cancel</button>
+        <button class="btn btn-primary btn-sm" x-show="!tariffEdit.locked" @click="saveTariff()">Save</button>
+        <button class="btn btn-secondary btn-sm" x-show="!tariffEdit.locked" @click="validateTariff()">Validate</button>
+        <button class="btn btn-secondary btn-sm" @click="tariffEdit = null; tariffMsg = null" x-text="tariffEdit.locked ? 'Close' : 'Cancel'"></button>
       </div>
     </div></template>
 
-    <!-- utilities list -->
-    <template x-for="u in utilities" :key="u.id">
-      <div class="rounded-lg border p-3 space-y-2.5" style="border-color:var(--border)">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <div class="flex items-center gap-2 flex-wrap">
-              <span class="font-semibold text-sm" style="color:var(--text-primary)" x-text="u.name || '(unnamed)'"></span>
-              <span x-show="!u.battery_export_allowed" class="chip" style="font-size:.55rem;background:#fb718522;color:#fb7185">no battery export</span>
-            </div>
-            <div class="text-[11px] mt-0.5" style="color:var(--text-faint)" x-text="[u.network_dnsp, u.country].filter(Boolean).join(' · ') || 'No network set'"></div>
-          </div>
-          <div class="flex items-center gap-1.5 shrink-0">
-            <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="editUtility(u)">Edit</button>
-            <button x-show="!tariffsForUtility(u.id).length" class="btn btn-danger btn-sm btn-icon"
-                    :disabled="!canWrite()" @click="deleteUtility(u)" aria-label="Delete utility" title="Delete utility"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
-          </div>
-        </div>
-        <div class="space-y-1.5">
-          <template x-for="t in tariffsForUtility(u.id)" :key="t.id">
-            <div class="flex items-center justify-between gap-3 rounded-md px-2.5 py-2" style="background:var(--surface-1)">
-              <div class="min-w-0">
-                <span class="font-medium text-sm" style="color:var(--text-primary)" x-text="t.name || '(unnamed tariff)'"></span>
-                <div class="text-[11px] mt-0.5" style="color:var(--text-faint)">
-                  <span x-show="t.pricing && t.pricing.default_rate && t.pricing.default_rate.buy != null" x-text="'buy ' + (t.pricing?.default_rate?.buy) + '/kWh · '"></span><span x-show="(t.pricing?.seasons || []).length" x-text="(t.pricing?.seasons || []).length + '-season TOU · '"></span>day <span x-text="t.billing_cycle_day"></span>
-                  <span x-show="tariffDateLabel(t)" x-text="' · ' + tariffDateLabel(t)"></span>
-                  <span x-show="tariffStatus(t) !== 'active'" class="uppercase font-semibold" :style="{ color: tariffStatus(t) === 'past' ? 'var(--danger)' : 'var(--warn)' }" x-text="' · ' + tariffStatus(t)"></span>
-                </div>
-              </div>
-              <div class="flex items-center gap-1.5 shrink-0">
-                <button class="btn btn-secondary btn-sm" @click="exportTariffProfile(t)" title="Export as a Modbus-compatible tariff profile">Export</button>
-                <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="editTariff(t)">Edit</button>
-                <button class="btn btn-secondary btn-sm btn-icon" :disabled="!canWrite()" @click="supersedeTariff(t)" aria-label="Supersede" title="Supersede — end-date this plan and start a new one">&#8635;</button>
-                <button class="btn btn-danger btn-sm btn-icon" :disabled="!canWrite()" @click="deleteTariff(t)" aria-label="Delete tariff" title="Delete tariff"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
-              </div>
-            </div>
-          </template>
-          <div x-show="!tariffsForUtility(u.id).length" class="text-[11px]" style="color:var(--text-faint)">No tariffs.</div>
-        </div>
-        <button class="btn btn-secondary btn-sm w-full" :disabled="!canWrite()" @click="newTariff(u.id)">+ Add tariff</button>
-      </div>
-    </template>
-    <div x-show="!utilities.length" class="text-[11px]" style="color:var(--text-faint)">No utilities yet — add one to define your plan &amp; rates.</div>
+
   </div>
+
+  <!-- ══ Location & Solar ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Location &amp; Solar <a :href="$store.app.guideUrl('energy-and-costs/#solar-forecast')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+  </div>
+  <div class="card space-y-3" id="settings-location">
+    <div class="flex items-center justify-between gap-2">
+      <span class="text-xs" style="color:var(--text-faint)">Your site's location and solar array. Set from your gateway, or enter manually.
+        <button type="button" class="underline ml-1" style="color:var(--accent)" data-testid="location-solar-link"
+                @click="$store.app.setActiveTab('solar')">Solar tab</button></span>
+      <button @click="syncLocation()" class="btn btn-secondary btn-sm">⟳ Sync from gateway</button>
+    </div>
+    <p class="text-xs" style="color:var(--text-faint)">
+      Powers the Solar Forecast card + weather/solar sensors (Open-Meteo, free). Auto-saves on change.
+    </p>
+    <div class="grid grid-cols-2 gap-3">
+      <label class="text-xs text-slate-500">Latitude
+        <input type="number" step="0.0001" class="form-control form-control-sm w-full mt-1" x-model="form.pv_latitude"
+               @change="saveOne({pv_latitude: form.pv_latitude === '' ? null : Number(form.pv_latitude)})"
+               placeholder="-33.8688"></label>
+      <label class="text-xs text-slate-500">Longitude
+        <input type="number" step="0.0001" class="form-control form-control-sm w-full mt-1" x-model="form.pv_longitude"
+               @change="saveOne({pv_longitude: form.pv_longitude === '' ? null : Number(form.pv_longitude)})"
+               placeholder="151.2093"></label>
+    </div>
+    <div class="grid grid-cols-3 gap-3">
+      <label class="text-xs text-slate-500" data-testid="pv-size">PV size (kWp)
+        <!-- Derived by default (#583): blank = the gateways' own size. A larger number is
+             for DC panels above the AC rating or remote solar; smaller is allowed. -->
+        <input type="number" step="0.1" min="0" class="form-control form-control-sm w-full mt-1" x-model="form.pv_kwp"
+               @change="saveOne({pv_kwp: Number(form.pv_kwp) > 0 ? Number(form.pv_kwp) : null})"
+               :placeholder="derivedPvKwp ? derivedPvKwp + ' from the gateway' : 'Please confirm'">
+        <span class="block mt-1 text-[10px]" style="color:var(--text-faint)">
+          <span x-show="derivedPvKwp" x-text="'Gateway ' + derivedPvKwp + ' kWp'"></span><span
+                x-show="derivedPvKwp && Number(form.pv_kwp) > 0" x-text="' · You ' + Number(form.pv_kwp) + ' kWp'"></span>
+          <button type="button" x-show="derivedPvKwp && Number(form.pv_kwp) > 0" class="underline ml-1" style="color:var(--accent)"
+                  @click="form.pv_kwp = ''; saveOne({pv_kwp: null})">Use gateway</button>
+          <span x-show="!derivedPvKwp && !(Number(form.pv_kwp) > 0)">Please confirm: the gateway hasn't reported its size. Enter yours.</span>
+        </span>
+        <span x-show="derivedPvKwp && Number(form.pv_kwp) > 0 && Number(form.pv_kwp) < derivedPvKwp" x-cloak
+              data-testid="pv-size-smaller" class="block mt-0.5 text-[10px]" style="color:var(--text-faint)">
+          Smaller than the gateway's: fine for shading or clipping; the forecast uses yours.</span></label>
+      <label class="text-xs text-slate-500">Tilt°
+        <input type="number" step="1" class="form-control form-control-sm w-full mt-1" x-model="form.pv_tilt"
+               @change="saveOne({pv_tilt: Number(form.pv_tilt) || 0})" placeholder="22"></label>
+      <label class="text-xs text-slate-500">Azimuth°
+        <input type="number" step="1" class="form-control form-control-sm w-full mt-1" x-model="form.pv_azimuth"
+               @change="saveOne({pv_azimuth: Number(form.pv_azimuth) || 0})" placeholder="180"></label>
+    </div>
+    <p class="text-[11px]" style="color:var(--text-faint)">
+      Azimuth (Open-Meteo convention): 0=south · −90=east · 90=west · ±180=north. Tilt = degrees
+      from horizontal (roof pitch is typically ~20–25°).
+    </p>
+  </div>
+  </div>
+  <div x-show="sub==='billing'" x-cloak class="space-y-6">
+  <!-- Import tariff: paste the JSON or choose a file; Check previews, Import creates it -->
+  <div x-show="tariffImp.open" x-cloak class="fixed inset-0 z-[110] flex items-center justify-center p-4"
+       @keydown.escape.window="tariffImp.open=false" data-testid="tariff-import-dialog">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="tariffImp.open=false"></div>
+    <div class="relative w-full max-w-md rounded-xl border shadow-2xl"
+         style="background:var(--surface-0,#0f172a);border-color:var(--border)">
+      <div class="px-5 py-3 border-b flex items-center justify-between" style="border-color:var(--border)">
+        <div class="text-sm font-semibold" style="color:var(--text-primary)">Import tariff</div>
+        <button class="text-slate-400 hover:text-slate-200" @click="tariffImp.open=false"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="px-5 py-4 space-y-3">
+        <div class="text-xs text-slate-500">Paste a tariff (franklinwh-bridge/tariff-profile JSON), or choose a file.</div>
+        <label x-show="meters.length > 1" class="text-[11px] block" style="color:var(--text-secondary)">For meter
+          <select class="form-control form-control-sm w-full mt-1" x-model="tariffImp.meter_id" @change="tariffImp.preview = null">
+            <template x-for="m in meters" :key="m.id"><option :value="m.id" x-text="m.name"></option></template>
+          </select></label>
+        <textarea data-testid="tariff-import-paste" x-model="tariffImp.text" rows="8"
+                  @input="tariffImp.preview=null; tariffImp.msg=null"
+                  class="form-control w-full font-mono text-xs" placeholder='{"type": "franklinwh-bridge/tariff-profile", ...}'></textarea>
+        <input type="file" accept="application/json,.json" class="hidden" x-ref="tariffImportFile" @change="tariffImportFile($event)">
+        <div class="flex flex-wrap gap-2">
+          <button data-testid="tariff-import-file" class="btn btn-secondary btn-sm" @click="$refs.tariffImportFile.click()">Choose file</button>
+          <button data-testid="tariff-import-check" class="btn btn-secondary btn-sm"
+                  :disabled="tariffImp.busy || !tariffImp.text.trim()" @click="tariffImportCheck()">Check</button>
+          <button data-testid="tariff-import-apply" class="btn btn-primary btn-sm"
+                  :disabled="tariffImp.busy || !tariffImp.preview || tariffImp.done" @click="tariffImportApply()">Import</button>
+        </div>
+        <div x-show="tariffImp.preview" class="text-xs rounded-lg p-2 whitespace-pre-line"
+             style="background:var(--surface-2);color:var(--text-secondary)" x-text="tariffImportSummary()"></div>
+        <div data-testid="tariff-import-result" x-show="tariffImp.msg" class="text-sm"
+             :style="{ color: tariffImp.msg?.kind === 'ok' ? 'var(--success,#34d399)' : 'var(--danger,#f87171)' }"
+             x-text="tariffImp.msg?.text"></div>
+      </div>
+    </div>
+  </div>
+
+
 
   <!-- ══ Prices (#582): one place for the price signal and the price events ══ -->
   <div class="flex items-center gap-3">

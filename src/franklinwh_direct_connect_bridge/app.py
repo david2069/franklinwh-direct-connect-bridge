@@ -64,6 +64,7 @@ from . import state
 from . import scheduler_worker
 from . import workers as _workers
 from . import alerts
+from . import troubleshoot
 from .config import get_settings, gateway_list, metrics_active, save_override
 from .ha_supervisor import apply_host_timezone, apply_supervisor_mqtt, discover_mqtt
 from .notify import Notifier
@@ -542,6 +543,7 @@ class TariffProfileImport(BaseModel):
     version: int | None = None
     profile: dict
     effective_start: str | None = None      # optional retailer-from date for the new utility
+    meter_id: str | None = None             # the meter it prices (default: the default meter)
 
 
 class TariffCreate(BaseModel):
@@ -556,10 +558,13 @@ class TariffCreate(BaseModel):
     plan_version: str = ""
     effective_start: str | None = None
     effective_end: str | None = None
+    meter_id: str | None = None             # the meter it prices; dated, one in force per day
 
 
 class TariffUpdate(BaseModel):
+    unlock: bool = False                    # a retired (ended) plan is locked until unlocked
     utility_id: str | None = None
+    meter_id: str | None = None             # move it to a meter (date-checked)
     name: str | None = None
     pricing: dict | None = None
     demand_window: dict | None = None
@@ -825,6 +830,13 @@ class ReserveReq(BaseModel):
 # Only these runtime-applicable fields are editable via PUT /api/settings; restart-only
 # fields (broker / host / poll_interval / metrics) stay read-only. log_level maps an
 # HA-style level name to a python logging level applied live to the bridge logger.
+class ReconnectWifiReq(BaseModel):
+    #: The Wi-Fi network stored on the aGate, as the panel showed it (#614). No password:
+    #: the library reuses the one the aGate stores, and only for this network.
+    ssid: str = Field(min_length=1, max_length=64)
+    confirm: bool = False
+
+
 class AlertAck(BaseModel):
     #: Who acknowledged (#271). This bridge has no users, so it records the source.
     source: str = "api"
@@ -1315,8 +1327,13 @@ def create_app() -> FastAPI:
                                            detail="cloud auth locked — re-enter credentials")
                     return
                 # Never faster than the interval, and slower with each failure (#233): a
-                # rate-limited account (HTTP 429) must not be polled harder.
-                _t.sleep(interval if ok else cloud_status.retry_delay(interval, _fail_streak))
+                # rate-limited account (HTTP 429) must not be polled harder. A back-off is
+                # announced to the watchdog, so it is not mistaken for a stall (#616).
+                delay = interval if ok else cloud_status.retry_delay(interval, _fail_streak)
+                _workers.registry.beat(
+                    "cloud-status", state=_workers.WorkerState.RUNNING, next_beat_in_s=delay,
+                    detail="cloud link ok" if ok else f"backing off {delay}s: {reason}")
+                _t.sleep(delay)
         _th.Thread(target=_cloud_status_loop, daemon=True).start()
 
         # ── L0 supervision (RUNTIME_DESIGN phase 0) ──────────────────────────
@@ -2400,6 +2417,9 @@ def create_app() -> FastAPI:
         body = req.model_dump(exclude_unset=True)
         if body.get("ac_type") and body["ac_type"] not in _AC_TYPES:
             raise HTTPException(422, f"ac_type must be one of {', '.join(_AC_TYPES)}")
+        tid = body.get("tariff_id")
+        if tid and st.tariff(tid) is not None and not st.tariff(tid).get("meter_id"):
+            st.update_tariff(tid, meter_id=mid)      # the tariff now prices this meter
         return st.update_meter(mid, **body)
 
     @app.delete("/api/meters/{mid}")
@@ -2468,27 +2488,76 @@ def create_app() -> FastAPI:
         if st.utility(req.utility_id) is None:
             raise HTTPException(422, f"no utility '{req.utility_id}'")
         import uuid
+        from . import tariff_plans
         body = req.model_dump()
-        return st.create_tariff(tid="tariff_" + uuid.uuid4().hex[:8],
-                                utility_id=body.pop("utility_id"), name=body.pop("name", ""),
-                                billing_cycle_day=body.pop("billing_cycle_day", 1),
-                                plan_version=body.pop("plan_version", ""), **body)
+        mid = body.get("meter_id")
+        pl = None
+        if mid:
+            if st.meter(mid) is None:
+                raise HTTPException(422, f"no meter '{mid}'")
+            try:
+                pl = tariff_plans.plan(st, mid, body.get("effective_start"), body.get("effective_end"))
+            except tariff_plans.Overlap as e:
+                raise HTTPException(400, str(e))
+            body["effective_start"] = pl["start"]
+        tid = "tariff_" + uuid.uuid4().hex[:8]
+        st.create_tariff(tid=tid, utility_id=body.pop("utility_id"), name=body.pop("name", ""),
+                         billing_cycle_day=body.pop("billing_cycle_day", 1),
+                         plan_version=body.pop("plan_version", ""), **body)
+        if pl is not None:
+            tariff_plans.apply(st, mid, pl)
+        return st.tariff(tid)
 
     @app.patch("/api/tariffs/{tid}")
     def api_tariff_update(tid: str, req: TariffUpdate):
         _guard_writes()
         st = _gw_store()
-        if st is None or st.tariff(tid) is None:
+        cur = st.tariff(tid) if st is not None else None
+        if cur is None:
             raise HTTPException(404, f"no tariff '{tid}'")
-        return st.update_tariff(tid, **req.model_dump(exclude_unset=True))
+        from . import tariff_plans
+        body = req.model_dump(exclude_unset=True)
+        # Locked: anything that changes its rates, charges, dates or retailer. Putting it on
+        # a meter changes none of that, so it needs no unlock.
+        if tariff_plans.retired(cur) and not body.pop("unlock", False) and set(body) - {"meter_id"}:
+            raise HTTPException(409, f"\"{cur.get('name') or tid}\" ended on {cur['effective_end']}: "
+                                     "a retired plan is locked so past bills can be reconciled. "
+                                     "Unlock it to change it.")
+        body.pop("unlock", None)
+        old_mid = cur.get("meter_id")
+        mid = body.get("meter_id", old_mid) or None       # moving it to a meter (phase 3)
+        if mid and st.meter(mid) is None:
+            raise HTTPException(422, f"no meter '{mid}'")
+        dates = "effective_start" in body or "effective_end" in body
+        start = body.get("effective_start", cur.get("effective_start")) or None
+        end = body.get("effective_end", cur.get("effective_end")) or None
+        if mid and (dates or mid != old_mid):
+            try:
+                tariff_plans.plan(st, mid, start, end, exclude=tid, adding=False)
+            except tariff_plans.Overlap as e:
+                raise HTTPException(400, str(e))
+        if dates:
+            st.set_tariff_dates(tid, start, end)
+        out = st.update_tariff(tid, **{k: v for k, v in body.items()
+                                       if k not in ("effective_start", "effective_end")})
+        for m in {old_mid, mid} - {None}:
+            tariff_plans.repoint(st, m)
+        return st.tariff(tid) or out
 
     @app.delete("/api/tariffs/{tid}")
-    def api_tariff_delete(tid: str):
+    def api_tariff_delete(tid: str, confirm_name: str | None = Query(None)):
         _guard_writes()
         st = _gw_store()
-        if st is None or st.tariff(tid) is None:
+        t = st.tariff(tid) if st is not None else None
+        if t is None:
             raise HTTPException(404, f"no tariff '{tid}'")
+        from . import tariff_plans
+        if tariff_plans.recently_retired(t) and confirm_name != (t.get("name") or tid):
+            raise HTTPException(409, f"\"{t.get('name') or tid}\" ended on {t['effective_end']}, under "
+                                     f"{tariff_plans.RECONCILE_MONTHS} months ago: past bills may still "
+                                     "need it. Confirm with its exact name to delete it.")
         st.delete_tariff(tid)
+        tariff_plans.repoint(st, t.get("meter_id"))
         return {"ok": True, "id": tid}
 
     @app.post("/api/tariffs/validate")
@@ -2533,8 +2602,10 @@ def create_app() -> FastAPI:
 
     @app.post("/api/tariffs/import")
     def api_tariff_import(req: TariffProfileImport, dry_run: bool = Query(False)):
-        """Import a Modbus ``franklinwh-bridge/tariff-profile`` — creates the utility + tariff
-        and attaches them to the default meter (with the profile's timezone). dry_run previews."""
+        """Import a ``franklinwh-bridge/tariff-profile`` as a plan of a meter (default: the
+        default meter). Reuses the utility with the same retailer + network; closes the
+        meter's current plan the day before this one starts (no start: today); an overlap is
+        400. dry_run previews, including what it replaces."""
         from . import tariff_io
         if req.type and req.type != tariff_io.PROFILE_TYPE:
             raise HTTPException(
@@ -2542,8 +2613,29 @@ def create_app() -> FastAPI:
                 detail=(f"unexpected bundle type '{req.type}' — this importer reads "
                         f"'{tariff_io.PROFILE_TYPE}' (a Modbus-bridge tariff export)."))
         util_f, tar_f, tz = tariff_io.to_local(req.profile or {})
+        from . import tariff_plans
+        st = _ha_store()
+        meters = st.meters()
+        mid = req.meter_id or next((m["id"] for m in meters if m.get("is_default")),
+                                   (meters[0]["id"] if meters else None))
+        if req.meter_id and st.meter(req.meter_id) is None:
+            raise HTTPException(422, f"no meter '{req.meter_id}'")
+        # The same retailer + network is the same utility: importing again adds a plan to
+        # it rather than a second "AGL Energy".
+        def _k(x):
+            return (x or "").strip().casefold()
+        same = next((u for u in st.utilities() if _k(u.get("name")) == _k(util_f["name"])
+                     and _k(u.get("network_dnsp")) == _k(util_f["network_dnsp"])), None)
+        pl = None
+        if mid:
+            try:
+                pl = tariff_plans.plan(st, mid, tar_f.get("effective_start"), tar_f.get("effective_end"))
+            except tariff_plans.Overlap as e:
+                raise HTTPException(400, str(e))
+            tar_f["effective_start"] = pl["start"]
         if dry_run:
             pr = tar_f.get("pricing") or {}
+            close = (pl or {}).get("close") or {}
             return {"preview": {
                 "retailer": util_f["name"], "network": util_f["network_dnsp"],
                 "plan_type": util_f["plan_type"], "tariff_name": tar_f["name"],
@@ -2552,31 +2644,30 @@ def create_app() -> FastAPI:
                 "fixed_charges": len(tar_f.get("fixed_charges") or []),
                 "has_demand": bool(tar_f.get("demand_window")),
                 "has_export_bonus": bool(tar_f.get("bonus_window")),
-                "has_export_charge": bool(tar_f.get("charge_window"))}}
+                "has_export_charge": bool(tar_f.get("charge_window")),
+                "effective_start": tar_f.get("effective_start"),
+                "effective_end": tar_f.get("effective_end"),
+                "meter_id": mid, "reuses_utility": same is not None,
+                "replaces": close.get("name"), "replaces_end": close.get("end")}}
         _guard_writes()
-        st = _ha_store()
         import uuid
-        uid = "util_" + uuid.uuid4().hex[:8]
-        if req.effective_start:
-            util_f["effective_start"] = req.effective_start
-        st.create_utility(uid=uid, name=util_f.pop("name"), **util_f)
+        if same:
+            uid = same["id"]
+        else:
+            uid = "util_" + uuid.uuid4().hex[:8]
+            if req.effective_start:
+                util_f["effective_start"] = req.effective_start
+            st.create_utility(uid=uid, name=util_f.pop("name"), **util_f)
         tid = "tar_" + uuid.uuid4().hex[:8]
         st.create_tariff(tid=tid, utility_id=uid, name=tar_f.pop("name"),
-                         billing_cycle_day=tar_f.pop("billing_cycle_day"), **tar_f)
-        # attach to the default meter so it prices immediately
+                         billing_cycle_day=tar_f.pop("billing_cycle_day"), meter_id=mid, **tar_f)
+        # the meter prices from it (when in force today) and takes its timezone
         attached = None
-        try:
-            meters = st.meters()
-            mid = next((m["id"] for m in meters if m.get("is_default")),
-                       (meters[0]["id"] if meters else None))
-            if mid:
-                upd = {"utility_id": uid, "tariff_id": tid}
-                if tz:
-                    upd["timezone"] = tz
-                st.update_meter(mid, **upd)
-                attached = mid
-        except Exception:  # pragma: no cover
-            attached = None
+        if mid:
+            tariff_plans.apply(st, mid, pl)
+            if tz:
+                st.update_meter(mid, timezone=tz)
+            attached = mid
         return {"ok": True, "utility_id": uid, "tariff_id": tid, "attached_meter": attached}
 
     # ── Energy Costs / billing view (FEAT-BILLING-SERVICE) ────────────────────
@@ -4884,6 +4975,18 @@ def create_app() -> FastAPI:
         nb["interfaces"] = cloud_compat.network_from_interfaces(raw_if) if isinstance(raw_if, dict) else None
         nb["cloud"] = _redact_cloud_config(nb.get("cloud"))
         reach = nb.get("reachability") or {}
+        # :502 judged against the time the aGate's link last came up: a success from
+        # before an outage is "unknown", not green (#617). Still no :502 probe (#221).
+        try:
+            _ls = _ha_store().link_state(gateway) or {}
+            _last_out = _ha_store().link_outages(gateway, leg="local_9000", limit=1)
+        except Exception:  # noqa: BLE001 — link history is optional; never fail the diagram
+            _ls, _last_out = {}, []
+        _up_since = _last_out[0].get("ended_ts") if _last_out else None
+        _link_up = bool(reach.get("sendmqtt_9000")) and _ls.get("state") != "down"
+        reach["modbus_502_state"] = client.modbus_502_state(
+            reach.get("modbus_502"), reach.get("modbus_502_at"),
+            link_up=_link_up, up_since=_up_since)
         aws_connected = bool((nb.get("interfaces") or {}).get("awsStatus") == 1)
         cloud = nb.get("cloud") or {}
         host_ip = (host or "").split(":")[0]
@@ -4911,7 +5014,9 @@ def create_app() -> FastAPI:
                       # modbus_502 is deliberately NOT cast: None means "not probed"
                       # and bool() would turn that into a confident "down" (#30).
                       "ports": {"local_api_9000": bool(reach.get("sendmqtt_9000")),
-                                "modbus_502": reach.get("modbus_502")},
+                                "modbus_502": reach.get("modbus_502"),
+                                "modbus_502_state": reach.get("modbus_502_state"),
+                                "modbus_502_at": reach.get("modbus_502_at")},
                       "latency_ms": reach.get("latency_ms")},
             "bridge": {"ip": _bridge_ip_toward(host_ip), "http_port": 8101,
                        "uptime_s": round(time.time() - _STARTED_AT, 1),
@@ -4977,6 +5082,103 @@ def create_app() -> FastAPI:
                 row["connections"] = _dg.connections_to(host)
             rows.append(row)
         return {"gateways": rows, "bridge": _dg.resources(), "ts": time.time()}
+
+    # -- Troubleshoot (#614): unreachable or on 4G --------------------------------
+    def _is_admin(request: Request) -> bool:
+        """Whether this viewer may reconnect: their role, or admin where nobody is signed
+        in (Security off, not HA's sidebar) — as the security middleware decides."""
+        p = getattr(request.state, "principal", None)
+        return security.can(p["role"] if p else "admin", "POST",
+                            "/api/troubleshoot/reconnect-wifi")
+
+    def _cloud_why_not(gw: GatewayState) -> str | None:
+        """Why the cloud can't be asked about this gateway, or None."""
+        s = get_settings()
+        if not (s.fwh_cloud_email and s.fwh_cloud_password):
+            return "No FranklinWH cloud account in the bridge (Settings → Integrations)."
+        refused = _cloud_target_refusal(gw)
+        if refused:
+            return refused
+        if providers.cloud_auth_status().get("state") in ("locked", "invalid"):
+            return "The FranklinWH cloud sign-in isn't working (Settings → Integrations)."
+        return None
+
+    @app.get("/api/troubleshoot/connectivity")
+    def api_troubleshoot_connectivity(request: Request, gateway: str = Depends(_gateway_q)):
+        """The Troubleshoot panel's verdict (#614): the bridge's own LAN link to the aGate,
+        and what the FranklinWH cloud says it is connected through (Wi-Fi / Ethernet / 4G,
+        online or offline). On 4G while the LAN works it publishes the AGATE_ON_4G fact.
+        Read-only: connection type and status, and the stored Wi-Fi network's NAME for
+        Reconnect to Wi-Fi — never its password. A cloud failure is shown, never a 500."""
+        gw = _gw_or_404(gateway)
+        lan = troubleshoot.lan_state(db.get_store(get_settings()), gw.id)
+        why = _cloud_why_not(gw)
+        got = None
+        if why is None:
+            s = get_settings()
+            try:
+                from . import cloud_status
+                got = cloud_status.read_connectivity(s.fwh_cloud_email, s.fwh_cloud_password,
+                                                     gw.serial)
+            except Exception as e:  # noqa: BLE001 — shown in the panel
+                log.warning("cloud call failed: connectivity — %s: %s", type(e).__name__, e)
+                why = f"The FranklinWH cloud didn't answer: {type(e).__name__}"
+        cloud = troubleshoot.cloud_block(got, reason=why)
+        v = troubleshoot.verdict(lan, cloud, (gw.last_state or {}).get("net_cloud_via"))
+        troubleshoot.note_cloud_verdict(gw.id, v, cloud)
+        ssid = (got or {}).get("stored_ssid") if cloud.get("connection") == "4g" else None
+        return {"gateway": gw.id, "label": gw.label or gw.id, "lan": lan, "cloud": cloud,
+                "verdict": v, "stored_ssid": ssid, "can_reconnect": bool(ssid),
+                "admin": _is_admin(request), "checked_ts": time.time()}
+
+    @app.get("/api/troubleshoot/health")
+    def api_troubleshoot_health(gateway: str = Depends(_gateway_q)):
+        """The panel's Health check (#614): LAN reachability, the local API (:9000), the
+        aGate's own cloud link and the last good poll, each pass/fail. One fresh session;
+        the Modbus TCP Server (aGate :502) is not probed."""
+        gw = _gw_or_404(gateway)
+        s = get_settings()
+        check = client.link_check(s, host=gw.active_host or gw.configured_host)
+        lan = troubleshoot.lan_state(db.get_store(get_settings()), gw.id)
+        return {"gateway": gw.id, "checked_ts": time.time(),
+                "checks": troubleshoot.health(check, lan, s.poll_interval,
+                                                port=s.fwh_port)}
+
+    @app.post("/api/troubleshoot/reconnect-wifi", status_code=202)
+    def api_troubleshoot_reconnect_wifi(req: ReconnectWifiReq,
+                                        gateway: str = Depends(_gateway_q)):
+        """Reconnect to Wi-Fi (#614), admin only: franklinwh-cloud ``switch_to_wifi(ssid,
+        password=None, confirm=True)`` puts the aGate back on the network it stores, with
+        the password it stores. The library refuses without a fallback and confirms the
+        link; that takes minutes, so this starts it (202) and GET gives the result.
+        428 without confirm; 409 when the cloud can't act for this gateway or one is
+        already running."""
+        _guard_writes()
+        _guard_consequential(req.confirm, "reconnect the aGate to Wi-Fi")
+        gw = _gw_or_404(gateway)
+        why = _cloud_why_not(gw)
+        if why:
+            raise HTTPException(status_code=409, detail=why)
+        s = get_settings()
+        from . import cloud_status
+        email, pw, serial, ssid = s.fwh_cloud_email, s.fwh_cloud_password, gw.serial, req.ssid
+        _audit("wifi_reconnect", gateway=gw.id, detail="stored Wi-Fi network (cloud)",
+               result="started")
+
+        def _done(res: dict) -> None:
+            _audit("wifi_reconnect", gateway=gw.id, detail="stored Wi-Fi network (cloud)",
+                   result=res["outcome"], ok=bool(res["ok"]))
+
+        if not troubleshoot.start(gw.id, lambda: cloud_status.switch_wifi(email, pw, serial, ssid),
+                                  on_done=_done):
+            raise HTTPException(status_code=409, detail="A reconnect is already running.")
+        return troubleshoot.job(gw.id)
+
+    @app.get("/api/troubleshoot/reconnect-wifi")
+    def api_troubleshoot_reconnect_status(gateway: str = Depends(_gateway_q)):
+        """The last Reconnect to Wi-Fi for this gateway: ``state`` idle / running / done,
+        and ``result`` when done."""
+        return troubleshoot.job(_gw_or_404(gateway).id)
 
     @app.get("/api/network/ping")
     def api_network_ping(gateway: str = Depends(_gateway_q), count: int = Query(5, ge=1, le=20)):
@@ -6364,9 +6566,28 @@ def create_app() -> FastAPI:
             by_alert: dict = {}
             for d in st.alert_deliveries():
                 by_alert.setdefault(d["alert_id"], []).append(d)
+            now = time.time()
             for r in rows:
                 r["deliveries"] = by_alert.get(r["id"], [])
+                # Back but not yet confirmed (#614): the banner says "confirming".
+                r["recovering"] = alerts.recovery(r, now=now)
+                if r["code"] == "GATEWAY_UNREACHABLE" and not r.get("resolved_ts"):
+                    r["drops"] = _drops(st, r, now)
         return {"alerts": rows}
+
+    def _drops(st, row: dict, now: float) -> dict | None:
+        """How many times the LAN link dropped during this open alert (#614): the outages
+        that overlap it, and the span from the first one's start to now."""
+        try:
+            outs = [o for o in st.link_outages(row["gateway_id"], leg="local_9000", limit=100)
+                    if o.get("ended_ts") is None
+                    or float(o["ended_ts"]) >= float(row["opened_ts"])]
+        except Exception:  # noqa: BLE001 — the count is a nicety; never fail the list
+            return None
+        if not outs:
+            return None
+        first = min(float(o["started_ts"]) for o in outs)
+        return {"count": len(outs), "window_s": int(now - first)}
 
     @app.post("/api/alerts/{alert_id}/ack")
     def api_alert_ack(alert_id: int, req: AlertAck | None = None):

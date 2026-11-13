@@ -141,7 +141,8 @@ class BillingTracker:
         # tariff change (supersede) → the accrued numbers belong to the OLD tariff; close + reset.
         tid = cfg.get("tariff_id")
         if self._s.get("tariff_id") is not None and self._s["tariff_id"] != tid:
-            self._close_period(store, gw, cfg, now)
+            old = store.tariff(self._s["tariff_id"]) if store is not None else None
+            self._close_period(store, gw, _cfg_from_tariff(old) or cfg, now, switch=True)
             self._s = self._blank()
             self._s["period_start"] = ps
         self._s["tariff_id"] = tid
@@ -234,11 +235,13 @@ class BillingTracker:
             out["tariff.export_charge_cost"] = round(net * _num(cfg["charge"].get("rate")), 2)
         return out
 
-    def _close_period(self, store, gw: str, cfg: dict, now: dt.datetime, force: bool = False) -> None:
+    def _close_period(self, store, gw: str, cfg: dict, now: dt.datetime, force: bool = False,
+                      switch: bool = False) -> None:
         """Persist the CLOSING period to ``billing_periods`` before the state is blanked on
         rollover / tariff change. Skips an empty period (unless ``force``, a manual close);
         never raises. ``self._s`` still holds the old period here, so ``as_points`` reports its
-        final numbers."""
+        final numbers. It is stamped with the tariff that priced it; a ``switch`` (the
+        tariff in force changed) ends it now, with that tariff's fixed charges for its days."""
         if store is None:
             return
         s = self._s
@@ -251,10 +254,18 @@ class BillingTracker:
         try:
             pts = self.as_points(cfg, now)
             gwid = gw
+            tar = store.tariff(s["tariff_id"]) if s.get("tariff_id") else None
+            ps = dt.datetime.fromtimestamp(ps_ts)
+            pe = now if switch else _period_end(ps, int(cfg.get("cycle_day", 1) or 1))
             fixed_total = 0.0
             try:
-                fx = fixed_snapshot(store, gwid, now)
-                fixed_total = _num(fx.get("fixed.period_total"))
+                if tar is not None:
+                    cyc = int(_num(tar.get("billing_cycle_day"), 1)) or 1
+                    days = round((_period_end(ps, cyc) - ps).total_seconds() / 86400.0, 3) or 30.0
+                    used = max(0.0, (pe - ps).total_seconds() / 86400.0)
+                    fixed_total = round(_fixed_daily(tar.get("fixed_charges"), days) * used, 2)
+                else:
+                    fixed_total = _num(fixed_snapshot(store, gwid, now).get("fixed.period_total"))
             except Exception:                                   # noqa: BLE001
                 fixed_total = 0.0
             import_cost = _num(pts.get("energy.import_cost"))
@@ -264,9 +275,7 @@ class BillingTracker:
             export_charge = _num(pts.get("tariff.export_charge_cost"))
             net = round(import_cost - export_credit + demand_charge + export_charge
                         + fixed_total - bonus_credit, 2)
-            meta = _period_meta(store, gwid)
-            ps = dt.datetime.fromtimestamp(ps_ts)
-            pe = _period_end(ps, int(cfg.get("cycle_day", 1) or 1))
+            meta = _period_meta(store, gwid, tar)
             store.record_billing_period(
                 gateway_id=gwid, meter_id=meta.get("meter_id"),
                 utility_id=meta.get("utility_id"), tariff_id=s.get("tariff_id"),
@@ -281,7 +290,7 @@ class BillingTracker:
             pass
 
 
-def _period_meta(store, gateway_id) -> dict:
+def _period_meta(store, gateway_id, tar: dict | None = None) -> dict:
     """Retailer / network / plan / tariff-name for stamping a closed period (so a year of
     history reads correctly across a provider or tariff switch)."""
     out = {"meter_id": None, "utility_id": None, "retailer": None, "network": None,
@@ -292,7 +301,9 @@ def _period_meta(store, gateway_id) -> dict:
         if not meter:
             return out
         out["meter_id"] = meter.get("id")
-        tar = store.tariff(meter.get("tariff_id")) if meter.get("tariff_id") else None
+        if tar is None:
+            from . import tariff_plans
+            tar = tariff_plans.tariff_for(store, meter)
         if tar:
             out["tariff_name"] = tar.get("name")
             out["plan_version"] = tar.get("plan_version")
@@ -319,17 +330,23 @@ def _gw_key(gateway_id) -> str:
     return gateway_id
 
 
-def _billing_cfg(store, gateway_id) -> dict | None:
-    """Resolve the gateway's meter → tariff into the billing config, or None if no
-    tariff. demand/bonus/charge are None unless the tariff configures that window."""
-    from . import scheduler
+def _billing_cfg(store, gateway_id, now: dt.datetime | None = None) -> dict | None:
+    """Resolve the gateway's meter → the tariff in force on ``now``'s day into the billing
+    config, or None if no tariff."""
+    from . import scheduler, tariff_plans
     meter = scheduler._meter_for_gateway(store, gateway_id)
     if not meter:
         return None
     try:
-        tar = store.tariff(meter.get("tariff_id")) if meter.get("tariff_id") else None
+        tar = tariff_plans.tariff_for(store, meter, (now or dt.datetime.now()).date())
     except Exception:                                           # noqa: BLE001
         tar = None
+    return _cfg_from_tariff(tar)
+
+
+def _cfg_from_tariff(tar: dict | None) -> dict | None:
+    """One tariff as the billing config. demand/bonus/charge are None unless the tariff
+    configures that window."""
     if not tar:
         return None
     pricing = tar.get("pricing") if isinstance(tar.get("pricing"), dict) else {}
@@ -360,9 +377,16 @@ def billing_tick(store, gateway_id=None, grid_w: float | None = None,
     """Feed this tick's grid power and return all configured billing sensors. Empty
     when the gateway's meter has no tariff."""
     now = now or dt.datetime.now()
-    cfg = _billing_cfg(store, gateway_id)
+    cfg = _billing_cfg(store, gateway_id, now)
     if cfg is None:
         return {}
+    try:   # a dated plan took over today: the meter follows, so every view agrees
+        from . import scheduler, tariff_plans
+        meter = scheduler._meter_for_gateway(store, gateway_id)
+        if meter and meter.get("tariff_id") != cfg["tariff_id"]:
+            tariff_plans.repoint(store, meter["id"], now.date())
+    except Exception:                                           # noqa: BLE001
+        pass
     key = _gw_key(gateway_id)
     tr = _TRACKERS.get(key) or _TRACKERS.setdefault(key, BillingTracker())
     tr.update(store, key, grid_w, cfg, now, dynamic_rate)
@@ -378,6 +402,17 @@ def _daily_equiv(freq: str, rate: float, days_in_period: float) -> float:
             "quarterly": rate / (dip * 3.0), "annual": rate / (dip * 12.0)}.get(freq, 0.0)
 
 
+def _fixed_daily(charges, days_in_period: float) -> float:
+    """A tariff's fixed charges as one tax-inclusive daily amount."""
+    daily = 0.0
+    for c in charges if isinstance(charges, list) else []:
+        if not isinstance(c, dict):
+            continue
+        freq = c.get("frequency") if c.get("frequency") in FIXED_FREQUENCIES else "daily"
+        daily += _daily_equiv(freq, _num(c.get("rate")), days_in_period) * (1.0 + _num(c.get("tax_rate")))
+    return round(daily, 4)
+
+
 def fixed_snapshot(store, gateway_id=None, now: dt.datetime | None = None) -> dict[str, Any]:
     """Standing/fixed charges accrued this period — deterministic (no meter data), so a
     pure function of `now` + the tariff's fixed_charges [{frequency, rate, tax_rate, ...}].
@@ -388,7 +423,8 @@ def fixed_snapshot(store, gateway_id=None, now: dt.datetime | None = None) -> di
     if not meter:
         return {}
     try:
-        tar = store.tariff(meter.get("tariff_id")) if meter.get("tariff_id") else None
+        from . import tariff_plans
+        tar = tariff_plans.tariff_for(store, meter, now.date())
     except Exception:                                           # noqa: BLE001
         tar = None
     charges = tar.get("fixed_charges") if tar else None
@@ -399,13 +435,7 @@ def fixed_snapshot(store, gateway_id=None, now: dt.datetime | None = None) -> di
     pe = _period_end(ps, cycle_day)
     days_in_period = round((pe - ps).total_seconds() / 86400.0, 3) or 30.0
     days_elapsed = min(round(max(0.0, (now - ps).total_seconds() / 86400.0), 3), days_in_period)
-    daily = 0.0
-    for c in charges:
-        if not isinstance(c, dict):
-            continue
-        freq = c.get("frequency") if c.get("frequency") in FIXED_FREQUENCIES else "daily"
-        daily += _daily_equiv(freq, _num(c.get("rate")), days_in_period) * (1.0 + _num(c.get("tax_rate")))
-    daily = round(daily, 4)
+    daily = _fixed_daily(charges, days_in_period)
     period_total = round(daily * days_in_period, 2)
     accrued = round(daily * days_elapsed, 2)
     return {

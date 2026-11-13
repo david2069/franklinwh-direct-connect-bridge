@@ -29,13 +29,15 @@
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
     <!-- Battery State of Charge -->
-    <div class="card" x-show="$store.app.dashCards.socRing" :style="$store.app.dashCardStyle('socRing')">
+    <div class="card" x-show="$store.app.dashCards.socRing" :style="$store.app.dashCardStyle('socRing')" :class="{'is-stale': $store.app.isLastGood}">
       <div class="flex items-baseline justify-between gap-2 mb-3">
         <span class="card-label whitespace-nowrap">Battery State of Charge</span>
         <span class="text-[11px] truncate text-right" style="color:var(--text-faint)" x-show="$store.app.gwModel"
               x-text="$store.app.gwModel + ($store.app.gwModelCountry ? ' · ' + $store.app.gwModelCountry : '')"></span>
       </div>
-      <div class="flex items-center gap-5 min-w-0">
+      <!-- aGate offline (#615): the last-good values stay, greyed, with when they were read. -->
+      <div class="stale-note" x-show="$store.app.isLastGood" x-cloak x-text="$store.app.lastGoodText"></div>
+      <div class="flex items-center gap-5 min-w-0 stale-vals">
         <div class="soc-ring shrink-0">
           <svg viewBox="0 0 100 100">
             <circle class="soc-ring-track" cx="50" cy="50" r="40"/>
@@ -110,7 +112,7 @@
 
     <!-- Power flow: a row per source with what it is doing, like the Modbus Bridge's.
          Now = live watts; Today = today's kWh from the same 1301 read (resets daily). -->
-    <div class="card lg:col-span-2" x-show="$store.app.dashCards.powerFlow" :style="$store.app.dashCardStyle('powerFlow')">
+    <div class="card lg:col-span-2" x-show="$store.app.dashCards.powerFlow" :style="$store.app.dashCardStyle('powerFlow')" :class="{'is-stale': $store.app.isLastGood}">
       <div class="flex items-center justify-between mb-3">
         <div class="card-label" style="margin-bottom:0">Power Flow</div>
         <div class="inline-flex rounded-md overflow-hidden border text-[11px]" style="border-color:var(--border)" role="group" aria-label="Power Flow view">
@@ -122,7 +124,8 @@
                   :style="$store.app.flowView === 'today' ? 'background:var(--accent);color:#fff' : 'color:var(--text-secondary)'">Today</button>
         </div>
       </div>
-      <div x-show="$store.app.flowView === 'now'" class="grid gap-x-4 gap-y-2.5 text-sm items-baseline" style="grid-template-columns:auto 1fr auto">
+      <div class="stale-note" x-show="$store.app.isLastGood" x-cloak x-text="$store.app.lastGoodText"></div>
+      <div x-show="$store.app.flowView === 'now'" class="stale-vals grid gap-x-4 gap-y-2.5 text-sm items-baseline" style="grid-template-columns:auto 1fr auto">
           <div class="contents">
             <span class="text-slate-400">Solar
               <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('p_sun', 1301)"></span></span>
@@ -165,7 +168,7 @@
                 x-text="$store.app.flowText('generator', $store.app.power.generator_w)"></span>
         </div>
       </div>
-      <div x-show="$store.app.flowView === 'today'" x-cloak class="grid gap-x-4 gap-y-2.5 text-sm items-baseline" style="grid-template-columns:auto 1fr auto">
+      <div x-show="$store.app.flowView === 'today'" x-cloak class="stale-vals grid gap-x-4 gap-y-2.5 text-sm items-baseline" style="grid-template-columns:auto 1fr auto">
           <div class="contents">
             <span class="text-slate-400">Solar
               <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('kwh_sun', 1301)"></span></span>
@@ -213,14 +216,17 @@
     </div>
 
     <!-- Battery (real local fields only: run status, ambient temp, per-module SoC/power) -->
-    <div class="card lg:col-span-2" x-show="$store.app.dashCards.battery" :style="$store.app.dashCardStyle('battery')">
+    <div class="card lg:col-span-2" x-show="$store.app.dashCards.battery" :style="$store.app.dashCardStyle('battery')" :class="{'is-stale': $store.app.isLastGood}">
       <div class="flex items-center justify-between mb-3">
         <div class="card-label" style="margin-bottom:0">Battery</div>
         <span class="chip"
-              :class="$store.app.battery.run_status === 1 ? 'ok' :
+              :class="$store.app.isLastGood ? 'muted' :
+                      $store.app.battery.run_status === 1 ? 'ok' :
                       $store.app.battery.run_status === 2 ? 'warn' : 'muted'"
-              x-text="$store.app.battery.run_status_desc || '--'"></span>
+              x-text="$store.app.batteryChip"></span>
       </div>
+      <div class="stale-note" x-show="$store.app.isLastGood" x-cloak x-text="$store.app.lastGoodText"></div>
+      <div class="stale-vals">
       <div class="flex flex-wrap gap-x-8 gap-y-2 text-sm mb-3">
         <div class="flex items-center gap-2">
           <span class="text-slate-500">Ambient</span>
@@ -257,6 +263,7 @@
       </div>
       <div class="text-xs text-slate-500" x-show="!($store.app.battery.modules || []).length">
         No per-module detail reported by this gateway.
+      </div>
       </div>
     </div>
 

@@ -309,10 +309,11 @@ What raises one today:
 | Code | Kind | Severity | Raised when | Clears when |
 |---|---|---|---|---|
 | `GATEWAY_UNREACHABLE` | condition | critical | Polls of the aGate have failed for 5 minutes | Polls have succeeded for 2 minutes |
+| `AGATE_ON_4G` | condition | warning | The aGate answers on your LAN, but its internet goes over 4G (its own report, or the FranklinWH cloud's), for 5 minutes | It is back on Wi-Fi or Ethernet for 2 minutes, or the LAN is down (that is `GATEWAY_UNREACHABLE`) |
 | `LIVE_DATA_MISSING` | condition | critical | No live power reading for 2 minutes | Readings for 1 minute |
 | `MQTT_DOWN` | condition | warning | The MQTT broker has been disconnected for 5 minutes, on a gateway that publishes | Connected for 2 minutes |
 | `HA_UNREACHABLE` | condition | warning | Home Assistant has failed to take an alert notification for 5 minutes | One goes through and 2 minutes pass |
-| `WORKER_STALLED` | condition | critical | A background worker stops responding or crashes (Health → Workers) | Every worker for that gateway is beating again |
+| `WORKER_STALLED` | condition | critical | A background worker stops responding or crashes (Health → Workers). A worker that is deliberately backing off, such as the cloud status check while the FranklinWH cloud link fails, is not stalled until it misses the beat it announced | Every worker for that gateway is beating again |
 | `COMMAND_REFUSED` | event | critical | The Audit Trail records a control as failed or refused. Cloud sign-ins are not counted. | Acknowledged |
 | `SCHEDULE_FAILED` | event | critical | A scheduled action fails | Acknowledged |
 | `SCHEDULE_MISSED` | event | warning | A schedule's window closes without a successful run (#581) | Acknowledged |
@@ -330,6 +331,12 @@ visit, and a condition that came and went shows as "09:54–13:27, resolved". Wh
 acknowledged condition is still active, a red bar stays under the top bar. A badge in the
 top bar counts open alerts and opens the list, where warnings are acknowledged. The
 acknowledgement applies for everyone.
+
+Once the fault has cleared but has not yet held for its "Clears when" time, the bar turns
+amber and says so: "Reconnecting — confirming (resolves in 95 s)" for an unreachable aGate.
+When the link dropped more than once during the alert, the bar adds the count, for example
+"dropped 2× in 25 min". Tapping the bar for `GATEWAY_UNREACHABLE` or `AGATE_ON_4G` opens
+[Troubleshoot](#troubleshoot); the alert window and the list have a **Troubleshoot** link too.
 
 **In Home Assistant.** Each critical alert creates a persistent notification with the id
 `fwh_dc_alert_<id>`, whether or not a notification device is set up. It needs a Home
@@ -363,6 +370,41 @@ itself stops, the heartbeat stops moving, which an automation can watch for (for
 example, "heartbeat older than 5 minutes → notify").
 
 Closed alerts are kept 90 days; open ones are never removed.
+
+### Troubleshoot
+
+Troubleshoot opens from the bar and from a `GATEWAY_UNREACHABLE` or `AGATE_ON_4G` alert. A
+check of the LAN alone cannot see an aGate on 4G: on 2026-11-13 one kept answering on the LAN
+while its internet went over 4G (its Wi-Fi had no route out). So the panel puts two views
+together:
+
+- **Connection** — the bridge's own link to the aGate on the LAN, and, when a FranklinWH
+  cloud account is set up (Settings → Integrations), what the cloud says the aGate is
+  connected through: Wi-Fi, Ethernet or 4G, or offline. The verdict reads, for example,
+  "aGate is using 4G — Wi-Fi has no internet", "aGate is online via 4G (cloud) but not on
+  your LAN — it has left Wi-Fi" or "aGate is offline everywhere". The cloud is asked when the
+  panel opens and on **Check again**, never in the background. Only the connection type
+  and status are read, plus the name of the Wi-Fi network the aGate stores. Its password is
+  never read into the bridge.
+- **Health check** — LAN reachability (ping), the local API on :9000, the aGate's own cloud
+  link (1118 `awsStatus`) and the last good poll, each pass or fail. It does not touch the
+  Modbus TCP Server (aGate :502).
+- **Open Network** — the Network tab, for the full picture.
+- **Reconnect to Wi-Fi** — shown when the cloud says the aGate is on 4G. Admins only, behind
+  a typed confirmation (`RECONNECT`). The FranklinWH cloud puts the aGate back on the Wi-Fi
+  network it already stores, with the password it already stores (franklinwh-cloud
+  `switch_to_wifi(ssid, password=None)`). It refuses first when no other connection would
+  remain, then waits up to 3 minutes for the link and is not retried. The result stays in
+  the panel, and each attempt is in the Audit trail.
+- **Use the FranklinWH app** — shown without a cloud account, or when a reconnect is
+  refused, not confirmed, or the stored network has changed. The steps are for iOS or
+  Android, one at a time: Settings → Network → Wifi → Configure, choose your network, enter
+  the password, and wait up to 5 minutes.
+- **Steps** — power, router (the aGate joins 2.4 GHz Wi-Fi only) and Wi-Fi.
+
+The bridge also watches for 4G by itself: every 10 minutes its network read asks the aGate
+which link it uses (1118 `currentNetType`), and raises `AGATE_ON_4G` when that is 4G while
+the LAN works.
 
 ### Release or Keep a running force
 

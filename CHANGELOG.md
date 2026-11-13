@@ -11,6 +11,38 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.43] — 2026-11-14
+
+A grouped release (owner override of one-release-a-day). Everything merged since 0.5.42, by area:
+
+- **Connectivity:** Troubleshoot for an unreachable aGate or one on 4G, with Health check and Reconnect to Wi-Fi via the FranklinWH cloud; new `AGATE_ON_4G` warning; the red bar turns amber while a recovered link is confirmed.
+- **Offline values:** Dashboard and top bar grey out last-good values while the aGate is offline.
+- **Network tab:** the :502 line is no longer green on a result older than the link.
+- **Watchdog:** cloud-status back-off no longer raises `WORKER_STALLED`.
+- **Tariffs and billing:** tariffs live on the meter, billing by date, retired tariffs locked, and a period closed by a tariff switch carries the right tariff.
+- **Logs:** the time range shows the range in use.
+
+### Changed
+
+- **The red bar follows the link** (#614). Once an unreachable aGate answers again, the bar turns amber and says "Reconnecting — confirming (resolves in N s)" until the alert clears, instead of "aGate unreachable" beside the Online pill. When the link dropped more than once during the alert it adds the count ("dropped 2× in 25 min"). Tapping it opens Troubleshoot.
+
+- **Tariffs live on the meter** (owner; phase 3, the Modbus Bridge's service layout). Each meter's card under Sites & Meters shows its tariff in force (retailer, name, dates) with New plan, Import, Edit and Export, and its other plans collapsed. The separate Utilities & Tariffs list is gone: the retailer is chosen in the tariff editor (+ New retailer), Import asks which meter, and tariffs on no meter stay listed with Use on meter. The meter editor no longer picks a tariff.
+- **Billing by date** (owner; phase 2, as the Modbus Bridge). Each day is priced with the tariff in force that day: energy, fixed charges and the `tariff.*` / `service.*` sensors. A tariff dated to start tomorrow takes over at midnight by itself, and the meter follows.
+
+### Fixed
+
+- **Logs → time range showed "Last 1h" while it loaded 24 hours** (#614), so lines from hours earlier appeared under "Last 1h". The box now shows the range in use. The times are in bridge-host time, as the page says.
+- **A failing FranklinWH cloud link raised `WORKER_STALLED` (critical) every 30 min** (#616). The cloud status check backs off up to 30 min while the link fails, longer than the watchdog waits, so each back-off read as a stalled worker. The worker now tells the watchdog when its next beat is due; a worker that really hangs still raises `WORKER_STALLED`.
+- **Offline aGate values no longer look live** (#615). While the aGate is offline, the Dashboard's State of Charge, Power Flow and Battery cards and the top bar's run status and SoC grey out the last-good values and say **Last reading HH:MM (N min ago)**; the battery state reads **Unknown (offline)**, not Charging or Discharging. The summary marks them with `last_good` and `last_good_ts`.
+- **Network tab: the :502 line stayed green while the aGate was unreachable** (#617). The bridge never probes the Modbus TCP Server (aGate :502), so the line showed the Modbus client's (this bridge) last real result, however old. It is now green only for a success since the aGate's link last came up, red when the last attempt failed, and otherwise grey and dashed as "unknown · last OK HH:MM", in the diagram and the Reachability card.
+- **A billing period closed by a tariff switch** was stamped with the new tariff's name, ended at the cycle's end, and carried the new tariff's fixed charges for the whole period. It now carries the tariff that priced it, ends at the switch, and has that tariff's fixed charges for its own days.
+
+### Added
+
+- **Troubleshoot an unreachable aGate, or one on 4G** (#614). From the bar or the alert: what the FranklinWH cloud says the aGate is connected through (Wi-Fi, Ethernet or 4G, or offline) beside the bridge's own LAN link, a Health check (LAN, :9000, the aGate's cloud link, the last good poll; never the Modbus TCP Server (aGate :502)), Open Network, and the steps. When the cloud says 4G, **Reconnect to Wi-Fi** (admin, typed confirmation) asks the cloud to put the aGate back on the network it stores, with its stored password, through franklinwh-cloud `switch_to_wifi(ssid, password=None)`; the result stays in the panel. Without a cloud account, or when that fails, the FranklinWH app steps, for iOS or Android. The bridge never holds, logs or shows a Wi-Fi password.
+- **`AGATE_ON_4G` warning** (#614): the aGate answers on the LAN but its internet goes over 4G, from its own network report (every 10 minutes) or the cloud's. Raised after 5 minutes, cleared after 2 minutes back on Wi-Fi or Ethernet.
+- **Retired tariffs are locked** (owner). A plan whose end date has passed opens as View, so its rates and charges stay as they were for reconciling past bills. Unlock to edit, or delete: ended under 13 months ago takes two warnings and the plan's name typed; older takes one confirm. The server refuses a change without `unlock` (409) and such a delete without `?confirm_name=` (409).
+
 ## [0.5.42] — 2026-11-13
 
 A grouped release: the owner overrode one-release-a-day because the backlog was large.
@@ -113,6 +145,7 @@ Everything merged since 0.5.41, by area:
   purge runs with the hourly history upkeep and when a recording ends.
 
 ### Changed
+- **One tariff in force per meter, by date** (owner; same rules as the Modbus Bridge). Adding or importing a tariff ends the meter's current one the day before it starts and moves the meter to the tariff in force today; overlapping dates are refused. Import reuses the utility with the same retailer + network, says which tariff it replaces, and import/export carry `profile.effective_start` / `effective_end`. New plan (↻) no longer end-dates the old tariff before you save.
 - **Off-grid SoC is the Reconnect SoC, not a floor** (owner). An off-grid you request returns to the grid when the battery reaches it; the go-off-grid dialog, the Control card ("Reconnect SoC") and the done line say so. The off-grid notification adds stored kWh and, for a requested off-grid, gives the time until it reconnects. While the aGate switches, the dialog says it is waiting, shows the aGate going offline and back online, and says a notification follows when that push is on.
 - **No solar, no Solar tab** (owner). The Solar tab and the Dashboard's Solar Forecast card
   are hidden when the gateway's API reports no AC PV ports and no remote solar, or System
@@ -175,6 +208,7 @@ Everything merged since 0.5.41, by area:
   The questions the gateway can't answer stay open.
 
 ### Fixed
+- **Saving a tariff that was deleted while its editor was open** now says so in the editor and offers Save as new, instead of "Tariff save failed: no tariff 'tar_…'". Tariff save errors show in the editor, not as a toast. Deleting a utility with tariffs lists them and deletes them with it.
 - **Home Assistant panel no longer shows "404: Not Found" after the app was in the background** (owner). Home Assistant's ingress session had ended and its 401 sent the page to the absolute `/signin`, which is on Home Assistant's origin. Under ingress the page now stays (Home Assistant renews the session), and the sign-in links are relative.
 - **Scheduler timeline: the planned-window bars were drawn empty** (found while building
   #579): the bar lost its colour and height, so only the grey track showed.

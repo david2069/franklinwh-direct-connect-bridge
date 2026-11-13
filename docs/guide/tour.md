@@ -118,7 +118,7 @@ reordered, from **Topbar cog → Customise → Top bar** (Centre indicators / Ri
 | **FORCE** | This bridge is holding a force (Battery force or a schedule). |
 | **VPP** | Another remote controller has the aGate: its programme id (1707) is 9 and this bridge holds no force. With the Cloud API the tooltip also names the programme. |
 | **DEBUG MODE** | Run status 8. |
-| **Run status / SoC / latency** | Charging / discharging / standby, state of charge, round-trip time to the aGate. |
+| **Run status / SoC / latency** | Charging / discharging / standby, state of charge, round-trip time to the aGate. While the aGate is offline, the run status reads **Unknown (offline)** and the SoC is greyed; hover for when it was last read. |
 | **Cards** | On the Dashboard only: opens Customise on **Dashboard cards**. |
 | **`</>`** | Raw-key toggle — reveals the underlying `cmdType` behind each displayed value. |
 | **Release** | Appears *only while a force dispatch is active*, on every tab, so you can stop it from anywhere. |
@@ -160,7 +160,7 @@ protocol documentation.
 
 | Tab | For |
 |---|---|
-| **Dashboard** | The at-a-glance view, built from ten cards you can individually hide and reorder: State of Charge, Power Flow (each source with what it is doing — Charging, Exporting — and a **Now / Today** toggle for today's kWh), Battery, Energy, Energy Flow (the Sankey), Operating Mode (with the per-mode reserves and a **Set** button), Diagnostics, Solar Forecast, Power History and Live Points. |
+| **Dashboard** | The at-a-glance view, built from ten cards you can individually hide and reorder: State of Charge, Power Flow (each source with what it is doing — Charging, Exporting — and a **Now / Today** toggle for today's kWh), Battery, Energy, Energy Flow (the Sankey), Operating Mode (with the per-mode reserves and a **Set** button), Diagnostics, Solar Forecast, Power History and Live Points. While the aGate is offline, the State of Charge, Power Flow and Battery cards keep the last values read, greyed, with **Last reading HH:MM (N min ago)**, and the battery state reads **Unknown (offline)**. |
 | **Battery** | Per-aPower BMS detail — cell voltages, temperatures, pack SoC/SoH, electrical and state readings. **Record** on the live trend keeps it on the bridge from then on (at least every 5 s, up to a day, or until Stop). **Charts** lists the recordings and charts cells over time; it also starts a recording by hand, and **Scheduled recordings** start one at a time of day on the days you tick, on the site's clock. |
 | **Solar** | Solar production detail. The *forecast* is not here — it is the Solar Forecast card on the Dashboard (see [History and costs](energy-and-costs.md)). Hidden, with the Dashboard's Solar Forecast card, when there is no solar: the gateway reports no AC PV ports and no remote solar, or **System Setup** says none (DC solar is set there). Until the gateway has been read it stays. |
 | **Smart Circuits** | The aGate's controllable circuits: state now, and on/off control. |
@@ -172,7 +172,7 @@ protocol documentation.
 | **Grid & Inverter** | The grid power-plane limits (import/export enables, soft and hard limits). Advanced, and the write is **unverified** — see [Control](control.md). |
 | **Home Assistant** | HA instances, which HA entities to expose to the scheduler, notification devices, and a dashboard-card YAML generator. |
 | **MQTT** | What the bridge publishes, which entity groups are enabled, and a scan for other FranklinWH publishers on the same broker. |
-| **Network** | The connection picture end to end: round-trip latency to `:9000`, `:502` Modbus reachability, MQTT, AWS IoT, the CloudFront edge your gateway reaches, link history, missed polls, consecutive failures. The first place to look when something feels slow. |
+| **Network** | The connection picture end to end: round-trip latency to `:9000`, the Modbus TCP Server (aGate `:502`) from the Modbus client's (this bridge) last real connection (green only if it succeeded since the aGate's link last came up; grey and dashed "unknown · last OK HH:MM" when older or while the link is down; the bridge never probes `:502`), MQTT, AWS IoT, the CloudFront edge your gateway reaches, link history, missed polls, consecutive failures. The first place to look when something feels slow. |
 | **Device** | Device identity and raw readings — model, firmware, serial — and a browser for individual `cmdType` reads. |
 | **Health** | A per-gateway connection panel: host, online/offline, round-trip latency, `Modbus :502` as Up / Down / **Not probed** (from the Modbus client's last real connection; nothing probes :502 to show it), ping, whether the host was rediscovered, MQTT, whether writes are enabled, firmware and serials, with a Refresh that forces a fresh probe. |
 | **Logs** | The bridge's own log, stored in SQLite: searchable, paginated, filterable by level and source, with a **Live** follow mode and an export. Control actions, cloud calls and connection events all land here. |
@@ -200,7 +200,9 @@ setup) with its source, detail and result; see [Control](control.md).
   tile to show only that level; click it again to clear it.
 - **Search messages…** — filters on the message, source and level.
 - **All sources** and **All levels** — pick one source (logger) or one level.
-- **Time range** — Last 1h, Last 6h, Last 24h (the default), Last 7 days or All time.
+- **Time range** — Last 1h, Last 6h, Last 24h (the default), Last 7 days or All time. The
+  box shows the range that is loaded. It used to show "Last 1h" while it loaded the default
+  24 hours, so lines from hours earlier appeared under "Last 1h" (#614).
 - **Live** / **Paused** — click to stop the 10-second refresh, so the view holds still
   while you read. Click again to resume.
 - **Export** — downloads the lines currently shown, with your filters, as a `.log` file.

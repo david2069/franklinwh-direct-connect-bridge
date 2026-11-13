@@ -275,18 +275,50 @@ revenue-grade meter, and not a substitute for your bill.
 
 ## Tariffs
 
-![Settings → Sites & Billing → Utilities & Tariffs: a new utility](../images/energy-and-costs/06-tariffs.png)
+![Settings → Sites & Billing → Sites & Meters: a meter with its tariff and an earlier plan](../images/energy-and-costs/06-tariffs.png)
 
-Set up under **Settings → Sites & Billing → Utilities & Tariffs**. A tariff belongs to a
-utility and is assigned to a meter; the meter is what a gateway connects to. (See
+Set up on each meter's card under **Settings → Sites & Billing → Sites & Meters**: the
+tariff in force today (retailer, name, dates) with **New plan**, **Import**, **Edit** and
+**Export**, and the meter's other plans under **Show other plans**. The retailer is chosen
+(or added with **+ New retailer**) in the tariff editor. Tariffs on no meter, and retailers
+with no tariff, are listed under **Not on a meter**, where **Use on meter** moves a tariff
+to the default meter. The meter is what a gateway connects to. (See
 [Multi-gateway and sites](multi-gateway.md) for why the tariff hangs off the meter rather
 than the gateway.)
 
 **Import tariff** takes a tariff as JSON (`franklinwh-bridge/tariff-profile`, the same
 format a tariff's Export writes and the Modbus Bridge uses): paste it into the box or
 choose a file. **Check** shows what it contains (retailer, network, plan, seasons, fixed
-charges); **Import** creates the utility and tariff and attaches them to the default meter.
+charges); **Import** adds it as a plan of the default meter (rules below).
 The result, or why it was not accepted, is shown in the dialog.
+
+**One tariff in force per meter.** A tariff has **Effective from** and **Effective to**
+(blank = current). A meter has one tariff in force on any day, and each day is priced
+with the tariff in force that day (energy, fixed charges, the `tariff.*` sensors). A
+tariff dated to start tomorrow takes over at midnight by itself. The billing period it
+interrupts is closed at the switch and shows in history under the tariff that priced it,
+with that tariff's fixed charges for its own days.
+
+- Adding or importing a tariff for a meter ends its current tariff the day before the new
+  one starts. With no start date, the new one starts today.
+- A tariff whose dates would overlap another on the same meter is refused, with the
+  reason shown in the editor.
+- **New plan** (↻ on a tariff) starts a copy from today; Save ends the old one the day
+  before.
+- Importing a tariff from the same retailer and network adds a plan to that utility
+  instead of a second utility. The import preview says which tariff it replaces.
+- Deleting a utility lists its tariffs and deletes them with it.
+
+**Retired plans are locked.** Once a plan's end date has passed, it opens as **View**:
+its rates and charges stay visible, unchanged, so bills from that time can be reconciled
+against what applied. To change one, **Unlock to edit**; to remove one, delete it:
+
+- Ended under 13 months ago: two warnings that past bills can no longer be checked, then
+  type the plan's name.
+- Ended 13 or more months ago: one confirm.
+
+Saving an unlocked plan locks it again. Moving a retired plan onto a meter (**Use on
+meter**) changes none of its rates or dates, so it needs no unlock.
 
 ### Static or dynamic
 
