@@ -18,6 +18,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Network tab: the :502 line stayed green while the aGate was unreachable** (#617). The bridge never probes the Modbus TCP Server (aGate :502), so the line showed the Modbus client's (this bridge) last real result, however old. It is now green only for a success since the aGate's link last came up, red when the last attempt failed, and otherwise grey and dashed as "unknown · last OK HH:MM", in the diagram and the Reachability card.
 - **A billing period closed by a tariff switch** was stamped with the new tariff's name, ended at the cycle's end, and carried the new tariff's fixed charges for the whole period. It now carries the tariff that priced it, ends at the switch, and has that tariff's fixed charges for its own days.
 
 ### Added
