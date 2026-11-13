@@ -478,7 +478,7 @@
         <div x-show="tariffImp.preview" class="text-xs rounded-lg p-2 whitespace-pre-line"
              style="background:var(--surface-2);color:var(--text-secondary)" x-text="tariffImportSummary()"></div>
         <div data-testid="tariff-import-result" x-show="tariffImp.msg" class="text-sm"
-             :style="'color:' + (tariffImp.msg?.kind === 'ok' ? 'var(--success,#34d399)' : 'var(--danger,#f87171)')"
+             :style="{ color: tariffImp.msg?.kind === 'ok' ? 'var(--success,#34d399)' : 'var(--danger,#f87171)' }"
              x-text="tariffImp.msg?.text"></div>
       </div>
     </div>
