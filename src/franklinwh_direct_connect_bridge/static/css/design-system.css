@@ -240,6 +240,9 @@ body {
 .chip.offgrid { background: hsla(343,88%,55%,.9);   color: #fff; box-shadow: 0 0 0 0 hsla(343,88%,55%,.55); animation: chip-pulse 2s infinite; }
 @keyframes chip-pulse { 70% { box-shadow: 0 0 0 7px hsla(343,88%,55%,0); } 100% { box-shadow: 0 0 0 0 hsla(343,88%,55%,0); } }
 @media (prefers-reduced-motion: reduce) { .chip.offgrid { animation: none; } }
+/* aGate offline (#615): last-good values stay on screen, greyed so they don't read as live. */
+.is-stale .stale-vals, .chip.is-stale { opacity: .5; filter: grayscale(1); }
+.stale-note { font-size: .7rem; color: var(--text-muted); margin-bottom: .5rem; }
 
 /* ── Nav Items ──────────────────────────────────────────── */
 .nav-item {

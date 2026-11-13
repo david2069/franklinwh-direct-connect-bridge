@@ -118,7 +118,7 @@ reordered, from **Topbar cog → Customise → Top bar** (Centre indicators / Ri
 | **FORCE** | This bridge is holding a force (Battery force or a schedule). |
 | **VPP** | Another remote controller has the aGate: its programme id (1707) is 9 and this bridge holds no force. With the Cloud API the tooltip also names the programme. |
 | **DEBUG MODE** | Run status 8. |
-| **Run status / SoC / latency** | Charging / discharging / standby, state of charge, round-trip time to the aGate. |
+| **Run status / SoC / latency** | Charging / discharging / standby, state of charge, round-trip time to the aGate. While the aGate is offline, the run status reads **Unknown (offline)** and the SoC is greyed; hover for when it was last read. |
 | **Cards** | On the Dashboard only: opens Customise on **Dashboard cards**. |
 | **`</>`** | Raw-key toggle — reveals the underlying `cmdType` behind each displayed value. |
 | **Release** | Appears *only while a force dispatch is active*, on every tab, so you can stop it from anywhere. |
@@ -160,7 +160,7 @@ protocol documentation.
 
 | Tab | For |
 |---|---|
-| **Dashboard** | The at-a-glance view, built from ten cards you can individually hide and reorder: State of Charge, Power Flow (each source with what it is doing — Charging, Exporting — and a **Now / Today** toggle for today's kWh), Battery, Energy, Energy Flow (the Sankey), Operating Mode (with the per-mode reserves and a **Set** button), Diagnostics, Solar Forecast, Power History and Live Points. |
+| **Dashboard** | The at-a-glance view, built from ten cards you can individually hide and reorder: State of Charge, Power Flow (each source with what it is doing — Charging, Exporting — and a **Now / Today** toggle for today's kWh), Battery, Energy, Energy Flow (the Sankey), Operating Mode (with the per-mode reserves and a **Set** button), Diagnostics, Solar Forecast, Power History and Live Points. While the aGate is offline, the State of Charge, Power Flow and Battery cards keep the last values read, greyed, with **Last reading HH:MM (N min ago)**, and the battery state reads **Unknown (offline)**. |
 | **Battery** | Per-aPower BMS detail — cell voltages, temperatures, pack SoC/SoH, electrical and state readings. **Record** on the live trend keeps it on the bridge from then on (at least every 5 s, up to a day, or until Stop). **Charts** lists the recordings and charts cells over time; it also starts a recording by hand, and **Scheduled recordings** start one at a time of day on the days you tick, on the site's clock. |
 | **Solar** | Solar production detail. The *forecast* is not here — it is the Solar Forecast card on the Dashboard (see [History and costs](energy-and-costs.md)). Hidden, with the Dashboard's Solar Forecast card, when there is no solar: the gateway reports no AC PV ports and no remote solar, or **System Setup** says none (DC solar is set there). Until the gateway has been read it stays. |
 | **Smart Circuits** | The aGate's controllable circuits: state now, and on/off control. |

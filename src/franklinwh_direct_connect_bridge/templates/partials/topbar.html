@@ -194,12 +194,15 @@
     <!-- Charge / run status -->
     <div class="chip inline-flex" :style="{order: $store.app.topbarOrder('charge')}"
          x-show="$store.app.topbarShow('charge')"
-         :class="$store.app.chargeStateClass"
+         :class="[$store.app.chargeStateClass, {'is-stale': $store.app.isLastGood}]"
+         :title="$store.app.lastGoodText"
          x-text="$store.app.chargeState"></div>
 
     <!-- SoC -->
+    <!-- aGate offline (#615): greyed last-good SoC; the tooltip says when it was read. -->
     <div class="chip muted" :style="{order: $store.app.topbarOrder('soc')}"
-         x-show="$store.app.socPct !== null && $store.app.topbarShow('soc')">
+         x-show="$store.app.socPct !== null && $store.app.topbarShow('soc')"
+         :class="{'is-stale': $store.app.isLastGood}" :title="$store.app.lastGoodText">
       <span x-text="'SoC ' + $store.app.socPct + '%'"></span>
     </div>
 
