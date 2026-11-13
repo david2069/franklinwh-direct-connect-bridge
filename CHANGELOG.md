@@ -11,6 +11,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.43] — 2026-11-14
+
+A grouped release (owner override of one-release-a-day). Everything merged since 0.5.42, by area:
+
+- **Connectivity:** Troubleshoot for an unreachable aGate or one on 4G, with Health check and Reconnect to Wi-Fi via the FranklinWH cloud; new `AGATE_ON_4G` warning; the red bar turns amber while a recovered link is confirmed.
+- **Offline values:** Dashboard and top bar grey out last-good values while the aGate is offline.
+- **Network tab:** the :502 line is no longer green on a result older than the link.
+- **Watchdog:** cloud-status back-off no longer raises `WORKER_STALLED`.
+- **Tariffs and billing:** tariffs live on the meter, billing by date, retired tariffs locked, and a period closed by a tariff switch carries the right tariff.
+- **Logs:** the time range shows the range in use.
+
 ### Changed
 
 - **The red bar follows the link** (#614). Once an unreachable aGate answers again, the bar turns amber and says "Reconnecting — confirming (resolves in N s)" until the alert clears, instead of "aGate unreachable" beside the Online pill. When the link dropped more than once during the alert it adds the count ("dropped 2× in 25 min"). Tapping it opens Troubleshoot.
