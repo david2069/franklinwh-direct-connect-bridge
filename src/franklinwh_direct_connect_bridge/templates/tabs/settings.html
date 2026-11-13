@@ -989,7 +989,7 @@
         <template x-for="pr in tariffProblems" :key="pr"><div x-text="'• ' + pr"></div></template>
       </div></template>
       <div data-testid="tariff-msg" x-show="tariffMsg" class="text-[11px]"
-           :style="'color:' + (tariffMsg?.kind === 'info' ? 'var(--text-secondary)' : 'var(--danger,#f87171)')">
+           :style="{ color: tariffMsg?.kind === 'info' ? 'var(--text-secondary)' : 'var(--danger,#f87171)' }">
         <span x-text="tariffMsg?.text"></span>
         <button x-show="tariffMsg?.kind === 'gone'" class="btn btn-secondary btn-sm ml-2" @click="saveTariffAsNew()">Save as new</button>
       </div>
