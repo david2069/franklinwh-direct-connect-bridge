@@ -414,7 +414,7 @@
                       </div>
                       <div class="flex items-center gap-1 shrink-0">
                         <button class="btn btn-secondary btn-sm" @click="exportTariffProfile(t)">Export</button>
-                        <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="editTariff(t)">Edit</button>
+                        <button class="btn btn-secondary btn-sm" :disabled="!canWrite() && !tariffRetired(t)" @click="editTariff(t)" x-text="tariffRetired(t) ? 'View' : 'Edit'"></button>
                         <button class="btn btn-danger btn-sm btn-icon" :disabled="!canWrite()" @click="deleteTariff(t)" aria-label="Delete tariff" title="Delete tariff"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
                       </div>
                     </div>
@@ -443,7 +443,7 @@
           <div class="flex items-center gap-1 shrink-0">
             <button data-testid="tariff-assign" class="btn btn-secondary btn-sm" :disabled="!canWrite() || !meters.length" @click="assignTariff(t)"
                     :title="'Put it on ' + (meters.find(x => x.is_default) || meters[0] || {}).name">Use on meter</button>
-            <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="editTariff(t)">Edit</button>
+            <button class="btn btn-secondary btn-sm" :disabled="!canWrite() && !tariffRetired(t)" @click="editTariff(t)" x-text="tariffRetired(t) ? 'View' : 'Edit'"></button>
             <button class="btn btn-danger btn-sm btn-icon" :disabled="!canWrite()" @click="deleteTariff(t)" aria-label="Delete tariff" title="Delete tariff"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
           </div>
         </div>
@@ -507,6 +507,14 @@
          x-init="$nextTick(() => $el.scrollIntoView({ behavior: 'smooth', block: 'start' }))">
       <div class="text-xs font-semibold" style="color:var(--text-secondary)"
            x-text="(tariffEdit.id ? 'Edit tariff' : 'New tariff') + (tariffEdit.meter_id ? ' · ' + ((meters.find(x => x.id === tariffEdit.meter_id) || {}).name || '') : '')"></div>
+      <!-- A retired plan (its end date has passed) is locked, so past bills can be reconciled
+           against what applied (owner 2026-11-13). Unlock asks first. -->
+      <div x-show="tariffEdit.locked" class="flex items-center justify-between gap-2 flex-wrap rounded-md px-2.5 py-2 text-[11px]"
+           style="background:var(--surface-2);color:var(--text-secondary)">
+        <span x-text="'Retired ' + tariffEdit.effective_end + ': locked, view only. Its rates and charges are kept so bills from then can be reconciled.'"></span>
+        <button type="button" data-testid="tariff-unlock" class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="unlockTariff()">Unlock to edit</button>
+      </div>
+      <fieldset :disabled="tariffEdit.locked" class="space-y-2">
       <div class="flex items-end gap-2 flex-wrap">
         <label class="text-[11px] flex-1 min-w-[10rem]" style="color:var(--text-secondary)">Retailer
           <select data-testid="tariff-retailer" class="form-control form-control-sm w-full mt-1" x-model="tariffEdit.utility_id"
@@ -530,6 +538,7 @@
         <label class="text-[11px]" style="color:var(--text-secondary)">Effective to <span style="color:var(--text-faint)">(blank = current)</span>
           <input type="date" class="form-control form-control-sm w-full mt-1" x-model="tariffEdit.effective_end"></label>
       </div>
+      </fieldset>
       <!-- Modbus-style sub-tabs (Peak demand · Export bonus · Export charge · Standing charges · Energy rates) -->
       <div class="flex flex-wrap gap-0.5 border-b pt-1" style="border-color:var(--border)">
         <template x-for="tt in [
@@ -550,6 +559,7 @@
       </div>
 
       <!-- Energy rates tab (cloned from the Modbus bridge) -->
+      <fieldset :disabled="tariffEdit.locked" class="space-y-2">
       <div x-show="tariffTab==='rates'" x-cloak class="space-y-2">
         <!-- Rate type: Static vs Wholesale (live) — per-tariff dynamic pricing -->
         <div class="flex items-center gap-2 text-xs">
@@ -990,6 +1000,7 @@
         <p x-show="!(tariffEdit.fixed||[]).length" class="text-[10px]" style="color:var(--text-faint)">No standing charges. Add a daily supply charge, meter fee, etc.</p>
       </div>
 
+      </fieldset>
       <template x-if="tariffProblems.length"><div class="text-[11px]" style="color:var(--warn)">
         <template x-for="pr in tariffProblems" :key="pr"><div x-text="'• ' + pr"></div></template>
       </div></template>
@@ -999,9 +1010,9 @@
         <button x-show="tariffMsg?.kind === 'gone'" class="btn btn-secondary btn-sm ml-2" @click="saveTariffAsNew()">Save as new</button>
       </div>
       <div class="flex gap-2">
-        <button class="btn btn-primary btn-sm" @click="saveTariff()">Save</button>
-        <button class="btn btn-secondary btn-sm" @click="validateTariff()">Validate</button>
-        <button class="btn btn-secondary btn-sm" @click="tariffEdit = null; tariffMsg = null">Cancel</button>
+        <button class="btn btn-primary btn-sm" x-show="!tariffEdit.locked" @click="saveTariff()">Save</button>
+        <button class="btn btn-secondary btn-sm" x-show="!tariffEdit.locked" @click="validateTariff()">Validate</button>
+        <button class="btn btn-secondary btn-sm" @click="tariffEdit = null; tariffMsg = null" x-text="tariffEdit.locked ? 'Close' : 'Cancel'"></button>
       </div>
     </div></template>
 

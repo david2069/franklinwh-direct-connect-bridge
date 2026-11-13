@@ -671,6 +671,37 @@ function settingsTab() {
       if (t.effective_start && t.effective_start > today) return 'future';
       return 'active';
     },
+    // Retired = its end date has passed; locked (owner 2026-11-13). Under 13 months since it
+    // ended, unlocking or deleting it takes two warnings and its name typed.
+    tariffRetired(t) { return !!(t && t.effective_end && t.effective_end < new Date().toISOString().slice(0, 10)); },
+    tariffRecentlyRetired(t) {
+      if (!this.tariffRetired(t)) return false;
+      const e = new Date(t.effective_end + 'T00:00:00'); e.setMonth(e.getMonth() + 13);
+      return new Date() < e;
+    },
+    async _retiredWarnings(t, action) {
+      const app = this.$store.app, name = t.name || t.id;
+      if (!this.tariffRecentlyRetired(t)) {
+        return app.confirmDialog(`"${name}" ended on ${t.effective_end}, over 13 months ago. ${action === 'delete' ? 'Delete' : 'Unlock'} it?`,
+                                 { title: action === 'delete' ? 'Delete retired plan' : 'Unlock retired plan', danger: action === 'delete' });
+      }
+      const verb = action === 'delete' ? 'Deleting' : 'Changing';
+      return await app.confirmDialog(`"${name}" ended on ${t.effective_end}. Its rates and charges are kept, locked, `
+          + `so bills from that time can be reconciled against what applied.\n\n${verb} it means those bills `
+          + 'can no longer be checked. You should not do this if you may reconcile them.',
+          { title: 'Warning 1 of 2', danger: true })
+        && await app.confirmDialog(`Second warning: only continue if you will not reconcile any bill from `
+          + `${t.effective_start || 'its start'} to ${t.effective_end}. Export it first if you might need it.`,
+          { title: 'Warning 2 of 2', danger: true })
+        && await app.confirmTyped(`Type the plan's name to ${action === 'delete' ? 'delete' : 'unlock'} it:\n${name}`, name,
+          { title: action === 'delete' ? 'Delete retired plan' : 'Unlock retired plan', danger: true });
+    },
+    async unlockTariff() {
+      const t = this.tariffs.find(x => x.id === this.tariffEdit.id) || this.tariffEdit;
+      if (!await this._retiredWarnings(t, 'unlock')) return;
+      Object.assign(this.tariffEdit, { locked: false, unlock: true });
+      this.tariffMsg = { kind: 'info', text: 'Unlocked for this edit. Save locks it again.' };
+    },
     tariffDateLabel(t) {
       if (!t.effective_start && !t.effective_end) return '';
       return (t.effective_start || '…') + ' → ' + (t.effective_end || 'now');
@@ -821,7 +852,7 @@ function settingsTab() {
       if (!this.nemSpot) this.loadNemSpot();   // populate region options for the wholesale picker
       this.loadHaPriceOpts();   // friendly HA price-entity names for the combobox
       const dw = t.demand_window || {}, bw = t.bonus_window || {}, cw = t.charge_window || {};
-      this.tariffEdit = { id: t.id, utility_id: t.utility_id, meter_id: t.meter_id || '', name: t.name, billing_cycle_day: t.billing_cycle_day || 1, effective_start: t.effective_start || '', effective_end: t.effective_end || '', pricing: pr,
+      this.tariffEdit = { locked: this.tariffRetired(t), unlock: false, id: t.id, utility_id: t.utility_id, meter_id: t.meter_id || '', name: t.name, billing_cycle_day: t.billing_cycle_day || 1, effective_start: t.effective_start || '', effective_end: t.effective_end || '', pricing: pr,
         demand: { on: !!dw.start, start: dw.start || '15:00', end: dw.end || '21:00', rate: pr.demand_rate ?? '', interval_min: pr.demand_interval_min || 30, basis: pr.demand_charge_basis || 'per_kw_day', months: dw.months || [], days: dw.days || [] },
         bonus: { on: !!bw.start, start: bw.start || '17:00', end: bw.end || '21:00', rate: pr.export_bonus_rate ?? '', months: bw.months || [], days: bw.days || [] },
         charge: { on: !!cw.start, start: cw.start || '10:00', end: cw.end || '15:00', rate: pr.export_charge_rate ?? '', free_kwh_per_day: pr.export_charge_free_kwh_per_day ?? '', months: cw.months || [], days: cw.days || [] },
@@ -1077,7 +1108,9 @@ function settingsTab() {
       const win = o => (o && o.on ? { start: o.start, end: o.end,
         ...(o.months && o.months.length ? { months: o.months.map(Number) } : {}),
         ...(o.days && o.days.length ? { days: o.days.map(Number) } : {}) } : {});
-      const body = { utility_id: t.utility_id, name: t.name, ...(t.id ? {} : { meter_id: t.meter_id || null }), billing_cycle_day: Number(t.billing_cycle_day) || 1,
+      if (t.locked) return;
+      const body = { utility_id: t.utility_id, name: t.name, ...(t.id ? {} : { meter_id: t.meter_id || null }),
+        ...(t.unlock ? { unlock: true } : {}), billing_cycle_day: Number(t.billing_cycle_day) || 1,
         effective_start: t.effective_start || null, effective_end: t.effective_end || null,
         pricing: this._tariffPricing(),
         demand_window: win(t.demand), bonus_window: win(t.bonus), charge_window: win(t.charge),
@@ -1100,9 +1133,13 @@ function settingsTab() {
       await this.saveTariff();
     },
     async deleteTariff(t) {
-      if (!await this.$store.app.confirmDialog(`Delete tariff "${t.name}"?`, { danger: true })) return;
+      let url = 'api/tariffs/' + t.id;
+      if (this.tariffRetired(t)) {
+        if (!await this._retiredWarnings(t, 'delete')) return;
+        if (this.tariffRecentlyRetired(t)) url += '?confirm_name=' + encodeURIComponent(t.name || t.id);
+      } else if (!await this.$store.app.confirmDialog(`Delete tariff "${t.name}"?`, { danger: true })) return;
       try {
-        const r = await fetch('api/tariffs/' + t.id, { method: 'DELETE' });
+        const r = await fetch(url, { method: 'DELETE' });
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
         await this.loadUtilitiesTariffs(); await this.loadSitesMeters();
       } catch (e) { this.$store.app.toast('Delete failed: ' + e.message, 'error'); }

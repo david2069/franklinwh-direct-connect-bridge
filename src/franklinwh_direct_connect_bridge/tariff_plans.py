@@ -32,6 +32,29 @@ def _overlaps(a_start, a_end, b: dict) -> bool:
     return lo <= hi
 
 
+#: A retired plan that ended within this many months needs its name typed to delete it
+#: (owner 2026-11-13): bills from then may still need reconciling against its rates.
+RECONCILE_MONTHS = 13
+
+
+def retired(t: dict, day: dt.date | None = None) -> bool:
+    """Its end date has passed (its last day is still current). Retired plans are locked."""
+    e = _d(t.get("effective_end"))
+    return e is not None and e < (day or today())
+
+
+def recently_retired(t: dict, day: dt.date | None = None) -> bool:
+    """Retired, and ended less than RECONCILE_MONTHS months ago."""
+    if not retired(t, day):
+        return False
+    e = _d(t["effective_end"])
+    m = e.month - 1 + RECONCILE_MONTHS
+    y, m = e.year + m // 12, m % 12 + 1
+    import calendar
+    limit = dt.date(y, m, min(e.day, calendar.monthrange(y, m)[1]))
+    return (day or today()) < limit
+
+
 def of_meter(store, meter_id: str) -> list[dict]:
     return [t for t in store.tariffs() if t.get("meter_id") == meter_id]
 
