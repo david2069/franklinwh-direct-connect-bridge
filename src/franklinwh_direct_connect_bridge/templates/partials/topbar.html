@@ -157,13 +157,14 @@
     </div>
 
     <!-- Status: OFF-GRID / VPP / FORCE (one preference) -->
-    <div class="chip offgrid inline-flex items-center gap-1" :style="{order: $store.app.topbarOrder('status')}"
+    <button type="button" data-testid="offgrid-pill" @click="$store.app.openOffgridModal()"
+         class="chip offgrid inline-flex items-center gap-1" :style="{order: $store.app.topbarOrder('status')}"
          x-show="$store.app.isOffGrid && $store.app.topbarShow('status')" x-cloak
-         title="The gateway is disconnected from the grid, running on battery">
+         title="Off-grid: tap for details">
       <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" d="M18.36 6.64A9 9 0 1 1 5.64 6.64M12 2v10"/></svg>
       <span>OFF-GRID</span>
-    </div>
+    </button>
     <!-- Debug Mode (run_status 8) = a FranklinWH remote-support session is live on this
          gateway. Someone outside the household can see and change things, so it ranks
          above VPP and is never silently rendered as a bare number. -->

@@ -23,7 +23,14 @@ One page per gateway, scoped to whichever gateway the top-bar selector names.
   confirm.
 - **Reserve SoC** — the per-mode reserve floor. Cloud-owned: editable only when cloud
   credentials have been *validated*, not merely entered.
-- **Off-grid** — island the gateway or reconnect it, with a restore-SoC floor.
+- **Off-grid** — island the gateway or reconnect it. **Reconnect SoC**: an off-grid you
+  request returns to the grid when the battery reaches it (default 5%); it is not a floor the
+  battery holds, and an outage does not use it. While the aGate switches (it can take over a
+  minute) the dialog says it is waiting, shows the aGate going offline and coming back, and,
+  when the off-grid notification is on, says a notification follows so you can close it.
+- **The OFF-GRID pill** in the top bar opens the Off-grid dialog: each off-grid gateway, why
+  (user requested / grid outage), how long it has been off-grid, SoC, stored kWh and time
+  left at the current usage, and **Go on-grid (reconnect)** for an off-grid you requested.
 - **Modbus** — enable the Modbus path, override host and port, and **Test** it. The
   override applies to every Modbus path in the bridge, not just this tab.
 - **Gateway** — reboot the aGate.

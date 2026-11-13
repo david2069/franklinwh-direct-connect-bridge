@@ -20,18 +20,18 @@ def test_runtime_at_current_usage():
     # 80% of 13.6 kWh = 10.88 kWh at 2.0 kW net = 5 h 26 min
     assert _fire(_snap(True), 13.6) == [("off_grid", {
         "reason": "grid outage",
-        "metrics": "SoC 80%, home 2.0 kW — about 5 h 26 min left at current usage"})]
+        "metrics": "SoC 80%, stored 10.9 kWh, home 2.0 kW — about 5 h 26 min left at current usage"})]
 
 
 def test_solar_net_of_load():
     ev = _fire(_snap(True, load=2000, solar=1500), 13.6)[0][1]
-    assert ev["metrics"] == ("SoC 80%, home 2.0 kW, solar 1.5 kW — "
+    assert ev["metrics"] == ("SoC 80%, stored 10.9 kWh, home 2.0 kW, solar 1.5 kW — "
                              "about 21 h 46 min left at current usage")
 
 
 def test_solar_covers_home():
     ev = _fire(_snap(True, load=800, solar=1500), 13.6)[0][1]
-    assert ev["metrics"] == "SoC 80%, home 0.8 kW, solar 1.5 kW — solar is covering the home"
+    assert ev["metrics"] == "SoC 80%, stored 10.9 kWh, home 0.8 kW, solar 1.5 kW — solar is covering the home"
 
 
 def test_no_capacity_no_estimate():

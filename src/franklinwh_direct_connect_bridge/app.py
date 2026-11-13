@@ -5306,12 +5306,39 @@ def create_app() -> FastAPI:
             _audit("set_mode", gateway=gateway, detail=f"mode={req.mode}", result=str(e), ok=False)
             raise HTTPException(status_code=502, detail=str(e))
 
+    @app.get("/api/offgrid/status")
+    def api_offgrid_status(gateway: str | None = Depends(_gateway_opt)):
+        """Every off-grid gateway (or just ``gateway``) for the OFF-GRID pill's modal: why,
+        since when, the reconnect SoC (user requested only), and the same metrics line as
+        the off-grid push. ``notify``: a push is sent when the aGate switches."""
+        s = get_settings()
+        store = db.get_store(s)
+        from . import constants, notify_engine
+        cap = constants.values(store).get("battery_capacity_kwh") or None
+        rows = []
+        for gw in state.gateways():
+            if gateway and gw.id != gateway:
+                continue
+            p = (gw.last_summary or {}).get("power") or {}
+            if not p.get("off_grid"):
+                continue
+            kind = p.get("off_grid_kind")
+            rows.append({
+                "id": gw.id, "label": gw.label or gw.id, "ok": bool(gw.last_summary.get("ok")),
+                "kind": kind,
+                "reason": notify_engine.OFF_GRID_REASON.get(kind, "reason unknown"),
+                "since": (gw.last_state or {}).get("off_grid_since"),
+                "soc": p.get("soc"),
+                "reconnect_soc": p.get("offgrid_reconnect_soc") if kind == "simulated" else None,
+                "metrics": notify_engine.off_grid_metrics(p, cap)})
+        return {"gateways": rows, "notify": notify_engine.notify_on(store, s)}
+
     @app.post("/api/offgrid")
     def api_set_offgrid(req: OffgridReq, gateway: str = Depends(_gateway_q)):
         _guard_consequential(req.confirm, "go off-grid / reconnect")
         host = _gw_host(gateway)   # SAFETY: the write must hit the SELECTED gateway
         action = "go_off_grid" if req.on else "reconnect_grid"
-        detail = f"restore_soc={req.soc}%" if req.on else "reconnect to grid"
+        detail = f"reconnect_soc={req.soc}%" if req.on else "reconnect to grid"
         try:
             res = client.set_offgrid(get_settings(), req.on, req.soc, host=host)
             _audit(action, gateway=gateway, detail=detail, result=res,

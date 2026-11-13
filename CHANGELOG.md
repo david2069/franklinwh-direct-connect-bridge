@@ -12,6 +12,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **OFF-GRID pill opens an Off-grid dialog** (owner). It lists each off-grid gateway with why, how long it has been off-grid, SoC, stored kWh and time left, and Go on-grid (reconnect) for an off-grid you requested. `GET /api/offgrid/status`.
 - **Off-grid notification says how long the battery will last.** It now gives the SoC, home load and solar, and an estimate at the current usage (SoC × Battery capacity ÷ net load), or says solar is covering the home. The FranklinWH app estimates from historical usage.
 - **Price events: price spike and an HA demand window** (#582, owner). Under Sites &
   Billing → Prices: a spike at or above a number of c/kWh, or from a Home Assistant spike
@@ -86,6 +87,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   purge runs with the hourly history upkeep and when a recording ends.
 
 ### Changed
+- **Off-grid SoC is the Reconnect SoC, not a floor** (owner). An off-grid you request returns to the grid when the battery reaches it; the go-off-grid dialog, the Control card ("Reconnect SoC") and the done line say so. The off-grid notification adds stored kWh and, for a requested off-grid, gives the time until it reconnects. While the aGate switches, the dialog says it is waiting, shows the aGate going offline and back online, and says a notification follows when that push is on.
 - **No solar, no Solar tab** (owner). The Solar tab and the Dashboard's Solar Forecast card
   are hidden when the gateway's API reports no AC PV ports and no remote solar, or System
   Setup says none (DC solar is set there). Unknown, before the gateway is read, keeps them.

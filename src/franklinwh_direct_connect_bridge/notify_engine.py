@@ -249,24 +249,41 @@ def _kw(w) -> str:
 
 
 def off_grid_metrics(power: dict, capacity_kwh: float | None) -> str:
-    """SoC, home load and solar now, and how long the battery lasts at the CURRENT usage
-    (the FranklinWH app estimates from historical usage; this bridge has the live load).
-    Net draw = home − solar − generator; usable kWh = SoC × the Battery capacity constant."""
+    """SoC, stored kWh, home load and solar now, and how long the battery lasts at the
+    CURRENT usage (the FranklinWH app estimates from the highest use in the past 72 h; this
+    bridge has the live load). Net draw = home − solar − generator. A user-requested
+    off-grid returns to the grid when the battery reaches the off-grid (reconnect) SoC, so
+    it runs to that; an outage runs to empty."""
     soc, load = power.get("soc"), power.get("load_w")
     solar = power.get("solar_w") or 0
-    parts = [f"SoC {round(soc)}%" if isinstance(soc, (int, float)) else None,
+    have = isinstance(soc, (int, float))
+    parts = [f"SoC {round(soc)}%" if have else None,
+             f"stored {soc / 100 * capacity_kwh:.1f} kWh" if have and capacity_kwh else None,
              f"home {_kw(load)}" if isinstance(load, (int, float)) else None,
              f"solar {_kw(solar)}" if isinstance(solar, (int, float)) and solar > 0 else None]
     now = ", ".join(p for p in parts if p)
-    if not isinstance(soc, (int, float)) or not isinstance(load, (int, float)):
+    if not have or not isinstance(load, (int, float)):
         return now or "no live readings"
+    rec = power.get("offgrid_reconnect_soc")
+    user = power.get("off_grid_kind") == "simulated" and isinstance(rec, (int, float))
+    if user and soc <= rec:
+        return f"{now} — reconnecting to the grid at {round(rec)}%"
     if not capacity_kwh:
         return f"{now} — set Battery capacity (Automation) for a runtime estimate"
     draw = load - solar - (power.get("generator_w") or 0)
     if draw <= 0:
         return f"{now} — solar is covering the home"
-    mins = round(soc / 100 * capacity_kwh * 1000 / draw * 60)
-    return f"{now} — about {mins // 60} h {mins % 60} min left at current usage"
+    usable = (soc - rec) if user else soc
+    mins = round(usable / 100 * capacity_kwh * 1000 / draw * 60)
+    left = f"about {mins // 60} h {mins % 60} min"
+    if user:
+        return f"{now} — {left} until it reconnects to the grid at {round(rec)}%"
+    return f"{now} — {left} left at current usage"
+
+
+def notify_on(store, settings, key: str = "off_grid") -> bool:
+    """Whether a push goes out for ``key``: the Push notifications switch and the trigger."""
+    return bool(getattr(settings, "ha_notify", False)) and _enabled(config(store), key)
 
 
 def evaluate(summ: dict, prev: dict | None, cfg: dict,
