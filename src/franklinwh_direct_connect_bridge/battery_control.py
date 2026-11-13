@@ -14,7 +14,16 @@ import time
 
 log = logging.getLogger(__name__)
 
-MODBUS_PORT = 502
+MODBUS_PORT = 502   # the default of the ``modbus_port`` setting
+
+
+def default_port() -> int:
+    """The Modbus TCP Server port from the settings (``modbus_port``, default 502)."""
+    try:
+        from .config import get_settings
+        return int(get_settings().modbus_port or MODBUS_PORT)
+    except Exception:  # noqa: BLE001 - settings unreadable: the documented default
+        return MODBUS_PORT
 UNIT_ID = 2  # FranklinWH default (per the library)
 
 # In-memory record of the forces WE started, one per aGate (#194), keyed by host part, so
@@ -388,7 +397,7 @@ def available() -> tuple[bool, str]:
 #: gateway. Applied centrally in effective_target so EVERY Modbus path (ratings via the
 #: scheduler tick, force dispatch, VPP monitor) honours it, not just the API endpoints.
 _HOST_OVERRIDE = ""     # host part only (no port)
-_PORT_OVERRIDE = 0      # 0 = use MODBUS_PORT
+_PORT_OVERRIDE = 0      # 0 = use default_port()
 
 
 def set_host_override(host: str = "", port: int = 0) -> None:
@@ -400,13 +409,13 @@ def set_host_override(host: str = "", port: int = 0) -> None:
     if not host:
         _HOST_OVERRIDE, _PORT_OVERRIDE = "", 0
         return
-    h, p = _split_hostport(host, port or MODBUS_PORT)
+    h, p = _split_hostport(host, port or default_port())
     _HOST_OVERRIDE = h
     _PORT_OVERRIDE = p if (":" in host or port) else 0
 
 
 def host_override() -> dict:
-    """The persisted override, for display/persistence. ``port`` None = default 502."""
+    """The persisted override, for display/persistence. ``port`` None = the ``modbus_port`` setting."""
     return {"host": _HOST_OVERRIDE, "port": _PORT_OVERRIDE or None}
 
 
@@ -432,21 +441,20 @@ def _override_for(host: str | None) -> tuple | None:
     every gateway's Modbus client connects to its own host."""
     if not _HOST_OVERRIDE:
         return None
-    target = (_HOST_OVERRIDE, _PORT_OVERRIDE or MODBUS_PORT)
+    target = (_HOST_OVERRIDE, _PORT_OVERRIDE or default_port())
     return target if _is_default_host(host) else None
 
 
 def effective_target(host: str | None) -> tuple:
     """The (host, port) actually used for Modbus: the override for the default gateway when
-    one is set, else the passed gateway host split into (host, port) — so a mock's
-    ``127.0.0.1:<ephemeral>`` is handled and a bare IP keeps the default 502. This is the
-    single source of truth for the target."""
-    from .client import _split_hostport
+    one is set, else the gateway's host with the ``modbus_port`` setting. A port in the
+    gateway's host is its Direct Connect port, never its Modbus port: a gateway emulator
+    added as ``host:port`` keeps its Modbus TCP Server on the Modbus port (owner,
+    2026-11-11). This is the single source of truth for the target."""
     ov = _override_for(host)
     if ov:
         return ov
-    h, p = _split_hostport(host or "", MODBUS_PORT)
-    return h, p
+    return _host_part(host), default_port()
 
 
 def _no_connect_writes(c) -> None:
@@ -467,7 +475,7 @@ def _no_connect_writes(c) -> None:
 
 def _host_part(host: str | None) -> str:
     from .client import _split_hostport
-    return _split_hostport(host or "", MODBUS_PORT)[0]
+    return _split_hostport(host or "", default_port())[0]
 
 
 def is_mock_target(host: str | None) -> bool:
@@ -556,7 +564,7 @@ STATES = ("not_configured", "unreachable", "no_sunspec", "ready")
 CAPABILITY_HINTS = {
     "not_configured": "Set the gateway host, and switch the Modbus client on in Control "
                       "settings.",
-    "unreachable": "Nothing answered on TCP 502. Check the address, the gateway, and "
+    "unreachable": "Nothing answered on the Modbus TCP Server port. Check the address, the gateway, and "
                    "anything filtering the port.",
     "no_sunspec": "The port answered but SunSpec did not. Turn on SunSpec Modbus on the "
                   "gateway — the Device tab's der_comms (1205) read shows sunsMdEn.",

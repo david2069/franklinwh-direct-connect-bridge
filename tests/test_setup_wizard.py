@@ -235,7 +235,7 @@ def test_mock_creation_uses_the_roster_field_name():
 def test_real_gateway_creation_sends_host_and_port():
     """A gateway row with no port never connects; the Discover path in Settings sends both."""
     js = _wizard_js()
-    assert "port: 9000" in js
+    assert "port: window.FWH_BOOT.ports.dc" in js     # from the settings, never typed
     assert js.count("enabled: true") >= 2
 
 
@@ -387,7 +387,7 @@ def test_confirm_step_reads_a_profile_for_every_gateway():
     """#496: the Confirm step is the shared install-profile card — one per gateway."""
     root = __import__("pathlib").Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     html = (root / "templates/partials/setup_wizard.html").read_text()
-    confirm = html[html.index("step === 'confirm'"):html.index("step === 'done'")]
+    confirm = html[html.index("step === 'confirm'"):html.index("step === 'mode'")]
     assert "partials/install_profile.html" in confirm
     part = (root / "templates/partials/install_profile.html").read_text()
     assert 'x-for="card in cards"' in part               # a card each, not one merged view
@@ -543,7 +543,7 @@ def test_the_subnet_shows_its_provenance():
 def test_the_checks_distinguish_unknown_from_failure():
     html = (__import__("pathlib").Path(__file__).resolve().parents[1]
             / "src/franklinwh_direct_connect_bridge/templates/partials/setup_wizard.html").read_text()
-    step = html[html.index("step === 'publish'"):html.index("9. Done")]
+    step = html[html.index("step === 'publish'"):html.index("step === 'mode'")]
     assert 'c.ok === true' in step and 'c.ok === false' in step and 'c.ok === null' in step
     assert "c.remedy" in step                     # every failure says what to do
 

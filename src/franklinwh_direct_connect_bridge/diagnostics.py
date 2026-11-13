@@ -15,8 +15,21 @@ from typing import Any
 
 from franklinwh_direct_connect_api import discover
 
-DC_PORT = discover.PORT_SENDMQTT          # Direct Connect, 9000
-MODBUS_TCP_SERVER_PORT = 502              # aGate Modbus TCP Server (counted, never opened)
+
+
+def _dc_port() -> int:
+    """The Direct Connect port from the settings (``fwh_port``)."""
+    try:
+        from .config import get_settings
+        return int(get_settings().fwh_port or discover.PORT_SENDMQTT)
+    except Exception:  # noqa: BLE001
+        return discover.PORT_SENDMQTT
+
+
+def _modbus_port() -> int:
+    """The aGate's Modbus TCP Server port (counted here, never opened)."""
+    from .battery_control import default_port
+    return default_port()
 
 #: /proc/net/tcp state codes (include/net/tcp_states.h).
 _TCP_STATES = {"01": "ESTABLISHED", "02": "SYN_SENT", "03": "SYN_RECV", "04": "FIN_WAIT1",
@@ -25,8 +38,10 @@ _TCP_STATES = {"01": "ESTABLISHED", "02": "SYN_SENT", "03": "SYN_RECV", "04": "F
 
 
 def probe(host: str) -> dict[str, Any]:
-    """ICMP ping and a TCP connect to :9000, each timed. Never touches :502."""
-    h = host.split(":")[0]
+    """ICMP ping and a TCP connect to the Direct Connect port, each timed. Never touches
+    the Modbus TCP Server."""
+    from .client import _split_hostport
+    h, dc_port = _split_hostport(host, _dc_port())
     t0 = time.perf_counter()
     try:
         ping_ok = bool(discover.ping(h, timeout=1.0))
@@ -35,12 +50,12 @@ def probe(host: str) -> dict[str, Any]:
     ping_ms = round((time.perf_counter() - t0) * 1000, 1) if ping_ok else None
     t0 = time.perf_counter()
     try:
-        with socket.create_connection((h, DC_PORT), timeout=3.0):
+        with socket.create_connection((h, dc_port), timeout=3.0):
             pass
         connect_ms = round((time.perf_counter() - t0) * 1000, 1)
     except OSError:
         connect_ms = None
-    return {"host": h, "ping": ping_ok, "ping_ms": ping_ms,
+    return {"host": h, "port": dc_port, "ping": ping_ok, "ping_ms": ping_ms,
             "dc_9000": connect_ms is not None, "dc_9000_connect_ms": connect_ms}
 
 
@@ -74,7 +89,7 @@ def connections_to(host: str, proc_tcp: str = "/proc/net/tcp") -> dict[str, Any]
             by_port[port][st] = by_port[port].get(st, 0) + 1
     def tot(p: int) -> int:
         return sum(by_port.get(p, {}).values())
-    return {"dc_9000": tot(DC_PORT), "modbus_tcp_server_502": tot(MODBUS_TCP_SERVER_PORT),
+    return {"dc_9000": tot(_dc_port()), "modbus_tcp_server_502": tot(_modbus_port()),
             "by_port": {str(p): v for p, v in sorted(by_port.items())}}
 
 

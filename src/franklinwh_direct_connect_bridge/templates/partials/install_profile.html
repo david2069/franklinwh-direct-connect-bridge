@@ -23,18 +23,28 @@
       <div class="space-y-1.5">
         <div class="text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)">
           What your gateway reports</div>
+        <!-- One line per fact; tap to see its source and Confirm. One open at a time
+             (owner, 2026-11-11). -->
         <template x-for="f in card.facts" :key="f.key">
-          <div class="flex flex-wrap items-start gap-2 rounded px-2 py-1.5"
+          <div class="rounded" data-testid="install-fact"
                :style="f.confirmed ? { background: 'var(--surface-2)' }
                                    : { background: 'var(--surface-2)', boxShadow: 'inset 3px 0 0 #f59e0b' }">
-            <div class="min-w-0 flex-1">
-              <div class="text-xs" style="color:var(--text-secondary)" x-text="f.label"></div>
-              <div class="text-sm" style="color:var(--text-primary)" x-text="f.value"></div>
-              <div class="text-[11px]" style="color:var(--text-faint)" x-text="f.source"></div>
+            <button type="button" class="w-full flex items-center gap-2 px-2 py-1.5 text-left"
+                    :aria-expanded="isOpen(card, f.key)" @click="toggle(card, f.key)">
+              <span class="text-xs shrink-0" style="color:var(--text-secondary)" x-text="f.label"></span>
+              <span class="text-sm min-w-0 flex-1" :class="isOpen(card, f.key) || 'truncate'"
+                    style="color:var(--text-primary)" x-text="f.value"></span>
+              <span x-show="f.confirmed" class="chip ok" style="font-size:.6rem">Confirmed</span>
+              <span x-show="!f.confirmed" class="chip warn" style="font-size:.6rem">To check</span>
+              <svg class="w-3.5 h-3.5 shrink-0 transition-transform" :class="isOpen(card, f.key) && 'rotate-180'"
+                   viewBox="0 0 20 20" fill="currentColor" style="color:var(--text-faint)">
+                <path fill-rule="evenodd" d="M5.3 7.3a1 1 0 011.4 0L10 10.6l3.3-3.3a1 1 0 111.4 1.4l-4 4a1 1 0 01-1.4 0l-4-4a1 1 0 010-1.4z" clip-rule="evenodd"/></svg>
+            </button>
+            <div x-show="isOpen(card, f.key)" class="flex flex-wrap items-center gap-2 px-2 pb-1.5">
+              <div class="text-[11px] min-w-0 flex-1" style="color:var(--text-faint)" x-text="f.source"></div>
+              <button x-show="!f.confirmed && f.value !== &quot;Couldn't be read&quot;"
+                      class="btn btn-secondary btn-sm" @click="confirm(card, [f.key])">Confirm</button>
             </div>
-            <span x-show="f.confirmed" class="chip ok" style="font-size:.6rem">Confirmed</span>
-            <button x-show="!f.confirmed && f.value !== &quot;Couldn't be read&quot;"
-                    class="btn btn-secondary btn-sm" @click="confirm(card, [f.key])">Confirm</button>
           </div>
         </template>
         <p class="text-[11px]" style="color:var(--text-faint)">

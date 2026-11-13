@@ -63,14 +63,6 @@
   <div class="card px-4 py-3 text-xs" style="color:var(--text-secondary)">
     <span style="color:var(--text-primary)">Schedules run on the poll tick</span>, so they
     react no faster than the bridge reads the gateway.
-    <template x-if="Object.keys(unavailable).length">
-      <span>
-        Not available here:
-        <template x-for="[k, why] in Object.entries(unavailable)" :key="k">
-          <span><span class="font-mono" x-text="k"></span> (<span x-text="why"></span>)&nbsp;</span>
-        </template>
-      </span>
-    </template>
   </div>
 
   <div x-show="view === 'schedules' && schedules.length" class="flex items-center flex-wrap gap-2 mb-3">
@@ -116,10 +108,12 @@
           <span x-show="s.action && s.action.kind"
                 x-text="(actions[s.action.kind] || {}).label || s.action.kind"></span>
           <span x-show="!(s.action && s.action.kind)">No gateway action</span>
+          <span x-show="gateways.length > 1 || s.gateway_scope === 'all'"
+                x-text="' · ' + gatewayLabel(s)"></span>
           <span x-show="(s.ha_actions || []).length"
                 x-text="` · ${s.ha_actions.length} HA action(s)`"></span>
-          <span x-show="s.ask && s.ask.question"
-                x-text="` · asks ${askedNames(s.ask) || 'no Companion app'} first`"></span>
+          <span x-show="askOf(s)"
+                x-text="` · asks ${askedNames(askOf(s)) || 'no Companion app'} first`"></span>
         </div>
 
         <!-- Explain (min / medium / full) — plain-language "what will this do?" -->
@@ -202,12 +196,41 @@
     </template>
   </div>
 
-  <!-- Timeline: SoC line + work-mode band + fire markers, then planned windows -->
+  <!-- Timeline (#579): a lane per gateway, as the Modbus Bridge: its SoC line, work-mode
+       band and fire markers, then its planned windows. All gateways rules sit once on the
+       Site row. -->
+  {% macro seg_rows(list_expr, now_expr) %}
+          <template x-for="seg in {{ list_expr }}" :key="seg.key">
+            <div>
+              <div class="flex items-center justify-between gap-2 text-xs mb-0.5">
+                <span class="min-w-0 break-words" style="color:var(--text-primary)" x-text="seg.name"></span>
+                <span class="font-mono shrink-0" style="color:var(--text-secondary)" x-text="segLabel(seg)"></span>
+              </div>
+              <div class="relative rounded" style="height:14px;background:var(--surface-2)">
+                <template x-for="(b, bi) in seg.blocks" :key="bi">
+                  <div class="absolute rounded"
+                       :style="`height:14px;background:#34d399;left:${b[0]/1440*100}%;width:${Math.max(0.3,(b[1]-b[0])/1440*100)}%;opacity:${seg.conditional ? .22 : .6}`"></div>
+                </template>
+                <div class="absolute"
+                     :style="`top:0;bottom:0;width:2px;background:#fbbf24;left:${ {{ now_expr }} /1440*100}%`"></div>
+              </div>
+            </div>
+          </template>
+  {% endmacro %}
   <div x-show="view === 'timeline'" x-cloak class="space-y-2">
     <template x-if="timeline">
       <div class="card p-4 space-y-3">
         <div class="flex items-center justify-between text-xs flex-wrap gap-2" style="color:var(--text-secondary)">
-          <span>Today · now <span class="font-mono" x-text="hhmm(timeline.now_min)"></span></span>
+          <span class="flex items-center gap-2">Today · now <span class="font-mono" x-text="hhmm(timeline.now_min)"></span>
+            <select class="form-control form-control-sm" style="width:auto" title="Gateway"
+                    data-testid="timeline-gateway" x-show="gateways.length > 1"
+                    x-model="timelineGw" @change="loadTimeline()">
+              <template x-for="g in gateways" :key="g.id">
+                <option :value="g.id" x-text="g.name" :selected="g.id === timelineGw"></option>
+              </template>
+              <option value="*" :selected="timelineGw === '*'">All gateways</option>
+            </select>
+          </span>
           <span class="flex items-center gap-3 flex-wrap text-[11px]">
             <template x-for="m in modeLegend" :key="m.mode">
               <span class="flex items-center gap-1"><span class="inline-block w-2.5 h-2.5 rounded-sm" :style="`background:${m.color}`"></span><span x-text="m.mode"></span></span>
@@ -217,48 +240,35 @@
           </span>
         </div>
 
-        <!-- chart: SVG stretched full width (viewBox x = minute-of-day); interior via x-html -->
-        <div class="relative" style="height:132px">
-          <svg viewBox="0 0 1440 100" preserveAspectRatio="none" style="width:100%;height:100%;display:block" x-html="svgInner"></svg>
-          <div class="absolute left-0 text-[9px] font-mono" style="top:12px;color:var(--text-faint)">100%</div>
-          <div class="absolute left-0 text-[9px] font-mono" style="bottom:2px;color:var(--text-faint)">0%</div>
-          <div x-show="!(timeline.soc || []).length" class="absolute inset-0 flex items-center justify-center text-xs"
-               style="color:var(--text-secondary)">No history recorded yet today.</div>
-        </div>
-        <div class="flex justify-between text-[10px]" style="color:var(--text-faint)">
-          <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
-        </div>
-
-        <!-- planned schedule windows -->
-        <div class="space-y-2 pt-2 border-t" style="border-color:var(--border)">
-          <div class="text-[10px] uppercase tracking-wide" style="color:var(--text-secondary)">Planned windows <a :href="$store.app.guideUrl('scheduler/#visual-timeline')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></div>
-          <template x-for="seg in timeline.segments" :key="seg.schedule_id">
-            <div>
-              <div class="flex items-center justify-between text-xs mb-0.5">
-                <span style="color:var(--text-primary)" x-text="seg.name"></span>
-                <span class="font-mono" style="color:var(--text-secondary)"
-                      x-text="hhmm(seg.start_min) + (seg.end_min !== seg.start_min ? '–' + hhmm(seg.end_min) : '') + (seg.wraps_midnight ? ' (+1d)' : '')"></span>
-              </div>
-              <div class="relative rounded" style="height:14px;background:var(--surface-2)">
-                <template x-if="!seg.wraps_midnight">
-                  <div class="absolute rounded" style="height:14px;background:#34d399;opacity:.6"
-                       :style="`left:${seg.start_min/1440*100}%;width:${Math.max(1,(seg.end_min-seg.start_min)/1440*100)}%`"></div>
-                </template>
-                <template x-if="seg.wraps_midnight">
-                  <div>
-                    <div class="absolute rounded" style="height:14px;background:#34d399;opacity:.6"
-                         :style="`left:${seg.start_min/1440*100}%;right:0`"></div>
-                    <div class="absolute rounded" style="height:14px;background:#34d399;opacity:.6"
-                         :style="`left:0;width:${seg.end_min/1440*100}%`"></div>
-                  </div>
-                </template>
-                <div class="absolute" style="top:0;bottom:0;width:2px;background:#fbbf24"
-                     :style="`left:${timeline.now_min/1440*100}%`"></div>
-              </div>
+        <template x-for="lane in timeline.lanes" :key="lane.gateway_id">
+          <div class="space-y-2 pt-2 border-t first:border-t-0 first:pt-0" style="border-color:var(--border)"
+               data-testid="timeline-lane">
+            <div x-show="timeline.lanes.length > 1 || gateways.length > 1"
+                 class="text-xs font-semibold" style="color:var(--text-primary)" x-text="lane.name"></div>
+            <!-- chart: SVG stretched full width (viewBox x = minute-of-day); interior via x-html -->
+            <div class="relative" style="height:132px">
+              <svg viewBox="0 0 1440 100" preserveAspectRatio="none" style="width:100%;height:100%;display:block" x-html="svgFor(lane)"></svg>
+              <div class="absolute left-0 text-[9px] font-mono" style="top:12px;color:var(--text-faint)">100%</div>
+              <div class="absolute left-0 text-[9px] font-mono" style="bottom:2px;color:var(--text-faint)">0%</div>
+              <div x-show="!(lane.soc || []).length" class="absolute inset-0 flex items-center justify-center text-xs"
+                   style="color:var(--text-secondary)">No history recorded yet today.</div>
             </div>
-          </template>
-          <div x-show="!timeline.segments.length" class="text-sm py-3 text-center"
-               style="color:var(--text-secondary)">No enabled schedules to show.</div>
+            <div class="flex justify-between text-[10px]" style="color:var(--text-faint)">
+              <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
+            </div>
+            <!-- this gateway's planned windows -->
+            <div class="text-[10px] uppercase tracking-wide" style="color:var(--text-secondary)">Planned windows <a :href="$store.app.guideUrl('scheduler/#visual-timeline')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></div>
+{{ seg_rows('lane.segments', 'lane.now_min') }}
+            <div x-show="!lane.segments.length" class="text-sm py-2 text-center"
+                 style="color:var(--text-secondary)">No enabled schedules for this gateway today.</div>
+          </div>
+        </template>
+
+        <!-- All gateways rules: once, on the Site row -->
+        <div x-show="(timeline.site || []).length" class="space-y-2 pt-2 border-t" style="border-color:var(--border)"
+             data-testid="timeline-site">
+          <div class="text-[10px] uppercase tracking-wide" style="color:var(--text-secondary)">Site · All gateways</div>
+{{ seg_rows('timeline.site', 'timeline.now_min') }}
         </div>
       </div>
     </template>
@@ -482,8 +492,8 @@
             <option value="cron" :disabled="!cron_available" x-text="cron_available ? 'Custom cron' : 'Custom cron — unavailable'"></option>
             <option value="always">Always (sensor-driven)</option>
           </select></label>
-        <label class="block text-xs" style="color:var(--text-secondary)">Quick preset
-          <span style="color:var(--text-faint)">(fills fields)</span>
+        <label class="block text-xs" style="color:var(--text-secondary)">Repeat pattern
+          <span style="color:var(--text-faint)">(fills the trigger)</span>
           <select class="form-control form-control-sm w-full mt-1" x-model="presetSel" @change="applyPreset()">
             <template x-for="pr in triggerPresets" :key="pr.id"><option :value="pr.id" x-text="pr.label"></option></template>
           </select></label>
@@ -595,15 +605,19 @@
       <!-- gateway action -->
       <div class="rounded-lg border p-3 space-y-2" style="border-color:var(--border)">
         <div class="flex items-center justify-between flex-wrap gap-2">
-          <div class="text-xs font-semibold" style="color:var(--text-secondary)">Battery action <a :href="$store.app.guideUrl('scheduler/actions/#battery-actions-force-charge-and-force-discharge')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></div>
+          <div class="text-xs font-semibold" style="color:var(--text-secondary)">Gateway action <a :href="$store.app.guideUrl('scheduler/actions/#battery-actions-force-charge-and-force-discharge')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></div>
           <div class="flex items-center gap-2 flex-wrap">
             <!-- Priority: higher wins when several schedules fire the same tick for the
                  same gateway; the rest are deferred for the day. -->
+            <!-- Priority and If busy only where they act (#580): Priority for a gateway
+                 action, If busy for a force. -->
             <label class="flex items-center gap-1 text-[11px]" style="color:var(--text-faint)"
+                   x-show="form.action.kind"
                    title="Higher priority wins when schedules collide on the same gateway">Priority
               <input type="number" step="1" class="form-control form-control-sm w-16 text-center"
                      x-model.number="form.priority"></label>
             <label class="flex items-center gap-1 text-[11px]" style="color:var(--text-faint)"
+                   x-show="form.action.kind === 'force'"
                    title="If the battery is already under another schedule's dispatch">If busy
               <select class="form-control form-control-sm" style="width:auto" x-model="form.conflict"
                       x-init="$nextTick(() => { $el.value = form.conflict })">
@@ -612,19 +626,22 @@
                 <option value="wait">wait</option>
               </select></label>
             <!-- The gateway it runs on (#379). Always named; a new schedule starts on the
-                 active gateway. Shown with one gateway too, so you can see which it is. -->
-            <select class="form-control form-control-sm" title="Gateway"
-                    style="width:auto" x-model="form.gateway_id"
-                    x-init="$nextTick(() => { $el.value = form.gateway_id })">
+                 active gateway. Shown with one gateway too, so you can see which it is.
+                 All gateways (#578): only for a rule that moves no battery; each gateway
+                 runs it with its own values. -->
+            <select class="form-control form-control-sm" title="Gateway" data-testid="gateway-pick"
+                    style="width:auto" x-model="gwPick"
+                    x-init="$nextTick(() => { $el.value = gwPick })">
               <template x-for="g in gateways" :key="g.id">
                 <option :value="g.id" x-text="g.name"></option>
               </template>
+              <option value="*" x-show="!form.action.kind || form.gateway_scope === 'all'">All gateways</option>
             </select>
           </div>
         </div>
         <select class="form-control form-control-sm w-full" x-model="form.action.kind"
                 @change="onActionKind()">
-          <option value="">No battery action (HA only)</option>
+          <option value="">No gateway action (HA only)</option>
           <template x-for="[k, a] in Object.entries(actions)" :key="k">
             <!-- Force is offered only when the direct-Modbus path is reachable; when it
                  is not, it is shown disabled with the reason rather than hidden. -->
@@ -632,6 +649,11 @@
                     x-text="a.label + (k === 'force' && !force_available ? ' — unavailable' : '')"></option>
           </template>
         </select>
+        <!-- restore_on_exit (BR-50), in the form since #580: put the mode back after. -->
+        <label x-show="form.action.kind === 'set_mode'" class="flex items-center gap-2 text-xs"
+               style="color:var(--text-secondary)" data-testid="restore-on-exit">
+          <input type="checkbox" x-model="form.restore_on_exit">
+          Put the previous mode back when the window ends</label>
         <p x-show="form.action.kind === 'force' && !force_available"
            class="text-xs" style="color:var(--danger)"
            x-text="'Modbus unavailable: ' + force_reason"></p>
@@ -660,111 +682,6 @@
         <p x-show="form.action.kind && (actions[form.action.kind] || {}).note"
            class="text-xs" style="color:var(--text-secondary)"
            x-text="(actions[form.action.kind] || {}).note"></p>
-      </div>
-
-      <!-- Ask before continuing (#374 P4): Yes / No, or the user's own buttons, on the
-           enabled notification devices, or the ones chosen in Send to (#281) -->
-      <div class="rounded-lg border p-3 space-y-2" style="border-color:var(--border)">
-        <label class="flex items-center gap-2 text-xs font-semibold" style="color:var(--text-secondary)">
-          <input type="checkbox" x-model="form.ask.on" data-testid="ask-on">
-          Ask before continuing
-        </label>
-        <div x-show="form.ask.on" class="space-y-2">
-          <p class="text-xs" style="color:var(--text-secondary)">
-            Before the action runs, the devices in Send to get this question
-            with Yes and No, or your own buttons. Yes runs it, No skips this run. Only Home
-            Assistant Companion apps (mobile_app) show the buttons.</p>
-          <div class="text-xs" style="color:var(--text-secondary)">Question
-            <div class="flex items-center gap-1 mt-1" data-var-field>
-              <input class="form-control form-control-sm flex-1 min-w-0" type="text" aria-label="Question"
-                     placeholder="%sensor.id% ok" x-model="form.ask.question"
-                     data-testid="ask-question" data-var-target @blur="noteCaret($el)">
-              <button type="button" class="btn btn-secondary btn-sm shrink-0 font-mono" style="padding:2px 7px"
-                    title="Insert a value" aria-label="Insert a value" data-testid="var-picker-btn"
-                    @click="openVarPicker($el)">{x}</button>
-            </div></div>
-          <div class="space-y-1">
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-xs" style="color:var(--text-secondary)">Buttons</span>
-              <span class="flex items-center gap-2">
-                <button type="button" class="btn btn-secondary btn-sm" x-show="!form.ask.choices.length"
-                        @click="form.ask.choices = [{ label: 'Yes', then: 'run', reply: false },
-                                                    { label: 'No', then: 'skip', reply: false }]"
-                        data-testid="ask-own-buttons">Use my own buttons</button>
-                <button type="button" class="btn btn-secondary btn-sm"
-                        x-show="form.ask.choices.length && form.ask.choices.length < 4"
-                        @click="form.ask.choices.push({ label: '', then: 'run', reply: false })"
-                        data-testid="ask-add-choice">+ Button</button>
-              </span>
-            </div>
-            <p x-show="!form.ask.choices.length" class="text-xs" style="color:var(--text-secondary)">
-              Yes and No.</p>
-            <template x-for="(c, ci) in form.ask.choices" :key="ci">
-              <div class="flex items-center gap-2 flex-wrap" data-testid="ask-choice">
-                <input class="form-control form-control-sm" style="flex:1 1 8rem" type="text"
-                       placeholder="Button label" x-model="c.label" data-testid="ask-choice-label">
-                <select class="form-control form-control-sm" style="width:auto" x-model="c.then"
-                        data-testid="ask-choice-then">
-                  <option value="run">Runs the action</option>
-                  <option value="skip">Skips this run</option>
-                </select>
-                <label class="flex items-center gap-1 text-xs" style="color:var(--text-secondary)"
-                       title="The phone asks for text when this button is tapped">
-                  <input type="checkbox" x-model="c.reply"
-                         :disabled="!c.reply && form.ask.choices.some(o => o.reply)"
-                         data-testid="ask-choice-reply"> Text reply</label>
-                <button type="button" class="btn btn-secondary btn-sm" title="Remove this button"
-                        @click="form.ask.choices.splice(ci, 1)">&times;</button>
-              </div>
-            </template>
-            <p class="text-xs" style="color:var(--text-secondary)">
-              The answer (the button's label, or the text of a reply) is the
-              <span class="font-mono">Ask: answer</span> sensor in exit conditions and HA
-              action guards, and <span class="font-mono">%ask.answer%</span> in messages.</p>
-          </div>
-          <div class="grid grid-cols-2 gap-2">
-            <label class="block text-xs" style="color:var(--text-secondary)">Wait for a reply (minutes)
-              <input class="form-control form-control-sm w-full mt-1" type="number" min="1"
-                     x-model.number="form.ask.timeout_min" data-testid="ask-timeout"></label>
-            <label class="block text-xs" style="color:var(--text-secondary)">If no reply
-              <select class="form-control form-control-sm w-full mt-1" x-model="form.ask.if_no_reply"
-                      data-testid="ask-no-reply">
-                <option value="skip">Skip this run</option>
-                <option value="continue">Continue</option>
-              </select></label>
-          </div>
-          <div class="space-y-1" data-testid="ask-send-to">
-            <div class="flex items-center gap-x-3 gap-y-1 flex-wrap text-xs" style="color:var(--text-secondary)">
-              <span>Send to</span>
-              <label class="flex items-center gap-1">
-                <input type="radio" value="all" x-model="form.ask.send_to.to"> All enabled devices</label>
-              <label class="flex items-center gap-1">
-                <input type="radio" value="device" x-model="form.ask.send_to.to"> Chosen devices</label>
-            </div>
-            <div x-show="form.ask.send_to.to === 'device'" class="pl-1 max-w-sm">
-              {% call device_multiselect("askDeviceChoices(form.ask.send_to.ids).filter(x => form.ask.send_to.ids.includes(x.id)).map(x => x.label).join(', ')") %}
-              <template x-for="d in askDeviceChoices(form.ask.send_to.ids)" :key="d.id">
-                <label class="flex items-center gap-2 text-xs py-0.5" style="color:var(--text-secondary)">
-                  <input type="checkbox" :value="d.id" x-model="form.ask.send_to.ids"
-                         data-testid="ask-send-to-device">
-                  <span x-text="d.label"></span>
-                </label>
-              </template>
-              <span x-show="!askDeviceChoices(form.ask.send_to.ids).length" class="text-xs" style="color:var(--text-secondary)">
-                No Companion app devices. Add one in Settings → Integrations → HA notifications.</span>
-              {% endcall %}
-            </div>
-            <!-- who is asked, by name, and what else this schedule sends (owner, 2026-11-12) -->
-            <p class="text-xs" style="color:var(--text-secondary)" data-testid="ask-asked-names">
-              Asks: <span x-text="askedNames(form.ask) || 'nobody: no Companion app (mobile_app) is enabled'"
-                          :style="askedNames(form.ask) ? 'color:var(--text-primary)' : 'color:var(--warn, #f59e0b)'"></span>.
-              Only Companion apps show the buttons, so only they are asked.</p>
-            <p class="text-xs" style="color:var(--text-secondary)" x-show="alsoNotified(form)"
-               data-testid="ask-also-notified">
-              This schedule also notifies <span x-text="alsoNotified(form)"></span> (Home Assistant
-              actions below). A No skips this run's On entry and On exit messages too.</p>
-          </div>
-        </div>
       </div>
 
       <!-- entry conditions (nestable ALL/ANY gate + Value|Lookup + Test Verify) -->
@@ -1015,9 +932,9 @@
         <template x-for="(ha, i) in form.ha_actions" :key="i">
           <div class="space-y-2 border-b pb-2 last:border-0" style="border-color:var(--border)">
             <div class="flex items-center gap-2 flex-wrap">
-              <span class="chip muted" style="font-size:.6rem" x-text="ha.ha_kind==='service' ? (ha.raw ? 'SERVICE' : 'ENTITY') : 'NOTIFY'"></span>
+              <span class="chip muted" style="font-size:.6rem" x-text="ha.ha_kind==='service' ? (ha.raw ? 'SERVICE' : 'ENTITY') : (ha.actionable ? 'ACTIONABLE' : 'NOTIFY')"></span>
               <!-- notify target -->
-              <select x-show="ha.ha_kind!=='service'" class="form-control form-control-sm flex-1" style="min-width:130px" x-model="ha.device_id"
+              <select x-show="ha.ha_kind!=='service' && !ha.actionable" class="form-control form-control-sm flex-1" style="min-width:130px" x-model="ha.device_id"
                       x-init="$nextTick(() => { $el.value = ha.device_id })">
                 <template x-for="d in devices" :key="d.id">
                   <option :value="d.id" x-text="d.alias + (d.enabled ? '' : ' (off)')"></option>
@@ -1042,7 +959,7 @@
                   <option :value="inst.id" x-text="inst.name + (inst.enabled ? '' : ' (off)')"></option>
                 </template>
               </select>
-              <select class="form-control form-control-sm" style="width:auto" x-model="ha.when"
+              <select class="form-control form-control-sm" style="width:auto" x-model="ha.when" :disabled="ha.actionable"
                       x-init="$nextTick(() => { $el.value = ha.when })" title="When this action fires">
                 <option value="fire">On entry</option>
                 <option value="exit">On exit</option>
@@ -1052,6 +969,15 @@
             </div>
             <!-- notify fields -->
             <div x-show="ha.ha_kind!=='service'" class="space-y-2">
+              <!-- Actionable notification (#576): this row carries the buttons, and the run
+                   waits for the answer before the action. One per schedule, On entry. -->
+              <label class="flex items-center gap-2 text-xs" style="color:var(--text-secondary)"
+                     :title="actionableTaken(i) ? 'Another notification on this schedule is already actionable' : ''">
+                <input type="checkbox" x-model="ha.actionable" :disabled="actionableTaken(i)"
+                       @change="onActionable(ha)" data-testid="notify-actionable">
+                <span><span class="font-medium" style="color:var(--text-primary)">Actionable notification</span>:
+                  buttons on the phone, and the action waits for the answer</span>
+              </label>
               <div class="flex items-center gap-1" data-var-field>
                 <input class="form-control form-control-sm flex-1 min-w-0" placeholder="Title (optional)"
                        x-model="ha.title" data-testid="notify-title" data-var-target @blur="noteCaret($el)">
@@ -1061,12 +987,96 @@
               </div>
               <div class="flex items-start gap-1" data-var-field>
                 <textarea class="form-control form-control-sm flex-1 min-w-0" rows="1" style="resize:vertical"
-                          placeholder="Message — e.g. SoC is %battery.soc_pct%%, mode %mode.name%"
+                          :placeholder="ha.actionable ? 'Question — e.g. Charge now? Battery %battery.soc_pct%%' : 'Message — e.g. SoC is %battery.soc_pct%%, mode %mode.name%'"
                           x-model="ha.message" data-testid="notify-message" data-var-target @blur="noteCaret($el)"
                           x-init="$nextTick(() => fitTextarea($el))" @input="fitTextarea($el)"></textarea>
                 <button type="button" class="btn btn-secondary btn-sm shrink-0 font-mono" style="padding:2px 7px"
                     title="Insert a value" aria-label="Insert a value" data-testid="var-picker-btn"
                     @click="openVarPicker($el)">{x}</button>
+              </div>
+            </div>
+            <div x-show="ha.ha_kind!=='service' && ha.actionable" class="space-y-2 pl-2 border-l" style="border-color:var(--border)">
+              <div class="space-y-1">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-xs" style="color:var(--text-secondary)">Buttons</span>
+                  <span class="flex items-center gap-2">
+                    <button type="button" class="btn btn-secondary btn-sm" x-show="!ha.choices.length"
+                            @click="ha.choices = [{ label: 'Yes', then: 'run', reply: false },
+                                                  { label: 'No', then: 'skip', reply: false }]"
+                            data-testid="ask-own-buttons">Use my own buttons</button>
+                    <button type="button" class="btn btn-secondary btn-sm"
+                            x-show="ha.choices.length && ha.choices.length < 4"
+                            @click="ha.choices.push({ label: '', then: 'run', reply: false })"
+                            data-testid="ask-add-choice">+ Button</button>
+                  </span>
+                </div>
+                <p x-show="!ha.choices.length" class="text-xs" style="color:var(--text-secondary)">
+                  Yes runs the action, No skips this run.</p>
+                <template x-for="(c, ci) in ha.choices" :key="ci">
+                  <div class="flex items-center gap-2 flex-wrap" data-testid="ask-choice">
+                    <input class="form-control form-control-sm" style="flex:1 1 8rem" type="text"
+                           placeholder="Button label" x-model="c.label" data-testid="ask-choice-label">
+                    <select class="form-control form-control-sm" style="width:auto" x-model="c.then"
+                            data-testid="ask-choice-then">
+                      <option value="run">Runs the action</option>
+                      <option value="skip">Skips this run</option>
+                    </select>
+                    <label class="flex items-center gap-1 text-xs" style="color:var(--text-secondary)"
+                           title="The phone asks for text when this button is tapped">
+                      <input type="checkbox" x-model="c.reply"
+                             :disabled="!c.reply && ha.choices.some(o => o.reply)"
+                             data-testid="ask-choice-reply"> Text reply</label>
+                    <button type="button" class="btn btn-secondary btn-sm" title="Remove this button"
+                            @click="ha.choices.splice(ci, 1)">&times;</button>
+                  </div>
+                </template>
+                <p class="text-xs" style="color:var(--text-secondary)">
+                  The answer (the button's label, or the text of a reply) is the
+                  <span class="font-mono">Ask: answer</span> sensor in exit conditions and guards,
+                  and <span class="font-mono">%ask.answer%</span> in messages.</p>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <label class="block text-xs" style="color:var(--text-secondary)">Wait for a reply (minutes)
+                  <input class="form-control form-control-sm w-full mt-1" type="number" min="1"
+                         x-model.number="ha.timeout_min" data-testid="ask-timeout"></label>
+                <label class="block text-xs" style="color:var(--text-secondary)">If no reply
+                  <select class="form-control form-control-sm w-full mt-1" x-model="ha.if_no_reply"
+                          data-testid="ask-no-reply">
+                    <option value="skip">Skip this run</option>
+                    <option value="continue">Continue</option>
+                  </select></label>
+              </div>
+              <div class="space-y-1" data-testid="ask-send-to">
+                <div class="flex items-center gap-x-3 gap-y-1 flex-wrap text-xs" style="color:var(--text-secondary)">
+                  <span>Send to</span>
+                  <label class="flex items-center gap-1">
+                    <input type="radio" value="all" :name="'send-to-' + i" x-model="ha.send_to.to"
+                           :checked="ha.send_to.to === 'all'"> All enabled phones</label>
+                  <label class="flex items-center gap-1">
+                    <input type="radio" value="device" :name="'send-to-' + i" x-model="ha.send_to.to"
+                           :checked="ha.send_to.to === 'device'"> Chosen phones</label>
+                </div>
+                <div x-show="ha.send_to.to === 'device'" class="pl-1 max-w-sm">
+                  {% call device_multiselect("askDeviceChoices(ha.send_to.ids).filter(x => ha.send_to.ids.includes(x.id)).map(x => x.label).join(', ')") %}
+                  <template x-for="d in askDeviceChoices(ha.send_to.ids)" :key="d.id">
+                    <label class="flex items-center gap-2 text-xs py-0.5" style="color:var(--text-secondary)">
+                      <input type="checkbox" :value="d.id" x-model="ha.send_to.ids"
+                             data-testid="ask-send-to-device">
+                      <span x-text="d.label"></span>
+                    </label>
+                  </template>
+                  <span x-show="!askDeviceChoices(ha.send_to.ids).length" class="text-xs" style="color:var(--text-secondary)">
+                    No Companion app devices. Add one in Settings → Integrations → HA notifications.</span>
+                  {% endcall %}
+                </div>
+                <p class="text-xs" style="color:var(--text-secondary)" data-testid="ask-asked-names">
+                  Asks: <span x-text="askedNames(ha) || 'nobody: no Companion app (mobile_app) is enabled'"
+                              :style="askedNames(ha) ? 'color:var(--text-primary)' : 'color:var(--warn, #f59e0b)'"></span>.
+                  Only Companion apps show the buttons, so only they are asked.</p>
+                <p class="text-xs" style="color:var(--text-secondary)" x-show="alsoNotified(form)"
+                   data-testid="ask-also-notified">
+                  The other notifications here (<span x-text="alsoNotified(form)"></span>) are
+                  skipped too when the answer skips this run.</p>
               </div>
             </div>
             <!-- service GUIDED: domain-aware control widget -->
@@ -1130,8 +1140,9 @@
               </div>
               <button type="button" class="text-[11px]" style="color:var(--accent)" @click="ha.raw = false">← Back to guided picker</button>
             </div>
-            <!-- optional guard: fire this action only if a condition holds right now -->
-            <div class="flex items-center gap-2 flex-wrap text-xs">
+            <!-- optional guard: fire this action only if a condition holds right now. Not on
+                 an Actionable notification: the entry conditions decide whether it asks. -->
+            <div class="flex items-center gap-2 flex-wrap text-xs" x-show="!ha.actionable">
               <button x-show="!ha.guard.enabled" class="btn btn-secondary btn-sm" @click="ha.guard.enabled = true">+ guard</button>
               <span x-show="ha.guard.enabled" class="flex items-center gap-2 flex-wrap">
                 <span style="color:var(--text-secondary)">Only if</span>

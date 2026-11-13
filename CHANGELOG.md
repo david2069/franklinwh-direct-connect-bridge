@@ -11,6 +11,186 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.42] — 2026-11-13
+
+A grouped release: the owner overrode one-release-a-day because the backlog was large.
+Everything merged since 0.5.41, by area:
+
+- **Off-grid:** the notification gives stored kWh and time left at the current usage; the
+  OFF-GRID pill opens an Off-grid dialog (why, how long, Details, Reconnect); the Reconnect
+  SoC wording; the dialogs name the aGate and show the aGate going offline and back; each
+  switch is saved in the Audit Trail with a snapshot.
+- **Scheduler:** All gateways for rules that move no battery; failed / missed / aborted /
+  no-reply notifications; a timeline lane per gateway; the editor tidied.
+- **Prices, tariffs and solar:** prices in one place under Sites & Billing (price spike, HA
+  demand window); Location & Solar moves to Sites & Billing; solar size from your gateways;
+  no solar, no Solar tab; Import tariff takes pasted JSON.
+- **Analytics:** more cards on Local and Cloud, and Explain (trends and what to change).
+- **Setup and support:** the setup list (FranklinWH Gateway Emulator, Modbus TCP), confirm
+  what's installed, the `modbus_port` setting and ports never typed into the UI, support
+  info says which installation it is.
+- **Battery:** Record on the live trend, scheduled recordings, recordings purged after 90
+  days.
+- **UI:** Customise (drag the top bar, navbar and dashboard cards), one notify path for
+  Actionable Notifications, and the Home Assistant panel no longer shows "404: Not Found"
+  after the app was in the background.
+
+### Added
+- **Import tariff takes pasted JSON** (owner). Import tariff opens a dialog: paste the tariff or choose a file, Check previews it, Import creates it; results stay in the dialog. On a phone a tariff no longer needs a file.
+- **Off-grid Details** (owner). The OFF-GRID dialog has an expandable Details section per gateway: mode, SoC, battery, grid, solar, home, smart circuits (on/off, watts), and the generator and V2L when installed. `GET /api/offgrid/details`. The go-off-grid and reconnect dialogs name the aGate, and each switch is saved in the Audit Trail with that snapshot.
+- **OFF-GRID pill opens an Off-grid dialog** (owner). It lists each off-grid gateway with why, how long it has been off-grid, SoC, stored kWh and time left, and Go on-grid (reconnect) for an off-grid you requested. `GET /api/offgrid/status`.
+- **Off-grid notification says how long the battery will last.** It now gives the SoC, home load and solar, and an estimate at the current usage (SoC × Battery capacity ÷ net load), or says solar is covering the home. The FranklinWH app estimates from historical usage.
+- **Price events: price spike and an HA demand window** (#582, owner). Under Sites &
+  Billing → Prices: a spike at or above a number of c/kWh, or from a Home Assistant spike
+  sensor, gives `tariff.price_spike` and `tariff.spike_threshold`; a Home Assistant binary
+  sensor, calendar or switch can supply the demand / peak window
+  (`tariff.demand_window_active`), winning over the tariff's.
+- **Scheduler timeline: a lane per gateway** (#579, owner), as the Modbus Bridge. Pick a
+  gateway or **All gateways**; each lane has its own planned windows, mode band, SoC line
+  and fire markers (before, every gateway's markers and schedules showed on one chart).
+  All gateways rules are drawn once on a **Site** row, and Every N minutes, cron and
+  Always schedules are drawn too. `GET /api/schedules/timeline` returns `lanes` and
+  `site`; `?all=true` gives every gateway.
+- **Scheduler notifications: failed, missed, aborted and no reply** (#581, owner). A
+  **Scheduler** group under Notifications → Auto-notify triggers: **Run failed** (on),
+  **Run missed** (on), **Run aborted** (off: stopped, deferred or ended early) and **No
+  reply to an actionable notification** (on), each with its own switch and Send to. Every
+  message names the gateway, and each also writes a warning to the bridge log in the same
+  words. No reply goes to the devices that were asked.
+- **Scheduler: All gateways for rules that move no battery** (#578, owner). The gateway
+  picker offers **All gateways** when a rule has no battery action, such as a low-SoC
+  notification: each gateway runs it with its own values, and each message names the
+  gateway that fired. A battery action stays on one gateway. The list and Explain say
+  "All gateways" (scheduler guide, Targets).
+- **Analytics → Explain: trends and what to change for your objectives** (#588, owner).
+  For the period shown, on Local or Cloud: each total against the previous period and last
+  year (with runs of rises or falls), what the period shows, and suggestions for the
+  objectives you pick (lowest bill, most self-sufficiency, backup ready, most export
+  earnings, battery care) with the numbers, why and an estimated effect a month. Nothing is
+  applied; each suggestion opens Control or the Scheduler. Objectives are remembered per
+  gateway. `GET /api/analytics/insights`, `PUT /api/analytics/insights/objectives`
+  (franklinwh-ha-cloud-analytics 0.1.27).
+- **Analytics: more cards, on Local and Cloud, and how much history there is** (owner).
+  Under the chart: battery discharged and charged, self-sufficiency, solar used on site,
+  battery cycles (with the capacity set) and **History**, how long the shown source has data
+  for ("1 year 23 days": the bridge's oldest sample, or the aGate's activation on the cloud).
+  Cloud now has the cards too, from the same read as its chart (franklinwh-ha-cloud-analytics
+  0.1.26, `onData`).
+- **Setup list: Connect to FranklinWH Gateway Emulator and Modbus TCP** (owner). Both are
+  answered in the wizard: add an emulator as a gateway by its address and Direct Connect
+  port, and turn the Modbus client on or off, set its address and port, and Test it, with
+  the results shown in the wizard.
+- **Logged: the default mode saved, a gateway added, a Modbus Test** (owner). Each now
+  writes a line to Logs and a row to the Audit Trail, worked or failed, like the cloud
+  sign-in, publishing and the Modbus settings already did. None needs a restart.
+- **The setup wizard opens on a setup list** (owner). After the first steps, and whenever
+  it is reopened on a bridge with a gateway, the wizard lists everything else worth setting
+  up, each **Done** or **To do**: the FranklinWH cloud, publishing to Home Assistant, the
+  Home Assistant connection, utility & billing, the default operating mode and scheduling;
+  under Advanced, HA notifications & devices, security, user & API accounts and System
+  View. The cloud sign-in, publishing and the default mode are answered in the wizard; the
+  others open the Settings card, tab or overlay that already does them. `/api/setup`
+  returns the list as `tasks`.
+- **`modbus_port` setting** (owner). The aGate's Modbus TCP Server port is now a setting
+  (default 502), like `fwh_port` (default 9000) for Direct Connect. Control → Modbus's
+  port override still wins over it.
+- **Support info says which installation it is** (owner). A new **install** line: a random
+  install id made on the first start and kept, how the bridge was installed (add-on on
+  HAOS or Supervised, Docker, Podman, pip or a source checkout), the OS and CPU, Python,
+  the Home Assistant version on an add-on, the install date with the first version, and
+  the version now. Also in the JSON under `meta.install`.
+- **Battery → Record on the live trend** (owner). The trend card has a **Record** button that
+  keeps the readings on the bridge from that moment: at the live interval (at least every
+  5 s), for the aPower shown, until **Stop** or a day has passed. Closing the page doesn't
+  stop it, and its progress and result show in the card. A recording can now run for a day
+  (it was capped at 500 samples).
+- **Battery → Charts: scheduled recordings** (owner). Add a start time (on the site's clock),
+  how many minutes, how often and which weekdays; each has an on/off switch and delete. The
+  bridge starts it once a day; if a recording is already running, it is skipped and logged.
+- **Battery recordings are purged** (owner). Finished recordings older than **90 days** are
+  deleted, and past **200 MB** the oldest go first; one still recording is never deleted. Both
+  limits, and the size the recordings take now, are in Settings → Admin → Local history. The
+  purge runs with the hourly history upkeep and when a recording ends.
+
+### Changed
+- **Off-grid SoC is the Reconnect SoC, not a floor** (owner). An off-grid you request returns to the grid when the battery reaches it; the go-off-grid dialog, the Control card ("Reconnect SoC") and the done line say so. The off-grid notification adds stored kWh and, for a requested off-grid, gives the time until it reconnects. While the aGate switches, the dialog says it is waiting, shows the aGate going offline and back online, and says a notification follows when that push is on.
+- **No solar, no Solar tab** (owner). The Solar tab and the Dashboard's Solar Forecast card
+  are hidden when the gateway's API reports no AC PV ports and no remote solar, or System
+  Setup says none (DC solar is set there). Unknown, before the gateway is read, keeps them.
+- **Location & Solar moves to Sites & Billing, with the site** (owner, #582 follow-up). It
+  sits right after Sites & Meters; the default site shows its location and solar size and
+  links to it; the card links to the Solar tab, and the Solar tab links back.
+- **Scheduler editor tidied** (#580, owner-approved review). The action box is **Gateway
+  action** (it also holds smart circuits and off-grid); **Priority** shows only with a
+  gateway action and **If busy** only with a force; **Quick preset** is **Repeat pattern**
+  (Templates fill a whole rule); a One-off no longer shows Time windows, which it never
+  used; **Put the previous mode back when the window ends** (`restore_on_exit`) is in the
+  form. Fields the trigger doesn't show are cleared on change and on save, so a Weekly made
+  Daily no longer runs only on the old weekdays. **Test** and **Test against live** read the
+  schedule's own gateway. Test, Evaluate and **Run now** build their values as the tick does,
+  so Run now's guards and `%vars%` see tariff, constants and derived values. The Modbus Bridge
+  export defaults **If busy** to override and says what it drops. The "Not available here"
+  note for a kind the form never offered is gone, and the scheduler docs no longer describe
+  the Default gateway choice removed in #379.
+- **Solar size comes from your gateways; yours wins when set** (#583, owner). Location &
+  Solar's PV size is the gateways' own rating (summed over the site) unless you enter a
+  number: larger for DC panels or remote solar, smaller allowed with a note. The field
+  shows both with **Use gateway**. The forecast, Analytics → Explain and the Solar tab use
+  it. With neither, the field asks you to confirm and there is no forecast: the 5 kWp
+  default is gone.
+- **Prices in one place under Sites & Billing** (#582, owner). The price signal for
+  automation (AEMO NEM or Home Assistant price entities) moves from Integrations to Sites &
+  Billing → Prices, and the AEMO region is your site's (Sites & Meters → Region, AU-NSW →
+  NSW1) for both the price signal and a Dynamic tariff: the region pickers in Location &
+  Solar and in the tariff editor are gone. A saved region is given to sites with none at
+  start-up. The **High wholesale price** template is now **Price spike — ask to export**,
+  using `tariff.price_spike` instead of a fixed 50 c/kWh.
+- **Customise: drag to reorder the top bar, navbar and dashboard cards in one dialog**
+  (#585, owner), as the Modbus Bridge. The cog's **Customise top bar, navbar and cards…**
+  and the Dashboard's **Cards** button open it. Each row has a drag handle (mouse or
+  finger), up/down arrows kept as the fallback, and a switch. Saved as you go, with Undo
+  and Reset in the dialog. Saved preferences carry over. The Dashboard's Cards panel and
+  the cog's Navbar / Top bar lists are gone; Theme stays in the cog.
+- **A missed schedule run is a warning of its own** (#581, owner): `SCHEDULE_MISSED`,
+  worded apart from a failure. A failed run stays the critical `SCHEDULE_FAILED`, which now
+  names the gateway; its push follows the Scheduler group's Run failed switch and Send to.
+- **Actionable Notifications: one notify path** (#576, owner). A schedule notifies only
+  from its **Home Assistant actions** notify rows. **Ask before continuing** is now the
+  **Actionable notification** option on a notify row (buttons, wait, if no reply, Send
+  to), not a block of its own; one per schedule, On entry. **Notify (Home Assistant)** is
+  no longer in the Battery action list. Saved schedules move over when the bridge starts;
+  an import or API call in the old shape is moved over the same way.
+- **A gateway's port is never its Modbus port** (owner). A gateway added as `address:port`
+  (an emulator, say) uses that port for Direct Connect only; the Modbus client reaches it
+  on the Modbus TCP Server port (`modbus_port`, or the override). Before, it tried the
+  Direct Connect port for Modbus too.
+- **No port typed into the UI** (owner). Every label that named 9000 or 502 (connection
+  check, Health, Network, Dashboard, Control, Settings → Gateways, the setup wizard) now
+  shows the port from the settings: `fwh_port` for Direct Connect, and for Modbus the
+  Control tab's override or `modbus_port`. Add Gateway starts on `fwh_port`. Link names,
+  notifications and the capability list say the port the same way.
+- **Confirm what's installed: one line per fact, opened one at a time** (owner). Each fact
+  the gateway reports is a single line (label, value, **Confirmed** or **To check**); tap it
+  to see where it was read from and its **Confirm** button. Opening one closes the other.
+  The questions the gateway can't answer stay open.
+
+### Fixed
+- **Home Assistant panel no longer shows "404: Not Found" after the app was in the background** (owner). Home Assistant's ingress session had ended and its 401 sent the page to the absolute `/signin`, which is on Home Assistant's origin. Under ingress the page now stays (Home Assistant renews the session), and the sign-in links are relative.
+- **Scheduler timeline: the planned-window bars were drawn empty** (found while building
+  #579): the bar lost its colour and height, so only the grey track showed.
+- **A schedule's notify messages named the wrong gateway** (#577). A **+ notify** row under
+  Home Assistant actions named the first gateway, not the one the schedule ran on, on
+  entry, on exit and with **Run now**. It now names the gateway that ran it, as the Notify
+  battery action and Ask already did.
+- **Automation → Battery capacity: Derive from aPower showed "model…" on a real aGate.** It
+  looked for the aPowers in the latest status read, which doesn't carry them; it now uses
+  the aPowers System Setup reads from the gateway (as the Setup card's Batteries row does),
+  so the model and count are filled in, for example aPower X × 1.
+- **Confirm what's installed said the gateway "Couldn't be read"** on every real aGate. It
+  looked for the hardware id (1101 SyHdVersion) in the latest status read, which never
+  carries it; it now uses the id the poller keeps, as the gateway list does, so it names the
+  model, for example "aGate X-01-AU (AU)".
+
 ## [0.5.41] — 2026-11-13
 
 ### Changed

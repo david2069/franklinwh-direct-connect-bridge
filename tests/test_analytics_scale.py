@@ -24,4 +24,4 @@ def test_local_y_axis_uses_the_clouds_rule():
 
 
 def test_the_cloud_extra_has_the_height_option():
-    assert "franklinwh-ha-cloud-analytics==0.1.25" in (ROOT / "pyproject.toml").read_text()
+    assert "franklinwh-ha-cloud-analytics==0.1.27" in (ROOT / "pyproject.toml").read_text()

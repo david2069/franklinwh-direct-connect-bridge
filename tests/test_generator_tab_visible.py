@@ -20,7 +20,9 @@ def _body(src, start):
 
 def test_nav_never_filters_the_generator_tab():
     line = _body(APP_JS, "get navAvailable()")
-    assert "generator" not in line and "filter" not in line, line
+    # Only Solar is ever dropped, and only when known absent (owner, 2026-11-13).
+    assert "generator" not in line, line
+    assert "filter(t => t.key !== 'solar')" in line and line.count("filter(") == 1, line
 
 
 def test_the_tab_is_not_bounced_back_to_the_dashboard():

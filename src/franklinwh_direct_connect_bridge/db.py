@@ -448,6 +448,15 @@ class MetricsStore:
         )
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS ix_bms_samples ON bms_samples(session_id, ts)")
+        # Scheduled recordings (owner, 2026-11-11): a start time on the site's clock, how
+        # long, how often, which weekdays (Monday = 0), and the day it last ran.
+        self._conn.execute(
+            """CREATE TABLE IF NOT EXISTS bms_schedules(
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   gateway_id TEXT, at TEXT NOT NULL, minutes INTEGER NOT NULL,
+                   interval_s REAL NOT NULL, days TEXT NOT NULL, dev_id INTEGER DEFAULT 1,
+                   enabled INTEGER DEFAULT 1, last_run TEXT DEFAULT '')"""
+        )
 
     # ── Home Assistant instances ─────────────────────────────────────────────
     # One bridge, many Home Assistants. Replaces the single HA_URL/HA_TOKEN pair,
@@ -1157,6 +1166,18 @@ class MetricsStore:
                 "SELECT * FROM schedules ORDER BY name"))
         return [self._sched_row(r) for r in rows]
 
+    def schedule_specs(self) -> list[tuple[str, dict]]:
+        """Each schedule's id and stored spec as saved (for one-off moves, #576)."""
+        with self._lock:
+            rows = self._conn.execute("SELECT id, spec FROM schedules").fetchall()
+        out = []
+        for sid, raw in rows:
+            try:
+                out.append((sid, json.loads(raw or "{}")))
+            except (ValueError, TypeError):
+                continue
+        return out
+
     def schedule(self, sid: str) -> dict | None:
         with self._lock:
             rows = self._ha_rows(self._conn.execute(
@@ -1357,8 +1378,8 @@ class MetricsStore:
     #: poll cycle, so recording them would mean inventing a probe rather than writing
     #: down a measurement already taken.
     LINK_LEGS: dict[str, str] = {
-        "local_9000": "Direct Connect API — bridge to aGate, TCP :9000",
-        "modbus_502": "Modbus TCP — bridge to aGate, TCP :502",
+        "local_9000": "Direct Connect API — bridge to aGate",
+        "modbus_502": "Modbus TCP — bridge to aGate's Modbus TCP Server",
         "icmp": "ICMP ping — bridge to aGate",
     }
 
@@ -2711,6 +2732,90 @@ class MetricsStore:
             self._conn.commit()
             return cur.rowcount
 
+    #: Bytes counted per sample on top of its two cell arrays (ids, times, SoC and the rest).
+    BMS_ROW_BYTES = 64
+
+    def bms_bytes(self) -> int:
+        """About how much the recordings take: each sample's cell arrays plus a fixed
+        allowance for the rest of its row."""
+        with self._lock:
+            got = self._conn.execute(
+                "SELECT COALESCE(SUM(COALESCE(LENGTH(volts),0) + COALESCE(LENGTH(temps),0) + ?),0) "
+                "FROM bms_samples", (self.BMS_ROW_BYTES,)).fetchone()[0]
+        return int(got or 0)
+
+    def prune_bms(self, keep_days: float, max_mb: float, now: int | None = None) -> int:
+        """Delete finished recordings older than ``keep_days``, then the oldest finished
+        ones while the recordings are over ``max_mb``. A recording still running is never
+        deleted. Returns how many recordings were deleted."""
+        now = int(time.time()) if now is None else int(now)
+        cutoff = now - float(keep_days) * 86400
+        with self._lock:
+            old = [r[0] for r in self._conn.execute(
+                "SELECT id FROM bms_sessions WHERE ended_ts IS NOT NULL AND started_ts < ?",
+                (cutoff,))]
+        for sid in old:
+            self.delete_bms_session(sid)
+        deleted = len(old)
+        cap = float(max_mb) * 1_000_000
+        while self.bms_bytes() > cap:
+            with self._lock:
+                row = self._conn.execute(
+                    "SELECT id FROM bms_sessions WHERE ended_ts IS NOT NULL "
+                    "ORDER BY started_ts LIMIT 1").fetchone()
+            if row is None:
+                break
+            self.delete_bms_session(row[0])
+            deleted += 1
+        return deleted
+
+    def _bms_schedule_row(self, cols, r) -> dict:
+        d = dict(zip(cols, r))
+        d["days"] = [int(x) for x in (d.get("days") or "").split(",") if x != ""]
+        d["enabled"] = bool(d.get("enabled"))
+        return d
+
+    def bms_schedules(self, gateway_id: str | None = None) -> list[dict]:
+        sql, args = "SELECT * FROM bms_schedules", []
+        if gateway_id:
+            sql += " WHERE gateway_id = ?"
+            args.append(gateway_id)
+        with self._lock:
+            cur = self._conn.execute(sql + " ORDER BY at, id", args)
+            cols = [c[0] for c in cur.description]
+            rows = cur.fetchall()
+        return [self._bms_schedule_row(cols, r) for r in rows]
+
+    def add_bms_schedule(self, *, gateway_id, at: str, minutes: int, interval_s: float,
+                         days: list[int], dev_id: int = 1) -> int:
+        with self._lock:
+            cur = self._conn.execute(
+                "INSERT INTO bms_schedules(gateway_id, at, minutes, interval_s, days, dev_id) "
+                "VALUES (?,?,?,?,?,?)",
+                (gateway_id, at, int(minutes), float(interval_s),
+                 ",".join(str(int(d)) for d in sorted(set(days))), int(dev_id)))
+            self._conn.commit()
+            return int(cur.lastrowid)
+
+    def update_bms_schedule(self, schedule_id: int, *, enabled: bool) -> int:
+        with self._lock:
+            cur = self._conn.execute("UPDATE bms_schedules SET enabled=? WHERE id=?",
+                                     (1 if enabled else 0, schedule_id))
+            self._conn.commit()
+            return cur.rowcount
+
+    def set_bms_schedule_ran(self, schedule_id: int, day: str) -> None:
+        with self._lock:
+            self._conn.execute("UPDATE bms_schedules SET last_run=? WHERE id=?",
+                               (day, schedule_id))
+            self._conn.commit()
+
+    def delete_bms_schedule(self, schedule_id: int) -> int:
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM bms_schedules WHERE id=?", (schedule_id,))
+            self._conn.commit()
+            return cur.rowcount
+
     def _migrate_tariff_dates(self) -> None:
         """Tariff effective_start / effective_end (ISO dates) — supersede, never delete."""
         cols = [r[1] for r in self._conn.execute("PRAGMA table_info(tariffs)")]
@@ -3179,13 +3284,21 @@ def history_bucket(start: int, bucket: int | None, now: float | None = None) -> 
     return bucket
 
 
-def history_maintenance(store: "MetricsStore", retention_days: int, now: int | None = None) -> dict:
+def history_maintenance(store: "MetricsStore", retention_days: int, now: int | None = None,
+                        *, bms_keep_days: float | None = None,
+                        bms_max_mb: float | None = None) -> dict:
     """Delete what is past ``retention_days`` (0 = Forever), then keep older samples
-    as 5-minute rows. Logs what it did (#540); nothing when there was nothing to do."""
+    as 5-minute rows. Logs what it did (#540); nothing when there was nothing to do.
+    Battery recordings are purged by their own age and size limits when given."""
     now = int(time.time()) if now is None else int(now)
     deleted = store.prune(retention_days, now)
     if deleted:
         log.info("Local history: deleted %d rows older than %d days", deleted, retention_days)
+    if bms_keep_days is not None and bms_max_mb is not None:
+        gone = store.prune_bms(bms_keep_days, bms_max_mb, now)
+        if gone:
+            log.info("Battery recordings: deleted %d (over %g days or %g MB)",
+                     gone, bms_keep_days, bms_max_mb)
     done = store.roll_up(now)
     if done["samples"]:
         log.info("Local history: %d samples older than %d days kept as %d five-minute rows "
@@ -3197,14 +3310,17 @@ def history_maintenance(store: "MetricsStore", retention_days: int, now: int | N
 _last_maintenance: dict[str, float] = {}
 
 
-def maybe_maintain(store: "MetricsStore", retention_days: int) -> dict | None:
+def maybe_maintain(store: "MetricsStore", retention_days: int, *,
+                   bms_keep_days: float | None = None,
+                   bms_max_mb: float | None = None) -> dict | None:
     """history_maintenance at most once an hour per database, however many pollers
     call it."""
     now = time.time()
     if now - _last_maintenance.get(store.path, 0.0) < 3600:
         return None
     _last_maintenance[store.path] = now
-    return history_maintenance(store, retention_days, int(now))
+    return history_maintenance(store, retention_days, int(now),
+                               bms_keep_days=bms_keep_days, bms_max_mb=bms_max_mb)
 
 
 def _tiers_json(tiers) -> str | None:

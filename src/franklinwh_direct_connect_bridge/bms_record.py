@@ -22,10 +22,12 @@ import time
 
 log = logging.getLogger(__name__)
 
-#: Guardrails. The aGate is slow and shared; a 1s interval or a 10k-sample run
-#: would hammer it for no analytical benefit.
+#: Guardrails. The aGate is slow and shared, so nothing reads it faster than every 5 s.
+#: A recording may run for a day (owner, 2026-11-11: Record from the live trend, and
+#: scheduled recordings), so the sample cap is a day at that floor; the purge limits
+#: in Settings keep what is stored in check.
 MIN_INTERVAL_S = 5.0
-MAX_SAMPLES = 500
+MAX_SAMPLES = 24 * 3600 // int(MIN_INTERVAL_S)
 
 
 class Recorder:
@@ -44,8 +46,9 @@ class Recorder:
 
     def start(self, store, fetch, *, samples: int, interval_s: float,
               gateway_id=None, apower_sn=None, dev_id: int = 1,
-              label: str | None = None) -> dict:
+              label: str | None = None, purge: tuple | None = None) -> dict:
         """Begin a session. ``fetch()`` returns the 1705 cells dict per snapshot.
+        ``purge`` is (keep_days, max_mb): run the recordings purge when it ends.
 
         Raises ValueError for out-of-range parameters or if one is already running —
         the caller maps that to 409/422 rather than silently queuing.
@@ -65,7 +68,7 @@ class Recorder:
                            "planned": samples, "errors": 0, "last_error": None}
             self._stop.clear()
             self._thread = threading.Thread(
-                target=self._run, args=(store, fetch, sid, samples, interval_s),
+                target=self._run, args=(store, fetch, sid, samples, interval_s, purge),
                 daemon=True, name=f"bms-record-{sid}")
             self._thread.start()
             return dict(self._state)
@@ -75,7 +78,7 @@ class Recorder:
         self._stop.set()
         return self.status()
 
-    def _run(self, store, fetch, sid, samples, interval_s):
+    def _run(self, store, fetch, sid, samples, interval_s, purge=None):
         try:
             for _ in range(samples):
                 if self._stop.is_set():
@@ -102,6 +105,37 @@ class Recorder:
                 log.warning("bms record: could not close session %s: %s", sid, e)
             with self._lock:
                 self._state["active"] = False
+            if purge:
+                try:
+                    store.prune_bms(*purge)
+                except Exception as e:  # noqa: BLE001 — the recording itself is saved
+                    log.warning("bms record: purge after session %s failed: %s", sid, e)
+
+
+def due(schedules: list[dict], now) -> list[dict]:
+    """The scheduled recordings to start at ``now`` (a naive datetime on the site's
+    clock): switched on, today is one of its weekdays (Monday = 0), not yet run today,
+    and ``now`` is inside its window. Each comes back with ``samples`` for what is left
+    of the window, so a bridge that starts late records the rest, not a full window."""
+    today = now.strftime("%Y-%m-%d")
+    out = []
+    for sc in schedules:
+        if not sc.get("enabled") or now.weekday() not in (sc.get("days") or []):
+            continue
+        if sc.get("last_run") == today:
+            continue
+        try:
+            hh, mm = (int(x) for x in str(sc["at"]).split(":"))
+        except (KeyError, ValueError):
+            continue
+        start = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        left = (start - now).total_seconds() + int(sc["minutes"]) * 60
+        if now < start or left <= 0:
+            continue
+        samples = min(MAX_SAMPLES, int(left // float(sc["interval_s"])))
+        if samples >= 1:
+            out.append(dict(sc, samples=samples))
+    return out
 
 
 #: Process-global recorder — one aGate, one session at a time.

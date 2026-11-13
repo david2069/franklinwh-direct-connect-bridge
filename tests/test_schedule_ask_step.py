@@ -346,9 +346,11 @@ def test_the_api_saves_and_refuses_the_step(c):
     body = {"name": "asked", "enabled": False, "fire_at": "10:00", "duration_min": 30,
             "gateway_id": "g1", "ask": ASK}
     r = c.post("/api/schedules", json=body)
-    assert r.status_code == 201 and r.json()["ask"] == ASK
+    # saved as the Actionable notify row (#576), read back as the same step
+    assert r.status_code == 201 and sch.entry_ask(r.json()) == ASK
     sid = r.json()["id"]
-    assert c.put(f"/api/schedules/{sid}", json={"name": "asked", "enabled": True}).json()["ask"] == ASK
+    assert sch.entry_ask(c.put(f"/api/schedules/{sid}",
+                               json={"name": "asked", "enabled": True}).json()) == ASK
     bad = c.post("/api/schedules", json={**body, "ask": {"question": "x", "timeout_min": 0,
                                                          "if_no_reply": "skip"}})
     assert bad.status_code in (400, 422) and "1 minute" in bad.text
@@ -395,13 +397,13 @@ def test_the_editor_has_the_step_and_saves_it():
     root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     js = (root / "static/js/scheduler_tab.js").read_text()
     html = (root / "templates/tabs/scheduler.html").read_text()
-    for field in ('x-model="form.ask.on"', 'x-model="form.ask.question"',
-                  'x-model.number="form.ask.timeout_min"', 'x-model="form.ask.if_no_reply"'):
+    # the Actionable notify row (#576): its message is the question
+    for field in ('x-model="ha.actionable"', 'x-model="ha.message"',
+                  'x-model.number="ha.timeout_min"', 'x-model="ha.if_no_reply"'):
         assert field in html
     assert 'value="skip"' in html and 'value="continue"' in html
-    assert "ask: this._askFromForm(this.form.ask)" in js          # saved
-    assert "ask: this._askToForm(s.ask)" in js                    # loaded for editing
-    assert "ask: this._askToForm(null)" in js                     # a new schedule starts without
+    assert "} else if (h.actionable) {" in js                     # saved
+    assert "this._haToForm(this._rowsWithAsk(s))" in js           # loaded for editing
 
 
 def test_the_editor_has_choices_and_saves_them():
@@ -409,7 +411,7 @@ def test_the_editor_has_choices_and_saves_them():
     root = pathlib.Path(__file__).resolve().parents[1] / "src/franklinwh_direct_connect_bridge"
     js = (root / "static/js/scheduler_tab.js").read_text()
     html = (root / "templates/tabs/scheduler.html").read_text()
-    for field in ('x-for="(c, ci) in form.ask.choices"', 'x-model="c.label"',
+    for field in ('x-for="(c, ci) in ha.choices"', 'x-model="c.label"',
                   'x-model="c.then"', 'x-model="c.reply"', "%ask.answer%"):
         assert field in html
-    assert "out.choices = a.choices.map(" in js and "choices: []" in js
+    assert "out.choices = h.choices.map(" in js

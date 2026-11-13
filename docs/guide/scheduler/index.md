@@ -28,7 +28,7 @@ You find it on the **Scheduler** tab. It has three views: **Schedules** (the car
 | [Triggers](triggers.md) | Every trigger type, calendar restrictions, Next, what happens to a window that is missed. |
 | [Conditions](conditions.md) | Operators, Value vs Lookup, groups (ALL/ANY), scope, hold, Test, every sensor. |
 | [Actions](actions.md) | Battery actions, mode, reserve, off-grid and circuits, HA-only schedules, Home Assistant actions and notifications. |
-| [Targets](targets.md) | Bound and unbound schedules, the default gateway, `gateway_scope` `all`. |
+| [Targets](targets.md) | The gateway a schedule runs on, and **All gateways** (`gateway_scope` `all`). |
 | [Exit and release](exit-and-conflicts.md) | How a window ends, End early when…, release, restore on exit. |
 | [Priorities and conflicts](priorities.md) | Which schedule gets a resource, If busy, manual control. |
 | [Outcomes and audit](outcomes.md) | History, runs, retries, the dispatch record, Run now, Stop, Pause and Resume. |
@@ -64,11 +64,11 @@ spare, and stops at your minimum discharge SoC.
 2. **Name:** `Evening discharge`.
 3. **Trigger type:** **Weekly at time**. Under **Days**, tick **Mon** to **Fri** (none
    ticked means every day). Set **Fire at** to `17:00` and **Duration (min)** to `180`.
-4. **Battery action:** **Force charge / discharge / standby**. Set **Direction** to
+4. **Gateway action:** **Force charge / discharge / standby**. Set **Direction** to
    **Force discharge**, **Power unit** to **% of inverter power**, and **Power** to `50`.
    Leave **Target SoC** empty.
-5. Leave **Priority** at `0`, **If busy** at `override` and the gateway at
-   **Default gateway** (the picker appears only with more than one gateway).
+5. Leave **Priority** at `0`, **If busy** at `override` and the gateway on the one the
+   form starts on, the active gateway.
 6. **Entry conditions (must hold to fire):** press **+ row**. Pick **Battery SoC (%)**,
    operator `>`, value `40`.
 7. **End early when…:** press **+ row**. Pick **Battery SoC (%)**, operator `<=`, press
@@ -157,7 +157,7 @@ the stored schedule, so nothing else changes (#157).
   notify start & end, Time-of-Use at peak (only if charged), and four force presets: Peak
   shaving, Battery Bonus export (evening), Solar sponge (charge midday) and Off-peak charge
   (overnight), each with an SoC condition and a target SoC.
-- **Ask before continuing**: **Wait for a reply** is 5 minutes in a new schedule. The
+- **Actionable notification**: **Wait for a reply** is 5 minutes in a new schedule. The
   wait must fit the schedule's window: a reply after the window closes cannot run the
   action, so a longer wait is refused on save. The window is the duration (a duration of 0
   runs only in its start minute, so 1 minute), or the shortest window of a **Recurring
@@ -173,7 +173,7 @@ the stored schedule, so nothing else changes (#157).
       action.
     - **Cheap wholesale price** (`tariff.spot_price` ≤ 5 c/kWh) and **Cheap tariff import
       rate** (`tariff.buy_rate` ≤ $0.05/kWh): **Charge** / **Not now**; force charge to 90%.
-    - **High wholesale price** (`tariff.spot_price` ≥ 50 c/kWh) and **High tariff feed-in
+    - **Price spike** (`tariff.price_spike == 1`, set under Sites & Billing → Prices) and **High tariff feed-in
       rate** (`tariff.sell_rate` ≥ $0.50/kWh): only while `battery.soc_pct` is at or above
       the **min discharge SoC** Automation Constant (`const.min_discharge_soc`, default 20%).
       **Export** / **Hold**; force discharge to a 20% floor.
@@ -190,37 +190,42 @@ the stored schedule, so nothing else changes (#157).
   <!-- @b IDX-10 ;; src: scheduler.py:554-623 ;; tested: tests/test_scheduler.py::test_dispatch_presets_present_and_valid ;; write: yes ;; b: Eleven presets; the four force presets need Modbus, carry an SoC gate and a target SoC, and validate as imports ;; test: -->
 - **Export ▾** downloads every schedule, as **This bridge** (`franklinwh-local-schedules`)
   or **Modbus bridge** (`franklinwh-automations`). Through the API,
-  `GET /api/schedules/export?ids=<id>,<id>` exports some.
+  `GET /api/schedules/export?ids=<id>,<id>` exports some. The Modbus bridge format has no
+  months, day of month, start and end dates, **All gateways**, mode restore or actionable
+  notification; an export that drops any of them says so (`warnings`), and **If busy**
+  defaults to `override`, as here (#580).
 - **Import** takes a file. The bridge first validates it (a dry run) and shows, per entry,
   errors (a missing name, a Fire at that is not `HH:MM`, an unknown action) and warnings (a
   gateway or notify device that does not exist here). **Import valid** creates the valid
-  entries **disabled**. An entry whose gateway does not exist here is pointed at the default
-  gateway. Both bundle types are read; a Modbus bridge bundle is mapped field by field.
+  entries **disabled**. An entry whose gateway does not exist here goes on the gateway you
+  import into. Both bundle types are read; a Modbus bridge bundle is mapped field by field.
   <!-- @b IDX-05 ;; src: app.py:3251-3310, scheduler.py:631-861 ;; tested: tests/test_scheduler.py::test_import_maps_modbus_automations_bundle ;; write: no ;; b: Import is a dry run unless dry_run=false, creates valid entries disabled and maps a franklinwh-automations bundle field by field ;; test: -->
 
 **Not in this bridge:** a per-entry **Export** in the card menu.
 
 ## Visual timeline
 
-The **Timeline** view shows today, 00:00 to 24:00:
+The **Timeline** view shows today, 00:00 to 24:00, on each gateway's site clock, with a
+**lane per gateway** (#579). The list next to "now" picks a gateway or **All gateways**
+(shown with more than one gateway); it starts on the active gateway. Each lane has:
 
 - a band along the top coloured by the operating mode the gateway actually ran;
 - the battery SoC as a line;
-- dashed markers where a schedule *fired*, *exit*ed, was *gated* or had an *error*;
+- dashed markers where one of that gateway's runs *fired*, *exit*ed, was *gated* or had
+  an *error*;
 - a line at the current time.
 
-Below it, **Planned windows** lists each enabled schedule's windows for today as a bar
-(*(+1d)* when a window wraps past midnight). Every N minutes, Custom cron and Always
-schedules are not drawn, nor are schedules the calendar excludes today.
-<!-- @b IDX-06 ;; src: scheduler.py:864-885, app.py:3328-3358 ;; tested: tests/test_scheduler.py::test_disabled_schedule_absent_from_timeline ;; write: no ;; b: Planned windows: enabled entries only, today's calendar only; interval, cron and always are not drawn ;; test: -->
+Below it, **Planned windows** lists that gateway's enabled schedules for today as bars
+(*(+1d)* when a window wraps past midnight). An Every N minutes or Custom cron schedule
+shows each of today's slots ("12× from 00:00"); an Always schedule is a faint bar across
+the day, "while its conditions hold". Schedules the calendar excludes today are not drawn.
+Rules set to **All gateways** are drawn once, on the **Site · All gateways** row at the
+end.
+<!-- @b IDX-06 ;; src: scheduler.py timeline_segments, app.py api_schedule_timeline ;; tested: tests/test_timeline_lanes_579.py ;; write: no ;; b: Planned windows: enabled entries only, today's calendar only; per gateway lane; scope-all on the Site row; interval/cron slots and always drawn ;; test: -->
 
 A One-off schedule appears only on its date.
 <!-- @b IDX-07 ;; src: scheduler.py:874-875 ;; untested ;; write: no ;; b: A one-off is drawn only when today is its date (calendar check) ;; test: unit: timeline_segments for a once entry on another date is empty -->
 
-!!! warning "The Timeline is not per gateway, and uses the container's clock"
-    The planned windows list every enabled schedule whatever its gateway, the markers come
-    from every gateway's History, and "today" and "now" are the bridge container's clock, not
-    the site's (#161).
 <!-- @b IDX-11 ;; src: app.py:3328-3358 ;; untested ;; write: no ;; b: The timeline ignores the gateway for segments and markers and uses the container clock ;; test: unit (API): two gateways' schedules; ?gateway=gw2 still returns both -->
 
 ## Activity Log

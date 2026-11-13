@@ -15,6 +15,7 @@ to trust them.
 | Store | Retention |
 |---|---|
 | Power / metrics samples | **1 year** by default; Settings → Admin → Local history → **Keep for** (90 days, 1 year, 2 years or Forever) |
+| Battery tab recordings | **90 days** and **200 MB** by default; Settings → Admin → Local history → **Battery recordings: keep … days, up to … MB**. Past either, the oldest finished recordings are deleted first; one still recording is kept |
 | Application log | the newest **50,000** rows |
 | Hourly link-health buckets | 90 days |
 
@@ -105,7 +106,22 @@ month or year with Cloud's series (home, solar, battery discharged and charged, 
 imported and exported; charge and export below zero) plus the average SoC. Local's kWh are
 summed from the bridge's power samples, as Energy Flow does, so they are an estimate, not a
 meter; the caption says what share of the period has samples, and a slot with none is
-left empty. The strip under the chart shows the period's totals. A period older than the
+left empty. The cards under the chart, on Local and Cloud alike, show the period:
+
+- **Solar, Home load, Grid imported, Grid exported, Battery discharged, Battery charged**: the
+  kWh totals.
+- **Self-sufficiency**: the share of the home load that didn't come from the grid
+  (1 − grid imported ÷ home load).
+- **Solar used on site**: the share of solar that wasn't exported (1 − grid exported ÷ solar).
+- **Battery cycles**: kWh discharged ÷ the battery capacity in Settings → Automation
+  constants; not shown while the capacity is unset.
+- **Avg SoC**, where the source has SoC.
+- **History**: how long the shown source has data for, such as "1 year 23 days". Local
+  counts from the bridge's oldest sample; Cloud from the day the aGate was activated on the
+  FranklinWH cloud.
+
+A day of power (Day, 5-min) shows the peak solar, home load and grid import instead of
+the kWh totals. A period older than the
 stored history is shown empty. The chips
 under the chart (SoC, Grid, Solar, Battery, Home load, Generator for a day; Cloud's series for
 the kWh periods) show or hide each series;
@@ -115,6 +131,31 @@ until one is picked, a day draws lines and the kWh periods bars, as Cloud does. 
 your browser's own format. Local and Cloud charts are the same height, and Local's kW or kWh axis
 is scaled as Cloud's (zero always shown, four even steps), so the same data looks the same in
 both.
+
+### Explain: trends and what to change
+
+**Explain**, next to Refresh, opens a dialog about the period shown, on Local or Cloud:
+
+- **Your objectives**: pick one or two of **Lowest bill**, **Most self-sufficiency**,
+  **Backup ready**, **Most export earnings** and **Battery care**. They are remembered for the
+  gateway.
+- **Trends**: each total per day against the previous period and the same period last
+  year, such as "Grid imported up 25% on the previous period", and a run of rises or falls
+  ("falling 3 periods running"). Local compares only with a window it recorded at least
+  half of; Cloud reads the two earlier periods from the cloud (two more reads, cached).
+- **What it shows**: self-sufficiency, how much solar went to the grid, how hard the
+  battery works, and the mode the gateway runs in now.
+- **For your objectives**: what to change, why, with the numbers, and an estimated effect a
+  month in kWh and, with a tariff set, $. For example, Emergency Backup with an idle battery
+  → Self-Consumption with a 20% reserve; a time-of-use tariff run in Self-Consumption →
+  Time-of-Use for the peak; a reserve under 30% for **Backup ready** → 30%. Each opens the
+  Control tab or the Scheduler; nothing is changed from the dialog.
+- **For a fuller answer**: what's missing, such as the battery capacity or a tariff.
+
+The answers come from fixed rules over the period's totals (franklinwh-ha-cloud-analytics
+`insights`), the same each time, and the effects are estimates. The mode and reserve are
+read from the aGate when the dialog opens. `GET /api/analytics/insights` returns the same
+answer as data.
 
 ### Local or Cloud
 
@@ -241,6 +282,12 @@ utility and is assigned to a meter; the meter is what a gateway connects to. (Se
 [Multi-gateway and sites](multi-gateway.md) for why the tariff hangs off the meter rather
 than the gateway.)
 
+**Import tariff** takes a tariff as JSON (`franklinwh-bridge/tariff-profile`, the same
+format a tariff's Export writes and the Modbus Bridge uses): paste it into the box or
+choose a file. **Check** shows what it contains (retailer, network, plan, seasons, fixed
+charges); **Import** creates the utility and tariff and attaches them to the default meter.
+The result, or why it was not accepted, is shown in the dialog.
+
 ### Static or dynamic
 
 ![The tariff editor's Rate type set to Dynamic (live)](../images/energy-and-costs/07b-dynamic.png)
@@ -255,8 +302,9 @@ The editor's **Rate type** toggle offers two, and only two, options:
   tiered tariff is complete with no seasons and no periods at all.
 - **Dynamic (live)** — priced at the live wholesale rate while this tariff is active. Two
   providers:
-  - **AusNEM (AEMO spot)** — set your NEM region (`NEM_REGION`: NSW1, QLD1, SA1, TAS1,
-    VIC1).
+  - **AusNEM (AEMO spot)** — the region is your site's: **Sites & Meters → Region**
+    (AU-NSW and AU-ACT → NSW1, AU-QLD → QLD1, AU-SA → SA1, AU-TAS → TAS1, AU-VIC → VIC1).
+    There is no second region to pick (#582).
   - **Home Assistant price entity** — point at an HA entity for the buy price and
     optionally another for the feed-in price. Values in dollars are auto-detected and
     scaled to c/kWh.
@@ -271,21 +319,64 @@ wiring the price in twice. `GET /api/tariff/spot` shows both providers side by s
 Tariffs can be **exported, imported and validated** one at a time, so a plan can be moved
 between installs or shared.
 
+### Prices
+
+**Settings → Sites & Billing → Prices** holds the rest of what prices the scheduler sees
+(#582). Before 0.5.42 these were under Integrations (Dynamic price, and the Wholesale
+region under Location & Solar).
+
+- **Price signal for automation** — for a fixed or TOU bill that still wants a wholesale
+  signal. **Source**: Off, **AEMO NEM** (your site's region, as above) or **Home Assistant
+  price entities** (a buy entity, and optionally a feed-in one). It feeds
+  `tariff.spot_price` and `tariff.feed_in_price` to the scheduler only, never billing. A
+  plan with the **Dynamic (live)** rate type drives both billing and the scheduler with
+  its own source, and wins while it is the active tariff.
+- **Price events**:
+    - **Price spike** — at or above a number of c/kWh (0 = off), or from a Home Assistant
+      spike sensor (a binary sensor, which wins when set). Gives `tariff.price_spike` (1
+      during a spike, 0 otherwise, no value with neither set) and `tariff.spike_threshold`.
+      The **Price spike — ask to export** template uses it.
+    - **Demand / peak window** — from the tariff's demand window, or from a Home Assistant
+      binary sensor, calendar or switch, which wins when set. Feeds
+      `tariff.demand_window_active`.
+
+Only entities exposed to the bridge are listed. On the first start of 0.5.42 a saved
+wholesale region is given to any site with no region (NSW1 → AU-NSW); a site whose region
+disagrees keeps its own, and the bridge log says so.
+
 ---
 
 ## Solar forecast
 
-![Settings → Integrations → Location & Solar](../images/energy-and-costs/08-solar-forecast.png)
+![Settings → Sites & Billing → Location & Solar](../images/energy-and-costs/08-solar-forecast.png)
 
 Optional, and off until the bridge has a location. The forecast comes from Open-Meteo.
 
-Under **Settings → Integrations → Location & Solar**, press **Sync from gateway**. The
+**Location & Solar** sits with your site under **Settings → Sites & Billing**, right after
+Sites & Meters: the default site shows its location and solar size and links to it, the card
+links to the **Solar** tab, and the Solar tab's **Location & array settings** link comes back
+here. (Before 0.5.42 it was under Integrations.)
+
+Under **Settings → Sites & Billing → Location & Solar**, press **Sync from gateway**. The
 bridge reads the location your installer configured on the aGate, over the local API
 (`cmdType 1201`), and saves it as the latitude and longitude. No cloud account is needed,
 and nothing needs typing. If the aGate has no location configured, the sync says so and
 leaves the fields as they were. Only then type the coordinates in yourself.
 
-Then set the array: size in kWp, tilt, and azimuth.
+Then set the array: tilt and azimuth, and check the size.
+
+**Size (kWp)** comes from your gateways by default (#583): their rated PV inputs (1903),
+added up over the site's gateways, shown as "Gateway 6.6 kWp". Leave the field blank to
+use it. Enter a number of your own when the gateway's is not the whole story: DC panels
+larger than the inverter's AC rating (common in Australia, such as 8 kWp on a 6.6 kW
+inverter), or remote or third-party solar the aGate doesn't rate. The field then shows both
+("Gateway 6.6 kWp · You 8 kWp") with **Use gateway** to go back. A number below the
+gateway's is allowed, for shading or clipping, with a one-line note. The forecast and
+Analytics → Explain use your number when set, else the gateway's; the Solar tab shows
+"Forecast uses … kWp (yours)" under **Installed** when they differ.
+
+With neither (the gateway hasn't reported its size yet, and you entered none) the field
+says **Please confirm** and there is no forecast: before 0.5.42 the bridge assumed 5 kWp.
 
 **Azimuth uses Open-Meteo's convention**, which is not the one most people assume:
 `0` is south, `-90` is east, `90` is west.

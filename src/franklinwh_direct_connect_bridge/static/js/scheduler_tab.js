@@ -39,6 +39,7 @@ document.addEventListener('alpine:init', () => {
     importReport: null,
     view: 'schedules',       // schedules | timeline | history
     timeline: null,
+    timelineGw: '',          // a gateway's id, or '*' for every gateway (#579)
     logEvents: null,
     logFilter: '',
     // Debug monitor (#345): polled only while the card is open on the History view.
@@ -91,8 +92,22 @@ document.addEventListener('alpine:init', () => {
 
     async setView(v) {
       this.view = v;
-      if (v === 'timeline') this.timeline = await (await fetch('api/schedules/timeline' + this.$store.app.gwQuery())).json();
+      if (v === 'timeline') await this.loadTimeline();
       if (v === 'history') this.logEvents = (await (await fetch('api/schedules/log?limit=200')).json()).events;
+    },
+
+    async loadTimeline() {
+      if (!this.timelineGw) this.timelineGw = this.$store.app.selectedGateway || '';
+      const q = this.timelineGw === '*' ? '?all=true'
+        : (this.timelineGw ? `?gateway=${encodeURIComponent(this.timelineGw)}` : this.$store.app.gwQuery());
+      this.timeline = await (await fetch('api/schedules/timeline' + q)).json();
+    },
+    segLabel(seg) {
+      if (seg.conditional) return 'while its conditions hold';
+      if ((seg.blocks || []).length > 2 || seg.trigger_type === 'interval' || seg.trigger_type === 'cron')
+        return `${seg.blocks.length}× from ${this.hhmm(seg.start_min)}`;
+      return this.hhmm(seg.start_min) + (seg.end_min !== seg.start_min ? '–' + this.hhmm(seg.end_min) : '')
+        + (seg.wraps_midnight ? ' (+1d)' : '');
     },
 
     hhmm(min) {
@@ -130,14 +145,14 @@ document.addEventListener('alpine:init', () => {
     },
     get modeLegend() {
       const seen = {}, out = [];
-      for (const m of (this.timeline?.modes || [])) {
+      for (const m of (this.timeline?.lanes || []).flatMap(l => l.modes || [])) {
         if (!seen[m.mode]) { seen[m.mode] = 1; out.push({ mode: m.mode, color: this.modeColor(m.mode) }); }
       }
       return out;
     },
     /** SoC polyline points in the SVG's 0..1440 x / 0..100 y space (band = top 12). */
-    get socPoints() {
-      return (this.timeline?.soc || [])
+    socPointsFor(lane) {
+      return (lane?.soc || [])
         .map(p => `${p.min},${(98 - (Math.max(0, Math.min(100, p.soc)) / 100) * 82).toFixed(1)}`)
         .join(' ');
     },
@@ -147,8 +162,7 @@ document.addEventListener('alpine:init', () => {
 
     /** The chart interior as an SVG string — <template x-for> does not work inside
      *  an <svg> (SVG namespace), so build the children and inject via x-html. */
-    get svgInner() {
-      const t = this.timeline;
+    svgFor(t) {
       if (!t) return '';
       const L = (x1,y1,x2,y2,stroke,w,dash='') =>
         `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${w}"${dash?` stroke-dasharray="${dash}"`:''} vector-effect="non-scaling-stroke"/>`;
@@ -156,8 +170,9 @@ document.addEventListener('alpine:init', () => {
       for (const h of [6,12,18]) o += L(h*60,0,h*60,100,'rgba(148,163,184,0.22)',1);
       for (const m of (t.modes||[]))
         o += `<rect x="${m.start_min}" y="0" width="${Math.max(0.5,m.end_min-m.start_min)}" height="12" fill="${this.modeColor(m.mode)}" opacity="0.55"/>`;
-      if (this.socPoints)
-        o += `<polyline points="${this.socPoints}" fill="none" stroke="#38bdf8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`;
+      const pts = this.socPointsFor(t);
+      if (pts)
+        o += `<polyline points="${pts}" fill="none" stroke="#38bdf8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`;
       for (const f of (t.fires||[])) o += L(f.min,14,f.min,100,this.fireColor(f.status),1,'2 2');
       o += L(t.now_min,0,t.now_min,100,'#fbbf24',1.5);
       return o;
@@ -189,8 +204,7 @@ document.addEventListener('alpine:init', () => {
                     action: { ...(p.spec?.action || { kind: '' }) },
                     conditions: JSON.parse(JSON.stringify(p.spec?.conditions || [])),
                     entry_hold_s: p.spec?.entry_hold_s ?? 0,
-                    ha_actions: this._haToForm(p.spec?.ha_actions),
-                    ask: this._askToForm(p.spec?.ask) };
+                    ha_actions: this._haToForm(this._rowsWithAsk(p.spec)) };
       this.presetOpen = false;
       this.testResult = null;
       this.traceByCid = {};
@@ -213,6 +227,9 @@ document.addEventListener('alpine:init', () => {
         a.click();
         URL.revokeObjectURL(a.href);
         this.exportOpen = false;
+        // What the Modbus Bridge format can't carry, said rather than dropped (#580).
+        if ((bundle.warnings || []).length)
+          this.$store.app.toast(`Exported. ${bundle.warnings.join(' ')}`, 'info');
       } catch (e) { this.$store.app.toast(`Export failed: ${e.message}`, 'error'); }
     },
 
@@ -267,29 +284,43 @@ document.addEventListener('alpine:init', () => {
     blank() {
       return { id: '', name: '', enabled: true, fire_at: '18:00', duration_min: 90,
                match: 'all', gateway_id: this.$store.app.selectedGateway || '',   // #379
+               gateway_scope: 'one',                                            // #578
+               restore_on_exit: false,                                          // #580
                conditions: [], exit_conditions: [],
                exit_match: 'all', entry_hold_s: 0, action: { kind: '' }, ha_actions: [],
                days: [], months: [], day_of_month: null, start_date: null, end_date: null,
                priority: 0, conflict: 'override',
-               trigger_type: 'daily', windows: [], interval_min: 30, anchor: '', cron: '0 3 * * *',
-               ask: this._askToForm(null) };
+               trigger_type: 'daily', windows: [], interval_min: 30, anchor: '', cron: '0 3 * * *' };
     },
-    // "Ask before continuing" (#374 P4): the saved step is {} (none) or
-    // {question, timeout_min, if_no_reply, choices?, send_to?}; the form adds an on/off box.
-    // No choices means Yes / No; each choice is {label, then: run|skip, reply}.
-    // send_to (#281): absent or {type: all} = every enabled device; {type: device, ids}.
-    _askToForm(a) {
-      const choices = ((a && a.choices) || []).map(c => ({
-        label: c.label || '', then: c.then || 'run', reply: !!c.reply }));
-      const st = a && a.send_to;
-      const send_to = st && st.type === 'device'
-        ? { to: 'device', ids: [...(st.ids || [])] } : { to: 'all', ids: [] };
-      return a && a.question
-        ? { on: true, question: a.question, timeout_min: a.timeout_min,
-            if_no_reply: a.if_no_reply, choices, send_to }
-        : { on: false, question: 'Run this schedule now?', timeout_min: 5, if_no_reply: 'skip',
-            choices: [], send_to };
+    // Actionable notification (#576): a notify row with actionable: true carries the
+    // buttons ({label, then: run|skip, reply}; none = Yes / No), the wait, what no reply
+    // does and who is asked (send_to: absent or {type: all}, or {type: device, ids}). Its
+    // message is the question. One per schedule, On entry.
+    _actionableToForm(h) {
+      const st = h && h.send_to;
+      return {
+        timeout_min: (h && h.timeout_min) || 5, if_no_reply: (h && h.if_no_reply) || 'skip',
+        choices: ((h && h.choices) || []).map(c => ({ label: c.label || '', then: c.then || 'run', reply: !!c.reply })),
+        send_to: st && st.type === 'device' ? { to: 'device', ids: [...(st.ids || [])] } : { to: 'all', ids: [] },
+      };
     },
+    /** A schedule's rows, with a not-yet-moved ``ask`` shown as its Actionable row. */
+    _rowsWithAsk(spec) {
+      const rows = [...((spec && spec.ha_actions) || [])];
+      const a = spec && spec.ask;
+      if (a && a.question && !rows.some(h => h.actionable)) {
+        rows.unshift({ ha_kind: 'notify', when: 'fire', actionable: true, title: a.title || '',
+                       message: a.question, timeout_min: a.timeout_min, if_no_reply: a.if_no_reply,
+                       choices: a.choices, send_to: a.send_to });
+      }
+      return rows;
+    },
+    /** The schedule's Actionable notification row (saved or in the form), or null. */
+    askOf(s) {
+      return this._rowsWithAsk(s).find(h => h.actionable && h.ha_kind !== 'service') || null;
+    },
+    actionableTaken(i) { return !!this.form && this.form.ha_actions.some((h, j) => j !== i && h.actionable); },
+    onActionable(ha) { if (ha.actionable) { ha.when = 'fire'; ha.guard.enabled = false; } },
     // Who Ask before continuing asks (owner, 2026-11-12: it never said). Only Companion apps
     // (mobile_app) show the buttons, so only they are listed and asked.
     _showsButtons(d) { return (d.service || '').replace(/^notify\./, '').startsWith('mobile_app_'); },
@@ -302,9 +333,9 @@ document.addEventListener('alpine:init', () => {
         .forEach(i => out.push({ id: i, label: `${i} (removed)` }));
       return out;
     },
-    /** The names of the devices a schedule's Ask goes to, from the form or a saved one. */
+    /** The names of the phones an Actionable notification goes to (a form or saved row). */
     askedNames(a) {
-      if (!a || !(a.on || a.question)) return '';
+      if (!a || !a.actionable) return '';
       const st = a.send_to || {};
       const chosen = (st.to || st.type) === 'device' ? (st.ids || []) : null;
       return this.devices.filter(d => d.enabled && this._showsButtons(d)
@@ -313,25 +344,12 @@ document.addEventListener('alpine:init', () => {
     },
     /** What the schedule's notify rows send, shown beside Ask so the two are read together. */
     alsoNotified(f) {
+      if (!f) return '';
       const when = { fire: 'On entry, once the answer runs it', exit: 'On exit', both: 'On entry and exit' };
-      return (f.ha_actions || []).filter(h => h.ha_kind !== 'service' && h.device_id).map(h => {
+      return (f.ha_actions || []).filter(h => h.ha_kind !== 'service' && !h.actionable && h.device_id).map(h => {
         const d = this.devices.find(x => x.id === h.device_id);
         return `${d ? d.alias : h.device_id} (${when[h.when || 'fire'] || h.when})`;
       }).join(', ');
-    },
-    _askFromForm(a) {
-      if (!a || !a.on) return {};
-      const out = { question: a.question, timeout_min: Number(a.timeout_min) || 0,
-                    if_no_reply: a.if_no_reply };
-      if ((a.choices || []).length) {
-        out.choices = a.choices.map(c => c.reply
-          ? { label: c.label, then: c.then, reply: true }
-          : { label: c.label, then: c.then });
-      }
-      if (a.send_to && a.send_to.to === 'device') {
-        out.send_to = { type: 'device', ids: [...a.send_to.ids] };
-      }
-      return out;
     },
     newEntry() {
       this.formMsg = null;
@@ -346,6 +364,8 @@ document.addEventListener('alpine:init', () => {
         id: s.id, name: s.name, enabled: s.enabled,
         fire_at: s.fire_at || '18:00', duration_min: s.duration_min ?? 0,
         match: s.match || 'all', gateway_id: s.gateway_id || '',
+        gateway_scope: s.gateway_scope || 'one',
+        restore_on_exit: !!s.restore_on_exit,
         conditions: JSON.parse(JSON.stringify(s.conditions || [])),
         exit_conditions: JSON.parse(JSON.stringify(s.exit_conditions || [])),
         exit_match: s.exit_match || 'all',
@@ -358,8 +378,7 @@ document.addEventListener('alpine:init', () => {
         interval_min: s.interval_min ?? 30, anchor: s.anchor || '', cron: s.cron || '0 3 * * *',
         entry_hold_s: s.entry_hold_s ?? 0,
         action: JSON.parse(JSON.stringify(s.action || { kind: '' })),
-        ha_actions: this._haToForm(s.ha_actions),
-        ask: this._askToForm(s.ask),
+        ha_actions: this._haToForm(this._rowsWithAsk(s)),
         // (advRepeat toggled below once form is built)
       };
       this.traceByCid = {};
@@ -501,6 +520,7 @@ document.addEventListener('alpine:init', () => {
         // guided data is an object; raw data is a JSON string. Keep whatever was saved.
         data: (h.data && typeof h.data === 'object') ? JSON.parse(JSON.stringify(h.data)) : (h.data || (h.entity_id ? {} : '')),
         raw: !!h.raw,
+        actionable: !!h.actionable, ...this._actionableToForm(h),
         guard: this._guardToForm(h.guard) }));
     },
     /** Editor form -> stored ha_action (guard {enabled,...} -> leaf|omitted). */
@@ -512,6 +532,15 @@ document.addEventListener('alpine:init', () => {
                   instance_id: h.instance_id || '', domain: h.domain || '', service: h.service || '',
                   entity_id: h.entity_id || '',
                   data: (h.data && typeof h.data === 'object') ? h.data : (h.data || '') };
+        } else if (h.actionable) {       // Actionable notification (#576): goes On entry
+          out = { ha_kind: 'notify', actionable: true, when: 'fire', title: h.title || '',
+                  message: h.message || '', timeout_min: Number(h.timeout_min) || 0,
+                  if_no_reply: h.if_no_reply };
+          if ((h.choices || []).length) {
+            out.choices = h.choices.map(c => c.reply ? { label: c.label, then: c.then, reply: true }
+                                                     : { label: c.label, then: c.then });
+          }
+          if (h.send_to && h.send_to.to === 'device') out.send_to = { type: 'device', ids: [...h.send_to.ids] };
         } else {
           out = { ha_kind: 'notify', device_id: h.device_id, when: h.when || 'fire',
                   title: h.title || '', message: h.message || '' };
@@ -576,12 +605,27 @@ document.addEventListener('alpine:init', () => {
     /** Seed sensible defaults when the force action is first chosen, so an empty
      *  form does not silently dispatch 0 W. */
     onActionKind() {
+      // A battery action is one gateway's (#578): All gateways goes back to the one named.
+      if (this.form.action.kind) this.form.gateway_scope = 'one';
       if (this.form.action.kind !== 'force') return;
       const a = this.form.action;
       if (!a.direction) a.direction = 'discharge';
       if (!a.unit) a.unit = 'pct';
       if (a.power === undefined || a.power === '' || a.power === null) a.power = 100;
       if (a.target_soc === undefined || a.target_soc === null) a.target_soc = '';
+    },
+
+    // The gateway picker (#578): a gateway's id, or "*" for All gateways. The rule keeps
+    // its gateway_id under All gateways; the engine reads gateway_scope.
+    get gwPick() { return this.form.gateway_scope === 'all' ? '*' : this.form.gateway_id; },
+    set gwPick(v) {
+      if (v === '*') { this.form.gateway_scope = 'all'; return; }
+      this.form.gateway_scope = 'one';
+      this.form.gateway_id = v;
+    },
+    gatewayLabel(s) {
+      if (String(s.gateway_scope || 'one').toLowerCase() === 'all') return 'All gateways';
+      return this.gatewayName(s.gateway_id);
     },
 
     // ─── list: status filter, active-now, next-fire, per-entry stop ───
@@ -631,6 +675,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     async save() {
+      this._clearHidden();
       if (this.form.trigger_type === 'once') this.form.end_date = this.form.start_date;
       if (this.form.id) {
         const live = (this.schedules || []).find(x => x.id === this.form.id);
@@ -646,8 +691,7 @@ document.addEventListener('alpine:init', () => {
           exit_conditions: this._buildTree(this.form.exit_conditions, false),
           exit_match: this.form.exit_match || 'all',
           entry_hold_s: Number(this.form.entry_hold_s) || 0,
-          ha_actions: this._haFromForm(this.form.ha_actions),
-          ask: this._askFromForm(this.form.ask) };
+          ha_actions: this._haFromForm(this.form.ha_actions) };
         delete body.id;
         const url = this.form.id ? `api/schedules/${this.form.id}` : 'api/schedules';
         const r = await fetch(url, {
@@ -696,7 +740,8 @@ document.addEventListener('alpine:init', () => {
       this.busy = true;
       try {
         // The schedule's own gateway, else the one on screen (#379).
-        const r = await fetch(`api/schedules/${s.id}/test` + this.$store.app.gwQuery(), { method: 'POST' });
+        // The schedule's own gateway, not the top bar's (#580).
+        const r = await fetch(`api/schedules/${s.id}/test` + (s.gateway_id ? `?gateway=${encodeURIComponent(s.gateway_id)}` : this.$store.app.gwQuery()), { method: 'POST' });
         this.testResult = { id: s.id, ...(await r.json()) };
       } catch (e) { this.$store.app.toast(`Test failed: ${e.message}`, 'error'); }
       finally { this.busy = false; }
@@ -816,7 +861,7 @@ document.addEventListener('alpine:init', () => {
     },
     get showFireAt() { return ['daily', 'weekly', 'monthly', 'once'].includes(this.form.trigger_type); },
     get showDays() { return ['window', 'weekly'].includes(this.form.trigger_type); },
-    get showWindows() { return ['window', 'once'].includes(this.form.trigger_type); },
+    get showWindows() { return this.form.trigger_type === 'window'; },   // a one-off uses Fire at (#580)
     get showDate() { return this.form.trigger_type === 'once'; },
     get showMonthly() { return this.form.trigger_type === 'monthly'; },
     get showInterval() { return this.form.trigger_type === 'interval'; },
@@ -828,10 +873,27 @@ document.addEventListener('alpine:init', () => {
 
     /** Seed sensible defaults when the trigger type changes so no field is left empty. */
     onTriggerType() {
+      this._clearHidden();
       const t = this.form.trigger_type;
       if (t === 'window' && !(this.form.windows || []).length) this.addWindow();
       if (t === 'interval' && !this.form.interval_min) this.form.interval_min = 30;
       if (t === 'cron' && !this.form.cron) this.form.cron = '0 3 * * *';
+    },
+
+    /** The editor's gateway for Test and live values (#580): the schedule's, else the
+     *  top bar's (All gateways, or no form open). */
+    _formGwQuery() {
+      const g = this.form && this.form.gateway_scope !== 'all' && this.form.gateway_id;
+      return g ? `?gateway=${encodeURIComponent(g)}` : this.$store.app.gwQuery();
+    },
+    /** Clear what the trigger doesn't show (#580): a hidden field still restricts the
+     *  run, so weekly → daily kept running on the old weekdays. */
+    _clearHidden() {
+      const f = this.form;
+      if (!this.showDays) f.days = [];
+      if (!this.showMonthly) { f.months = []; f.day_of_month = null; }
+      if (!this.showWindows) f.windows = [];
+      if (this.showAlways) { f.start_date = null; f.end_date = null; }
     },
 
     get triggerPresets() {
@@ -970,7 +1032,7 @@ document.addEventListener('alpine:init', () => {
           const ent = this.haNames[h.entity_id] || h.entity_id || 'an entity';
           const svc = (h.service || 'call').replace(/_/g, ' ');
           out.push(`${svc} “${ent}”${at}`);
-        } else {
+        } else if (!h.actionable) {     // the actionable one is the ASK step
           out.push(`notify a companion device${at}`);
         }
       }
@@ -982,7 +1044,8 @@ document.addEventListener('alpine:init', () => {
       const act = this._actionPhrase(s);
       const conds = this._condPhrase(s.conditions, s.match || 'all', 0);
       const exits = this._condPhrase(s.exit_conditions, s.exit_match || 'all', 0);
-      const asked = s.ask && s.ask.question ? (this.askedNames(s.ask) || 'no Companion app') : '';
+      const ask = this.askOf(s);
+      const asked = ask ? (this.askedNames(ask) || 'no Companion app') : '';
       if (level === 'min') {
         return asked ? `${trig} → ask ${asked} → ${act}.` : `${trig} → ${act}.`;
       }
@@ -992,6 +1055,7 @@ document.addEventListener('alpine:init', () => {
         if (asked) t += `, ask ${asked} first`;
         t += `, ${act}.`;
         if (exits) t += ` End early when ${exits}.`;
+        if (s.gateway_scope === 'all') t += ' On every gateway, each with its own values.';
         return t;
       }
       // full — labelled, multi-line
@@ -999,11 +1063,10 @@ document.addEventListener('alpine:init', () => {
       lines.push(`WHEN   ${trig}.`);
       lines.push(conds ? `IF     ${conds} (${(s.match || 'all') === 'any' ? 'any' : 'all'} must hold).`
                        : `IF     no extra conditions — fires whenever the schedule is due.`);
-      if (asked) lines.push(`ASK    ${asked}: "${s.ask.question}" (${s.ask.if_no_reply === 'continue' ? 'no reply: continue' : 'no reply: skip'}).`);
+      if (asked) lines.push(`ASK    ${asked}: "${ask.message}" (Actionable notification; ${ask.if_no_reply === 'continue' ? 'no reply: continue' : 'no reply: skip'}).`);
       lines.push(`DO     ${act}.`);
       if (exits) lines.push(`UNTIL  it ends early when ${exits} (${(s.exit_match || 'all') === 'any' ? 'any' : 'all'}).`);
-      const gw = (this.gateways.find(g => g.id === s.gateway_id) || {});
-      if (s.gateway_id) lines.push(`ON     ${gw.name || s.gateway_id}.`);
+      if (s.gateway_id || s.gateway_scope === 'all') lines.push(`ON     ${this.gatewayLabel(s)}.`);
       if (s.entry_hold_s) lines.push(`HOLD   conditions must stay true for ${s.entry_hold_s}s before firing.`);
       return lines.join('\n');
     },
@@ -1150,7 +1213,7 @@ document.addEventListener('alpine:init', () => {
         this._ensureCids(this.form.exit_conditions);
         const body = { match: this.form.exit_match || 'all',
                        conditions: this._buildTree(this.form.exit_conditions, true) };
-        const r = await fetch('api/schedules/evaluate' + this.$store.app.gwQuery(), {
+        const r = await fetch('api/schedules/evaluate' + this._formGwQuery(), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
@@ -1169,7 +1232,7 @@ document.addEventListener('alpine:init', () => {
         this._ensureCids();
         const body = { match: this.form.match || 'all',
                        conditions: this._buildTree(this.form.conditions, true) };
-        const r = await fetch('api/schedules/evaluate' + this.$store.app.gwQuery(), {
+        const r = await fetch('api/schedules/evaluate' + this._formGwQuery(), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
@@ -1304,7 +1367,7 @@ document.addEventListener('alpine:init', () => {
       this.varPick.liveMsg = '';
       try {
         const conditions = this.sensors.map((x, i) => ({ sensor: x.id, op: '==', value: null, cid: 'var' + i }));
-        const r = await fetch('api/schedules/evaluate' + this.$store.app.gwQuery(), {
+        const r = await fetch('api/schedules/evaluate' + this._formGwQuery(), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ match: 'any', conditions }),
         });

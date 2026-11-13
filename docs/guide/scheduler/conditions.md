@@ -225,8 +225,8 @@ This bridge has two ways to test conditions against live values. Neither fires a
 |---|---|---|
 | Endpoint | `POST /api/schedules/evaluate` | `POST /api/schedules/{id}/test` |
 | What it checks | the **unsaved** block as it is in the form | the **saved** schedule: window, calendar, fired-this-occurrence and entry conditions (`due()`) |
-| Which gateway's values | the gateway selected in the top bar when there are several, else the default gateway — **not** the schedule's own gateway | always the **default gateway's** last poll |
-| Clock | — | the container's clock, not the site's (#161) |
+| Which gateway's values | the schedule's gateway in the form (the top bar's for **All gateways**) (#580) | the schedule's gateway (#580) |
+| Clock | — | that gateway's site clock (#161) |
 | Result | each row outlined: green *passes*, red *fails*, amber *no value*, with `live <value>`; summary *conditions currently PASS/FAIL* or, for the exit block, *exit WOULD end the window now* / *exit would NOT fire now* | *Would fire* / *Would not fire* with the reason and the window state, plus one line per **top-level** row with its live value |
 
 <!-- @b CND-30 ;; src: app.py:3397-3422, static/js/scheduler_tab.js:901-939 ;; tested: tests/test_constants.py::test_api_constants_get_put_and_sensor_group ;; write: no ;; b: POST /api/schedules/evaluate evaluates an unsaved tree against live values and returns result plus a per-leaf trace (the editor maps rows by cid) ;; test: — -->
@@ -236,9 +236,11 @@ This bridge has two ways to test conditions against live values. Neither fires a
 !!! note "Test is close to, not the same as, the engine's view"
     - The engine adds the run variables (`%run.*%`, `%schedule.*%`) and feeds the billing
       trackers; the tests read them without feeding.
-    - **Test against live** reads the default gateway even for a schedule bound to another
-      gateway, uses the container clock (#161), and does not check exit conditions, the hold,
-      priority or **If busy**. A schedule can say *Would fire* and still not fire.
+    - **Test against live** reads the schedule's gateway on its site clock, and does not
+      check exit conditions, the hold, priority or **If busy**. A schedule can say *Would
+      fire* and still not fire.
+    - Both, and **Run now**, build their values as the tick does (#580): tariff, constants
+      and derived values included.
 
 ## Home Assistant entities
 
@@ -271,7 +273,7 @@ instance, after the bridge's own groups.
     check its History for runs while Home Assistant had lost the entity.
 
 **Direct Connect only.** A Home Assistant price entity can feed `tariff.spot_price` and
-`tariff.feed_in_price` (**Settings → Integrations**). A `$/kWh` unit is scaled to c/kWh;
+`tariff.feed_in_price` (**Settings → Sites & Billing → Prices**). A `$/kWh` unit is scaled to c/kWh;
 `c/kWh`, `¢/kWh` and a unitless value are taken as they are. A configured entity wins over
 the AEMO NEM price for the same sensor.
 <!-- @b CND-37 ;; src: scheduler.py:1203-1248, scheduler.py:1307-1327, scheduler.py:1952-1953 ;; tested: tests/test_aemo_nem.py::test_ha_price_snapshot_units_and_mapping ;; write: yes ;; b: tariff_price_entity and tariff_feedin_entity map to tariff.spot_price and feed_in_price in c/kWh with $ units scaled x100, applied after NEM so they win ;; test: — -->
@@ -382,7 +384,12 @@ calculators, and `tariff.spot_price` / `tariff.feed_in_price` (c/kWh).
 - `tariff.import_billable` is 1 or 0 from the rate model, and None when the rate model gives
   no answer.
   <!-- @b SEN-09 ;; src: scheduler.py:1507-1515 ;; untested ;; write: yes ;; b: tariff.import_billable is int(billable) from rate_model.resolve, None when billable is None ;; test: unit: a free window and a priced window -->
-- `tariff.spot_price` is the AEMO NEM 5-minute price for the configured region, cached about
+- `tariff.price_spike` is 1 during a price spike and 0 otherwise: the Home Assistant spike
+  sensor when one is set, else the price at or above the spike threshold; no value with
+  neither. `tariff.spike_threshold` is that threshold in c/kWh (**Sites & Billing →
+  Prices**, #582). A Home Assistant demand-window entity there wins over the tariff's
+  window for `tariff.demand_window_active`.
+- `tariff.spot_price` is the AEMO NEM 5-minute price for your site's region, cached about
   4 minutes. On a fetch error the **last good price is kept, however old**; it is not dropped
   after 30 minutes as on the Modbus Bridge. A Home Assistant price entity wins over NEM. An
   active **dynamic** tariff overrides both, and also sets `tariff.buy_rate`/`sell_rate`.
@@ -421,7 +428,7 @@ from its meter's tariff. There are no lifetime or today/week/month energy totals
 ### Weather
 
 `weather.temp_c` and `weather.condition` (Weather & Solar group), the **current** weather from
-Open-Meteo. They need a location under **Settings → Integrations → Location & Solar**
+Open-Meteo. They need a location under **Settings → Sites & Billing → Location & Solar**
 (**Sync from gateway** reads it from the aGate).
 <!-- @b SEN-13 ;; src: scheduler.py:1185-1198, solar_forecast.py:111-140 ;; untested ;; write: yes ;; b: weather.* and solar_forecast.* come from the cached Open-Meteo forecast and are absent without a latitude and longitude ;; test: unit: solar_snapshot with no location returns {} -->
 
@@ -471,12 +478,12 @@ grouped by `GET /api/schedules`. *Needs* and *without it* are per group.
 |---|---|---|
 | Gateway | a fresh poll of that gateway | None |
 | Derived Battery | the poll, the battery capacity constant, the SoC constants; at-max-rate ETAs also a rate (Model 702 or the max power constant); the tracker also the solar forecast | None |
-| Weather & Solar | a location (**Settings → Integrations → Location & Solar**, synced from the aGate or typed in); `solar.today_kwh` the poll | None |
+| Weather & Solar | a location (**Settings → Sites & Billing → Location & Solar**, synced from the aGate or typed in); `solar.today_kwh` the poll | None |
 | Tariff & Utility | a meter with a utility and tariff; spot/feed-in a NEM region, an HA price entity or a dynamic tariff | None |
 | Demand / Tariff, Energy, Fixed Charges | a tariff with those charges or windows | None |
 | System Setup | nothing (defaults), better with Setup filled in | a default |
 | Automation Constants | nothing | the default |
-| Ask before continuing (`ask.answer`) | the schedule's Ask before continuing step, answered in this run; read by exit conditions and HA action guards | None |
+| Actionable notification (`ask.answer`) | the schedule's Actionable notification, answered in this run; read by exit conditions and HA action guards | None |
 | an HA instance | the instance enabled and the entity exposed | None (also while the entity is `unavailable` or `unknown`, since 0.5.4, #167) |
 
 ??? example "All sensor ids (84 + your Home Assistant entities)"

@@ -133,7 +133,7 @@ def test_import_warns_about_ask_devices_it_does_not_know():
     out = sch.validate_import({"name": "x", "fire_at": "10:00", "duration_min": 30,
                                "ask": {**ASK, "send_to": {"type": "device", "ids": ["gone"]}}},
                               gateway_ids=set(), device_ids={"d1"})
-    assert any("gone" in w and "ask" in w.lower() for w in out["warnings"])
+    assert any("gone" in w and "actionable notification" in w for w in out["warnings"])
 
 
 # ── the editor, the list and Explain say who ─────────────────────────────────
@@ -144,7 +144,7 @@ def test_the_editor_lists_off_and_removed_devices_so_they_can_be_unticked():
 
 
 def test_all_enabled_devices_names_them():
-    assert "askedNames(form.ask)" in HTML
+    assert "askedNames(ha)" in HTML                    # the Actionable notify row (#576)
     assert 'data-testid="ask-asked-names"' in HTML
 
 
@@ -154,6 +154,6 @@ def test_the_editor_shows_what_else_this_schedule_sends():
 
 def test_the_list_and_explain_name_the_asked_devices():
     row = HTML[HTML.index("No gateway action"):][:600]
-    assert "askedNames(s.ask)" in row
+    assert "askedNames(askOf(s))" in row
     explain = JS[JS.index("explain(s, level)"):][:3000]
-    assert "askedNames(s.ask)" in explain
+    assert "this.askedNames(ask)" in explain and "this.askOf(s)" in explain

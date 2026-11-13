@@ -134,7 +134,7 @@ def _ping(host: str) -> int:
     r = probe(host)
     ping = f"ok {r['ping_ms']} ms" if r["ping"] else "no reply"
     dc = (f"ok {r['dc_9000_connect_ms']} ms" if r["dc_9000"] else "refused / timed out")
-    print(f"{r['host']}\n  ping           {ping}\n  :9000 connect  {dc}")
+    print(f"{r['host']}\n  ping           {ping}\n  :{r['port']} connect  {dc}")
     return 0 if r["dc_9000"] else 1
 
 

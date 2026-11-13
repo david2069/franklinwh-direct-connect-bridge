@@ -14,6 +14,7 @@ import time
 
 from . import alerts
 from . import client
+from . import constants
 from . import providers
 from .config import Settings, metrics_active
 from .db import get_store, maybe_maintain
@@ -44,8 +45,9 @@ def _record_modbus_leg(store, gw_id: str, summ: dict) -> bool:
     if mb is None or not mb_at or mb_at == _MB_RECORDED.get(gw_id):
         return False
     _MB_RECORDED[gw_id] = mb_at
+    from . import battery_control
     store.record_link_probe(gw_id, "ok" if mb else "failed", leg="modbus_502",
-                            error="" if mb else "port 502 not open", now=mb_at)
+                            error="" if mb else f"port {battery_control.default_port()} not open", now=mb_at)
     return True
 
 
@@ -497,7 +499,9 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                     _st = get_store(settings)
                     if _st is not None:
                         _cfg = notify_engine.config(_st)
-                        for ev, vals in notify_engine.evaluate(summ, prev, _cfg):
+                        _cap = constants.values(_st).get("battery_capacity_kwh")
+                        for ev, vals in notify_engine.evaluate(summ, prev, _cfg,
+                                                               capacity_kwh=_cap):
                             await asyncio.to_thread(notify_engine.fire, _st, ev,
                                                     gateway=gw.label or gw.id, cfg=_cfg, **vals)
                 except Exception as e:  # noqa: BLE001 — never let notifications break the poll
@@ -549,9 +553,13 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                             inserts += 1
                             if inserts % 20 == 0:
                                 # hourly per database: delete past retention, then keep
-                                # samples older than 10 days as 5-minute rows (#540); it logs
+                                # samples older than 10 days as 5-minute rows (#540); it logs.
+                                # Battery recordings go by their own age and size limits.
                                 await asyncio.to_thread(
-                                    maybe_maintain, store, settings.metrics_retention_days)
+                                    lambda: maybe_maintain(
+                                        store, settings.metrics_retention_days,
+                                        bms_keep_days=settings.bms_keep_days,
+                                        bms_max_mb=settings.bms_max_mb))
                         except Exception as e:  # noqa: BLE001
                             log.warning("[%s] metrics write failed: %s", gw.id, e)
 

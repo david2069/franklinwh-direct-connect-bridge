@@ -63,6 +63,9 @@
                   @click="open = false; exportData('json')">JSON</button>
         </div>
       </div>
+      <!-- Explain (#588): trends and what to change for the user's objectives -->
+      <button class="btn btn-secondary btn-sm" data-testid="analytics-explain"
+              title="Trends, and what to change for your objectives" @click="explain()">Explain</button>
       <button class="btn btn-secondary btn-sm" @click="refresh()" :disabled="loading">
         <span x-text="loading ? '…' : 'Refresh'"></span>
       </button>
@@ -209,17 +212,107 @@
     </div>
   </div>
 
+</div><!-- /local -->
+
   <!-- Stats strip -->
-  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  <!-- the period's totals from whichever source is shown, and how much history it holds (owner, 2026-11-12) -->
+  <div x-show="chartType !== 'flow'" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
     <template x-for="s in stats" :key="s.label">
       <div class="card" style="padding:14px 16px">
         <div class="text-[10px] uppercase tracking-widest text-slate-500" x-text="s.label"></div>
         <div class="text-lg font-semibold tabular-nums" style="color:var(--text-primary)" x-text="s.value"></div>
+        <div x-show="s.note" class="text-[11px] text-slate-500" x-text="s.note"></div>
       </div>
     </template>
   </div>
 
-</div>
+  <!-- Explain (#588): the shown period's trends, findings and suggestions for the chosen
+       objectives. Everything shows inside the dialog; nothing is applied from here. -->
+  <div x-show="explainOpen" x-cloak role="dialog" aria-modal="true" aria-label="Explain"
+       data-testid="explain-dialog"
+       @click.self="explainOpen = false" @keydown.escape.window="explainOpen = false"
+       class="fixed inset-0 flex items-end sm:items-center justify-center sm:p-4"
+       style="z-index:80;background:rgba(0,0,0,.6)">
+    <div class="card w-full sm:max-w-lg max-h-[90dvh] overflow-y-auto space-y-4" style="padding:16px">
+      <div class="flex items-center justify-between gap-2">
+        <h4 class="text-base font-semibold" style="color:var(--text-primary)">Explain
+          <span class="text-xs font-normal" style="color:var(--text-secondary)"
+                x-text="(source === 'cloud' ? 'Cloud' : 'Local') + ' · ' + periodLabel"></span></h4>
+        <button type="button" class="btn btn-secondary btn-sm" aria-label="Close" @click="explainOpen = false">&times;</button>
+      </div>
+
+      <div data-testid="explain-objectives">
+        <div class="text-xs mb-1.5" style="color:var(--text-secondary)">Your objectives (pick one or two; remembered for this gateway)</div>
+        <div class="flex flex-wrap gap-1.5">
+          <template x-for="o in explainChoices" :key="o[0]">
+            <button type="button" class="px-2.5 py-1 rounded-full border text-xs"
+                    :class="explainObjs.includes(o[0]) ? 'border-emerald-400 text-emerald-300' : 'border-white/10'"
+                    :style="explainObjs.includes(o[0]) ? '' : 'color:var(--text-secondary)'"
+                    :aria-pressed="String(explainObjs.includes(o[0]))"
+                    @click="toggleObjective(o[0])" x-text="o[1]"></button>
+          </template>
+        </div>
+      </div>
+
+      <div x-show="explainBusy" class="text-sm" style="color:var(--text-secondary)">Working it out…</div>
+      <div x-show="explainErr && !explainBusy" x-cloak class="text-sm" style="color:var(--danger,#f87171)" x-text="explainErr"></div>
+
+      <template x-if="explainData && !explainErr && !explainBusy">
+        <div class="space-y-4">
+          <section data-testid="explain-trends">
+            <h5 class="text-xs font-semibold uppercase tracking-wide mb-1" style="color:var(--text-secondary)">Trends</h5>
+            <p x-show="!(explainData.trends || []).length" class="text-sm" style="color:var(--text-secondary)">
+              No earlier period to compare with yet.</p>
+            <ul class="space-y-1">
+              <template x-for="t in explainData.trends || []" :key="t.id">
+                <li class="text-sm flex gap-2" style="color:var(--text-primary)">
+                  <span class="w-4 shrink-0" x-text="t.direction === 'up' ? '↑' : (t.direction === 'down' ? '↓' : '→')"></span>
+                  <span x-text="t.headline"></span></li>
+              </template>
+            </ul>
+          </section>
+          <section data-testid="explain-findings">
+            <h5 class="text-xs font-semibold uppercase tracking-wide mb-1" style="color:var(--text-secondary)">What it shows</h5>
+            <ul class="space-y-1.5">
+              <template x-for="f in explainData.findings || []" :key="f.id">
+                <li class="text-sm"><div style="color:var(--text-primary)" x-text="f.headline"></div>
+                  <div class="text-xs" style="color:var(--text-secondary)" x-text="f.why"></div></li>
+              </template>
+            </ul>
+          </section>
+          <section data-testid="explain-suggestions">
+            <h5 class="text-xs font-semibold uppercase tracking-wide mb-1" style="color:var(--text-secondary)">For your objectives</h5>
+            <p x-show="!explainObjs.length" class="text-sm" style="color:var(--text-secondary)">Pick an objective above.</p>
+            <p x-show="explainObjs.length && !(explainData.suggestions || []).length" class="text-sm" style="color:var(--text-secondary)">
+              Nothing to change for these objectives from this period.</p>
+            <div class="space-y-3">
+              <template x-for="s in explainData.suggestions || []" :key="s.id">
+                <div class="border-t pt-2" style="border-color:var(--border)">
+                  <div class="text-sm font-medium" style="color:var(--text-primary)" x-text="s.headline"></div>
+                  <div class="text-xs mt-0.5" style="color:var(--text-secondary)" x-text="s.why"></div>
+                  <div class="text-xs mt-1" style="color:var(--text-secondary)" x-show="explainEffect(s.effect)">
+                    <span class="font-medium" x-text="explainEffect(s.effect)"></span>
+                    <span x-text="' — ' + (s.effect && s.effect.note || '')"></span></div>
+                  <button type="button" class="btn btn-secondary btn-sm mt-1.5" @click="openSuggestion(s.action)"
+                          x-text="suggestionLink(s.action)"></button>
+                </div>
+              </template>
+            </div>
+          </section>
+          <section x-show="(explainData.missing || []).length" data-testid="explain-missing">
+            <h5 class="text-xs font-semibold uppercase tracking-wide mb-1" style="color:var(--text-secondary)">For a fuller answer</h5>
+            <ul class="space-y-1">
+              <template x-for="m in explainData.missing || []" :key="m.id">
+                <li class="text-xs" style="color:var(--text-secondary)" x-text="m.text"></li>
+              </template>
+            </ul>
+          </section>
+          <p class="text-[11px]" style="color:var(--text-faint)">Worked out from this period's totals by fixed rules;
+            effects are estimates. Nothing is changed from here.</p>
+        </div>
+      </template>
+    </div>
+  </div>
 
   <!-- Colours (owner, 2026-11-10): one colour per series for Local and Cloud, remembered in
        this browser; presets for a dark or light background, and the defaults. -->

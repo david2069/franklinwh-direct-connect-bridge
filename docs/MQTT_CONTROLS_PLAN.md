@@ -8,7 +8,7 @@ Status: **agreed** (owner decisions in §4, 2026-10-16). Written 2026-10-16 afte
 > effect to become a control, so grid limits wait until their local write is proven.
 >
 > **Update 2026-11-03 (owner):** off-grid is an HA control: the **Go Off-Grid** switch (1723,
-> the same write as `POST /api/offgrid`, default off-grid floor). Its state is what was
+> the same write as `POST /api/offgrid`, default reconnect SoC). Its state is what was
 > requested (1723 `offgridSet`); Grid Status says whether the house is islanded and why.
 
 ## 1. Where it stands (0.4.4)

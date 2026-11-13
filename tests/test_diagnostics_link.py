@@ -49,7 +49,7 @@ def test_endpoint_skips_mocks_and_reports_the_bridge(monkeypatch):
 
 
 def test_cli_ping(monkeypatch, capsys):
-    monkeypatch.setattr(diagnostics, "probe", lambda h: {"host": "192.0.2.10", "ping": True,
+    monkeypatch.setattr(diagnostics, "probe", lambda h: {"host": "192.0.2.10", "port": 9000, "ping": True,
                         "ping_ms": 3.1, "dc_9000": True, "dc_9000_connect_ms": 9.9})
     assert cli.main(["ping", "192.0.2.10"]) == 0
     out = capsys.readouterr().out

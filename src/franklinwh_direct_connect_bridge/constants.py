@@ -97,6 +97,15 @@ def update(store, updates: dict) -> dict:
     return vals
 
 
+def mode_chosen(store) -> bool:
+    """True once a default operating mode has been saved (not just the default)."""
+    try:
+        raw = store.get_config(_KEY) if store is not None else None
+        return bool(raw) and _MODE_KEY in json.loads(raw)
+    except (ValueError, TypeError):
+        return False
+
+
 def snapshot(store) -> dict:
     """const.* sensor values for the scheduler snapshot."""
     v = values(store)

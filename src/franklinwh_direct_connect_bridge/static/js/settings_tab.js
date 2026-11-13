@@ -10,6 +10,8 @@ function settingsTab() {
     support: null, supportText: '', supportBusy: false, supportCopied: '',
     apowerSpecs: [], apowerModel: '', apowerCount: 1,
     haPriceOpts: [],   // {id:'ha:<inst>:<eid>', label:friendly, group:instance}
+    haEventOpts: [],   // on/off HA entities for the price events (#582)
+    priceSrc: 'off',   // the price signal's source: off | nem | ha (#582)
     cfg: { connection: {}, mqtt: {}, control: {}, notifications: {},
            metrics: {}, environment: {} },
     // Live-editable mirror of the whitelisted fields (bound to the inputs).
@@ -20,7 +22,8 @@ function settingsTab() {
     form: { allow_writes: false, log_level: 'info', ha_notify: true, ha_url: '', ha_token: '',
             fwh_cloud_email: '', fwh_cloud_password: '', fwh_cloud_gateway: '',
             pv_latitude: '', pv_longitude: '', pv_kwp: '', pv_tilt: '', pv_azimuth: '',
-            nem_region: '', tariff_price_entity: '', tariff_feedin_entity: '' },
+            nem_region: '', tariff_price_entity: '', tariff_feedin_entity: '',
+            price_spike_c: '', price_spike_entity: '', demand_window_entity: '' },
     nemSpot: null,   // {region, spot:{price_c_kwh,...}, regions[]} — AEMO NEM wholesale
     cloudTesting: false,
     cloudResult: null,
@@ -33,6 +36,7 @@ function settingsTab() {
     // ── Sites + Meters ──
     sites: [], meters: [], siteEdit: null, meterEdit: null,
     utilities: [], tariffs: [], utilEdit: null, tariffEdit: null,
+    tariffImp: { open: false, text: '', preview: null, msg: null, busy: false, done: false },
     // ── Automation constants (const.* sensors) ──
     constants: {}, constSpec: {}, constModes: [], constSaving: false,
     systemSetup: {}, systemSpec: {}, systemSaving: false, systemLoaded: {},
@@ -89,6 +93,8 @@ function settingsTab() {
       L.push('FranklinWH Direct Connect Bridge — support info (redacted)');
       L.push(`generated: ${new Date((m.generated_at||0)*1000).toISOString()}`);
       L.push(`version: ${m.software_version}  build: ${m.build}  platform: ${m.platform}`);
+      const i = m.install || {};   // which installation this is (owner, 2026-11-11)
+      if (i.install_id) L.push(`install: ${i.install_id} · ${i.install_type} · ${i.os} ${i.arch} · Python ${i.python}${i.home_assistant ? ' · HA ' + i.home_assistant : ''} · since ${i.install_date || '?'} (${i.first_version || '?'}) · now ${i.bridge_version}`);
       L.push(`installed: ${m.install_date||'?'}  last update: ${m.last_updated?new Date(m.last_updated*1000).toISOString().slice(0,10):'?'}  uptime: ${m.bridge_uptime_s!=null?Math.round(m.bridge_uptime_s)+'s':'?'}`);
       if ((m.updates||[]).length) L.push('updates: ' + m.updates.map(u => u.version+'@'+new Date(u.ts*1000).toISOString().slice(0,10)).join(', '));
       L.push('');
@@ -319,7 +325,7 @@ function settingsTab() {
     },
     async signOut() {
       await fetch('api/auth/logout', { method: 'POST' });
-      location.href = '/signin';
+      location.href = 'signin';
     },
     async saveTrustedNetworks() {
       const s = this.security;
@@ -424,7 +430,7 @@ function settingsTab() {
         const label = c.serial ? ('aGate ' + String(c.serial).slice(-4)) : c.host;
         const r = await fetch('api/gateways', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ label, host: c.host, port: 9000, enabled: true }) });
+          body: JSON.stringify({ label, host: c.host, port: window.FWH_BOOT.ports.dc, enabled: true }) });
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
         c.already_added = true;
         await this.loadGateways();
@@ -449,7 +455,7 @@ function settingsTab() {
       } catch (e) { this.gwErr = e.message; }
     },
 
-    openAddGateway() { this.gwErr = ''; this.scanCands = null; this.gwAdd = { label: '', host: '', port: 9000, enabled: true }; },
+    openAddGateway() { this.gwErr = ''; this.scanCands = null; this.gwAdd = { label: '', host: '', port: window.FWH_BOOT.ports.dc, enabled: true }; },
     cancelAddGateway() { this.gwAdd = null; },
     async saveAddGateway() {
       if (!this.canWrite()) { this.gwErr = 'Enable writes (ALLOW_WRITES) to add a gateway.'; return; }
@@ -464,11 +470,11 @@ function settingsTab() {
     },
 
     // ── Edit Gateway modal ──
-    gwEdit: { open: false, id: '', label: '', host: '', port: 9000, description: '', publish_ha: true, is_mock: false, mock_units: 1, is_default: false, enabled: true, was_enabled: true, meter_id: '' },
+    gwEdit: { open: false, id: '', label: '', host: '', port: window.FWH_BOOT.ports.dc, description: '', publish_ha: true, is_mock: false, mock_units: 1, is_default: false, enabled: true, was_enabled: true, meter_id: '' },
     gwTest: null, gwTesting: false, gwNote: '',
     openEditGateway(gw) {
       this.gwErr = ''; this.gwNote = ''; this.gwTest = null;
-      this.gwEdit = { open: true, id: gw.id, label: gw.label, host: gw.host || '', port: gw.port || 9000,
+      this.gwEdit = { open: true, id: gw.id, label: gw.label, host: gw.host || '', port: gw.port || window.FWH_BOOT.ports.dc,
         description: gw.description || '', publish_ha: !!gw.publish_ha, is_mock: !!gw.is_mock,
         mock_units: gw.mock_units || 1, is_default: !!gw.is_default, enabled: !!gw.enabled,
         was_enabled: !!gw.enabled, meter_id: gw.meter_id || '' };
@@ -616,6 +622,7 @@ function settingsTab() {
         const d = await r.json(); if (!r.ok) throw new Error(d.detail || 'save failed');
         this.systemSetup = d.values || this.systemSetup;
         this.systemLoaded = this.sysFields();
+        this.$store.app._loadSolarInstalled();    // the Solar tab follows the solar type
         this.$store.app.toast('System Setup saved', 'success');
       } catch (e) { this.$store.app.toast('System Setup save failed: ' + e.message, 'error'); }
       finally { this.systemSaving = false; }
@@ -660,34 +667,59 @@ function settingsTab() {
         a.click(); URL.revokeObjectURL(a.href);
       } catch (e) { this.$store.app.toast('Export failed: ' + e.message, 'error'); }
     },
-    async importTariffProfile(ev) {
+    // Import tariff (owner 2026-11-13): paste the JSON or choose a file — a phone often has
+    // no file to hand. Check is the dry-run preview; results stay in the dialog.
+    openTariffImport() {
+      this.tariffImp = { open: true, text: '', preview: null, msg: null, busy: false, done: false };
+    },
+    async tariffImportFile(ev) {
       const file = ev.target.files[0]; ev.target.value = '';
       if (!file) return;
-      let bundle;
-      try { bundle = JSON.parse(await file.text()); }
-      catch (e) { this.$store.app.toast('Import failed: not valid JSON — ' + e.message, 'error'); return; }
+      this.tariffImp.text = await file.text();
+      await this.tariffImportCheck();
+    },
+    _tariffBundle() {
+      try { return JSON.parse(this.tariffImp.text); }
+      catch (e) { this.tariffImp.msg = { kind: 'err', text: 'Not valid JSON: ' + e.message }; return null; }
+    },
+    async tariffImportCheck() {
+      const t = this.tariffImp;
+      Object.assign(t, { preview: null, msg: null, done: false });
+      const bundle = this._tariffBundle();
+      if (!bundle) return;
+      t.busy = true;
       try {
-        // preview
-        const pr = await fetch('api/tariffs/import?dry_run=true', {
+        const r = await fetch('api/tariffs/import?dry_run=true', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bundle) });
-        const pd = await pr.json();
-        if (!pr.ok) { this.$store.app.toast('Import rejected: ' + (pd.detail || pr.statusText), 'error'); return; }
-        const p = pd.preview || {};
-        const ok = await this.$store.app.confirmDialog(
-          `Import "${p.tariff_name}"?\n\nRetailer: ${p.retailer} · Network: ${p.network}\n`
-          + `Plan: ${p.plan_type} · ${p.seasons} season(s) · ${p.fixed_charges} fixed charge(s)\n`
-          + `${p.timezone ? 'Timezone: ' + p.timezone + '\n' : ''}`
-          + `\nCreates the utility + tariff and attaches them to the default meter.`,
-          { title: 'Import tariff' });
-        if (!ok) return;
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) t.msg = { kind: 'err', text: 'Not accepted: ' + (d.detail || r.statusText) };
+        else t.preview = d.preview || {};
+      } catch (e) { t.msg = { kind: 'err', text: 'Check failed: ' + e.message }; }
+      t.busy = false;
+    },
+    tariffImportSummary() {
+      const p = this.tariffImp.preview || {};
+      return `"${p.tariff_name}"\nRetailer: ${p.retailer} · Network: ${p.network}\n`
+        + `Plan: ${p.plan_type} · ${p.seasons} season(s) · ${p.fixed_charges} fixed charge(s)`
+        + (p.timezone ? `\nTimezone: ${p.timezone}` : '')
+        + '\nImport creates the utility + tariff and attaches them to the default meter.';
+    },
+    async tariffImportApply() {
+      const t = this.tariffImp;
+      const bundle = this._tariffBundle();
+      if (!bundle) return;
+      t.busy = true;
+      try {
         const r = await fetch('api/tariffs/import', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bundle) });
-        const d = await r.json();
+        const d = await r.json().catch(() => ({}));
         if (r.ok && d.ok) {
-          this.$store.app.toast('Imported ' + p.retailer + ' — ' + p.tariff_name, 'success');
+          t.msg = { kind: 'ok', text: `Imported ${t.preview.retailer} — ${t.preview.tariff_name}.` };
+          t.done = true;
           await this.loadUtilitiesTariffs(); await this.loadSitesMeters();
-        } else { this.$store.app.toast('Import failed: ' + (d.detail || 'error'), 'error'); }
-      } catch (e) { this.$store.app.toast('Import failed: ' + e.message, 'error'); }
+        } else t.msg = { kind: 'err', text: 'Import failed: ' + (d.detail || r.statusText) };
+      } catch (e) { t.msg = { kind: 'err', text: 'Import failed: ' + e.message }; }
+      t.busy = false;
     },
     editUtility(u) { this.utilEdit = { ...u, export_limit_kw: u.export_limit_kw ?? '',
       export_allowed: !!u.export_allowed, solar_export_allowed: !!u.solar_export_allowed, battery_export_allowed: !!u.battery_export_allowed,
@@ -766,10 +798,26 @@ function settingsTab() {
     async loadHaPriceOpts() {
       try {
         const d = await (await fetch('api/ha/entities?exposed=true&limit=1000')).json();
+        const opt = e => ({ id: `ha:${e.instance_id}:${e.entity_id}`, label: e.name || e.entity_id, group: e.instance || 'HA' });
         this.haPriceOpts = (d.entities || [])
-          .filter(e => ['sensor', 'number', 'input_number'].includes(e.domain))
-          .map(e => ({ id: `ha:${e.instance_id}:${e.entity_id}`, label: e.name || e.entity_id, group: e.instance || 'HA' }));
-      } catch (e) { this.haPriceOpts = []; }
+          .filter(e => ['sensor', 'number', 'input_number'].includes(e.domain)).map(opt);
+        // On/off entities for the price events (#582): a spike sensor, a peak window.
+        this.haEventOpts = (d.entities || [])
+          .filter(e => ['binary_sensor', 'calendar', 'input_boolean', 'switch'].includes(e.domain)).map(opt);
+      } catch (e) { this.haPriceOpts = []; this.haEventOpts = []; }
+    },
+    // The price signal's source (#582): off, AEMO NEM (the site's region) or HA entities.
+    async setPriceSignal(v) {
+      this.priceSrc = v;
+      if (v === 'nem') {
+        const rg = (this.nemSpot && this.nemSpot.site_region) || '';
+        await this.saveOne({ nem_region: rg, tariff_price_entity: '', tariff_feedin_entity: '' });
+      } else if (v === 'ha') {
+        await this.saveOne({ nem_region: '' });
+      } else {
+        await this.saveOne({ nem_region: '', tariff_price_entity: '', tariff_feedin_entity: '' });
+      }
+      await this.loadNemSpot();
     },
     haPriceLabel(id) {
       if (!id) return '';
@@ -1074,6 +1122,10 @@ function settingsTab() {
       this.form.log_level = (this.cfg.control && this.cfg.control.log_level) || 'info';
       this.form.ha_notify = !!(this.cfg.notifications && this.cfg.notifications.ha_notify);
       this.form.ha_url = (this.cfg.notifications && this.cfg.notifications.ha_url) || '';
+      const pr = this.cfg.prices || {};                 // price events (#582)
+      this.form.price_spike_c = pr.price_spike_c || '';
+      this.form.price_spike_entity = pr.price_spike_entity || '';
+      this.form.demand_window_entity = pr.demand_window_entity || '';
       const loc = this.cfg.location || {};
       this.form.pv_latitude = loc.latitude ?? '';
       this.form.pv_longitude = loc.longitude ?? '';
@@ -1217,7 +1269,9 @@ function settingsTab() {
         this.history.info = d;
         this.history.confirmOff = false;
         const days = d.retention_days;
-        this.history.msg = { kind: 'ok', text: 'enabled' in change
+        this.history.msg = { kind: 'ok', text: ('bms_keep_days' in change || 'bms_max_mb' in change)
+          ? `Battery recordings: kept ${d.bms_keep_days} days, up to ${d.bms_max_mb} MB.`
+          : 'enabled' in change
           ? (d.enabled ? 'Local history is on.' : 'Local history is off. What is stored is kept.')
           : 'Kept for ' + (days ? (days % 365 ? days + ' days' : (days / 365) + (days === 365 ? ' year' : ' years')) : 'ever') + '.' };
       } catch (e) {
@@ -1256,8 +1310,10 @@ function settingsTab() {
       try {
         const r = await (await fetch('api/tariff/spot')).json();
         this.nemSpot = r;
-        if (r.configured_region != null) this.form.nem_region = r.configured_region;
+        this.form.nem_region = r.configured_region || '';
         if (r.ha) { this.form.tariff_price_entity = r.ha.price_entity || ''; this.form.tariff_feedin_entity = r.ha.feedin_entity || ''; }
+        if (this.priceSrc !== 'ha' || this.form.tariff_price_entity)
+          this.priceSrc = this.form.tariff_price_entity ? 'ha' : (this.form.nem_region ? 'nem' : 'off');
       } catch (e) { /* optional */ }
     },
     async saveOne(patch) {
@@ -1312,6 +1368,13 @@ function settingsTab() {
     setThreshold(key, val) {
       const n = Math.max(0, Math.min(100, parseInt(val, 10) || 0));
       this._saveTriggers({ triggers: { [key]: { threshold: n } } });
+    },
+    // The group heading (#581, Scheduler) before the first trigger of its group.
+    triggerGroupStart(key) {
+      const all = Object.entries(this.triggers.config.triggers || {});
+      const i = all.findIndex(([k]) => k === key);
+      const g = (all[i] || [])[1]?.group;
+      return g && (i === 0 || all[i - 1][1].group !== g) ? g : '';
     },
     triggerStat(key) {
       const s = (this.triggers.stats || []).find(x => x.event === key);

@@ -71,9 +71,9 @@ ASK_TEMPLATES = {
                               ({"tariff.buy_rate": 0.05}, {"tariff.buy_rate": 0.051})),
     # High price exports only at or above the min-discharge SoC constant.
     "spot_high_export_ask": (("force", "discharge"), "modbus", ["Export", "Hold"],
-                             ({"tariff.spot_price": 50, "battery.soc_pct": 20,
+                             ({"tariff.price_spike": 1, "battery.soc_pct": 20,   # #582
                                "const.min_discharge_soc": 20},
-                              {"tariff.spot_price": 50, "battery.soc_pct": 19,
+                              {"tariff.price_spike": 1, "battery.soc_pct": 19,
                                "const.min_discharge_soc": 20})),
     "tariff_high_export_ask": (("force", "discharge"), "modbus", ["Export", "Hold"],
                                ({"tariff.sell_rate": 0.5, "battery.soc_pct": 60,
@@ -103,7 +103,7 @@ def test_ask_template_shape_and_validation(pid):
     assert spec["action"]["kind"] == kind
     if direction:
         assert spec["action"]["direction"] == direction
-    ask = spec["ask"]
+    ask = sch.entry_ask(spec)                  # the Actionable notify row (#576)
     assert ask["timeout_min"] == 5 and ask["if_no_reply"] == "skip"
     assert "%" in ask["question"]
     assert [c["label"] for c in ask["choices"]] == buttons
@@ -124,7 +124,7 @@ def test_ask_template_conditions_match_at_threshold(pid):
 
 
 def test_eight_ask_templates():
-    assert len([p for p in sch.PRESETS if (p["spec"].get("ask") or {})]) == 8
+    assert len([p for p in sch.PRESETS if sch.entry_ask(p["spec"])]) == 8
 
 
 def test_price_gates_fail_closed_on_the_other_condition():

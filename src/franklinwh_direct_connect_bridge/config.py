@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     # (e.g. "10.0.0.5=Home,10.0.0.6=Shed"). Wins over fwh_host when set.
     fwh_hosts: str = ""
     fwh_port: int = 9000
+    modbus_port: int = 502               # the aGate's Modbus TCP Server (Control tab can override)
     fwh_timeout: float = 20.0
     fwh_retries: int = 2
     fwh_subnet: str = ""                 # for re-discovery; blank = derive host's /24
@@ -74,6 +75,10 @@ class Settings(BaseSettings):
     # column). Keeping a year locally removes the only reason the gateway's own
     # ~105-day history looked like the longer record.
     metrics_retention_days: int = 365
+    # Battery recordings (owner, 2026-11-11): finished recordings older than this many days,
+    # and the oldest past this many MB, are deleted. Set in Settings next to Local history.
+    bms_keep_days: int = 90
+    bms_max_mb: int = 200
 
     # Home Assistant notifications (non-actionable). In the HA add-on the supervisor
     # provides SUPERVISOR_TOKEN + http://supervisor/core/api automatically; standalone can
@@ -86,10 +91,15 @@ class Settings(BaseSettings):
     # lat/lon unset = feature off. Azimuth uses Open-Meteo's convention (0=S, -90=E, 90=W).
     pv_latitude: float | None = None
     pv_longitude: float | None = None
-    pv_kwp: float = 5.0
+    pv_kwp: float | None = None       # yours; None = the gateways' own size (#583)
     nem_region: str = ""              # AEMO NEM region for wholesale spot (NSW1/QLD1/SA1/TAS1/VIC1)
     tariff_price_entity: str = ""     # HA entity (ha:<inst>:<eid>) -> tariff.spot_price (buy, dynamic)
     tariff_feedin_entity: str = ""    # HA entity (ha:<inst>:<eid>) -> tariff.feed_in_price (sell, dynamic)
+    # Price events (#582): a price spike at or above this many c/kWh (0 = off), or from an
+    # HA binary_sensor; a demand / peak window from an HA entity (wins over the tariff's).
+    price_spike_c: float = 0.0
+    price_spike_entity: str = ""
+    demand_window_entity: str = ""
     billing_dynamic: bool = False     # price BILLING at the live wholesale rate (spot/feed-in), not the static tariff
     pv_tilt: float = 20.0
     pv_azimuth: float = 0.0
@@ -171,6 +181,7 @@ _OVERRIDE_KEYS = {"allow_writes", "log_level", "ha_notify", "ha_url", "ha_token"
                   "nem_region",   # AEMO NEM wholesale spot region (live-editable)
                   "tariff_price_entity", "tariff_feedin_entity",   # HA dynamic-price provider
                   "billing_dynamic",   # price billing at the live wholesale rate
+                  "price_spike_c", "price_spike_entity", "demand_window_entity",   # #582
                   "dispatch_interrupt_policy",
                   # MQTT publishing, live-editable so the add-on can adopt the Supervisor's
                   # broker in one click instead of sending the user to the add-on options
@@ -178,7 +189,9 @@ _OVERRIDE_KEYS = {"allow_writes", "log_level", "ha_notify", "ha_url", "ha_token"
                   # an explicit action, never something startup decides.
                   "mqtt_enabled", "mqtt_host", "mqtt_port", "mqtt_username", "mqtt_password",
                   # Local history on/off and how long it is kept, from Settings (#540).
-                  "metrics_enabled", "metrics_retention_days"}
+                  "metrics_enabled", "metrics_retention_days",
+                  # Battery recordings' purge limits (owner, 2026-11-11).
+                  "bms_keep_days", "bms_max_mb"}
 
 #: Settings saved from the UI that an explicit env value (or add-on option, which becomes
 #: one) still beats: the env value is the deployment's decision, so the UI shows it locked.

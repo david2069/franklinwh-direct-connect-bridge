@@ -18,12 +18,12 @@
         </tr>
         <tr><td class="text-slate-500">Round-trip latency</td><td class="font-mono text-right"><span x-text="fmt.ms($store.app.summary.latency_ms)"></span> ms</td></tr>
         <tr>
-          <td class="text-slate-500">aGate Modbus TCP Server :502</td>
+          <td class="text-slate-500">aGate Modbus TCP Server :<span x-text="$store.app.ports.modbus"></span></td>
           <td class="text-right">
             <span class="chip ok" x-show="$store.app.summary.modbus_502 === true">Up</span>
             <span class="chip error" x-show="$store.app.summary.modbus_502 === false">Down</span>
             <span class="chip muted" x-show="$store.app.summary.modbus_502 == null"
-                  title="Not measured: the Modbus client of this bridge is off, this is a mock gateway, or it has not connected yet. The bridge does not probe the Modbus TCP Server of the aGate (:502) to show this; it reports its last real connection (a force, release, ratings read or Test). This is not a statement about the gateway — its own SunSpec Modbus setting is on the SunSpec Modbus card.">Not probed</span>
+                  :title="'Not measured: the Modbus client of this bridge is off, this is a mock gateway, or it has not connected yet. The bridge does not probe the Modbus TCP Server of the aGate (:' + $store.app.ports.modbus + ') to show this; it reports its last real connection (a force, release, ratings read or Test). This is not a statement about the gateway — its own SunSpec Modbus setting is on the SunSpec Modbus card.'">Not probed</span>
           </td>
         </tr>
         <tr><td class="text-slate-500">Ping</td><td class="font-mono text-right" x-text="$store.app.summary.ping ?? 'n/a'"></td></tr>
@@ -123,10 +123,10 @@
             <div class="font-medium" x-text="g.label + (g.is_mock ? ' (mock — not probed)' : '')"></div>
             <div x-show="!g.is_mock" class="grid grid-cols-2 gap-x-4 text-xs mt-1" style="color:var(--text-secondary)">
               <span>Ping</span><span x-text="g.ping ? (g.ping_ms + ' ms') : 'no reply'"></span>
-              <span>Connect :9000</span><span x-text="g.dc_9000 ? (g.dc_9000_connect_ms + ' ms') : 'refused / timed out'"></span>
-              <span>This bridge's connections :9000</span>
+              <span>Connect :<span x-text="$store.app.ports.dc"></span></span><span x-text="g.dc_9000 ? (g.dc_9000_connect_ms + ' ms') : 'refused / timed out'"></span>
+              <span>This bridge's connections :<span x-text="$store.app.ports.dc"></span></span>
               <span x-text="g.connections ? g.connections.dc_9000 : 'n/a (not in a container)'"></span>
-              <span>… to the aGate Modbus TCP Server :502</span>
+              <span>… to the aGate Modbus TCP Server :<span x-text="$store.app.ports.modbus"></span></span>
               <span x-text="g.connections ? g.connections.modbus_tcp_server_502 : 'n/a'"></span>
             </div>
           </div>

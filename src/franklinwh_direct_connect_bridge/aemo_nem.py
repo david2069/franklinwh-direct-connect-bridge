@@ -15,6 +15,40 @@ from typing import Any
 #: The five NEM regions (AEMO REGIONID).
 REGIONS = ("NSW1", "QLD1", "SA1", "TAS1", "VIC1")
 
+#: A site's region (Sites & Meters → Region, e.g. AU-NSW) → its NEM region (#582). The ACT
+#: is in the NSW1 region. WA and the NT are not in the NEM.
+_SITE_REGION = {"NSW": "NSW1", "ACT": "NSW1", "QLD": "QLD1", "SA": "SA1", "TAS": "TAS1",
+                "VIC": "VIC1", "NEW SOUTH WALES": "NSW1", "AUSTRALIAN CAPITAL TERRITORY": "NSW1",
+                "QUEENSLAND": "QLD1", "SOUTH AUSTRALIA": "SA1", "TASMANIA": "TAS1",
+                "VICTORIA": "VIC1"}
+
+
+def region_for(site_region: str | None) -> str | None:
+    """The NEM region of a site's region ("AU-NSW", "NSW", "NSW1", "Victoria"), or None
+    when it is not in the NEM."""
+    r = (site_region or "").strip().upper()
+    if r in REGIONS:
+        return r
+    return _SITE_REGION.get(r.removeprefix("AU-").removeprefix("AU ").strip())
+
+
+def migrate_region(store, settings) -> None:
+    """The saved wholesale region moves to the sites (#582): a site with no region takes
+    it (NSW1 → AU-NSW); one whose region disagrees keeps its own, with a warning."""
+    import logging
+    old = (getattr(settings, "nem_region", "") or "").upper()
+    if old not in REGIONS or store is None:
+        return
+    for site in store.sites():
+        have = region_for(site.get("region"))
+        if not (site.get("region") or "").strip():
+            store.update_site(site["id"], region="AU-" + old[:-1])
+        elif have != old:
+            logging.getLogger(__name__).warning(
+                "Prices: site %s has region %s, but the saved wholesale region is %s; the "
+                "site's region is used", site.get("name"), site.get("region"), old)
+
+
 _URL = "https://visualisations.aemo.com.au/aemo/apps/api/report/ELEC_NEM_SUMMARY"
 _TTL = 240.0                       # NEM dispatch is 5-min; cache ~4min so we're never stale-by-much
 #: How old the last good price may be when a fetch fails (#207). Kept forever, a price-gated

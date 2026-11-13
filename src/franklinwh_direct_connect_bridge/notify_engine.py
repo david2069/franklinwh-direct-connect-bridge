@@ -32,6 +32,13 @@ DEFAULT_TRIGGERS: dict = {
     "soc_low": {"enabled": False, "label": "Battery SoC drops below", "threshold": 20},
     "soc_full": {"enabled": False, "label": "Battery SoC reaches", "threshold": 100},
     "bridge": {"enabled": True, "label": "Bridge started / restarted / stopped"},
+    # The scheduler's own (#581). Failed is the SCHEDULE_FAILED critical alert's push.
+    "schedule_failed": {"enabled": True, "label": "Run failed", "group": "Scheduler"},
+    "schedule_missed": {"enabled": True, "label": "Run missed", "group": "Scheduler"},
+    "schedule_aborted": {"enabled": False, "group": "Scheduler",
+                         "label": "Run aborted (stopped, deferred or ended early)"},
+    "schedule_no_reply": {"enabled": True, "group": "Scheduler",
+                          "label": "No reply to an actionable notification"},
 }
 
 #: Notifications with buttons that have only a Send to setting (#281): critical alerts
@@ -122,9 +129,11 @@ def valid_target(target) -> dict:
 
 
 def send_to_ids(store, key: str) -> list[str] | None:
-    """Who a notification with buttons (:data:`ASKS`) goes to: None for all enabled
+    """Who a notification with buttons (:data:`ASKS`, or a trigger's alert such as
+    ``schedule_failed``) goes to: None for all enabled
     devices, else the enabled ones among those chosen (a switched-off device stays off)."""
-    target = config(store)["asks"].get(key, {}).get("target") or ALL
+    cfg = config(store)
+    target = (cfg["asks"].get(key) or cfg["triggers"].get(key) or {}).get("target") or ALL
     if target["type"] != "device":
         return None
     on = {d["id"] for d in store.notify_devices() if d.get("enabled")}
@@ -160,7 +169,8 @@ EVENTS = (
           "aGate is UNREACHABLE [{gateway}] — check network / WiFi / power."),
     Event("aGate_online", "FranklinWH aGate", "aGate is reachable again [{gateway}]."),
     Event("off_grid", "FranklinWH off-grid",
-          "Gateway went OFF-GRID [{gateway}] ({reason}) — running on battery.", ("reason",)),
+          "Gateway went OFF-GRID [{gateway}] ({reason}) — running on battery: {metrics}.",
+          ("reason", "metrics")),
     Event("on_grid", "FranklinWH off-grid", "Gateway is back ON-GRID [{gateway}]."),
     Event("soc_low", "FranklinWH battery",
           "Battery SoC dropped below {threshold}% [{gateway}] (now {soc}%).", ("threshold", "soc")),
@@ -178,6 +188,12 @@ EVENTS = (
           "{gateway}: {detail}", ("action", "detail")),
     Event("schedule_notify", "{title}", "{message} [{gateway}]", ("title", "message")),
     Event("broadcast", "{title}", "{message}", ("title", "message")),
+    Event("schedule_missed", "FranklinWH schedule missed",
+          "Schedule '{schedule}' missed its window [{gateway}]: {detail}.", ("schedule", "detail")),
+    Event("schedule_aborted", "FranklinWH schedule aborted",
+          "Schedule '{schedule}' did not finish [{gateway}]: {detail}.", ("schedule", "detail")),
+    Event("schedule_no_reply", "FranklinWH schedule: no reply",
+          "Schedule '{schedule}' got no reply [{gateway}]: {detail}.", ("schedule", "detail")),
     Event("bridge_started", "FranklinWH bridge", "Bridge started (v{version}).", ("version",)),
     Event("bridge_restarted", "FranklinWH bridge",
           "Bridge restarted (v{version}{update}) after {down} down.", ("version", "update", "down")),
@@ -228,9 +244,53 @@ def _duration(s: int) -> str:
     return f"{m} min {s % 60} s" if m else f"{s} s"
 
 
-def evaluate(summ: dict, prev: dict | None, cfg: dict) -> list[tuple[str, dict]]:
+def _kw(w) -> str:
+    return f"{w / 1000:.1f} kW"
+
+
+def off_grid_metrics(power: dict, capacity_kwh: float | None) -> str:
+    """SoC, stored kWh, home load and solar now, and how long the battery lasts at the
+    CURRENT usage (the FranklinWH app estimates from the highest use in the past 72 h; this
+    bridge has the live load). Net draw = home − solar − generator. A user-requested
+    off-grid returns to the grid when the battery reaches the off-grid (reconnect) SoC, so
+    it runs to that; an outage runs to empty."""
+    soc, load = power.get("soc"), power.get("load_w")
+    solar = power.get("solar_w") or 0
+    have = isinstance(soc, (int, float))
+    parts = [f"SoC {round(soc)}%" if have else None,
+             f"stored {soc / 100 * capacity_kwh:.1f} kWh" if have and capacity_kwh else None,
+             f"home {_kw(load)}" if isinstance(load, (int, float)) else None,
+             f"solar {_kw(solar)}" if isinstance(solar, (int, float)) and solar > 0 else None]
+    now = ", ".join(p for p in parts if p)
+    if not have or not isinstance(load, (int, float)):
+        return now or "no live readings"
+    rec = power.get("offgrid_reconnect_soc")
+    user = power.get("off_grid_kind") == "simulated" and isinstance(rec, (int, float))
+    if user and soc <= rec:
+        return f"{now} — reconnecting to the grid at {round(rec)}%"
+    if not capacity_kwh:
+        return f"{now} — set Battery capacity (Automation) for a runtime estimate"
+    draw = load - solar - (power.get("generator_w") or 0)
+    if draw <= 0:
+        return f"{now} — solar is covering the home"
+    usable = (soc - rec) if user else soc
+    mins = round(usable / 100 * capacity_kwh * 1000 / draw * 60)
+    left = f"about {mins // 60} h {mins % 60} min"
+    if user:
+        return f"{now} — {left} until it reconnects to the grid at {round(rec)}%"
+    return f"{now} — {left} left at current usage"
+
+
+def notify_on(store, settings, key: str = "off_grid") -> bool:
+    """Whether a push goes out for ``key``: the Push notifications switch and the trigger."""
+    return bool(getattr(settings, "ha_notify", False)) and _enabled(config(store), key)
+
+
+def evaluate(summ: dict, prev: dict | None, cfg: dict,
+             capacity_kwh: float | None = None) -> list[tuple[str, dict]]:
     """Transitions worth notifying, gated by config. Returns [(event, values), …].
-    ``prev``/``summ`` are /api/summary snapshots; ``prev`` None on the first pass = no events."""
+    ``prev``/``summ`` are /api/summary snapshots; ``prev`` None on the first pass = no events.
+    ``capacity_kwh``: the Battery capacity constant, for the off-grid runtime estimate."""
     if prev is None or not cfg.get("master", True):
         return []
     out: list[tuple[str, dict]] = []
@@ -241,7 +301,8 @@ def evaluate(summ: dict, prev: dict | None, cfg: dict) -> list[tuple[str, dict]]
 
     if _enabled(cfg, "off_grid") and bool(p.get("off_grid")) != bool(c.get("off_grid")):
         out.append(("off_grid", {"reason": OFF_GRID_REASON.get(c.get("off_grid_kind"),
-                                                                "reason unknown")})
+                                                                "reason unknown"),
+                                 "metrics": off_grid_metrics(c, capacity_kwh)})
                    if c.get("off_grid") else ("on_grid", {}))
 
     ps, cs = p.get("soc"), c.get("soc")
@@ -270,19 +331,21 @@ def stats_by_trigger(stats: list[dict]) -> list[dict]:
 
 
 def fire(store, event: str, *, gateway: str | None = None, cfg: dict | None = None,
-         device_ids: list[str] | None = None, **values) -> int:
+         device_ids: list[str] | None = None, logged: bool = False, **values) -> int:
     """Send ``event`` to every ENABLED companion device (or ``device_ids``) through the one
     Notifier, which honours the Push notifications switch (#171) and records the send.
     Respects the trigger's enable flag (so callers like the VPP monitor honour the user's
-    config too). Returns the number of devices that accepted it."""
+    config too). ``logged``: the caller has already written the app-log line. Returns the
+    number of devices that accepted it."""
     cfg = cfg or config(store)
     trigger = TRIGGER.get(event, event)
     if trigger in (cfg.get("triggers") or {}) and not _enabled(cfg, trigger):
         return 0
     # Every notification is also a line in the app log (Logs tab), whether or not any
     # device receives it: with no companion devices it was recorded nowhere else.
-    _, message = actionable.templates().render(event, gateway=gateway or "", **values)
-    (log.info if event == "test" else log.warning)("notify [%s]: %s", event, message)
+    if not logged:
+        _, message = actionable.templates().render(event, gateway=gateway or "", **values)
+        (log.info if event == "test" else log.warning)("notify [%s]: %s", event, message)
     target = (cfg.get("triggers") or {}).get(trigger, {}).get("target") or ALL
     if device_ids is None and target["type"] == "device":
         # A switched-off device stays off for its triggers too.

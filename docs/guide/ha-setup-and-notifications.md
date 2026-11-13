@@ -235,7 +235,7 @@ has a switch and a **Send to**; the two SoC triggers also have a threshold.
 | Trigger | Default | Sent when | Message |
 |---|---|---|---|
 | aGate offline / online | on | The gateway stops or starts answering polls. | "aGate is UNREACHABLE [gateway] — check network / WiFi / power." / "aGate is reachable again [gateway]." |
-| Off-grid started / ended | on | The off-grid flag changes. The message says why, in the top bar's words: **user requested** (someone asked for off-grid) or **grid outage** (no request was made); **reason unknown** when that wasn't read. | "Gateway went OFF-GRID [gateway] (user requested) — running on battery." / "Gateway is back ON-GRID [gateway]." |
+| Off-grid started / ended | on | The off-grid flag changes. The message says why, in the top bar's words: **user requested** (someone asked for off-grid) or **grid outage** (no request was made); **reason unknown** when that wasn't read. It also gives the SoC, stored kWh, home load and solar, and how long the battery will last at the **current** usage: SoC × **Battery capacity** (Automation constants) ÷ (home − solar − generator). An off-grid you requested runs only to the **Reconnect SoC**, when the aGate returns to the grid, so its time is to that. The FranklinWH app estimates from historical usage instead. Without a Battery capacity there is no estimate; when solar covers the home it says so. | "Gateway went OFF-GRID [gateway] (grid outage) — running on battery: SoC 80%, stored 10.9 kWh, home 2.0 kW — about 5 h 26 min left at current usage." / "Gateway is back ON-GRID [gateway]." |
 | Battery dispatch (VPP / force) started / ended | on | A dispatch is found active at start-up, or one starts that **this bridge did not start**. | "FranklinWH — VPP dispatch active at startup" / "FranklinWH — battery dispatch started (VPP)" |
 | Battery SoC drops below | off, 20 % | SoC crosses the threshold downward. | "Battery SoC dropped below 20% [gateway] (now N%)." |
 | Battery SoC reaches | off, 100 % | SoC crosses the threshold upward. | "Battery SoC reached 100% [gateway] (now N%)." |
@@ -243,6 +243,20 @@ has a switch and a **Send to**; the two SoC triggers also have a threshold.
 
 A trigger fires on a **change** between one poll and the next, not on every poll. There
 is no other rate limit.
+
+#### Scheduler
+
+Under the same triggers, the **Scheduler** group tells you about runs that didn't go as
+planned (#581). Each has its own switch and **Send to**, and every message names the
+gateway. Each also writes a warning to the bridge log (Logs) in the same words, whether or
+not the push is on, and the schedule's activity has its own row.
+
+| Trigger | Default | Sent when | Message |
+|---|---|---|---|
+| Run failed | on | A scheduled action fails. It is the `SCHEDULE_FAILED` critical alert's push, with **Acknowledge**: this switch and Send to steer that push; the alert window and the Home Assistant notification stay. | "Schedule 'Evening peak' failed on House (attempt 1): …" |
+| Run missed | on | A schedule's window closes with no successful run. Also a `SCHEDULE_MISSED` warning in the alert list. | "Schedule 'Evening peak' missed its window [House]: 3 attempt(s), none succeeded." |
+| Run aborted (stopped, deferred or ended early) | off | **Stop** on a schedule with a running dispatch; a run deferred to a higher-priority rule or a busy battery; a window ended early by its exit condition. | "Schedule 'Evening peak' did not finish [House]: stopped by hand." |
+| No reply to an actionable notification | on | An [actionable notification](#actionable-notifications) got no reply in time, couldn't be delivered, or was lost in a restart. It goes to the devices the question went to (its Send to), else to this trigger's Send to. | "Schedule 'Evening peak' got no reply [House]: no reply in 10 min: skipped this run (if no reply: skip)." |
 
 **Send test** at the top of the triggers sends a test to all enabled devices or to the
 ones you choose. It says how many devices it reached, and when none, why: "No devices
@@ -300,7 +314,8 @@ What raises one today:
 | `HA_UNREACHABLE` | condition | warning | Home Assistant has failed to take an alert notification for 5 minutes | One goes through and 2 minutes pass |
 | `WORKER_STALLED` | condition | critical | A background worker stops responding or crashes (Health → Workers) | Every worker for that gateway is beating again |
 | `COMMAND_REFUSED` | event | critical | The Audit Trail records a control as failed or refused. Cloud sign-ins are not counted. | Acknowledged |
-| `SCHEDULE_FAILED` | event | critical | A scheduled action fails, or its window closes without success | Acknowledged |
+| `SCHEDULE_FAILED` | event | critical | A scheduled action fails | Acknowledged |
+| `SCHEDULE_MISSED` | event | warning | A schedule's window closes without a successful run (#581) | Acknowledged |
 
 The same event again within 10 minutes is added to the open alert (its count goes up)
 rather than raising a new one. The other codes in the shared list (`COMMAND_UNCONFIRMED`,
@@ -386,7 +401,7 @@ device, and set a title and a message. `%sensor.id%` in the text is replaced wit
 live value, or `?` when there is none. Write `%%` for a literal `%`.
 
 You don't need to remember the codes. The **{x}** button beside every such field (the
-notify title and message, the **Ask before continuing** question, and a raw service's
+notify title and message (an **Actionable notification**'s question too), and a raw service's
 entity and data) opens a searchable list of the same sensors as the condition picker,
 with each one's value now. Tap a row to put its code where the cursor was. Some useful
 ones: `%battery.soc_pct%`, `%grid.power_w%`, `%schedule.name%`, `%run.phase%` (`fire` or
@@ -403,22 +418,24 @@ when the battery is low at the start of the peak, add a guard to the notify acti
 A notify step that cannot be sent is skipped, and the schedule's log says why: "device
 no longer exists", "'Phone' is switched off", or "has no HA instance".
 
-### Ask before continuing
+### Actionable notifications
 
-A schedule can ask you on your phone before its action runs. In the schedule editor,
-tick **Ask before continuing**:
+A schedule can ask you on your phone before its action runs. In the schedule editor, add
+a notification under **Home Assistant actions** (**+ notify**) and tick **Actionable
+notification**. It goes **On entry**, and the action waits for your answer. A schedule
+has one; its other notifications stay plain messages.
 
 | Field | What it does |
 |---|---|
-| **Question** | The message, with **{x}** values filled in when it is sent, for example `SoC is %battery.soc_pct%%. Charge now?`. The title is the schedule's name and the gateway. " (reply within N min)" is added at the end. |
+| **Message** | The question, with **{x}** values filled in when it is sent, for example `SoC is %battery.soc_pct%%. Charge now?`. The title is the schedule's name and the gateway. " (reply within N min)" is added at the end. |
 | **Buttons** | **Yes** (runs the action) and **No** (skips this run), unless you press **Use my own buttons**. Then give 2 to 4 buttons, each with its own label, and set each to **Runs the action** or **Skips this run**. |
 | **Text reply** | At most one of your buttons can take a text reply: the phone asks for text when it is tapped. What you type becomes the answer. |
 | **Wait for a reply (minutes)** | 5 in a new schedule. It must fit the schedule's window: a reply after the window closes could not run the action. A schedule with no duration has a 1-minute window; **Always** has no window and takes any wait. |
 | **If no reply** | **Skip this run** (the default) or **Continue**. |
-| **Send to** | **All enabled devices**, or **Chosen devices**. Only Companion apps (`mobile_app`) show the buttons, so only they are asked and listed; a switched-off one shows "(off)", and one removed since it was chosen shows "(removed)" so you can untick it. A removed device never stops the schedule from saving; it is just not asked. |
+| **Send to** | **All enabled phones**, or **Chosen phones**. Only Companion apps (`mobile_app`) show the buttons, so only they are asked and listed; a switched-off one shows "(off)", and one removed since it was chosen shows "(removed)" so you can untick it. A removed device never stops the schedule from saving; it is just not asked. |
 
-Under Send to, **Asks:** names the devices the question goes to, and, when the schedule
-also has notify actions, **This schedule also notifies** names them and when they go. The
+Under Send to, **Asks:** names the phones the question goes to, and the schedule's other
+notifications are named below it. The
 schedule list and **Explain** name the asked devices too, and the schedule's log says
 `asked "…" on Phone, Tablet`. Home Assistant doesn't say which phone a tap came from, so
 the log records the answer, not who gave it.
@@ -430,9 +447,14 @@ With the schedule's notify actions (section 5), there are no double messages:
 - a run the answer (or **If no reply: Skip**) skipped sends neither its On entry nor its
   On exit messages; the log says `On exit actions not sent: Ask skipped this run`.
 
+Schedules saved with the old **Ask before continuing** step, or with **Notify (Home
+Assistant)** as their battery action, are moved over when the bridge starts: the Ask
+becomes the Actionable notification and the Notify action an **On entry** notification.
+An import or an API call in the old shape is moved over the same way.
+
 Here it is filled in by the **Off-grid (user requested) for 30 min — ask** template, sent to the Phone only:
 
-![The schedule editor's Ask before continuing step: question, two own buttons, wait 5 minutes, skip if no reply, Send to Phone](../images/ha-setup-and-notifications/09-schedule-ask.png)
+![A notify row ticked Actionable notification: the question, two own buttons, wait 5 minutes, skip if no reply, Send to Phone](../images/ha-setup-and-notifications/09-schedule-ask.png)
 
 The question is sent once per run, when the schedule's window opens. While it waits, the
 schedule shows **holding**, and other schedules carry on. Then:
@@ -492,7 +514,7 @@ when there is no reply. Change the thresholds, buttons and Send to as you like.
 | Off-grid (grid outage) for 30 min — notify | The grid has been out for 30 minutes | Acknowledge / Dismiss | None |
 | Cheap wholesale price — ask to charge | Wholesale price ≤ 5 c/kWh | Charge / Not now | Charge from the grid to 90 % |
 | Cheap tariff import rate — ask to charge | Import rate ≤ $0.05/kWh | Charge / Not now | Charge from the grid to 90 % |
-| High wholesale price — ask to export | Wholesale price ≥ 50 c/kWh, battery at or above the min discharge SoC | Export / Hold | Discharge, down to 20 % |
+| Price spike — ask to export | A price spike (Sites & Billing → Prices), battery at or above the min discharge SoC | Export / Hold | Discharge, down to 20 % |
 | High tariff feed-in rate — ask to export | Feed-in rate ≥ $0.50/kWh, battery at or above the min discharge SoC | Export / Hold | Discharge, down to 20 % |
 | Demand charge window — ask to self-consume | The demand window opens, battery at or above the demand-charge min SoC | Self-consume / Leave it | Self-Consumption for the window, then the previous mode back |
 | Battery export bonus — ask to export | The bonus window opens | Export / Hold | Discharge, down to 30 % |
@@ -511,7 +533,7 @@ Every notification with buttons works the same way:
   matched to the question on iOS and on Android.
 - A question has a time limit: 2 minutes for **Test with buttons**, 5 minutes for **Test
   critical alert**, 15 minutes for **Release / Keep**, 1 hour for an alert, and the wait
-  you set for **Ask before continuing**. A tap after that is recorded as expired and does
+  you set for an **Actionable notification**. A tap after that is recorded as expired and does
   nothing.
 - A question takes one answer. A second tap, on the same phone or another, does nothing.
 - **Open questions survive a bridge restart.** A tap within the time limit after a

@@ -50,15 +50,14 @@ Where to set each one:
 
 ### Actions
 
-| Battery action | Gateway reachable (local) | Modbus client (this bridge) ready | Cloud credentials | HA instance | Notification device |
+| Gateway action | Gateway reachable (local) | Modbus client (this bridge) ready | Cloud credentials | HA instance | Notification device |
 |---|---|---|---|---|---|
 | **Set operating mode** | ✔ | | | | |
 | **Smart circuit on/off** | ✔ | | | | |
 | **Go off-grid / reconnect** | ✔ | | | | |
 | **Set reserve SoC** | — never runs (#129) | | (listed as needed, not used) | | |
-| **Notify (Home Assistant)** | | | | ✔ | ✔ (enabled) |
 | **Force charge / discharge / standby** | | ✔ (on, library installed, a host, a SunSpec read that succeeds) | | | |
-| No battery action (HA only) | | | | | |
+| No gateway action (HA only) | | | | | |
 
 | Home Assistant action | Needs |
 |---|---|
@@ -69,7 +68,7 @@ Where to set each one:
 MQTT; schedules run without a broker. MQTT entities for schedules are planned (#128).
 <!-- @b DEP-01 ;; src: scheduler.py:1-30, scheduler_worker.py:20-30 ;; untested ;; write: no ;; b: scheduler.py and scheduler_worker.py import nothing from MQTT; schedules run with MQTT off ;; test: unit: run tick_once with mqtt_enabled false and no broker; assert an entry fires -->
 
-The **Force** item in the **Battery action** list is disabled, with the reason, while the
+The **Force** item in the **Gateway action** list is disabled, with the reason, while the
 Modbus client (this bridge) is not available. A schedule saved earlier with a force action
 still runs; see the next section for what that does.
 
@@ -80,7 +79,7 @@ Start with two tools on the Scheduler tab:
 - **⋮ → Test against live** on the card. It says *Would fire* or *Would not fire*, with the
   reason ("outside its window", "not one of its days of the week", "already fired this
   occurrence", "entry conditions not met", …) and each top-level condition row with its live
-  value. It reads the **default gateway** and the container's clock; see
+  value. It reads the schedule's gateway on its site clock; see
   [Conditions → Test Verification](conditions.md#test-verification).
 - The **History** view. Filter by *gated*, *error*, *missed* or *deferred* to see what the
   scheduler decided, and why.
@@ -97,7 +96,7 @@ Start with two tools on the Scheduler tab:
 | The text does not match | `==` ignores case, but the words must match | Use `like` with `*` for a partial match. |
 | The tariff window is not defined | a window flag reads None when the tariff has no such window | Define the window on the tariff. |
 | Second gateway | its tariff sensors come from its own meter, else the default meter | Connect the gateway to the right meter. |
-| Tested on the wrong gateway | **Test** uses the top-bar gateway; Test against live always the default gateway | Pick the schedule's gateway in the top bar before **Test**. |
+| Tested on the wrong gateway | an **All gateways** rule is tested on the top bar's gateway | Pick the gateway in the top bar before **Test**. |
 
 ### A condition is always true when it should not be
 
@@ -118,7 +117,7 @@ Start with two tools on the Scheduler tab:
 | History shows *error* — "mode -> tou: failed: …" | The aGate rejected the mode or off-grid write. It is retried while the window is open | Read the result in the row. |
 | **Set reserve SoC** shows *fired* but nothing changed | The action is always skipped, even with cloud credentials (#129) | Set the reserve in the FranklinWH app, or from **Control**. |
 | A smart circuit turned **on** when the schedule said **Off**, or the gateway went **off-grid** when it said reconnect | Before 0.5.5 the form saved **Off** as text that ran as on (#188, fixed in 0.5.5) | Update, then check what such schedules did in **History**. Since 0.5.5 an On/Off value the bridge cannot read is refused, with no write. |
-| The mode did not change back | A mode change is not undone at the end of the window, unless **restore on exit** is set (API only) | Add a second schedule, or set `restore_on_exit`. See [Exit and release](exit-and-conflicts.md). |
+| The mode did not change back | A mode change is not undone at the end of the window, unless **Put the previous mode back when the window ends** is ticked (#580) | Add a second schedule, or set `restore_on_exit`. See [Exit and release](exit-and-conflicts.md). |
 | A force stopped early | Its **Target SoC**, or its **Duration (min)**: a **Recurring windows** schedule still has the hidden duration (90 for a new one), and the force stops after it (#160) | Use **Daily at time** or **Weekly at time** for a force. |
 | A force stopped when another schedule's window ended | That schedule had taken over the battery (*If busy = override*), and its window end released its own force; the replaced force does not come back | Do not overlap force schedules on one gateway. |
 | History shows *exit* — "no release: this schedule did not hold the force" | The schedule never fired in its window, or another force replaced it | Nothing to do: the bridge did not release a force it did not start. |
@@ -138,7 +137,7 @@ Start with two tools on the Scheduler tab:
 | Another schedule wins | *deferred* — "'<name>' (priority N) holds battery this occurrence" | Priority. |
 | Exit condition already true | Test against live may still say *Would fire*; the engine logs nothing and does not start | Check **End early when…** with its **Test**. |
 | An **Always** schedule ran once | nothing after its first run, ever | An Always schedule fires once and never again (#190). Use a repeating trigger. |
-| Wrong gateway | a schedule on **Default gateway** runs only on the first-registered gateway; if that gateway is disabled, it runs nowhere (#182) | Bind the schedule to a gateway. See [Targets](targets.md). |
+| Wrong gateway | a schedule runs only on the gateway it names, or every gateway with **All gateways** | Check the gateway picker. See [Targets](targets.md). |
 | Stale gateway data | the gateway has not polled for three poll intervals (at least 90 s); its schedules are skipped silently | Check the **Network** and **Health** tabs. |
 | The window was short | the scheduler ticks every 15 s by default; a one-minute window is always seen | — |
 | Paused | `pause` does not hold a run: the next tick tries it again (#200) | Disable the schedule instead. |

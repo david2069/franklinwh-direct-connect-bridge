@@ -61,11 +61,6 @@ ACTIONS: dict[str, dict[str, Any]] = {
         "requires_provider": "cloud",
         "note": "No local write path exists; needs cloud credentials.",
     },
-    "notify": {
-        "label": "Notify (Home Assistant)",
-        "params": ["device_id", "title", "message"],
-        "note": "Sends through a configured notification device.",
-    },
     "force": {
         "label": "Force charge / discharge / standby",
         "params": ["direction", "power", "unit", "target_soc"],
@@ -579,14 +574,20 @@ _ASK_CHEAP = (
     ("spot", "wholesale price", "Wholesale price", "tariff.spot_price", 5, "c/kWh"),
     ("tariff", "tariff import rate", "Import rate", "tariff.buy_rate", 0.05, "$/kWh"),
 )
+#: The high-price ones (#582): the wholesale one fires on the price spike (Sites & Billing →
+#: Prices), not a fixed 50 c; the tariff one on its feed-in rate. (id prefix, name, question
+#: label, sensor shown, unit, condition, when).
 _ASK_HIGH = (
-    ("spot", "wholesale price", "Wholesale price", "tariff.spot_price", 50, "c/kWh"),
-    ("tariff", "tariff feed-in rate", "Feed-in rate", "tariff.sell_rate", 0.50, "$/kWh"),
+    ("spot", "price spike", "Wholesale price", "tariff.spot_price", "c/kWh",
+     {"sensor": "tariff.price_spike", "op": "==", "value": 1},
+     "the price spikes (Prices → Price spike)"),
+    ("tariff", "tariff feed-in rate", "Feed-in rate", "tariff.sell_rate", "$/kWh",
+     {"sensor": "tariff.sell_rate", "op": ">=", "value": 0.50},
+     "tariff.sell_rate is 0.5 $/kWh or more"),
 )
 
-#: Built-in schedule templates. Every action here is hardware-verified on the
-#: local channel — no force-charge presets, because the local protocol cannot do
-#: that (see UNAVAILABLE). A preset is loaded into the editor, not fired blind.
+#: Built-in schedule templates. A force one ``requires`` the Modbus client (this bridge);
+#: the rest use the local channel. A preset is loaded into the editor, not fired blind.
 PRESETS: list[dict[str, Any]] = [
     {"id": "self_consumption", "name": "Self-Consumption all day",
      "description": "Switch to Self-Consumption at midnight.",
@@ -703,15 +704,17 @@ PRESETS: list[dict[str, Any]] = [
       for key, what, label, sensor, low, unit in _ASK_CHEAP],
     # High price exports only while SoC is at or above the Automation Constant
     # const.min_discharge_soc (default 20%), and holds that same 20% as the floor.
-    *[{"id": f"{key}_high_export_ask", "name": f"High {what} — ask to export",
+    *[{"id": f"{key}_high_export_ask",
+       "name": (f"{what.capitalize()} — ask to export" if key == "spot"
+                else f"High {what} — ask to export"),
        "requires": "modbus",
-       "description": f"When {sensor} is {high} {unit} or more and SoC is at or above the "
+       "description": f"When {when} and SoC is at or above the "
                       "minimum discharge SoC (Automation Constants), ask whether to "
                       "force-discharge to the grid, holding a 20% floor. Released when the "
                       "price falls.",
        "spec": {"trigger_type": "always", "fire_at": "00:00", "duration_min": 0,
                 "match": "all",
-                "conditions": [{"sensor": sensor, "op": ">=", "value": high},
+                "conditions": [dict(cond),
                                {"sensor": "battery.soc_pct", "op": ">=",
                                 "value_kind": "sensor",
                                 "value_sensor": "const.min_discharge_soc"}],
@@ -722,7 +725,7 @@ PRESETS: list[dict[str, Any]] = [
                         "timeout_min": 5, "if_no_reply": "skip",
                         "choices": [{"label": "Export", "then": "run"},
                                     {"label": "Hold", "then": "skip"}]}}}
-      for key, what, label, sensor, high, unit in _ASK_HIGH],
+      for key, what, label, sensor, unit, cond, when in _ASK_HIGH],
     # Demand window: Self-Consumption while it lasts, only while SoC is at or above
     # const.demand_charge_min_soc (default 30%), then the mode that was active before it is
     # put back (restore_on_exit, BR-50: captured before the write, kept with the run).
@@ -956,9 +959,29 @@ def to_automations(entry: dict) -> dict:
         "duration_s": int(dur * 60) if isinstance(dur, (int, float)) else None,
         "entry_hold_s": entry.get("entry_hold_s") or 0,
         "priority": entry.get("priority") or 0,
-        "conflict": entry.get("conflict") or "defer",
+        "conflict": entry.get("conflict") or "override",   # this bridge's default (#580)
         "ha_actions": entry.get("ha_actions") or [],
     }
+
+
+def automations_export_warnings(entry: dict) -> list[str]:
+    """What the ``franklinwh-automations`` export can't carry for one schedule (#580),
+    so it is said rather than silently dropped."""
+    lost = []
+    if entry.get("months"):
+        lost.append("months")
+    if entry.get("day_of_month"):
+        lost.append("day of month")
+    if entry.get("start_date") or entry.get("end_date"):
+        lost.append("start and end dates")
+    if str(entry.get("gateway_scope") or "one").lower() == "all":
+        lost.append("All gateways")
+    if entry.get("restore_on_exit"):
+        lost.append("restore the mode when the window ends")
+    if entry_ask(entry):
+        lost.append("the actionable notification's wait and buttons")
+    return ([f"'{entry.get('name') or entry.get('id')}': the Modbus Bridge format has no "
+             f"{', '.join(lost)}; not exported"] if lost else [])
 
 
 def validate_spec(entry: dict) -> list[str]:
@@ -1024,7 +1047,14 @@ def validate_spec(entry: dict) -> list[str]:
     for label, key in (("condition", "conditions"), ("exit condition", "exit_conditions")):
         errors += _condition_errors(entry.get(key) or [], label)
     errors += _action_errors(entry.get("action") or {})
-    errors += _ask_errors(entry.get("ask") or {})
+    errors += _ask_errors(entry_ask(entry))
+    actionable = [h for h in entry.get("ha_actions") or []
+                  if isinstance(h, dict) and h.get("actionable")]
+    if len(actionable) > 1:
+        errors.append("only one actionable notification per schedule: the run waits for "
+                      "one answer")
+    if any((h.get("when") or "fire") != "fire" for h in actionable):
+        errors.append("an actionable notification goes on entry, before the action")
     errors += _ask_window_errors(entry)
     for i, ha in enumerate(entry.get("ha_actions") or [], 1):
         errors += [f"HA action {i}: {e}" for e in _ha_action_errors(ha)]
@@ -1094,8 +1124,6 @@ def _action_errors(action: dict) -> list[str]:
         c = _num(action.get("circuit"))
         if c is None or c < 1 or c != int(c):
             out.append("smart_circuit needs a circuit number")
-    if kind == "notify" and not action.get("device_id"):
-        out.append("notify needs a device")
     if kind == "force":
         direction = (action.get("direction") or "").lower()
         unit = (action.get("unit") or "pct").lower()
@@ -1130,58 +1158,114 @@ def _run_window_min(entry: dict) -> int | None:
     return dur if _is_int(dur, lo=1) else 1
 
 
+#: An Actionable notification's own fields on its notify row (#576); its question is the
+#: row's message, its title the row's title.
+ACTIONABLE_KEYS = ("timeout_min", "if_no_reply", "choices", "send_to")
+
+
+def entry_ask(entry: dict) -> dict:
+    """The schedule's ask step, from its Actionable notify row (#576). A schedule saved
+    before then may still carry it as ``ask`` until it is moved over. Empty = none."""
+    for ha in entry.get("ha_actions") or []:
+        if isinstance(ha, dict) and ha.get("actionable"):
+            out = {"question": ha.get("message") or "",
+                   **{k: ha[k] for k in ACTIONABLE_KEYS if k in ha}}
+            if ha.get("title"):
+                out["title"] = ha["title"]
+            return out
+    ask = entry.get("ask")
+    return ask if isinstance(ask, dict) else {}
+
+
+def normalize_spec(spec: dict) -> dict:
+    """One notify path (#576): the Notify battery action becomes an On entry notify row,
+    and an ``ask`` becomes the Actionable notify row. Already moved: unchanged."""
+    spec = dict(spec)
+    rows = [dict(h) if isinstance(h, dict) else h for h in spec.get("ha_actions") or []]
+    action = spec.get("action")
+    if isinstance(action, dict) and action.get("kind") == "notify":
+        rows.append({"ha_kind": "notify", "device_id": action.get("device_id") or "",
+                     "title": action.get("title") or "", "message": action.get("message") or "",
+                     "when": "fire"})
+        spec["action"] = {}
+    ask = spec.pop("ask", None)
+    if isinstance(ask, dict) and ask:          # sent as ``ask``: it is the Actionable row
+        row = {"ha_kind": "notify", "when": "fire", "actionable": True,
+               "title": ask.get("title") or "", "message": ask.get("question") or "",
+               **{k: ask[k] for k in ACTIONABLE_KEYS if k in ask}}
+        at = next((i for i, h in enumerate(rows) if isinstance(h, dict) and h.get("actionable")),
+                  None)
+        if at is None:
+            rows.insert(0, row)
+        else:
+            rows[at] = {**{k: v for k, v in rows[at].items() if k == "guard"}, **row}
+    spec["ha_actions"] = rows
+    return spec
+
+
+def migrate_notify_paths(store) -> int:
+    """Move saved schedules to the one notify path (#576), once, at start-up. Returns how
+    many changed."""
+    n = 0
+    for sid, spec in store.schedule_specs():
+        if spec.get("ask") or (spec.get("action") or {}).get("kind") == "notify":
+            store.update_schedule(sid, spec=normalize_spec(spec))
+            n += 1
+    return n
+
+
 def _ask_window_errors(entry: dict) -> list[str]:
     """The Ask's wait must fit the schedule's window: a reply after the window closes
     never runs the action. Checked on save only, so saved schedules keep running."""
-    ask = entry.get("ask")
-    if not isinstance(ask, dict) or not ask or not _is_int(ask.get("timeout_min"), lo=1):
+    ask = entry_ask(entry)
+    if not ask or not _is_int(ask.get("timeout_min"), lo=1):
         return []
     win = _run_window_min(entry)
     if win is None or ask["timeout_min"] <= win:
         return []
-    return [f"ask before continuing: the wait ({ask['timeout_min']} min) is longer than the "
+    return [f"actionable notification: the wait ({ask['timeout_min']} min) is longer than the "
             f"schedule's window ({win} min); a reply after the window closes cannot run it"]
 
 
 def _ask_errors(ask: Any) -> list[str]:
-    """The "Ask before continuing" step: empty means the schedule has none."""
+    """The Actionable notification (#576): empty means the schedule has none."""
     if not isinstance(ask, dict):
         return ["ask must be an object"]
     if not ask:
         return []
     out: list[str] = []
     if not str(ask.get("question") or "").strip():
-        out.append("ask before continuing needs a question")
+        out.append("actionable notification needs a message")
     if not _is_int(ask.get("timeout_min"), lo=1):
-        out.append("ask before continuing: the wait must be 1 minute or more")
+        out.append("actionable notification: the wait must be 1 minute or more")
     if ask.get("if_no_reply") not in ("continue", "skip"):
-        out.append("ask before continuing: if no reply must be continue or skip")
+        out.append("actionable notification: if no reply must be continue or skip")
     choices = ask.get("choices") or []
     if not isinstance(choices, list):
-        return out + ["ask before continuing: choices must be a list"]
+        return out + ["actionable notification: choices must be a list"]
     if choices and not 2 <= len(choices) <= ASK_MAX_CHOICES:
-        out.append(f"ask before continuing: give 2 to {ASK_MAX_CHOICES} choices")
+        out.append(f"actionable notification: give 2 to {ASK_MAX_CHOICES} choices")
     labels = []
     for i, c in enumerate(choices, 1):
         if not isinstance(c, dict):
-            out.append(f"ask before continuing: choice {i} must be an object")
+            out.append(f"actionable notification: choice {i} must be an object")
             continue
         label = str(c.get("label") or "").strip()
         if not label:
-            out.append(f"ask before continuing: choice {i} needs a label")
+            out.append(f"actionable notification: choice {i} needs a label")
         labels.append(label.casefold())
         if c.get("then") not in ("run", "skip"):
-            out.append(f"ask before continuing: choice {i} must run or skip the action")
+            out.append(f"actionable notification: choice {i} must run or skip the action")
     if len(set(labels)) < len(labels):
-        out.append("ask before continuing: each choice needs its own label")
+        out.append("actionable notification: each choice needs its own label")
     if sum(1 for c in choices if isinstance(c, dict) and c.get("reply")) > 1:
-        out.append("ask before continuing: only one choice can take a text reply")
+        out.append("actionable notification: only one choice can take a text reply")
     if "send_to" in ask:
         from . import notify_engine
         try:
             notify_engine.valid_target(ask["send_to"])
         except ValueError as e:
-            out.append(f"ask before continuing: send to: {e}")
+            out.append(f"actionable notification: send to: {e}")
     return out
 
 
@@ -1202,7 +1286,7 @@ def _ha_action_errors(ha: Any) -> list[str]:
                 _json.loads(data)
             except ValueError:
                 out.append("data is not valid JSON")
-    elif not ha.get("device_id"):
+    elif not ha.get("device_id") and not ha.get("actionable"):   # actionable: its Send to
         out.append("notify needs a device")
     guard = ha.get("guard")
     if guard:
@@ -1269,36 +1353,96 @@ def validate_import(entry: dict, *, gateway_ids: set, device_ids: set,
         did = ha.get("device_id")
         if did and did not in device_ids:
             warnings.append(f"notify device '{did}' not found — set it after import")
-    send_to = (entry.get("ask") or {}).get("send_to") or {}
+    send_to = entry_ask(entry).get("send_to") or {}
     for did in (send_to.get("ids") or []) if send_to.get("type") == "device" else []:
         if did not in device_ids:
-            warnings.append(f"Ask device '{did}' not found — choose it again after import")
+            warnings.append(f"actionable notification device '{did}' not found — choose "
+                            "it again after import")
 
     return {"name": name, "ok": not errors, "errors": errors, "warnings": warnings}
 
 
-def timeline_segments(entries: list[dict], now: dt.datetime) -> dict[str, Any]:
+def _day_blocks(e: dict, now: dt.datetime) -> list[list[int]]:
+    """Today's [start_min, end_min] slots of an interval or cron rule, as the engine opens
+    them (``_interval_window`` / ``_cron_window``): one per slot, ``duration_min`` long
+    (1 minute when 0). Capped at 288 so a 1-minute interval stays drawable."""
+    tt = e.get("trigger_type")
+    win = int(e.get("duration_min") or 0) or 1
+    starts: list[int] = []
+    if tt == "interval":
+        iv = int(e.get("interval_min") or 0)
+        if iv > 0:
+            # Before the anchor the slots run on from yesterday's anchor, as the engine.
+            anchor = _minutes(e.get("anchor", "")) or 0
+            starts = [m for m in range((anchor - 24 * 60) % iv, anchor, iv)]
+            starts += list(range(anchor, 24 * 60, iv))
+    elif tt == "cron" and cron_available():
+        try:
+            from croniter import croniter
+            expr = (e.get("cron") or "").strip()
+            if croniter.is_valid(expr):
+                midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                it = croniter(expr, midnight - dt.timedelta(seconds=1))
+                while len(starts) < 288:
+                    nxt = it.get_next(dt.datetime)
+                    if nxt.date() != midnight.date():
+                        break
+                    starts.append(nxt.hour * 60 + nxt.minute)
+        except Exception:                                      # noqa: BLE001
+            starts = []
+    return [[s, min(24 * 60, s + win)] for s in starts[:288]]
+
+
+def timeline_segments(entries: list[dict], now: dt.datetime,
+                      gateway_id: str | None = None) -> dict[str, Any]:
     """A day's windows per ENABLED entry, as minutes-from-midnight, for the
-    24-hour bar. Handles windows that wrap past midnight (end <= start)."""
-    segments = []
+    24-hour bar. Handles windows that wrap past midnight (end <= start).
+
+    With ``gateway_id`` (#579), ``segments`` holds that gateway's own rules and ``site``
+    the All gateways ones (``gateway_scope`` all), as the Modbus Bridge's Site row;
+    without it, every rule is in ``segments``. Each segment has a unique ``key`` (one per
+    window) and ``blocks``, its [start, end] slots: interval and cron rules have one per
+    slot, and an always rule one for the whole day, ``conditional`` (it runs while its
+    conditions hold)."""
+    segments, site = [], []
     for e in entries:
         if not e.get("enabled"):
             continue
-        tt = e.get("trigger_type") or "daily"
-        if tt in ("interval", "cron", "always"):    # no fixed daily window to draw
+        scope_all = str(e.get("gateway_scope") or "one").lower() == "all"
+        if gateway_id is not None and not scope_all and (e.get("gateway_id") or "") != gateway_id:
             continue
         if not _calendar_ok(e, now.date())[0]:      # not scheduled to run today
             continue
-        for (start, dur) in _windows_for(e):
-            end = start + dur if dur > 0 else start
-            segments.append({
-                "schedule_id": e["id"], "name": e["name"],
+        tt = e.get("trigger_type") or "daily"
+        base = {"schedule_id": e["id"], "name": e["name"], "trigger_type": tt,
                 "action": (e.get("action") or {}).get("kind") or "notify-only",
                 "gateway_id": e.get("gateway_id") or "",
-                "start_min": start, "end_min": end % (24 * 60) if dur else start,
-                "wraps_midnight": dur > 0 and (start + dur) > 24 * 60,
-            })
-    return {"now_min": now.hour * 60 + now.minute, "segments": segments}
+                "scope": "all" if scope_all else "one"}
+        out = site if (scope_all and gateway_id is not None) else segments
+        if tt in ("interval", "cron"):
+            blocks = _day_blocks(e, now)
+            if blocks:
+                out.append({**base, "key": f"{e['id']}#0", "start_min": blocks[0][0],
+                            "end_min": blocks[-1][1], "wraps_midnight": False,
+                            "blocks": blocks})
+            continue
+        if tt == "always":
+            out.append({**base, "key": f"{e['id']}#0", "start_min": 0, "end_min": 24 * 60,
+                        "wraps_midnight": False, "blocks": [[0, 24 * 60]],
+                        "conditional": True})
+            continue
+        for i, (start, dur) in enumerate(_windows_for(e)):
+            end = start + dur if dur > 0 else start
+            wraps = dur > 0 and end > 24 * 60
+            blocks = ([[start, 24 * 60], [0, end - 24 * 60]] if wraps
+                      else [[start, max(end, start + 1)]])
+            out.append({**base, "key": f"{e['id']}#{i}", "start_min": start,
+                        "end_min": end % (24 * 60) if dur else start,
+                        "wraps_midnight": wraps, "blocks": blocks})
+    out = {"now_min": now.hour * 60 + now.minute, "segments": segments}
+    if gateway_id is not None:
+        out["site"] = site
+    return out
 
 
 #: grid.offgrid_reason text per client._off_grid_kind — the same source as the top-bar chip
@@ -1624,12 +1768,26 @@ def derived_snapshot(snap: dict) -> dict[str, Any]:
     return out
 
 
-def nem_snapshot(settings) -> dict[str, Any]:
-    """Wholesale spot sensor from the AEMO NEM built-in — {tariff.spot_price} in c/kWh when a
-    nem_region is configured. Cached in aemo_nem (~4min); empty otherwise or on fetch failure."""
+def site_nem_region(store, gateway_id) -> str | None:
+    """The NEM region of the gateway's site (Sites & Meters → Region, #582), or None."""
+    try:
+        from . import aemo_nem
+        meter = _meter_for_gateway(store, gateway_id) or {}
+        site = store.site(meter["site_id"]) if meter.get("site_id") else None
+        return aemo_nem.region_for((site or {}).get("region"))
+    except Exception:                                          # noqa: BLE001
+        return None
+
+
+def nem_snapshot(settings, store=None, gateway_id=None) -> dict[str, Any]:
+    """Wholesale spot sensor from the AEMO NEM built-in — {tariff.spot_price} in c/kWh when
+    the price signal is AEMO NEM (``nem_region`` set). The region is the gateway's site's
+    (#582), else the saved one. Cached in aemo_nem (~4min); empty otherwise or on fetch
+    failure."""
     region = getattr(settings, "nem_region", "") or ""
     if not region:
         return {}
+    region = (site_nem_region(store, gateway_id) if store is not None else None) or region
     try:
         from . import aemo_nem
         sp = aemo_nem.spot_price(region)
@@ -1646,8 +1804,11 @@ def solar_snapshot(settings) -> dict[str, Any]:
         lon = getattr(settings, "pv_longitude", None)
         if lat is None or lon is None:
             return {}
-        from . import solar_forecast
-        fc = solar_forecast.forecast(lat, lon, kwp=settings.pv_kwp,
+        from . import pv_size, solar_forecast
+        kwp = pv_size.kwp(settings)                  # yours, else the gateways' (#583)
+        if not kwp:
+            return {}
+        fc = solar_forecast.forecast(lat, lon, kwp=kwp,
                                      tilt=settings.pv_tilt, azimuth=settings.pv_azimuth)
         return solar_forecast.sensors(fc)
     except Exception:                                           # noqa: BLE001
@@ -1747,6 +1908,8 @@ def apply_dynamic_pricing(snapshot: dict, settings, store, gateway_id) -> dict |
     dyn = tariff_dynamic_provider(store, gateway_id)
     if not dyn:
         return None
+    if dyn.get("source") == "nem":                 # the site's region (#582)
+        dyn = {**dyn, "region": site_nem_region(store, gateway_id) or dyn.get("region")}
     buy_c, sell_c = resolve_dynamic_price(dyn, store)
     if buy_c is None:
         return None
@@ -1758,6 +1921,26 @@ def apply_dynamic_pricing(snapshot: dict, settings, store, gateway_id) -> dict |
     snapshot["tariff.buy_rate"] = round(buy, 5)
     snapshot["tariff.sell_rate"] = round(sell, 5)
     return {"buy": buy, "sell": sell}
+
+
+def price_events(snapshot: dict, settings) -> None:
+    """Price events (#582), after the prices are settled. ``tariff.price_spike``: 1 while
+    the HA spike sensor is on, else while the price is at or above the threshold; no
+    reading with neither. ``tariff.demand_window_active``: the HA entity wins over the
+    tariff's window when one is set."""
+    thr = float(getattr(settings, "price_spike_c", 0) or 0)
+    ent = (getattr(settings, "price_spike_entity", "") or "").strip()
+    spot = _coerce_number(snapshot.get("tariff.spot_price"))
+    spike = None
+    if ent and snapshot.get(ent) is not None:
+        spike = int(bool(_coerce_number(snapshot.get(ent))))
+    elif thr > 0 and spot is not None:
+        spike = int(spot >= thr)
+    snapshot["tariff.price_spike"] = spike
+    snapshot["tariff.spike_threshold"] = thr or None
+    dw = (getattr(settings, "demand_window_entity", "") or "").strip()
+    if dw and snapshot.get(dw) is not None:
+        snapshot["tariff.demand_window_active"] = int(bool(_coerce_number(snapshot.get(dw))))
 
 
 def ha_price_snapshot(settings, store) -> dict[str, Any]:
@@ -1786,6 +1969,8 @@ def ha_price_snapshot(settings, store) -> dict[str, Any]:
 TARIFF_SENSORS = [
     ("tariff.spot_price", "Wholesale spot price (AEMO NEM or HA entity, c/kWh)"),
     ("tariff.feed_in_price", "Dynamic feed-in price (HA entity, c/kWh)"),
+    ("tariff.price_spike", "Price spike (1 at or above the spike threshold, or the HA spike sensor on)"),
+    ("tariff.spike_threshold", "Price spike threshold (c/kWh)"),
     ("tariff.buy_rate", "Tariff: import rate ($/kWh)"),
     ("tariff.sell_rate", "Tariff: feed-in rate ($/kWh)"),
     ("tariff.season", "Tariff: season"),
@@ -1884,8 +2069,8 @@ ASK_SENSORS = [
 FEATURES = ("gateway", "modbus", "solar_forecast", "spot_price", "feed_in_price",
             "tariff", "utility", "constants", "ask")
 
-_SETUP_SOLAR = "set your location in Settings → Integrations → Location & Solar"
-_SETUP_PRICE = "set it in Settings → Integrations → Dynamic price"
+_SETUP_SOLAR = "set your location in Settings → Sites & Billing → Location & Solar"
+_SETUP_PRICE = "set it in Settings → Sites & Billing → Prices"
 _SETUP_TARIFF = "give the meter a tariff in Settings → Sites & Billing"
 _SETUP_UTILITY = "give the meter a utility in Settings → Sites & Billing"
 
@@ -1897,6 +2082,8 @@ def sensor_feature(sid: str) -> str:
         return "ha:" + sid.split(":")[1]
     if sid in ("tariff.spot_price", "tariff.feed_in_price"):
         return sid.split(".", 1)[1]
+    if sid in ("tariff.price_spike", "tariff.spike_threshold"):    # from the price (#582)
+        return "spot_price"
     if sid.startswith(("weather.", "solar_forecast.")):
         return "solar_forecast"
     if sid.startswith("service."):
@@ -2528,19 +2715,61 @@ def _guard_ok(guard: dict | None, snapshot: dict) -> bool:
 
 
 def _fire_ha_phase(entry: dict, phase: str, *, settings, client, store,
-                   snapshot: dict, host: str | None) -> list[str]:
+                   snapshot: dict, host: str | None,
+                   gateway_id: str | None = None) -> list[str]:
     """Run the entry's HA actions tagged for this edge (``fire`` on entry / ``exit``
-    on window close; ``both`` runs on each), each gated by its own guard."""
+    on window close; ``both`` runs on each), each gated by its own guard. Messages name
+    ``gateway_id``, the gateway the schedule ran on (#577)."""
     out: list[str] = []
     for ha in entry.get("ha_actions") or []:
+        if ha.get("actionable"):        # sent by the ask step, with its buttons (#576)
+            continue
         if (ha.get("when") or "fire") not in (phase, "both"):
             continue
         if not _guard_ok(ha.get("guard"), snapshot):
             continue
         akind = "ha_service" if (ha.get("ha_kind") == "service") else "notify"
         out.append(run_action({**ha, "kind": akind}, settings=settings,
-                              client=client, store=store, snapshot=snapshot, host=host))
+                              client=client, store=store, snapshot=snapshot, host=host,
+                              gateway_id=gateway_id))
     return out
+
+
+def build_snapshot(settings, store, state: dict, *, host: str | None, gateway_id: str | None,
+                   now: dt.datetime, modbus_host: str | None = None,
+                   tick: bool = False) -> dict[str, Any]:
+    """Every value a condition or a ``%var%`` can read, for one gateway (#580): the tick,
+    the editor's Test / Evaluate and Run now all use this one. ``tick``: this is the
+    scheduler's own tick, which feeds the billing accumulators; anything else only reads
+    them."""
+    from . import billing
+    snapshot = snapshot_from_state(state)
+    snapshot["grid.offgrid_min"] = offgrid_min(state, now.timestamp())   # on the tick's clock
+    snapshot.update(ha_snapshot(store))     # exposed HA entities are conditions too
+    snapshot.update(solar_snapshot(settings))   # weather + solar-forecast sensors
+    snapshot.update(nem_snapshot(settings, store, gateway_id))   # tariff.spot_price (AEMO NEM, the site's region)
+    snapshot.update(ha_price_snapshot(settings, store))   # HA price entity -> tariff.spot_price/feed_in_price (wins over NEM)
+    snapshot.update(tariff_snapshot(store, gateway_id, now))   # tariff.* + service.*
+    snapshot.update(billing_snapshot(store, gateway_id, now))   # tariff.*_window_active
+    _dyn = apply_dynamic_pricing(snapshot, settings, store, gateway_id)   # per-tariff wholesale override
+    price_events(snapshot, settings)            # tariff.price_spike, HA demand window (#582)
+    if tick:
+        snapshot.update(billing.billing_tick(store, gateway_id, snapshot.get("grid.power_w"),
+                                             now, dynamic_rate=_dyn))   # demand/energy/bonus/charge
+    else:
+        snapshot.update(billing.billing_read(store, gateway_id))    # read only: never accrues
+    snapshot.update(billing.fixed_snapshot(store, gateway_id, now))   # fixed.* (pure accrual)
+    try:
+        from . import system_setup
+        snapshot.update(system_setup.snapshot(store, settings, gateway_id, host))   # system.* (derived+override)
+    except Exception:  # noqa: BLE001
+        pass
+    snapshot.update(const_snapshot(store))   # const.* automation constants
+    # Modbus (SunSpec 702) target: an explicit modbus_host when the poller resolved one
+    # (empty string = skip, e.g. a mock with no Modbus); else fall back to host.
+    snapshot.update(ratings_snapshot(modbus_host if modbus_host is not None else host))   # ratings.* from Modbus 702 (cached)
+    snapshot.update(derived_snapshot(snapshot))   # battery.* derived (needs const.* + ratings.*)
+    return snapshot
 
 
 def tick(*, settings, client, store, state: dict, host: str | None = None,
@@ -2561,29 +2790,8 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
     # did everywhere before.
     if now is None:
         now, _ = site_time.now_site(settings, host)
-    snapshot = snapshot_from_state(state)
-    snapshot["grid.offgrid_min"] = offgrid_min(state, now.timestamp())   # on the tick's clock
-    snapshot.update(ha_snapshot(store))     # exposed HA entities are conditions too
-    snapshot.update(solar_snapshot(settings))   # weather + solar-forecast sensors
-    snapshot.update(nem_snapshot(settings))     # tariff.spot_price (AEMO NEM built-in)
-    snapshot.update(ha_price_snapshot(settings, store))   # HA price entity -> tariff.spot_price/feed_in_price (wins over NEM)
-    snapshot.update(tariff_snapshot(store, gateway_id, now))   # tariff.* + service.*
-    snapshot.update(billing_snapshot(store, gateway_id, now))   # tariff.*_window_active
-    from . import billing
-    _dyn = apply_dynamic_pricing(snapshot, settings, store, gateway_id)   # per-tariff wholesale override
-    snapshot.update(billing.billing_tick(store, gateway_id, snapshot.get("grid.power_w"),
-                                         now, dynamic_rate=_dyn))   # demand/energy/bonus/charge
-    snapshot.update(billing.fixed_snapshot(store, gateway_id, now))   # fixed.* (pure accrual)
-    try:
-        from . import system_setup
-        snapshot.update(system_setup.snapshot(store, settings, gateway_id, host))   # system.* (derived+override)
-    except Exception:  # noqa: BLE001
-        pass
-    snapshot.update(const_snapshot(store))   # const.* automation constants
-    # Modbus (SunSpec 702) target: an explicit modbus_host when the poller resolved one
-    # (empty string = skip, e.g. a mock with no Modbus); else fall back to host.
-    snapshot.update(ratings_snapshot(modbus_host if modbus_host is not None else host))   # ratings.* from Modbus 702 (cached)
-    snapshot.update(derived_snapshot(snapshot))   # battery.* derived (needs const.* + ratings.*)
+    snapshot = build_snapshot(settings, store, state, host=host, gateway_id=gateway_id,
+                              now=now, modbus_host=modbus_host, tick=True)
     fired: list[dict] = []
     ready: list[dict] = []
     # Debug monitor (#345): each enabled schedule's state as this tick decided it.
@@ -2625,7 +2833,7 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
         else:
             time_inside = bool(entry.get("enabled") and cal_ok and state == "inside")
         entry["_wkey"], entry["_wend"] = wkey, wend
-        if entry.get("ask") and time_inside:
+        if entry_ask(entry) and time_inside:
             _restore_ask(entry, store=store, gateway_id=gateway_id, wkey=wkey)
         exit_conds = entry.get("exit_conditions") or []
         exit_now = bool(exit_conds) and time_inside and evaluate(
@@ -2651,7 +2859,7 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                     entry, "exit", settings=settings, client=client, store=store,
                     snapshot={**snapshot, **run_context(entry, gateway_id=gateway_id,
                                                         now=now, phase="exit")},
-                    host=host)
+                    host=host, gateway_id=gateway_id)
             # BR-50: put back what this rule overrode. Opt-in, because "leave it where
             # the rule left it" is a legitimate intent and changing it under existing
             # rules would be a silent behaviour change.
@@ -2677,6 +2885,9 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                 store.log_schedule_event(entry["id"], entry["name"], "exit",
                                          (f"{why}: " + "; ".join(exit_res)) if exit_res else why,
                                          gateway_id=gateway_id or "")
+            if time_inside and exit_now:                 # ended early (#581)
+                notify_run(store, "schedule_aborted", entry["name"], gateway_id,
+                           "ended early: exit condition met")
         _window_inside[dkey] = effective_inside
         if effective_inside:
             _window_key[dkey] = wkey or now.date().isoformat()
@@ -2764,6 +2975,7 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                               reason=detail)
                 store.log_schedule_event(loser["id"], loser["name"], "deferred", detail,
                                          gateway_id=gateway_id or "")
+                notify_run(store, "schedule_aborted", loser["name"], gateway_id, detail)
                 mon[loser["id"]] = ("skipped", detail)
         winners.append(group[0])
     # (2) conflict with an ACTIVE dispatch already held by ANOTHER schedule (a force
@@ -2788,6 +3000,7 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                 _settle_loser(w, store=store, gateway_id=gateway_id, now=now, reason=detail)
                 store.log_schedule_event(w["id"], w["name"], "deferred", detail,
                                          gateway_id=gateway_id or "")
+                notify_run(store, "schedule_aborted", w["name"], gateway_id, detail)
                 mon[w["id"]] = ("skipped", detail)
                 continue
             pol = (w.get("conflict") or "override").lower()
@@ -2799,6 +3012,8 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                 store.log_schedule_event(w["id"], w["name"], "deferred",
                     "deferred — the battery is already under another dispatch (conflict=defer)",
                     gateway_id=gateway_id or "")
+                notify_run(store, "schedule_aborted", w["name"], gateway_id,
+                           "deferred — the battery is already under another dispatch")
                 mon[w["id"]] = ("deferred", "the battery is already under another dispatch "
                                             "(conflict=defer)")
                 continue
@@ -2829,7 +3044,7 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                 mon[entry["id"]] = ("retrying", f"{n} attempt(s); last: "
                                     f"{occ.get('reason') or 'failed'}; next try in {wait:.0f}s")
                 continue                       # backing off; the window is still open
-        if entry.get("ask"):
+        if entry_ask(entry):
             step, detail = _ask_step(entry, store=store, gateway_id=gateway_id, now=now,
                                      snapshot=snapshot, occ=occ)
             if step == "wait":
@@ -2860,7 +3075,7 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                                     entry.get("id"), e)
         res = _fire_entry(entry, settings=settings, client=client, store=store,
                           snapshot=snapshot, host=host, gateway_id=gateway_id, now=now)
-        if entry.get("ask"):
+        if entry_ask(entry):
             _asks[f"{gateway_id or ''}:{entry['id']}"]["open"] = False
         fired.append(res)
         mon[entry["id"]] = (("running", f"fired: {res.get('result')}") if res.get("ok")
@@ -3152,7 +3367,8 @@ def _fire_entry(entry: dict, *, settings, client, store, snapshot: dict,
     # The run's attempt count is on its occurrence row, so this holds across a restart.
     if int(entry.get("_occ_attempts") or 1) <= 1:
         results += _fire_ha_phase(entry, "fire", settings=settings, client=client,
-                                  store=store, snapshot=snapshot, host=host)
+                                  store=store, snapshot=snapshot, host=host,
+                                  gateway_id=gateway_id)
     summary = "; ".join(results) or "nothing to do"
     # Decide on the VERDICT, not on the words. This used to be
     # `"failed" not in r`, so an action whose failure text did not happen to
@@ -3209,10 +3425,32 @@ def _fire_entry(entry: dict, *, settings, client, store, snapshot: dict,
         # SCHEDULE_FAILED (#271). Retries inside the window merge into the same alert.
         alerts.raise_event(
             store, gateway_id, "SCHEDULE_FAILED",
-            f"Schedule '{entry['name']}' failed (attempt {attempts}): {summary}. "
-            "It is retried while its window is open.")
+            f"Schedule '{entry['name']}' failed on {actionable.gateway_name(gateway_id)} "
+            f"(attempt {attempts}): {summary}. It is retried while its window is open.")
     return {"id": entry["id"], "name": entry["name"], "result": summary,
             "ok": ok_all}
+
+
+def notify_run(store, event: str, name: str, gateway_id: str | None, detail: str, *,
+               device_ids: list[str] | None = None) -> None:
+    """A run that missed, was aborted or got no reply (#581): one app-log warning, and the
+    push under its Scheduler trigger (switch and Send to), both in the same words and
+    naming the gateway. ``device_ids``: the devices to tell instead of the trigger's
+    Send to. Never raises."""
+    from . import notify_engine
+    gw = actionable.gateway_name(gateway_id)
+    try:
+        _, msg = actionable.templates().render(event, gateway=gw, schedule=name, detail=detail)
+    except Exception:  # noqa: BLE001
+        msg = f"Schedule '{name}' [{gw}]: {detail}"
+    log.warning("%s", msg)
+    if store is None:
+        return
+    try:
+        notify_engine.fire(store, event, gateway=gw, device_ids=device_ids, logged=True,
+                           schedule=name, detail=detail)
+    except Exception as e:  # noqa: BLE001 — a notification never breaks the run
+        log.warning("notify [%s] failed: %s", event, e)
 
 
 # ── "Ask before continuing" (#374 P4) ─────────────────────────────────────────
@@ -3360,7 +3598,7 @@ def _ask_step(entry: dict, *, store, gateway_id: str | None,
     ``occ`` is this run's row: the question and the decision are recorded on it, so a
     restart waits for the same question for the time it has left, applies "if no reply"
     once if it expired meanwhile, and never decides the run twice."""
-    ask = entry["ask"]
+    ask = entry_ask(entry)
     dkey = f"{gateway_id or ''}:{entry['id']}"
     wkey = entry.get("_wkey") or now.date().isoformat()
     timeout_min = int(ask["timeout_min"])
@@ -3453,4 +3691,14 @@ def _ask_step(entry: dict, *, store, gateway_id: str | None,
     store.log_schedule_event(entry["id"], entry["name"],
                              "continuing" if step == "fire" else "skipped", detail,
                              gateway_id=gid)
+    if chosen is None:
+        # No reply (#581): told to the devices that were asked.
+        send_to = ask.get("send_to") or {}
+        notify_run(store, "schedule_no_reply", entry["name"], gateway_id, detail,
+                   device_ids=send_to.get("ids") if send_to.get("type") == "device" else None)
     return step, detail
+
+
+# Templates in the one notify shape (#576): their asks are Actionable notify rows.
+for _p in PRESETS:
+    _p["spec"] = normalize_spec(_p["spec"])

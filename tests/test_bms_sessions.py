@@ -200,7 +200,7 @@ def test_record_rejects_bad_parameters(api, monkeypatch):
         assert api.post("/api/battery/record?gateway=gw-bms",
                         json={"samples": 20, "interval_s": 1}).status_code == 422
         assert api.post("/api/battery/record?gateway=gw-bms",
-                        json={"samples": 9999, "interval_s": 15}).status_code == 422
+                        json={"samples": 99999, "interval_s": 15}).status_code == 422   # past a day at 5 s
     finally:
         state.unregister_gateway("gw-bms")
 

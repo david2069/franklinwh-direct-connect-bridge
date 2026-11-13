@@ -27,6 +27,7 @@ from franklinwh_direct_connect_api.transport import TransportError
 
 from . import __version__, client, db
 from . import environment
+from . import install_identity
 from . import auth
 from . import security
 from . import tls
@@ -263,6 +264,11 @@ class ModbusToggleReq(BaseModel):
 
 class RestoreReq(BaseModel):
     confirm: bool = False               # consequential: overwrites the live database
+
+
+class InsightObjectivesBody(BaseModel):
+    """Analytics → Explain's objectives for a gateway (#588)."""
+    objectives: list[str] = []
 
 
 class NotifyTriggersBody(BaseModel):
@@ -722,11 +728,10 @@ class ScheduleReq(BaseModel):
     duration_min: int = 0
     match: str = "all"                  # all | any
     entry_hold_s: int = 0               # dwell: conditions must hold this long (s)
-    # Which gateway a battery action targets. "" / None = the default gateway.
-    # Ignored for a notify-only schedule, which touches no gateway at all.
+    # The gateway the schedule runs on. Required (#379): there is no default gateway.
     gateway_id: str = ""
-    # One-or-all targeting (BR-45). "one" honours gateway_id (or the default when it is
-    # blank); "all" runs the rule on EVERY enabled gateway, as its own run per gateway
+    # One-or-all targeting (BR-45). "one" honours gateway_id; "all" (the form's All
+    # gateways, #578) runs the rule on EVERY enabled gateway, as its own run per gateway
     # with its own resource claim — so a site-wide rule is one rule, not N copies to
     # keep in step. Anything unrecognised is read as "one": the narrower claim.
     gateway_scope: str = "one"
@@ -856,6 +861,9 @@ class SettingsUpdate(BaseModel):
     tariff_price_entity: str | None = None
     tariff_feedin_entity: str | None = None
     billing_dynamic: bool | None = None       # AEMO NEM wholesale spot region
+    price_spike_c: float | None = None        # price events (#582)
+    price_spike_entity: str | None = None
+    demand_window_entity: str | None = None
     # Interrupted scheduled-dispatch policy: none | notify | release | resume.
     dispatch_interrupt_policy: str | None = None
 
@@ -905,21 +913,17 @@ def _grid_status_value(status) -> int:
 
 
 def _derived_pv_kwp(gateway: str | None = None) -> float | None:
-    """The array size the aGate reports (1903 ``solar_pv``), or None if it cannot say.
+    """The array size the site's gateways report (1903 ``solar_pv``), summed, or None if
+    none can say (#583).
 
     None is not 0: "the gateway did not answer" and "there is no solar" are different
     facts, and only one of them should ever replace a user's number.
     """
-    from . import system_setup
-    try:
-        s = get_settings()
-        vals = system_setup.values(db.get_store(s), s, gateway, None)
+    from . import pv_size
+    try:                         # the site's gateways, summed (#583)
+        return pv_size.derived_kwp(read=True)
     except Exception:  # noqa: BLE001 — a settings page must not fail on an unread gateway
         return None
-    if "solar_kwp" not in (vals.get("_derived") or {}):
-        return None
-    kwp = vals.get("solar_kwp")
-    return float(kwp) if isinstance(kwp, (int, float)) and kwp > 0 else None
 
 
 def _seed_self_ha_instance(settings) -> bool:
@@ -1034,6 +1038,7 @@ def create_app() -> FastAPI:
                                   _idt.datetime.now(_idt.timezone.utc).strftime("%Y-%m-%d"))
         if _cfg_store is not None:
             _cfg_store.record_version(__version__, _asset_version())   # update history
+            install_identity.ensure(_cfg_store, __version__)
     except Exception:  # noqa: BLE001
         pass
 
@@ -1080,6 +1085,11 @@ def create_app() -> FastAPI:
                     log.info("default gateway: marked '%s' (it was the default by roster order)",
                              default_id)
                 _log_adopted(store.adopt_default_data(default_id), default_id)   # #379
+                moved = scheduler.migrate_notify_paths(store)      # one notify path (#576)
+                if moved:
+                    log.info("schedules: %d moved to Actionable notify rows (#576)", moved)
+                from . import aemo_nem
+                aemo_nem.migrate_region(store, s)      # the region is the site's (#582)
                 db_rows = store.gateways()
             except Exception:  # noqa: BLE001 — roster must never block startup
                 db_rows = []
@@ -1932,11 +1942,11 @@ def create_app() -> FastAPI:
     #: silent no-op is the thing that burned us before — controls painted in the UI
     #: and not grounded in code.
     INTEGRATION_PROTOCOLS = [
-        {"id": "direct_9000", "name": "Direct Connect (TCP 9000)",
+        {"id": "direct_9000", "name": "Direct Connect",
          "detail": "The aGate's own local API — cmdType frames, auto-discovered",
          "implemented": True},
         {"id": "sunspec_502", "name": "SunSpec / Modbus TCP",
-         "detail": "SunSpec models over :502. NB this aGate's map starts at offset 0, "
+         "detail": "SunSpec models over the Modbus TCP Server port. NB this aGate's map starts at offset 0, "
                    "not 40000 — a 4xxxx address must be converted first",
          "implemented": True},
         {"id": "modbus_bridge_rest", "name": "Modbus Bridge REST",
@@ -2247,6 +2257,9 @@ def create_app() -> FastAPI:
         if current is None:     # the first gateway: it takes what ran on "no gateway" (#379)
             _log_adopted(st.adopt_default_data(gid), gid)
         await _reconcile_gateway(row)
+        _audit("gateway_add", gateway=gid,
+               detail=f"{req.label or ''} ({'mock' if req.is_mock else 'host set'})",
+               result="added", ok=True)
         return _gw_merged(row)
 
     @app.patch("/api/gateways/{gw_id}")
@@ -2481,15 +2494,17 @@ def create_app() -> FastAPI:
     @app.post("/api/tariffs/validate")
     def api_tariff_validate(req: TariffValidateReq):
         """Check a rate model's coverage/tier completeness — the editor's live linter."""
-        from . import rate_model
+        from . import aemo_nem, rate_model
         pricing = req.pricing or {}
         if pricing.get("kind") == "dynamic":
             # A dynamic/wholesale tariff carries no static rates — the live provider supplies
             # them. Validate the provider instead of demanding seasons/default_rate.
             dyn = pricing.get("dynamic") or {}
             probs = []
-            if dyn.get("source") == "nem" and not (dyn.get("region") or "").strip():
-                probs.append("Choose a NEM region for the AusNEM provider.")
+            if dyn.get("source") == "nem" and not (dyn.get("region") or "").strip() and not any(
+                    aemo_nem.region_for(s.get("region")) for s in (_ha_store().sites() or [])):
+                probs.append("Set your site's Region (e.g. AU-NSW) under Sites & Meters: "
+                             "the AusNEM price is the site's region (#582).")
             elif dyn.get("source") == "ha" and not (dyn.get("buy_entity") or "").strip():
                 probs.append("Choose a buy price entity for the Home Assistant provider.")
             elif dyn.get("source") not in ("nem", "ha"):
@@ -3485,7 +3500,32 @@ def create_app() -> FastAPI:
         """Where setup stands — every step, whether it is already satisfied, and whether to
         prompt. Safe to call repeatedly; re-running the wizard is always allowed."""
         st = db.get_store(get_settings())
-        return setup_wizard.summary(st, **_wizard_inputs(gateway))
+        out = setup_wizard.summary(st, **_wizard_inputs(gateway))
+        out["tasks"] = setup_wizard.tasks(**_hub_facts(st))
+        return out
+
+    def _hub_facts(st) -> dict:
+        """What is already set up, for the setup list. Each read is guarded: one store
+        problem must not hide the whole list."""
+        from . import constants
+        s = get_settings()
+
+        def ok(fn):
+            try:
+                return bool(fn())
+            except Exception:  # noqa: BLE001
+                return False
+        return {
+            "cloud": bool(s.fwh_cloud_email),
+            "mqtt": bool(s.mqtt_enabled),
+            "home_assistant": ok(lambda: st.ha_instances()),
+            "billing": ok(lambda: st.tariffs()),
+            "default_mode": ok(lambda: constants.mode_chosen(st)),
+            "automation": ok(lambda: st.schedules()),
+            "notifications": ok(lambda: st.notify_devices()),
+            "security": ok(lambda: security.enabled(st)),
+            "accounts": ok(lambda: len(auth.users(st)) > 1 or auth.tokens(st)),
+        }
 
     @app.post("/api/setup/state")
     def api_setup_state(req: SetupStateReq):
@@ -3726,8 +3766,9 @@ def create_app() -> FastAPI:
         """Per-gateway System Setup: resolved values (default → derived → override) + spec."""
         from . import system_setup
         st = _gw_store()
-        return {"values": system_setup.values(st, get_settings(), gateway, _gw_host(gateway)),
-                "spec": system_setup.spec()}
+        vals = system_setup.values(st, get_settings(), gateway, _gw_host(gateway))
+        return {"values": vals, "spec": system_setup.spec(),
+                "solar_installed": system_setup.solar_installed(vals)}   # the Solar tab
 
     @app.put("/api/system-setup")
     def api_system_setup_put(req: SystemSetupBody, gateway: str = Depends(_gateway_q)):
@@ -3770,7 +3811,10 @@ def create_app() -> FastAPI:
                 values = system_setup.values(st, None, gw.id, None)
             summ = gw.last_summary or {}
             fw = summ.get("firmware") or {}
-            m = (devicedb.gateway(fw["SyHdVersion"]) or {}) if fw.get("SyHdVersion") else {}
+            # The poller keeps 1101 SyHdVersion on the gateway; the summary's firmware
+            # block doesn't carry it, so reading only that left the row unread.
+            hw = getattr(gw, "sy_hd_version", None) or fw.get("SyHdVersion")
+            m = (devicedb.gateway(hw) or {}) if hw else {}
             fhp = fw.get("FHP_SN")
             info = {"model": "aGate (mock)" if gw.is_mock else m.get("model"),
                     "country": m.get("country"),
@@ -3861,10 +3905,21 @@ def create_app() -> FastAPI:
         if st is None:
             raise HTTPException(503, "metrics store is disabled")
         try:
-            vals = constants.update(st, req.model_dump(exclude_unset=True, exclude_none=True))
+            sent = req.model_dump(exclude_unset=True, exclude_none=True)
+            vals = constants.update(st, sent)
         except (ValueError, TypeError):
+            _audit("constants_update", detail="not numeric", result="refused", ok=False)
             raise HTTPException(422, "constants must be numeric")
+        _audit("constants_update", detail=" ".join(f"{k}={v}" for k, v in sent.items()),
+               result="saved", ok=True)
         return {"values": vals, "spec": constants.spec()}
+
+    def _live_snapshot(st, gw) -> dict:
+        """What a condition reads on this gateway now, as the tick builds it (#580), on
+        its site clock. Reads the billing accumulators; never feeds them."""
+        return scheduler.build_snapshot(get_settings(), st, getattr(gw, "last_state", {}) or {},
+                                        host=_gw_host(gw.id), gateway_id=gw.id,
+                                        now=_site_now(gw.id), tick=False)
 
     def _sched_gateway(gateway_id: str | None) -> GatewayState | None:
         """The gateway a schedule runs on: its own (#379). None if it isn't running."""
@@ -3954,11 +4009,11 @@ def create_app() -> FastAPI:
         # leave it on: the form starts on the active gateway.
         gid = spec.get("gateway_id") or ""
         st = _gw_store()
-        send_to = (spec.get("ask") or {}).get("send_to")
+        send_to = scheduler.entry_ask(spec).get("send_to")
         if isinstance(send_to, dict) and send_to.get("type") == "device" \
                 and isinstance(send_to.get("ids"), list):
             known = {d["id"] for d in _ha_store().notify_devices()}
-            errors = [*errors, *(f"ask before continuing: unknown device '{i}'"
+            errors = [*errors, *(f"actionable notification: unknown device '{i}'"
                                  for i in send_to["ids"]
                                  if isinstance(i, str) and i not in known and i not in kept_devices)]
         if not gid:
@@ -3974,7 +4029,7 @@ def create_app() -> FastAPI:
         _guard_writes()
         import uuid
         st = _ha_store()
-        spec = req.model_dump(exclude={"name", "enabled"})
+        spec = scheduler.normalize_spec(req.model_dump(exclude={"name", "enabled"}))  # #576
         spec["action"] = _normalized_action(spec.get("action"))
         _valid_spec(spec)
         sid = uuid.uuid4().hex[:12]
@@ -4003,11 +4058,12 @@ def create_app() -> FastAPI:
         prior_spec = {k: prior[k] for k in ScheduleReq.model_fields
                       if k in prior and k not in ("name", "enabled")}
         sent = req.model_dump(exclude_unset=True, exclude={"name", "enabled"})
-        spec = {**req.model_dump(exclude={"name", "enabled"}), **prior_spec, **sent}
+        spec = scheduler.normalize_spec(                     # one notify path (#576)
+            {**req.model_dump(exclude={"name", "enabled"}), **prior_spec, **sent})
         spec["action"] = _normalized_action(spec.get("action"))
         # A schedule saved before the Ask wait had to fit its window stays editable as
         # long as the edit leaves that wait and window as they were.
-        prior_send = (prior_spec.get("ask") or {}).get("send_to") or {}
+        prior_send = scheduler.entry_ask(prior_spec).get("send_to") or {}
         _valid_spec(spec, saved_as=tuple(scheduler._ask_window_errors(
             {**req.model_dump(exclude={"name", "enabled"}), **prior_spec})),
             kept_devices=tuple(prior_send.get("ids") or ()))
@@ -4069,6 +4125,8 @@ def create_app() -> FastAPI:
                 st.end_dispatch(d["id"], status="stopped")
             st.log_schedule_event(sid, entry["name"], "stopped",
                                   f"dispatch released by user: {out.get('result', '')}")
+            scheduler.notify_run(st, "schedule_aborted", entry["name"],     # #581
+                                 entry.get("gateway_id") or "", "stopped by hand")
             return {"stopped": True, "result": out.get("result", "")}
         st.log_schedule_event(sid, entry["name"], "stopped", "no active dispatch to stop")
         return {"stopped": False, "result": "no active dispatch for this schedule"}
@@ -4149,8 +4207,8 @@ def create_app() -> FastAPI:
     @app.get("/api/schedules/presets")
     def api_schedule_presets():
         """Built-in schedule templates for the Load Preset dialog. Every action is
-        one the local channel can actually do — no force-charge preset. Each says why it
-        can't run right now (#471), or None."""
+        one this bridge can do; the force ones need the Modbus client (``requires``). Each
+        says why it can't run right now (#471), or None."""
         _features = scheduler.feature_states(get_settings(), _ha_store())
         return {"presets": [{**p, "inactive": scheduler.template_inactive(p, _features)}
                             for p in scheduler.PRESETS]}
@@ -4166,7 +4224,9 @@ def create_app() -> FastAPI:
             rows = [r for r in rows if r["id"] in want]
         if fmt == "automations":
             return {"type": scheduler.IMPORT_TYPE_AUTOMATIONS, "version": 1,
-                    "entries": [scheduler.to_automations(r) for r in rows]}
+                    "entries": [scheduler.to_automations(r) for r in rows],
+                    "warnings": [w for r in rows                       # #580
+                                 for w in scheduler.automations_export_warnings(r)]}
         return {"type": scheduler.EXPORT_TYPE, "version": scheduler.EXPORT_VERSION,
                 "entries": [scheduler.portable(r) for r in rows]}
 
@@ -4188,7 +4248,8 @@ def create_app() -> FastAPI:
                         f"'{scheduler.IMPORT_TYPE_AUTOMATIONS}' (the Modbus bridge)."))
         # Normalise a foreign bundle (Modbus 'franklinwh-automations') to our schema; our
         # own bundle passes through unchanged.
-        entries = scheduler.import_entries(req.type, req.entries)
+        entries = [scheduler.normalize_spec(e)              # one notify path (#576)
+                   for e in scheduler.import_entries(req.type, req.entries)]
         st = _ha_store()
         gw_ids = {g.id for g in get_gateways()}
         dev_ids = {d["id"] for d in st.notify_devices()}
@@ -4250,35 +4311,51 @@ def create_app() -> FastAPI:
                 "tick_s": tick_s}
 
     @app.get("/api/schedules/timeline")
-    def api_schedule_timeline(gateway: str = Depends(_gateway_q)):
-        """Today's timeline: each enabled schedule's planned window, plus the real
-        work-mode band, the SoC % line, and fire markers from the activity log — all
-        in minutes-from-midnight. (No VPP-override band: the local channel has no
-        force provider, so only the actual work mode is shown.)"""
-        now = _site_now(gateway)
-        base = scheduler.timeline_segments(_ha_store().schedules(), now)
-        midnight = int(now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
-        now_ts = int(now.timestamp())
-        def to_min(ts: float) -> float:
-            return max(0.0, min(1440.0, (ts - midnight) / 60.0))
-        soc: list = []; modes: list = []; fires: list = []
+    def api_schedule_timeline(gateway: str | None = Depends(_gateway_opt),
+                              every: bool = Query(False, alias="all",
+                                                  description="every gateway (#579)")):
+        """Today's timeline, a lane per gateway (#579): its planned windows, the real
+        work-mode band, the SoC % line and fire markers from its activity log — all in
+        minutes-from-midnight on its site clock. ``site``: the All gateways rules, drawn
+        once. ``?gateway=`` gives that gateway's lane, ``?all=true`` every gateway's.
+        (No VPP-override band: the local channel has no force provider, so only the
+        actual work mode is shown.)"""
+        if not every and not gateway:
+            _gw_or_404(None)                     # names a gateway, or every one (#379)
+        gws = list(get_gateways() or []) if every else [_gw_or_404(gateway)]
+        schedules = _ha_store().schedules()
         store = db.get_store(get_settings())
-        if store is not None:
-            key = _metrics_gw_key(gateway)
-            for row in store.query(midnight, now_ts, 300, gateway=key):
-                if row.get("soc") is not None:
-                    soc.append({"min": round(to_min(row["ts"]), 1), "soc": row["soc"]})
-            for seg in store.mode_segments(midnight, now_ts, gateway=key):
-                if seg.get("mode"):
-                    modes.append({"start_min": round(to_min(seg["start"]), 1),
-                                  "end_min": round(to_min(seg["end"]), 1),
-                                  "mode": seg["mode"]})
-            for ev in _ha_store().schedule_log(limit=300):
-                if ev["ts"] >= midnight and ev["status"] in ("fired", "exit", "gated", "error"):
+        log_rows = _ha_store().schedule_log(limit=500)
+        lanes, site = [], []
+        for gw in gws:
+            now = _site_now(gw.id)
+            base = scheduler.timeline_segments(schedules, now, gateway_id=gw.id)
+            site = site or base["site"]
+            midnight = int(now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+            now_ts = int(now.timestamp())
+
+            def to_min(ts: float) -> float:
+                return max(0.0, min(1440.0, (ts - midnight) / 60.0))
+            soc: list = []; modes: list = []; fires: list = []
+            if store is not None:
+                key = _metrics_gw_key(gw.id)
+                for row in store.query(midnight, now_ts, 300, gateway=key):
+                    if row.get("soc") is not None:
+                        soc.append({"min": round(to_min(row["ts"]), 1), "soc": row["soc"]})
+                for seg in store.mode_segments(midnight, now_ts, gateway=key):
+                    if seg.get("mode"):
+                        modes.append({"start_min": round(to_min(seg["start"]), 1),
+                                      "end_min": round(to_min(seg["end"]), 1),
+                                      "mode": seg["mode"]})
+            for ev in log_rows:                  # this gateway's runs only
+                if (ev["ts"] >= midnight and ev.get("gateway_id") == gw.id
+                        and ev["status"] in ("fired", "exit", "gated", "error")):
                     fires.append({"min": round(to_min(ev["ts"]), 1),
                                   "name": ev["name"], "status": ev["status"]})
-        base.update({"soc": soc, "modes": modes, "fires": fires})
-        return base
+            lanes.append({"gateway_id": gw.id, "name": gw.label or gw.id,
+                          "now_min": base["now_min"], "segments": base["segments"],
+                          "soc": soc, "modes": modes, "fires": fires})
+        return {"now_min": lanes[0]["now_min"] if lanes else 0, "lanes": lanes, "site": site}
 
     @app.post("/api/schedules/{sid}/test")
     def api_schedule_test(sid: str, gateway: str | None = Depends(_gateway_opt)):
@@ -4294,23 +4371,7 @@ def create_app() -> FastAPI:
         # to test against — never the default gateway (#379).
         gateway = gateway or _gw_or_404(entry.get("gateway_id") or None).id
         gw = _gw_or_404(gateway)
-        snap = scheduler.snapshot_from_state(getattr(gw, "last_state", {}) or {})
-        snap.update(scheduler.ha_snapshot(st))
-        snap.update(scheduler.solar_snapshot(get_settings()))
-        snap.update(scheduler.nem_snapshot(get_settings()))
-        snap.update(scheduler.ha_price_snapshot(get_settings(), st))
-        snap.update(scheduler.tariff_snapshot(st, gateway))
-        scheduler.apply_dynamic_pricing(snap, get_settings(), st, gateway)   # per-tariff wholesale override
-        snap.update(scheduler.billing_snapshot(st, gateway))
-        snap.update(__import__("franklinwh_direct_connect_bridge.billing", fromlist=["billing"]).billing_read(st, gateway))
-        snap.update(__import__("franklinwh_direct_connect_bridge.billing", fromlist=["billing"]).fixed_snapshot(st, gateway))
-        try:
-            snap.update(__import__("franklinwh_direct_connect_bridge.system_setup", fromlist=["system_setup"]).snapshot(st, get_settings(), gateway, _gw_host(gateway)))
-        except Exception:  # noqa: BLE001
-            pass
-        snap.update(scheduler.const_snapshot(st))
-        snap.update(scheduler.ratings_snapshot(_gw_host(gateway)))
-        snap.update(scheduler.derived_snapshot(snap))
+        snap = _live_snapshot(st, gw)        # one builder for Test / Evaluate / Run (#580)
         now = _site_now(gateway)
         would, reason = scheduler.due(entry, now, snap, entry.get("last_fired_day"))
         rows = []
@@ -4328,23 +4389,7 @@ def create_app() -> FastAPI:
         the UI can outline each row green/red/amber, plus the overall result."""
         st = _ha_store()
         gw = _gw_or_404(gateway)
-        snap = scheduler.snapshot_from_state(getattr(gw, "last_state", {}) or {})
-        snap.update(scheduler.ha_snapshot(st))
-        snap.update(scheduler.solar_snapshot(get_settings()))
-        snap.update(scheduler.nem_snapshot(get_settings()))
-        snap.update(scheduler.ha_price_snapshot(get_settings(), st))
-        snap.update(scheduler.tariff_snapshot(st, gateway))
-        scheduler.apply_dynamic_pricing(snap, get_settings(), st, gateway)   # per-tariff wholesale override
-        snap.update(scheduler.billing_snapshot(st, gateway))
-        snap.update(__import__("franklinwh_direct_connect_bridge.billing", fromlist=["billing"]).billing_read(st, gateway))
-        snap.update(__import__("franklinwh_direct_connect_bridge.billing", fromlist=["billing"]).fixed_snapshot(st, gateway))
-        try:
-            snap.update(__import__("franklinwh_direct_connect_bridge.system_setup", fromlist=["system_setup"]).snapshot(st, get_settings(), gateway, _gw_host(gateway)))
-        except Exception:  # noqa: BLE001
-            pass
-        snap.update(scheduler.const_snapshot(st))
-        snap.update(scheduler.ratings_snapshot(_gw_host(gateway)))
-        snap.update(scheduler.derived_snapshot(snap))
+        snap = _live_snapshot(st, gw)        # one builder for Test / Evaluate / Run (#580)
         trace: list[dict] = []
         result = scheduler.evaluate(req.conditions, snap, req.match, trace)
         return {"result": result, "per_condition": trace}
@@ -4365,8 +4410,9 @@ def create_app() -> FastAPI:
                  if str(entry.get("gateway_scope") or "one").lower() != "all" else None)
         gw = _gw_or_404(bound or gateway)
         target_gw = gw.id
-        snap = scheduler.snapshot_from_state(getattr(gw, "last_state", {}) or {})
-        snap.update(scheduler.ha_snapshot(st))
+        # Tariff, const.* and derived values too, so guards and %vars% read as on the tick
+        # (#580); before, Run now had only the gateway's and Home Assistant's values.
+        snap = _live_snapshot(st, gw)
         host = _gw_host(target_gw)
         results = []
         if (entry.get("action") or {}).get("kind"):
@@ -4380,7 +4426,8 @@ def create_app() -> FastAPI:
         # Manual run simulates an entry fire: fire/both actions, honouring guards
         # (never exit-only actions, and never a guard that does not currently hold).
         results += scheduler._fire_ha_phase(entry, "fire", settings=get_settings(),
-                                            client=client, store=st, snapshot=snap, host=host)
+                                            client=client, store=st, snapshot=snap, host=host,
+                                            gateway_id=target_gw)
         st.log_schedule_event(sid, entry["name"], "manual",
                               "; ".join(results) or "nothing to do")
         return {"results": results}
@@ -4649,9 +4696,15 @@ def create_app() -> FastAPI:
         """
         host = _gw_host(gateway)
         try:
-            return client.solar(get_settings(), host=host)
+            out = client.solar(get_settings(), host=host)
         except (OSError, TransportError, TimeoutError) as e:
             raise HTTPException(status_code=502, detail=str(e))
+        from . import pv_size
+        try:                                     # what the forecast uses (#583)
+            out = {**out, "forecast_size": pv_size.effective(get_settings())}
+        except Exception:  # noqa: BLE001
+            pass
+        return out
 
     @app.get("/api/solar/raw")
     def api_solar_raw(gateway: str = Depends(_gateway_q)):
@@ -4797,7 +4850,7 @@ def create_app() -> FastAPI:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             try:
-                s.connect((host.split(":")[0], 9000))
+                s.connect(client._split_hostport(host, get_settings().fwh_port))
                 return s.getsockname()[0]
             finally:
                 s.close()
@@ -5110,7 +5163,12 @@ def create_app() -> FastAPI:
         HA entities so the picker can offer them. Region defaults to the configured nem_region."""
         from . import aemo_nem
         st = get_settings()
-        reg = (region or st.nem_region or "").upper()
+        # The region is the site's (#582): Sites & Meters → Region, AU-NSW → NSW1.
+        try:
+            site_region = scheduler.site_nem_region(_ha_store(), None)
+        except Exception:  # noqa: BLE001
+            site_region = None
+        reg = (region or (st.nem_region and (site_region or st.nem_region)) or "").upper()
         spot = aemo_nem.spot_price(reg) if reg else None
         # HA price provider (buy/sell in c/kWh) from the configured entities. Guarded: a store
         # or HA outage must not fail the endpoint — the AusNEM half still answers.
@@ -5136,6 +5194,7 @@ def create_app() -> FastAPI:
             active = {"source": None, "buy_c_kwh": None, "sell_c_kwh": None}
         return {"region": reg or None, "regions": list(aemo_nem.REGIONS),
                 "configured_region": st.nem_region or None, "spot": spot,
+                "site_region": site_region,
                 "ha": ha, "ha_options": ha_options,
                 "billing_dynamic": bool(st.billing_dynamic),
                 "active": active}
@@ -5194,7 +5253,8 @@ def create_app() -> FastAPI:
                 status_code=428,
                 detail=f"'{action}' changes the physical gateway — re-send with confirm=true.")
 
-    _NOT_COMMANDS = frozenset({"worker_failed"})
+    # Setup changes and tests are logged too, but are not commands to the aGate.
+    _NOT_COMMANDS = frozenset({"worker_failed", "modbus_test", "gateway_add", "constants_update"})
 
     def _audit(action: str, *, gateway: str | None = None, detail: str = "",
                result: str = "", ok: bool | None = None) -> None:
@@ -5246,12 +5306,79 @@ def create_app() -> FastAPI:
             _audit("set_mode", gateway=gateway, detail=f"mode={req.mode}", result=str(e), ok=False)
             raise HTTPException(status_code=502, detail=str(e))
 
+    @app.get("/api/offgrid/status")
+    def api_offgrid_status(gateway: str | None = Depends(_gateway_opt)):
+        """Every off-grid gateway (or just ``gateway``) for the OFF-GRID pill's modal: why,
+        since when, the reconnect SoC (user requested only), and the same metrics line as
+        the off-grid push. ``notify``: a push is sent when the aGate switches."""
+        s = get_settings()
+        store = db.get_store(s)
+        from . import constants, notify_engine
+        cap = constants.values(store).get("battery_capacity_kwh") or None
+        rows = []
+        for gw in state.gateways():
+            if gateway and gw.id != gateway:
+                continue
+            p = (gw.last_summary or {}).get("power") or {}
+            if not p.get("off_grid"):
+                continue
+            kind = p.get("off_grid_kind")
+            rows.append({
+                "id": gw.id, "label": gw.label or gw.id, "ok": bool(gw.last_summary.get("ok")),
+                "kind": kind,
+                "reason": notify_engine.OFF_GRID_REASON.get(kind, "reason unknown"),
+                "since": (gw.last_state or {}).get("off_grid_since"),
+                "soc": p.get("soc"),
+                "reconnect_soc": p.get("offgrid_reconnect_soc") if kind == "simulated" else None,
+                "metrics": notify_engine.off_grid_metrics(p, cap)})
+        return {"gateways": rows, "notify": notify_engine.notify_on(store, s)}
+
+    @app.get("/api/offgrid/details")
+    def api_offgrid_details(gateway: str = Depends(_gateway_q)):
+        """The OFF-GRID dialog's Details for one gateway: the cached summary plus a live
+        read of the smart circuits (watts, V2L) and, when installed, the generator. Reads
+        only; a read that fails leaves its rows out and says so in ``errors``."""
+        from . import offgrid_details, system_setup
+        s = get_settings()
+        gw = _gw_or_404(gateway)
+        host = _gw_host(gateway)
+        errors: dict[str, str] = {}
+        circ = gen = None
+        try:
+            circ = client.circuits(s, host=host, override=s.smart_circuit_count)
+        except (OSError, TransportError, TimeoutError) as e:
+            errors["circuits"] = str(e)
+        if getattr(gw, "generator_installed", False):
+            try:
+                gen = client.generator(s, host=host)
+            except (OSError, TransportError, TimeoutError) as e:
+                errors["generator"] = str(e)
+        v2l = None
+        try:
+            v2l = system_setup._overrides(db.get_store(s), gw.id).get("v2l")
+        except Exception:  # noqa: BLE001 — no override: read it from the meter below
+            pass
+        if v2l is None and circ:
+            car = circ.get("carsw") or {}
+            used = sum(v for v in (car.get("export_lifetime_kwh"), car.get("import_lifetime_kwh"))
+                       if isinstance(v, (int, float)))
+            v2l = bool(car.get("enabled")) or used > 0
+        return {"rows": offgrid_details.rows(gw.last_summary or {}, circuits=circ,
+                                             generator=gen, v2l_installed=bool(v2l)),
+                "errors": errors}
+
     @app.post("/api/offgrid")
     def api_set_offgrid(req: OffgridReq, gateway: str = Depends(_gateway_q)):
         _guard_consequential(req.confirm, "go off-grid / reconnect")
         host = _gw_host(gateway)   # SAFETY: the write must hit the SELECTED gateway
         action = "go_off_grid" if req.on else "reconnect_grid"
-        detail = f"restore_soc={req.soc}%" if req.on else "reconnect to grid"
+        detail = f"reconnect_soc={req.soc}%" if req.on else "reconnect to grid"
+        # The site at the switch, from the cached summary (no extra read before a write).
+        from . import offgrid_details
+        gw = state.get_gateway(gateway)
+        snap = offgrid_details.line(offgrid_details.rows(gw.last_summary if gw else {}))
+        if snap:
+            detail += f" · {snap}"
         try:
             res = client.set_offgrid(get_settings(), req.on, req.soc, host=host)
             _audit(action, gateway=gateway, detail=detail, result=res,
@@ -5402,6 +5529,9 @@ def create_app() -> FastAPI:
         st = battery_control.status(base)   # live connect; applies the override via effective_target
         # A deliberate check is the freshest answer there is: show it everywhere (#223).
         _avail_cache[base] = {"ts": time.time(), "val": st}
+        _audit("modbus_test", gateway=gateway, detail=f"port {eff_port}",
+               result=("answered" if st.get("available") else (st.get("reason") or "no answer")),
+               ok=bool(st.get("available")))
         return {"ok": bool(st.get("available")), "target": target,
                 "reason": st.get("reason") or "",
                 "max_charge_w": st.get("max_charge_w"),
@@ -5604,6 +5734,141 @@ def create_app() -> FastAPI:
             log.warning("cloud call failed: energy history — %s: %s", type(e).__name__, e)
             return {"error": f"The FranklinWH cloud didn't answer: {type(e).__name__}: {e}"}
 
+    @app.get("/api/analytics/cloud/since")
+    def api_analytics_cloud_since(gateway: str = Depends(_gateway_q)):
+        """The day the viewed aGate was activated on the FranklinWH cloud, where the
+        cloud's history starts (owner, 2026-11-12): ``{"since": "YYYY-MM-DD"}``, or
+        ``{"error": ...}`` as the Cloud view shows it. Read-only."""
+        gw = _gw_or_404(gateway)
+        s = get_settings()
+        if not (s.fwh_cloud_email and s.fwh_cloud_password):
+            return {"error": "No FranklinWH cloud account."}
+        refused = _cloud_target_refusal(gw)
+        if refused:
+            return {"error": refused}
+        try:
+            from . import cloud_status
+            return {"since": cloud_status.read_since(s.fwh_cloud_email, s.fwh_cloud_password,
+                                                     gw.serial)}
+        except Exception as e:  # noqa: BLE001 — shown in the card, never a 500
+            log.warning("cloud call failed: activation date — %s: %s", type(e).__name__, e)
+            return {"error": f"The FranklinWH cloud didn't answer: {type(e).__name__}"}
+
+    @app.get("/api/analytics/insights")
+    def api_analytics_insights(source: str = "local", start: int | None = None,
+                               end: int | None = None, period: str = "month",
+                               date: str | None = None, objectives: str | None = None,
+                               gateway: str = Depends(_gateway_q)):
+        """Analytics → Explain (#588): the shown period's trends (against the previous period
+        and the same one last year), findings and suggestions for the user's objectives, from
+        franklinwh-ha-cloud-analytics ``insights``. ``source=local&start=&end=`` (epoch s)
+        reads this bridge's samples; ``source=cloud&period=&date=`` the cloud's totals.
+        ``objectives`` (comma-separated) defaults to the gateway's saved ones. Read-only:
+        suggestions are never applied. Anything that stops it is ``{"error": ...}``."""
+        try:
+            import franklinwh_ha_cloud_analytics as ca
+        except ImportError:
+            return {"error": "Cloud analytics isn't installed in this build."}
+        from . import analytics_insights as ai
+        gw = _gw_or_404(gateway)
+        s = get_settings()
+        store = db.get_store(s)
+        objs = ([o for o in objectives.split(",") if o] if objectives is not None
+                else ai.saved_objectives(store, gw.id))
+        bad = [o for o in objs if o not in ca.insights.OBJECTIVES]
+        if bad:
+            raise HTTPException(status_code=400, detail=f"unknown objective(s): {', '.join(bad)}")
+        today = site_time.now_known(gw.active_host or gw.configured_host).date()
+        if source == "local":
+            if start is None or end is None or end <= start:
+                raise HTTPException(status_code=400, detail="start and end (epoch s), end after start")
+            now = int(time.time())
+            span = end - start
+            back = (364 if span <= 7 * 86400 else 365) * 86400    # last year, same weekdays for a week
+
+            def local(a, b):
+                if min(b, now) <= a:
+                    return None
+                return ai.local_totals(api_metrics_energy(edges=f"{a},{b}", gateway=gateway),
+                                       (min(b, now) - a) / 86400)
+            current = local(start, end)
+            previous = local(start - span, start)
+            last_year = local(start - back, end - back)
+            month = _dt.datetime.fromtimestamp(start).month
+        elif source == "cloud":
+            if not (s.fwh_cloud_email and s.fwh_cloud_password):
+                return {"error": "Add your FranklinWH cloud account in Settings to explain the "
+                                 "cloud's history."}
+            refused = _cloud_target_refusal(gw)
+            if refused:
+                return {"error": refused}
+            p = ai.cloud_period(period)
+            if p not in ca.PERIODS:
+                raise HTTPException(status_code=400, detail=f"period is one of {', '.join(ca.PERIODS)}")
+            try:
+                on = _dt.date.fromisoformat(date) if date else today
+            except ValueError:
+                raise HTTPException(status_code=400, detail="date is YYYY-MM-DD") from None
+            from . import cloud_status
+            tomorrow = today + _dt.timedelta(days=1)
+
+            def cloud(day):
+                r = ca.resolve(p, day, today)
+                days = (None if p == "lifetime"
+                        else (min(r.next or tomorrow, tomorrow) - r.start).days)
+                return ai.cloud_totals(cloud_status.read_energy(
+                    s.fwh_cloud_email, s.fwh_cloud_password, gw.serial, p, day, today), days)
+            try:
+                current = cloud(on)
+            except Exception as e:  # noqa: BLE001 — shown in the dialog, never a 500
+                log.warning("cloud call failed: explain — %s: %s", type(e).__name__, e)
+                return {"error": f"The FranklinWH cloud didn't answer: {type(e).__name__}"}
+            previous = last_year = None
+            if p != "lifetime":
+                res = ca.resolve(p, on, today)
+                try:
+                    previous = cloud(res.prev) if res.prev else None
+                    ly = on.replace(year=on.year - 1) if (on.month, on.day) != (2, 29) else on.replace(year=on.year - 1, day=28)
+                    last_year = cloud(ly)
+                except Exception as e:  # noqa: BLE001 — trends need them, the rest doesn't
+                    log.info("explain: an earlier cloud period wasn't read: %s", e)
+            month = on.month
+        else:
+            raise HTTPException(status_code=400, detail="source is local or cloud")
+        if current is None:                     # the objectives still show, to be picked
+            return {"error": "No energy recorded for this period.",
+                    "objectives": [{"id": o, "label": ca.insights.OBJECTIVES[o]} for o in objs],
+                    "objective_choices": ca.insights.OBJECTIVES}
+        site = ai.site(store, s, gw, _gw_host(gw.id), month)
+        out = ca.insights.summarise(current, previous=previous, last_year=last_year, site=site,
+                                    objectives=objs)
+        missing = []                            # what would make the answer fuller
+        if not site.get("capacity_kwh"):
+            missing.append({"id": "capacity", "text": "Set the battery capacity (Settings → "
+                            "Automation) for battery cycles and reserve sizes.", "tab": "settings"})
+        if not site.get("tariff"):
+            missing.append({"id": "tariff", "text": "Add your tariff (Settings → Billing) for "
+                            "time-of-use advice and $ estimates.", "tab": "settings"})
+        out.update(source=source, site=site, current=current, missing=missing,
+                   objective_choices=ca.insights.OBJECTIVES)
+        return out
+
+    @app.put("/api/analytics/insights/objectives")
+    def api_analytics_insights_objectives(body: InsightObjectivesBody,
+                                          gateway: str = Depends(_gateway_q)):
+        """Remember the gateway's objectives for Explain (#588)."""
+        import franklinwh_ha_cloud_analytics as ca
+        from . import analytics_insights as ai
+        gw = _gw_or_404(gateway)
+        bad = [o for o in body.objectives if o not in ca.insights.OBJECTIVES]
+        if bad:
+            raise HTTPException(status_code=400, detail=f"unknown objective(s): {', '.join(bad)}")
+        store = db.get_store(get_settings())
+        if store is None:
+            raise HTTPException(status_code=503, detail="no store")
+        ai.save_objectives(store, gw.id, body.objectives)
+        return {"objectives": body.objectives}
+
     @app.post("/api/cloud/reserve")
     def api_cloud_reserve(req: ReserveReq, gateway: str = Depends(_gateway_q)):
         """Set a mode's reserve SoC via the CLOUD provider (HYBRID Phase 3) — the local API
@@ -5710,7 +5975,8 @@ def create_app() -> FastAPI:
         try:
             return bms_record.get_recorder().start(
                 store, _fetch, samples=req.samples, interval_s=req.interval_s,
-                gateway_id=gateway, apower_sn=sn, dev_id=req.id, label=req.label)
+                gateway_id=gateway, apower_sn=sn, dev_id=req.id, label=req.label,
+                purge=(get_settings().bms_keep_days, get_settings().bms_max_mb))
         except ValueError as e:
             code = 409 if "already running" in str(e) else 422
             raise HTTPException(status_code=code, detail=str(e))
@@ -5724,6 +5990,69 @@ def create_app() -> FastAPI:
     def api_bms_record_status():
         """Progress of the running (or last) session: captured / planned / errors."""
         return bms_record.get_recorder().status()
+
+    # Scheduled recordings (owner, 2026-11-11): the scheduler worker starts each one
+    # that is due, once a day, on the site's clock.
+    def _bms_schedules_out(store, gateway: str | None) -> dict:
+        return {"schedules": store.bms_schedules(gateway) if store else []}
+
+    @app.get("/api/battery/record/schedules")
+    def api_bms_schedules(gateway: str = Depends(_gateway_q)):
+        """This gateway's scheduled recordings: start time, minutes, interval, weekdays, unit."""
+        return _bms_schedules_out(db.get_store(get_settings()), gateway)
+
+    @app.post("/api/battery/record/schedules")
+    async def api_bms_schedule_add(request: Request, gateway: str = Depends(_gateway_q)):
+        """Add a scheduled recording for this gateway. 422 on a bad time, interval or day."""
+        store = db.get_store(get_settings())
+        if store is None:
+            raise HTTPException(status_code=503,
+                                detail="metrics storage is disabled (METRICS_ENABLED)")
+        try:
+            b = await request.json()
+            hh, mm = (int(x) for x in str(b["at"]).split(":"))
+            minutes, interval = int(b["minutes"]), float(b["interval_s"])
+            days = [int(d) for d in b["days"]]
+            dev = int(b.get("dev_id") or 1)
+        except Exception:  # noqa: BLE001
+            raise HTTPException(status_code=422,
+                                detail="send at (HH:MM), minutes, interval_s, days, dev_id")
+        if not (0 <= hh < 24 and 0 <= mm < 60):
+            raise HTTPException(status_code=422, detail="at must be a time, HH:MM")
+        if interval < bms_record.MIN_INTERVAL_S:
+            raise HTTPException(status_code=422, detail=f"interval must be >= "
+                                f"{bms_record.MIN_INTERVAL_S:g}s (the aGate is slow and shared)")
+        if not (1 <= minutes <= 24 * 60):
+            raise HTTPException(status_code=422, detail="minutes must be 1..1440")
+        if not days or any(d < 0 or d > 6 for d in days):
+            raise HTTPException(status_code=422, detail="days must be weekdays 0 (Mon)..6 (Sun)")
+        store.add_bms_schedule(gateway_id=gateway, at=f"{hh:02d}:{mm:02d}", minutes=minutes,
+                               interval_s=interval, days=days, dev_id=dev)
+        _audit("bms_schedule", detail=f"{hh:02d}:{mm:02d} {minutes} min every {interval:g}s",
+               result="ok", ok=True)
+        return _bms_schedules_out(store, gateway)
+
+    @app.post("/api/battery/record/schedules/{schedule_id}")
+    async def api_bms_schedule_update(schedule_id: int, request: Request,
+                                      gateway: str = Depends(_gateway_q)):
+        """Switch a scheduled recording on or off."""
+        store = db.get_store(get_settings())
+        try:
+            on = (await request.json())["enabled"]
+        except Exception:  # noqa: BLE001
+            raise HTTPException(status_code=422, detail="send enabled")
+        if not isinstance(on, bool):
+            raise HTTPException(status_code=422, detail="enabled must be true or false")
+        if store is None or not store.update_bms_schedule(schedule_id, enabled=on):
+            raise HTTPException(status_code=404, detail="no such schedule")
+        return _bms_schedules_out(store, gateway)
+
+    @app.delete("/api/battery/record/schedules/{schedule_id}")
+    def api_bms_schedule_delete(schedule_id: int, gateway: str = Depends(_gateway_q)):
+        store = db.get_store(get_settings())
+        if store is None or not store.delete_bms_schedule(schedule_id):
+            raise HTTPException(status_code=404, detail="no such schedule")
+        return _bms_schedules_out(store, gateway)
 
     @app.get("/api/battery/sessions")
     def api_bms_sessions(limit: int = Query(200, ge=1, le=1000),
@@ -6403,6 +6732,8 @@ def create_app() -> FastAPI:
             "location": {
                 "latitude": s.pv_latitude, "longitude": s.pv_longitude,
                 "pv_kwp": s.pv_kwp, "pv_tilt": s.pv_tilt, "pv_azimuth": s.pv_azimuth,
+                # pv_kwp is yours (None = not set); the forecast uses yours, else the
+                # gateways' (#583).
                 # What the GATEWAY says the array is (1903 solar_pv), so the forecast's
                 # kWp can be taken from the installation instead of typed from memory.
                 # Offered, not applied: an owner who deliberately set a different number
@@ -6411,6 +6742,11 @@ def create_app() -> FastAPI:
             },
             "scheduler": {
                 "dispatch_interrupt_policy": s.dispatch_interrupt_policy,
+            },
+            "prices": {                          # price events (#582)
+                "price_spike_c": s.price_spike_c,
+                "price_spike_entity": s.price_spike_entity,
+                "demand_window_entity": s.demand_window_entity,
             },
         }
 
@@ -6495,7 +6831,15 @@ def create_app() -> FastAPI:
                         raise HTTPException(status_code=422, detail=f"{key} must be a number")
                 setattr(s, key, val)
                 save_override(key, val)
-            elif key in ("tariff_price_entity", "tariff_feedin_entity"):
+            elif key == "price_spike_c":
+                try:                             # c/kWh; empty or 0 switches it off (#582)
+                    val = max(0.0, float(value or 0))
+                except (TypeError, ValueError):
+                    raise HTTPException(status_code=422, detail="price_spike_c must be a number")
+                setattr(s, key, val)
+                save_override(key, val)
+            elif key in ("tariff_price_entity", "tariff_feedin_entity",
+                         "price_spike_entity", "demand_window_entity"):
                 # HA scheduler-id strings (ha:<inst>:<eid>) — not bools; empty clears.
                 val = str(value or "").strip()
                 setattr(s, key, val)
@@ -6520,15 +6864,24 @@ def create_app() -> FastAPI:
         """aPower model spec table (usable/rated kWh, kW) + the selected gateway's aPower COUNT
         and model, so the UI can derive battery capacity = usable_kwh × count. Count and model
         come from the cached firmware (FHP_SN; PE_HW_VER via the catalogue, #496)."""
-        from . import devicedb as _ddb
+        from . import devicedb as _ddb, system_setup
         count, family = None, None
         try:
             gw = _gw_or_404(gateway)
-            fwb = (gw.last_summary or {}).get("firmware") or {}
-            fhp = fwb.get("FHP_SN")
-            count = len(fhp) if isinstance(fhp, list) else None
-            fams = {(a or {}).get("family") for a in _ddb.apowers(fwb)}
-            family = fams.pop() if len(fams) == 1 else None    # mixed or unknown: not guessed
+            # System Setup reads the aPowers from the login manifest (cached); the summary's
+            # firmware block usually lacks FHP_SN / PE_HW_VER, so it is only the fallback.
+            v = system_setup.values(_gw_store(), get_settings(), gw.id,
+                                    gw.active_host or gw.configured_host)
+            units = v.get("_apower_models")
+            if isinstance(units, list) and units:
+                count = len(units)
+                family = v.get("apower_model") or None
+            else:
+                fwb = (gw.last_summary or {}).get("firmware") or {}
+                fhp = fwb.get("FHP_SN")
+                count = len(fhp) if isinstance(fhp, list) else None
+                fams = {(a or {}).get("family") for a in _ddb.apowers(fwb)}
+                family = fams.pop() if len(fams) == 1 else None    # mixed or unknown: not guessed
         except Exception:  # noqa: BLE001
             count = None
         return {"models": _ddb.apower_specs(), "apower_count": count, "apower_model": family}
@@ -6553,6 +6906,7 @@ def create_app() -> FastAPI:
             "build": _asset_version(),
             "platform": environment.RUNTIME,
             "install_date": (store.get_config("install_date") if store else None),
+            "install": install_identity.facts(store, __version__),
             "bridge_uptime_s": round(_t.time() - _STARTED_AT, 1),
             "updates": (store.version_history(limit=20) if store else []),
             "last_updated": (max((u.get("ts") or 0) for u in store.version_history(limit=1)) if store and store.version_history(limit=1) else None),
@@ -6933,10 +7287,17 @@ def create_app() -> FastAPI:
             return {"configured": False,
                     "reason": "Set your location (latitude & longitude) in Settings "
                               "to enable the solar forecast."}
-        fc = solar_forecast.forecast(cfg.pv_latitude, cfg.pv_longitude, kwp=cfg.pv_kwp,
+        from . import pv_size
+        size = pv_size.effective(cfg)                # yours, else the gateways' (#583)
+        if not size["kwp"]:
+            return {"configured": False,
+                    "reason": "Please confirm your solar size in Settings → Sites & Billing → "
+                              "Location & Solar: the gateway hasn't reported it yet."}
+        fc = solar_forecast.forecast(cfg.pv_latitude, cfg.pv_longitude, kwp=size["kwp"],
                                      tilt=cfg.pv_tilt, azimuth=cfg.pv_azimuth, force=force)
         return {"configured": True, **fc,
-                "pv": {"kwp": cfg.pv_kwp, "tilt": cfg.pv_tilt, "azimuth": cfg.pv_azimuth,
+                "pv": {"kwp": size["kwp"], "kwp_source": size["source"],
+                       "tilt": cfg.pv_tilt, "azimuth": cfg.pv_azimuth,
                        "lat": cfg.pv_latitude, "lon": cfg.pv_longitude}}
 
     @app.post("/api/solar/sync-location")
@@ -6990,7 +7351,10 @@ def create_app() -> FastAPI:
                "growth": store.growth(int(time.time())) if store is not None else {},
                # full resolution this long, then 5-minute rows (about a tenth as many)
                "full_resolution_days": db.POLL_RAW_DAYS,
-               "is_ha_addon": environment.IS_HA_ADDON}
+               "is_ha_addon": environment.IS_HA_ADDON,
+               # Battery recordings' purge limits and their size now (owner, 2026-11-11)
+               "bms_keep_days": s.bms_keep_days, "bms_max_mb": s.bms_max_mb,
+               "bms_bytes": store.bms_bytes() if store is not None else 0}
         if store is not None:
             out.update(store.info())
         return out
@@ -7009,9 +7373,24 @@ def create_app() -> FastAPI:
             body = await request.json()
         except Exception:  # noqa: BLE001
             raise HTTPException(status_code=422, detail="request body must be JSON")
-        if not isinstance(body, dict) or not set(body) <= {"enabled", "retention_days"}:
-            raise HTTPException(status_code=422, detail="send enabled and/or retention_days")
+        if not isinstance(body, dict) or not set(body) <= {"enabled", "retention_days",
+                                                           "bms_keep_days", "bms_max_mb"}:
+            raise HTTPException(status_code=422, detail="send enabled, retention_days, "
+                                "bms_keep_days and/or bms_max_mb")
         s = get_settings()
+        for key, lo, hi, what in (("bms_keep_days", 1, 3650, "days"),
+                                  ("bms_max_mb", 1, 100_000, "MB")):
+            if key in body:
+                v = body[key]
+                if isinstance(v, bool) or not isinstance(v, int) or not lo <= v <= hi:
+                    raise HTTPException(status_code=422,
+                                        detail=f"{key} must be a whole number of {what}, "
+                                        f"{lo}..{hi}")
+        for key in ("bms_keep_days", "bms_max_mb"):
+            if key in body:
+                setattr(s, key, body[key])
+                save_override(key, body[key])
+                _audit("bms_purge_limits", detail=f"{key}={body[key]}", result="ok", ok=True)
         if "retention_days" in body:
             days = body["retention_days"]
             if days not in RETENTION_CHOICES or isinstance(days, bool):
@@ -7260,6 +7639,15 @@ def create_app() -> FastAPI:
         return get_redoc_html(openapi_url=_base_path(request) + app.openapi_url,
                               title=f"{app.title} - ReDoc")
 
+    def _ui_ports() -> dict:
+        """Direct Connect port (``fwh_port``) and the Modbus TCP Server port of the default
+        gateway (the Control tab's override, else ``modbus_port``)."""
+        from . import battery_control
+        gw = state.default_gateway()
+        host = (gw.active_host or gw.configured_host) if gw else ""
+        modbus = battery_control.effective_target(host)[1] if host else battery_control.default_port()
+        return {"dc": get_settings().fwh_port, "modbus": modbus}
+
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
         resp = _TEMPLATES.TemplateResponse(
@@ -7270,6 +7658,8 @@ def create_app() -> FastAPI:
              # The page opens on the default gateway (#383), and names it from its first
              # request: no call goes out before the gateway list has loaded (#379).
              "boot_gateway": (state.default_gateway().id if state.default_gateway() else ""),
+             # The ports the labels show, from the settings: never typed into the UI.
+             "ports": _ui_ports(),
              "docs_url": BRIDGE_DOCS_URL, "guide_url": BRIDGE_GUIDE_URL})
         # The HTML must never be cached: it carries the hashed asset URLs, so a stale
         # page pins the browser to stale JS no matter how good the asset hashing is.

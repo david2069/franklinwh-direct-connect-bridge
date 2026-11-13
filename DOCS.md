@@ -27,6 +27,7 @@ Nothing needs enabling on the gateway for reads.
 | :--- | :--- | :--- |
 | `fwh_host` | — | **Required.** The aGate's IP address. |
 | `fwh_port` | `9000` | The Direct Connect port. Leave it. |
+| `modbus_port` | `502` | The aGate's Modbus TCP Server port, for battery ratings and force dispatch. Leave it; Control → Modbus can override it per install. |
 | `poll_interval` | `30` | Seconds between reads. A schedule cannot react faster than this. |
 | `mqtt_enabled` | `false` | Publish the battery as Home Assistant entities. |
 | `mqtt_host` / `mqtt_port` / `mqtt_username` / `mqtt_password` | auto | **Leave blank.** Filled from the Mosquitto add-on via the Supervisor. Set them only for a broker the Supervisor does not know about. |

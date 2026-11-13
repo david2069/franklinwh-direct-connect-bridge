@@ -10,6 +10,12 @@ window.installProfile = function installProfile() {
     loading: false,
     error: '',
     msg: {},                 // gateway id -> last result on that card
+    open: {},                // gateway id -> the one fact row shown open, or none
+
+    isOpen(card, key) { return this.open[card.gateway_id] === key; },
+    toggle(card, key) {
+      this.open[card.gateway_id] = this.isOpen(card, key) ? null : key;
+    },
 
     async load() {
       this.loading = true;

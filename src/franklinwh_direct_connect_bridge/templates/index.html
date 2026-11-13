@@ -13,16 +13,21 @@
 
   <!-- Tailwind 3.4.1 — local, no CDN -->
   <script src="static/js/tailwind-3.4.1.min.js"></script>
-  <script>window.FWH_BOOT = { gateway: {{ boot_gateway | tojson }} };</script>
+  <script>window.FWH_BOOT = { gateway: {{ boot_gateway | tojson }}, ports: {{ ports | tojson }} };</script>
   <script>
     // #457: with Security on, a request whose session has ended gets 401 on the HTTPS port;
-    // go to the sign-in page and come back here afterwards.
+    // go to the sign-in page and come back here afterwards. Not under Home Assistant
+    // ingress: there the bridge never asks for a sign-in, and a 401 is Home Assistant's
+    // ingress session ending while the app was in the background. Its panel renews that
+    // session; leaving for /signin landed on Home Assistant's origin as "404: Not Found".
     (function () {
       const f = window.fetch;
+      const ingress = location.pathname.includes('/api/hassio_ingress/');
       window.fetch = async function (...args) {
         const r = await f.apply(this, args);
-        if (r.status === 401 && location.protocol === 'https:' && !location.pathname.startsWith('/signin')) {
-          location.href = '/signin?next=' + encodeURIComponent(location.pathname + location.search);
+        if (r.status === 401 && !ingress && location.protocol === 'https:'
+            && !location.pathname.startsWith('/signin')) {
+          location.href = 'signin?next=' + encodeURIComponent(location.pathname + location.search);
         }
         return r;
       };
@@ -48,6 +53,7 @@
   <script src="static/js/install_profile.js?v={{ cache_bust }}"></script>
   <script src="static/js/setup_wizard.js?v={{ cache_bust }}"></script>
   <script src="static/js/app.js?v={{ cache_bust }}"></script>
+  <script src="static/js/customise.js?v={{ cache_bust }}"></script>
   <script src="static/js/alerts.js?v={{ cache_bust }}"></script>
   <script src="static/js/live_cap.js?v={{ cache_bust }}"></script>
   <script src="static/js/mqtt_tab.js?v={{ cache_bust }}"></script>
@@ -289,9 +295,59 @@
         <div x-show="$store.app.cmdProgress.done" class="px-5 pb-4 text-sm" data-role="result"
              :style="{ color: $store.app.cmdProgress.level === 'ok' ? 'var(--success, #34d399)' : $store.app.cmdProgress.level === 'warn' ? 'var(--warning, #fbbf24)' : 'var(--danger, #f87171)' }"
              x-text="$store.app.cmdProgress.result"></div>
+        <div x-show="$store.app.cmdProgress.note" class="px-5 pb-4 text-xs" data-role="note"
+             style="color:var(--text-muted)" x-text="$store.app.cmdProgress.note"></div>
         <div class="px-5 py-3 border-t flex justify-end" style="border-color:var(--border)">
           <button class="btn btn-secondary btn-sm" @click="$store.app.closeCmdProgress()"
                   x-text="$store.app.cmdProgress.done ? 'Close' : 'Hide'"></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Off-grid (the OFF-GRID pill): every off-grid gateway, why, how long, time left -->
+    <div x-show="$store.app.offgridModal.open" x-cloak data-testid="offgrid-modal"
+         class="fixed inset-0 z-[123] flex items-center justify-center p-4"
+         @keydown.escape.window="$store.app.offgridModal.open = false">
+      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="$store.app.offgridModal.open = false"></div>
+      <div class="relative w-full max-w-md rounded-xl border shadow-2xl"
+           style="background:var(--surface-0, #0f172a);border-color:var(--border)">
+        <div class="px-5 py-4 border-b text-sm font-semibold" style="border-color:var(--border);color:var(--text-primary)">Off-grid</div>
+        <div class="px-5 py-4 space-y-4 text-sm">
+          <div x-show="!$store.app.offgridModal.rows.length" style="color:var(--text-muted)">No gateway is off-grid now.</div>
+          <template x-for="r in $store.app.offgridModal.rows" :key="r.id">
+            <div data-testid="offgrid-row" class="space-y-1">
+              <div class="flex items-center gap-2">
+                <span class="font-semibold" style="color:var(--text-primary)" x-text="r.label"></span>
+                <span class="chip offgrid" style="padding:0 6px;font-size:.6rem" x-text="r.reason"></span>
+                <span x-show="!r.ok" class="chip warn" style="padding:0 6px;font-size:.6rem">aGate offline</span>
+              </div>
+              <div data-testid="offgrid-for" style="color:var(--text-secondary)" x-text="$store.app.offgridFor(r)"></div>
+              <div data-testid="offgrid-metrics" style="color:var(--text-secondary)" x-text="r.metrics"></div>
+              <button type="button" data-testid="offgrid-details-toggle" class="text-xs underline"
+                      style="color:var(--text-muted)" @click="$store.app.toggleOffgridDetails(r)"
+                      x-text="$store.app.offgridModal.details[r.id]?.open ? 'Hide details' : 'Details'"></button>
+              <div data-testid="offgrid-details" x-show="$store.app.offgridModal.details[r.id]?.open"
+                   class="text-xs rounded-lg p-2 space-y-0.5" style="background:var(--surface-2)">
+                <div x-show="$store.app.offgridModal.details[r.id]?.loading" style="color:var(--text-muted)">Reading…</div>
+                <template x-for="d in ($store.app.offgridModal.details[r.id]?.rows || [])" :key="d.key">
+                  <div class="flex justify-between gap-3">
+                    <span style="color:var(--text-muted)" x-text="d.label"></span>
+                    <span class="text-right" style="color:var(--text-primary)" x-text="d.value"></span>
+                  </div>
+                </template>
+                <template x-for="[k, e] in Object.entries($store.app.offgridModal.details[r.id]?.errors || {})" :key="k">
+                  <div style="color:var(--warning, #fbbf24)" x-text="'Not read (' + k + '): ' + e"></div>
+                </template>
+              </div>
+              <button data-testid="offgrid-reconnect" class="btn btn-sm mt-2"
+                      style="background:rgba(16,185,129,.2);color:#6ee7b7;border:1px solid rgba(16,185,129,.5)"
+                      x-show="r.kind === 'simulated' && $store.app.summary.writes_enabled"
+                      @click="$store.app.reconnectFrom(r)">Go on-grid (reconnect)</button>
+            </div>
+          </template>
+        </div>
+        <div class="px-5 py-3 border-t flex justify-end" style="border-color:var(--border)">
+          <button class="btn btn-secondary btn-sm" @click="$store.app.offgridModal.open = false">Close</button>
         </div>
       </div>
     </div>
@@ -388,6 +444,7 @@
     </div>
 
     {% include "partials/alerts.html" %}
+    {% include "partials/customise.html" %}
     {% include "partials/all_gateways.html" %}
     {% include "partials/setup_wizard.html" %}
     {% include "partials/terminal.html" %}

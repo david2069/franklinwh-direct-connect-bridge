@@ -272,9 +272,23 @@ document.addEventListener('alpine:init', () => {
     navPinned(key) { return this.NAV_PIN[key] || ''; },
     navLabel(key) { return this.tabTitles[key] || key; },
 
-    //: The registry filtered to hardware this gateway actually has.
-    //: Every tab, always. Nothing is hidden on an inference about hardware (#238).
-    get navAvailable() { return this._navTabsAll; },
+    //: Every tab, except Solar when there is none (owner, 2026-11-13): the gateway's API
+    //  reports no AC PV ports and no remote solar, or System Setup says none (DC is set
+    //  there). Never on a guess (#238): unknown keeps it.
+    get navAvailable() {
+      return this.solarInstalled === false ? this._navTabsAll.filter(t => t.key !== 'solar')
+                                            : this._navTabsAll;
+    },
+    //: true / false / null (not known yet), for the active gateway.
+    solarInstalled: null,
+    async _loadSolarInstalled() {
+      if (!this.selectedGateway) { this.solarInstalled = null; return; }
+      try {
+        const r = await fetch('api/system-setup' + this.gwQuery());
+        this.solarInstalled = r.ok ? ((await r.json()).solar_installed ?? null) : null;
+      } catch (e) { this.solarInstalled = null; }
+      if (this.solarInstalled === false && this.activeTab === 'solar') this.setActiveTab('dashboard');
+    },
 
     navPrefs: [],
     _navDefaults() {
@@ -501,7 +515,6 @@ document.addEventListener('alpine:init', () => {
     // fall back to liveCapDefaults for any surface the user has not set.
     liveCaps: {},
     // ── dashboard card customisation (show/hide; per browser) ──
-    dashCardsOpen: false,
     dashCardDefaults: {
       socRing: true, powerFlow: true, battery: true, energyToday: true, energyFlow: true,
       operatingMode: true, diagnostics: true, solarForecast: true, powerHistory: true, livePoints: true,
@@ -571,7 +584,6 @@ document.addEventListener('alpine:init', () => {
     //  Mirrors the Modbus Bridge "Topbar Preferences". The gateway selector and the
     //  connection status are LOCKED (always shown) and intentionally NOT in these lists.
     topbarPrefsOpen: false,
-    prefsTab: 'appearance',   // which cog view: appearance | nav | topbar
     topbarPrefs: { centre: [], right: [] },
     _topbarDefaults() {
       return {
@@ -638,6 +650,71 @@ document.addEventListener('alpine:init', () => {
       this._saveTopbarPrefs();
     },
     resetTopbarPrefs() { this.topbarPrefs = this._topbarDefaults(); this._saveTopbarPrefs(); },
+
+    // ── Customise dialog (#585, as the Modbus Bridge) ──
+    //  One dialog for the top bar, the navbar and the Dashboard cards (customise.js).
+    //  Saved at once under the keys above; Undo steps back one change at a time.
+    showCustomise: false,
+    customiseSection: 'topbar',      // topbar | nav | cards
+    _custUndo: [],
+    openCustomise(section) {
+      this.customiseSection = section || 'topbar';
+      this._custUndo = [];
+      this.topbarPrefsOpen = false;
+      this.showCustomise = true;
+    },
+    custSnapshot() {
+      this._custUndo.push(JSON.stringify({ nav: this.navPrefs, top: this.topbarPrefs,
+                                           cards: this.dashCards, order: this.dashOrder }));
+    },
+    get canUndoCustomise() { return this._custUndo.length > 0; },
+    undoCustomise() {
+      const s = this._custUndo.pop();
+      if (!s) return;
+      const v = JSON.parse(s);
+      this.navPrefs = v.nav; this.topbarPrefs = v.top;
+      this.dashCards = v.cards; this.dashOrder = v.order;
+      this._saveNavPrefs(); this._saveTopbarPrefs(); this._saveDashOrder();
+      try { localStorage.setItem('fwh-local-dash-cards', JSON.stringify(this.dashCards)); } catch (e) { /**/ }
+    },
+    resetCustomise(section) {
+      this.custSnapshot();
+      if (section === 'nav') this.resetNavPrefs();
+      else if (section === 'cards') this.resetDashCards();
+      else this.resetTopbarPrefs();
+    },
+    //: Put a row at index ``to`` of its list (a drag). Dashboard stays first in the navbar.
+    placeTopbarItem(group, id, to) {
+      const arr = [...(this.topbarPrefs[group] || [])];
+      const from = arr.findIndex(x => x.id === id);
+      if (from < 0 || from === to || to < 0 || to >= arr.length) return;
+      const [it] = arr.splice(from, 1);
+      arr.splice(to, 0, it);
+      this.topbarPrefs = { ...this.topbarPrefs, [group]: arr };
+      this._saveTopbarPrefs();
+    },
+    placeNavItem(id, to) {
+      if (this.navPinned(id) === 'both') return;
+      const keys = this.navOrdered.map(t => t.key);
+      const from = keys.indexOf(id);
+      const first = keys.filter(k => this.navPinned(k) === 'both').length;
+      to = Math.max(first, Math.min(keys.length - 1, to));
+      if (from < 0 || from === to) return;
+      keys.splice(from, 1);
+      keys.splice(to, 0, id);
+      const on = Object.fromEntries(this.navPrefs.map(p => [p.id, p.on]));
+      this.navPrefs = keys.map(k => ({ id: k, on: on[k] !== undefined ? on[k] : true }));
+      this._saveNavPrefs();
+    },
+    placeDashCard(key, to) {
+      const order = [...this.dashOrder];
+      const from = order.indexOf(key);
+      if (from < 0 || from === to || to < 0 || to >= order.length) return;
+      order.splice(from, 1);
+      order.splice(to, 0, key);
+      this.dashOrder = order;
+      this._saveDashOrder();
+    },
     liveCapDefaults: { dashboard: 60, battery: 30, solar: 30, circuits: 30, logs: 30 },
     liveCapOptions: [5, 15, 30, 60, 0],
     liveCapSurfaces: [
@@ -693,7 +770,7 @@ document.addEventListener('alpine:init', () => {
       checks: {              // per-component probe results for the modal
         web:    { label: 'Bridge API',   state: 'ok', detail: '' },
         poller: { label: 'Device poller', state: 'ok', detail: '' },
-        agate:  { label: 'aGate :9000',  state: 'ok', detail: '' },
+        agate:  { label: 'aGate :' + window.FWH_BOOT.ports.dc,  state: 'ok', detail: '' },
       },
     },
     _retryTimer: null,
@@ -840,6 +917,7 @@ document.addEventListener('alpine:init', () => {
       // Roster is on the same slow cadence as history — load once, then refresh slowly.
       this.loadGateways();
       this._loadGeneratorInstalled();
+      this._loadSolarInstalled();
       this.poll();
       this._dashStartedAt = Date.now();
       this._interval = setInterval(() => this._dashTick(), 10000);
@@ -984,6 +1062,7 @@ document.addEventListener('alpine:init', () => {
       this.selectedGateway = id;
       this.poll();
       this._loadGeneratorInstalled();   // generator presence is per-gateway
+      this._loadSolarInstalled();       // so is solar
       this.loadSiteTz();                  // the site zone is per-gateway too (#144)
       this.loadHistory(this.histRange);   // history is scoped per-gateway (by serial)
       this.pollBattery();                 // the topbar Release is per-gateway too (#349)
@@ -1101,7 +1180,7 @@ document.addEventListener('alpine:init', () => {
       // The bridge answered, so distinguish "bridge up, device down" from a full outage.
       const deviceOk = summary && summary.ok === true;
       this.conn.checks.agate = {
-        label: 'aGate :9000',
+        label: 'aGate :' + this.ports.dc,
         state: deviceOk ? 'ok' : 'fail',
         detail: deviceOk ? `${summary.latency_ms ?? '?'} ms`
                          : (summary && summary.error) || 'not responding',
@@ -1151,7 +1230,7 @@ document.addEventListener('alpine:init', () => {
       // The bridge itself is unreachable, so nothing behind it can be assessed.
       this.conn.checks.web = { label: 'Bridge API', state: 'fail', detail: this.conn.lastError };
       this.conn.checks.poller = { label: 'Device poller', state: 'unknown', detail: 'waiting…' };
-      this.conn.checks.agate = { label: 'aGate :9000', state: 'unknown', detail: 'waiting…' };
+      this.conn.checks.agate = { label: 'aGate :' + this.ports.dc, state: 'unknown', detail: 'waiting…' };
       this._scheduleRetry();
     },
 
@@ -1322,8 +1401,8 @@ document.addEventListener('alpine:init', () => {
     capState(kind) {
       if (kind === 'modbus') {
         if (!this.modbusEnabled) return { ok: false, hint: 'Enable the Modbus path on the Control tab' };
-        if (!this.modbusReachable) return { ok: false, hint: 'Modbus port 502 is not reachable on this gateway' };
-        return { ok: true, hint: 'Uses the Modbus (SunSpec 502) path' };
+        if (!this.modbusReachable) return { ok: false, hint: `Modbus port ${this.ports.modbus} is not reachable on this gateway` };
+        return { ok: true, hint: `Uses the Modbus (SunSpec ${this.ports.modbus}) path` };
       }
       if (!this.cloudConfigured) return { ok: false, hint: 'Add FranklinWH Cloud credentials in Settings' };
       if (!this.cloudAvailable) return { ok: false, hint: 'FranklinWH Cloud sign-in is unavailable (check credentials)' };
@@ -1704,7 +1783,9 @@ document.addEventListener('alpine:init', () => {
       this.poll();
     },
 
-    //: Restore/reserve SoC floor to hold while islanded (settable on the Control tab).
+    //: Off-grid (reconnect) SoC: a user-requested off-grid returns to the grid when the
+    //  battery reaches it (1723 offgridSoc; settable on the Control tab). Not a floor the
+    //  battery holds, and an outage does not use it.
     offgridSoc: 5,
 
     async setOffgrid(on) {
@@ -1713,15 +1794,15 @@ document.addEventListener('alpine:init', () => {
       const warn = on
         ? `Disconnect from the grid and run the home entirely on battery.\n\n`
           + `• Grid power is cut until you reconnect.\n`
-          + `• The battery drains under load and will hold no lower than the ${soc}% restore floor.\n`
-          + `• If the battery reaches the floor while off-grid, backed-up loads lose power.\n\n`
+          + `• The aGate returns to the grid when the battery reaches the ${soc}% reconnect SoC.\n\n`
           + `Go off-grid now?`
         : `Reconnect to the grid and resume normal operation?`;
+      const gw = this.selectedGatewayLabel;   // name the aGate: with two, it matters which
       if (!await this.confirmDialog(warn,
-            { title: on ? 'Go off-grid' : 'Reconnect to grid', danger: on })) return;
+            { title: (on ? 'Go off-grid' : 'Reconnect to grid') + ` — ${gw}`, danger: on })) return;
       // The dialog stays until the aGate confirms, refuses or times out (#288).
       await this.trackCommand({
-        title: on ? 'Going off-grid' : 'Reconnecting to grid',
+        title: (on ? 'Going off-grid' : 'Reconnecting to grid') + ` — ${gw}`,
         waitLabel: on ? 'aGate reports off-grid' : 'aGate reports on-grid',
         send: () => fetch('api/offgrid' + this.gwQuery('?'), {
           method: 'POST',
@@ -1729,13 +1810,18 @@ document.addEventListener('alpine:init', () => {
           body: JSON.stringify({ on, soc, confirm: true }),  // dialog above IS the confirm
         }),
         confirmed: () => on ? this.isOffGrid : !this.isOffGrid,
-        doneText: on ? `Off-grid (restore floor ${soc}%)` : 'Back on the grid',
+        doneText: on ? `Off-grid (reconnects at ${soc}%)` : 'Back on the grid',
+        notifyWhenDone: (await this._offgridStatus())?.notify,
       });
       this.loadControlLog();
     },
 
-    // ── Modbus (SunSpec 502) master switch ──────────────────────────────────
-    modbus: { enabled: true, available: true, reason: '', resolved_host: null, resolved_port: 502,
+    // The Direct Connect and Modbus TCP Server ports, from the settings (never typed into
+    // the UI). ports.modbus follows the selected gateway's resolved port once read.
+    ports: { ...window.FWH_BOOT.ports },
+
+    // ── Modbus master switch ─────────────────────────────────────────────────
+    modbus: { enabled: true, available: true, reason: '', resolved_host: null, resolved_port: window.FWH_BOOT.ports.modbus,
              unit_id: null, host_override: '', port_override: null, auto: true },
     modbusTest: null, modbusTesting: false,
     async loadModbus() {
@@ -1743,9 +1829,10 @@ document.addEventListener('alpine:init', () => {
         if (!this.selectedGateway) return;
         const d = await (await fetch('api/modbus' + this.gwQuery())).json();
         this.modbus = { enabled: !!d.enabled, available: !!d.available, reason: d.reason || '',
-                        resolved_host: d.resolved_host || null, resolved_port: d.resolved_port || 502,
+                        resolved_host: d.resolved_host || null, resolved_port: d.resolved_port || this.ports.modbus,
                         unit_id: d.unit_id, host_override: d.host_override || '',
                         port_override: d.port_override || null, auto: !!d.auto };
+        this.ports.modbus = this.modbus.resolved_port;
       } catch (e) { /* leave defaults */ }
     },
     async toggleModbus() {
@@ -1772,9 +1859,10 @@ document.addEventListener('alpine:init', () => {
         });
         const d = await r.json();
         Object.assign(this.modbus, {
-          resolved_host: d.resolved_host || null, resolved_port: d.resolved_port || 502,
+          resolved_host: d.resolved_host || null, resolved_port: d.resolved_port || this.ports.modbus,
           host_override: d.host_override || '', port_override: d.port_override || null,
           auto: !!d.auto });
+        this.ports.modbus = this.modbus.resolved_port;
         this.modbusTest = null;
         this.toast(d.auto ? 'Modbus host: auto (from gateway)' : `Modbus host set: ${d.resolved_host}:${d.resolved_port}`, 'info');
         this.loadControlLog();
@@ -2098,8 +2186,10 @@ document.addEventListener('alpine:init', () => {
     // result then comes as a toast.
     cmdProgress: { open: false, title: '', steps: [], result: '', level: '', elapsed: 0, done: false },
     CMD_POLL_MS: 3000,
-    async trackCommand({ title, waitLabel, send, confirmed, doneText, limitS = 120 }) {
+    async trackCommand({ title, waitLabel, send, confirmed, doneText, limitS = 120,
+                         notifyWhenDone = false }) {
       this.cmdProgress = { open: true, title, result: '', level: '', elapsed: 0, done: false,
+                           note: '',
                            steps: [{ label: 'Sent to the aGate', state: 'wait' },
                                    { label: waitLabel, state: 'pending' }] };
       const p = this.cmdProgress;
@@ -2126,19 +2216,75 @@ document.addEventListener('alpine:init', () => {
       }
       p.steps[0].state = 'done';
       p.steps[1].state = 'wait';
+      // The aGate can take over a minute and may drop off the network while it switches:
+      // say it is waiting, show it going offline and coming back, and (when the push for
+      // it is on) that a notification follows, so the dialog can be closed.
+      p.note = 'Waiting for the aGate to respond…'
+        + (notifyWhenDone ? ' You can close this: a notification is sent when it confirms.' : '');
+      let offline = null;
       while (Date.now() - t0 < limitS * 1000) {
         await new Promise(res => setTimeout(res, this.CMD_POLL_MS));
         await this.poll();
+        const back = () => Object.assign(offline, { state: 'done', label: 'aGate online again' });
+        if (this.summary.ok === false && !offline) {
+          p.steps.splice(p.steps.length - 1, 0,
+                         { label: 'aGate offline — waiting for it to come back', state: 'wait' });
+          offline = p.steps[p.steps.length - 2];   // the reactive copy, so edits show
+        } else if (this.summary.ok && offline && offline.state === 'wait') {
+          back();
+        }
         if (confirmed()) {
-          p.steps[1].state = 'done';
+          if (offline && offline.state === 'wait') back();
+          p.note = '';
+          p.steps[p.steps.length - 1].state = 'done';
           return finish('ok', `${doneText} — done in ${Math.round((Date.now() - t0) / 1000)} s.`);
         }
       }
-      p.steps[1].state = 'fail';
+      p.note = '';
+      p.steps[p.steps.length - 1].state = 'fail';
       finish('warn', `No confirmation after ${Math.round(limitS / 60)} min. The aGate may still `
         + `switch: watch the top bar.`);
     },
     closeCmdProgress() { this.cmdProgress.open = false; },
+
+    // ── OFF-GRID pill → modal: every off-grid gateway, why, for how long, the battery
+    //    and time left (same line as the push); Reconnect for a user-requested one.
+    offgridModal: { open: false, rows: [], notify: false, now: Date.now(), details: {} },
+    async _offgridStatus() {
+      try { return await (await fetch('api/offgrid/status')).json(); } catch (e) { return null; }
+    },
+    async openOffgridModal() {
+      const m = this.offgridModal;
+      Object.assign(m, { open: true, now: Date.now(), details: {} });
+      const d = await this._offgridStatus();
+      Object.assign(m, { rows: d?.gateways || [], notify: !!d?.notify });
+      clearInterval(this._ogTick);
+      this._ogTick = setInterval(() => { if (m.open) m.now = Date.now(); else clearInterval(this._ogTick); }, 30000);
+    },
+    offgridFor(row) {
+      if (!row.since) return 'Off-grid (start not seen by this bridge)';
+      const min = Math.max(0, Math.floor((this.offgridModal.now / 1000 - row.since) / 60));
+      const h = Math.floor(min / 60);
+      return 'Off-grid for ' + (h ? `${h} h ${min % 60} min` : `${min} min`);
+    },
+    // Details (expandable): read when first opened, per gateway — a live read of the
+    // circuits (and generator), so not on every open of the dialog.
+    async toggleOffgridDetails(row) {
+      const d = this.offgridModal.details;
+      if (d[row.id]) { d[row.id] = { ...d[row.id], open: !d[row.id].open }; return; }
+      d[row.id] = { open: true, loading: true, rows: [], errors: {} };
+      try {
+        const r = await (await fetch(`api/offgrid/details?gateway=${encodeURIComponent(row.id)}`)).json();
+        d[row.id] = { open: true, loading: false, rows: r.rows || [], errors: r.errors || {} };
+      } catch (e) {
+        d[row.id] = { open: true, loading: false, rows: [], errors: { read: e.message } };
+      }
+    },
+    async reconnectFrom(row) {
+      this.offgridModal.open = false;
+      if (row.id !== this.selectedGateway) { this.selectGateway(row.id); await this.poll(); }
+      await this.setOffgrid(false);
+    },
 
     // ── Styled confirm dialog (replaces native confirm()) ──────────────────
     confirmState: { open: false, title: '', message: '', danger: false },

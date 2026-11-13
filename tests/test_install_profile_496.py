@@ -262,3 +262,29 @@ def test_generator_and_v2l_read_as_installed():
 def test_a_generator_with_a_model_counts_as_installed(monkeypatch):
     _fake(monkeypatch, gen={"genEn": 0, "genModel": "G-7"})
     assert ss._derive(object(), "h")["generator_input"] is True
+
+
+# ── the gateway row reads the poller's hardware id (owner, 2026-11-11) ───────
+def test_gateway_row_names_the_model_from_the_hardware_id(api):
+    """The summary's firmware block never carries SyHdVersion; the poller keeps it on the
+    gateway (1101), as the gateway list does. Before, the row always said Couldn't be read."""
+    from franklinwh_direct_connect_bridge import state
+    state.get_gateway("gw-a").sy_hd_version = 102
+    card = next(c for c in api.get("/api/install-profile").json()["gateways"]
+                if c["gateway_id"] == "gw-a")
+    gw = next(f for f in card["facts"] if f["key"] == "gateway")
+    assert gw["value"] == "aGate X-01-AU (AU)"
+
+
+# ── reported rows fold to one line, one open at a time (owner, 2026-11-11) ──
+def test_reported_rows_are_folded_one_open_at_a_time():
+    part = (ROOT / "templates/partials/install_profile.html").read_text()
+    js = (ROOT / "static/js/install_profile.js").read_text()
+    rows = part[part.index("What your gateway reports"):part.index("What only you can tell")]
+    assert 'data-testid="install-fact"' in rows
+    assert ":aria-expanded" in rows and "toggle(card, f.key)" in rows
+    assert 'x-show="isOpen(card, f.key)"' in rows        # source + Confirm only when open
+    assert "open: {}" in js                               # gateway id -> the one open row
+    # The questions stay open: they need answers.
+    asks = part[part.index("What only you can tell"):]
+    assert "isOpen" not in asks

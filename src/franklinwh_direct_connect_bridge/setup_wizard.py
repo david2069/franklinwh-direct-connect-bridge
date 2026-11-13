@@ -331,6 +331,59 @@ def steps(*, store, gateways: list, profile_values: dict[str, Any],
     ]
 
 
+#: The setup list the wizard opens on once the first run is done (owner, 2026-11-11). Each
+#: task is answered in the wizard (``inline``: the wizard step that does it) or opens what
+#: already does it (``open``: a Settings sub-tab and card, a tab, or the System view).
+_TASKS = (
+    ("cloud", "essential", "Connect to FranklinWH Cloud",
+     "Reserve SoC, VPP and the cloud history need your FranklinWH app account.",
+     {"inline": "cloud"}),
+    ("mqtt", "essential", "Publish to Home Assistant (MQTT)",
+     "The battery's sensors and controls as Home Assistant entities.",
+     {"inline": "publish"}),
+    ("home_assistant", "essential", "Connect to Home Assistant",
+     "For notifications and service calls on your phones.",
+     {"open": {"sub": "integrations", "card": "settings-ha-instances"}}),
+    ("billing", "essential", "Electricity utility, pricing & billing",
+     "Your tariff, so costs and tariff conditions work.",
+     {"open": {"sub": "billing", "card": "settings-billing"}}),
+    ("default_mode", "essential", "Default operating mode",
+     "The mode you treat as normal; schedules go back to it.",
+     {"inline": "mode"}),
+    ("automation", "essential", "Automatic scheduling",
+     "Schedules that change the mode, reserve or dispatch on their own.",
+     {"open": {"tab": "scheduler"}}),
+    ("notifications", "advanced", "HA notifications & devices",
+     "Which phones are told, and about what.",
+     {"open": {"sub": "integrations", "card": "settings-notifications"}}),
+    ("security", "advanced", "Security",
+     "Sign-in, HTTPS and trusted networks.",
+     {"open": {"sub": "admin", "card": "settings-security"}}),
+    ("accounts", "advanced", "User & API accounts",
+     "Accounts for signing in, and tokens for other programs.",
+     {"open": {"sub": "admin", "card": "settings-accounts"}}),
+    ("system_view", "advanced", "System View",
+     "What the overlay shows: open it, then Options.",
+     {"open": {"overlay": "systemview"}}),
+    ("emulator", "advanced", "Connect to FranklinWH Gateway Emulator",
+     "Add an emulator as a gateway, by its address and Direct Connect port.",
+     {"inline": "emulator"}),
+    ("modbus", "advanced", "Modbus TCP",
+     "Where this bridge reaches the Modbus TCP Server: an aGate or an emulator.",
+     {"inline": "modbus"}),
+)
+
+
+def tasks(**facts: bool) -> list[dict[str, Any]]:
+    """The setup list, each with ``satisfied`` from ``facts`` (None: nothing to be done)."""
+    out = []
+    for tid, group, title, detail, way in _TASKS:
+        out.append({"id": tid, "group": group, "title": title, "detail": detail,
+                    "satisfied": (bool(facts[tid]) if tid in facts else None),
+                    "inline": way.get("inline"), "open": way.get("open")})
+    return out
+
+
 def summary(store, **kw) -> dict[str, Any]:
     """The wizard's whole state in one read."""
     st = state(store)

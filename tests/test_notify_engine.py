@@ -18,7 +18,7 @@ def test_evaluate_fires_on_transitions_only():
     assert notify_engine.evaluate(_snap(ok=False), _snap(ok=True), cfg) == [("aGate_offline", {})]
     assert notify_engine.evaluate(_snap(ok=True), _snap(ok=False), cfg) == [("aGate_online", {})]
     assert notify_engine.evaluate(_snap(off_grid=True), _snap(off_grid=False), cfg) == [
-        ("off_grid", {"reason": "reason unknown"})]
+        ("off_grid", {"reason": "reason unknown", "metrics": "SoC 50%"})]
 
 
 def test_evaluate_soc_thresholds_and_gating():

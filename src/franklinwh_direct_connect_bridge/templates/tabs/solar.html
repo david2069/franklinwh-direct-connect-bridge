@@ -18,6 +18,9 @@
         PV inputs, remote solar (aPbox), relays and export limit
         <span class="font-mono text-xs opacity-70" x-show="$store.app.showRawKeys">· 1903/1301</span>
       </p>
+      <!-- The site's location and array, with the site (owner, 2026-11-13). -->
+      <button type="button" class="text-xs underline" style="color:var(--accent)" data-testid="solar-location-link"
+              @click="$store.app.setActiveTab('settings'); setTimeout(() => window.dispatchEvent(new CustomEvent('fwh-open-settings', { detail: { sub: 'billing', card: 'settings-location' } })), 50)">Location &amp; array settings</button>
     </div>
     <div class="flex flex-wrap items-center gap-2">
       <button class="btn btn-secondary btn-sm" @click="loadRaw()"
@@ -51,6 +54,10 @@
           <div class="text-xs uppercase tracking-wide" style="color:var(--text-secondary)">Installed</div>
           <div class="text-2xl font-semibold" style="color:var(--text-primary)"
                x-text="fmtKw(data.inputs.total_rated_kw)"></div>
+          <!-- What the forecast and the analysis use, when it isn't this rating (#583). -->
+          <div x-show="data.forecast_size && data.forecast_size.source === 'you'" x-cloak
+               class="text-[11px]" style="color:var(--text-secondary)" data-testid="solar-forecast-size"
+               x-text="data.forecast_size ? 'Forecast uses ' + data.forecast_size.kwp + ' kWp (yours)' : ''"></div>
         </div>
         <div x-show="data.live.sources_agree === false">
           <div class="text-xs uppercase tracking-wide text-amber-400">Sources disagree</div>

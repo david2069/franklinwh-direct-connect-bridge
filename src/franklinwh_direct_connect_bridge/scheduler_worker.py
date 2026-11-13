@@ -23,7 +23,7 @@ import asyncio
 import logging
 import time
 
-from . import alerts
+from . import actionable, alerts
 from . import scheduler as _sched
 from . import workers as _workers
 from .config import Settings
@@ -133,10 +133,11 @@ def sweep(settings: Settings, *, now: float | None = None) -> list[dict]:
         log.warning("missed-run sweep failed: %s", e)
         return []
     for m in missed:
+        name = m.get("name") or m.get("schedule_id")
+        detail = f"{m.get('attempts') or 0} attempt(s), none succeeded"
         # WARNING, not info: a schedule that did not run is the thing the owner wanted
-        # to be told about, and it has no other voice.
-        log.warning("[%s] schedule %r MISSED its window — %d attempt(s), no success",
-                    m.get("gateway_id") or "-", m.get("name"), m.get("attempts") or 0)
+        # to be told about. The app log and the push say the same (#581).
+        _sched.notify_run(store, "schedule_missed", name, m.get("gateway_id") or "", detail)
         try:
             store.log_schedule_event(
                 m["schedule_id"], m.get("name") or "", "missed",
@@ -144,12 +145,65 @@ def sweep(settings: Settings, *, now: float | None = None) -> list[dict]:
                 gateway_id=m.get("gateway_id") or "")
         except Exception:  # noqa: BLE001
             pass
-        # SCHEDULE_FAILED (#271): a scheduled action that was never sent.
+        # SCHEDULE_MISSED (#581): a warning of its own, not SCHEDULE_FAILED.
         alerts.raise_event(
-            store, m.get("gateway_id") or "", "SCHEDULE_FAILED",
-            f"Schedule '{m.get('name') or m.get('schedule_id')}' missed its window: "
-            f"{m.get('attempts') or 0} attempt(s), none succeeded.")
+            store, m.get("gateway_id") or "", "SCHEDULE_MISSED",
+            f"Schedule '{name}' missed its window on "
+            f"{actionable.gateway_name(m.get('gateway_id') or '')}: {detail}.")
     return missed
+
+
+def bms_schedule_tick(settings: Settings, *, now=None) -> list[dict]:
+    """Start a scheduled battery recording that is due (owner, 2026-11-11). ``now`` is a
+    naive datetime on the site's clock; by default the site timezone's, else the host's.
+    One a day per schedule; while another recording runs it is skipped and logged.
+    Never raises."""
+    import datetime as _dt
+    from . import bms_record, setup_wizard
+    from . import client as _client
+    from .state import get_gateway
+    store = get_store(settings)
+    if store is None:
+        return []
+    try:
+        if now is None:
+            name = setup_wizard.site_timezone(store)
+            if name:
+                from zoneinfo import ZoneInfo
+                now = _dt.datetime.now(ZoneInfo(name)).replace(tzinfo=None)
+            else:
+                now = _dt.datetime.now()
+        due = bms_record.due(store.bms_schedules(), now)
+    except Exception as e:  # noqa: BLE001
+        log.warning("scheduled recordings: check failed: %s", e)
+        return []
+    started = []
+    today = now.strftime("%Y-%m-%d")
+    for sc in due:
+        store.set_bms_schedule_ran(sc["id"], today)
+        rec = bms_record.get_recorder()
+        if rec.status()["active"]:
+            log.info("scheduled recording %s at %s skipped: a recording is already running",
+                     sc["id"], sc["at"])
+            continue
+        gw = get_gateway(sc.get("gateway_id") or "")
+        if gw is None:
+            log.warning("scheduled recording %s skipped: gateway %s is not configured",
+                        sc["id"], sc.get("gateway_id"))
+            continue
+        host = gw.active_host or gw.configured_host
+        dev = int(sc.get("dev_id") or 1)
+        try:
+            rec.start(store, lambda h=host, d=dev: _client.battery(settings, h, d).get("cells"),
+                      samples=sc["samples"], interval_s=float(sc["interval_s"]),
+                      gateway_id=gw.id, dev_id=dev, label=f"Scheduled {sc['at']}",
+                      purge=(settings.bms_keep_days, settings.bms_max_mb))
+            log.info("scheduled recording %s started: %d sample(s) every %gs",
+                     sc["id"], sc["samples"], float(sc["interval_s"]))
+            started.append(sc)
+        except Exception as e:  # noqa: BLE001
+            log.warning("scheduled recording %s could not start: %s", sc["id"], e)
+    return started
 
 
 def tick_once(settings: Settings, *, client, now: float | None = None) -> list[dict]:
@@ -159,6 +213,7 @@ def tick_once(settings: Settings, *, client, now: float | None = None) -> list[d
     if store is None:
         return []
     sweep(settings, now=now)
+    bms_schedule_tick(settings)
     fired: list[dict] = []
     for gw in get_gateways():
         ok, why = eligible(gw, settings, now)

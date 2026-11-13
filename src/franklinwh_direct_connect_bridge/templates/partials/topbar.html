@@ -157,13 +157,14 @@
     </div>
 
     <!-- Status: OFF-GRID / VPP / FORCE (one preference) -->
-    <div class="chip offgrid inline-flex items-center gap-1" :style="{order: $store.app.topbarOrder('status')}"
+    <button type="button" data-testid="offgrid-pill" @click="$store.app.openOffgridModal()"
+         class="chip offgrid inline-flex items-center gap-1" :style="{order: $store.app.topbarOrder('status')}"
          x-show="$store.app.isOffGrid && $store.app.topbarShow('status')" x-cloak
-         title="The gateway is disconnected from the grid, running on battery">
+         title="Off-grid: tap for details">
       <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" d="M18.36 6.64A9 9 0 1 1 5.64 6.64M12 2v10"/></svg>
       <span>OFF-GRID</span>
-    </div>
+    </button>
     <!-- Debug Mode (run_status 8) = a FranklinWH remote-support session is live on this
          gateway. Someone outside the household can see and change things, so it ranks
          above VPP and is never silently rendered as a bare number. -->
@@ -219,13 +220,12 @@
       </svg>
     </button>
 
-    <!-- Cards (dashboard only) — toggles the dashboard card customiser -->
+    <!-- Cards (dashboard only) — opens Customise on its Dashboard cards tab (#585) -->
     <button :style="{order: $store.app.topbarOrder('cards')}"
             x-show="$store.app.activeTab === 'dashboard' && $store.app.topbarShow('cards')" x-cloak
-            @click="$store.app.dashCardsOpen = !$store.app.dashCardsOpen"
-            class="inline-flex p-1.5 rounded transition"
-            :class="$store.app.dashCardsOpen ? 'text-primary bg-slate-700' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'"
-            title="Show / hide dashboard cards">
+            @click="$store.app.openCustomise('cards')"
+            class="inline-flex p-1.5 rounded transition text-slate-400 hover:text-slate-200 hover:bg-slate-700"
+            title="Show, hide and reorder dashboard cards">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M7 12h10M10 18h4"/>
       </svg>
@@ -295,26 +295,15 @@
         <div class="px-3 py-2 flex items-center justify-between border-b" style="border-color:var(--border)">
           <span class="text-[10px] uppercase tracking-wide font-semibold" style="color:var(--text-secondary)">Preferences</span>
           <button class="text-[10px] hover:text-cyan-400 transition" style="color:var(--text-faint)"
-                  @click="$store.app.prefsTab === 'nav' ? $store.app.resetNavPrefs() : ($store.app.prefsTab === 'topbar' ? $store.app.resetTopbarPrefs() : ($store.app.setTheme('dark'), $store.app.setAccent('')))"
-                  title="Reset this view to defaults">Reset</button>
-        </div>
-
-        <!-- View switcher -->
-        <div class="flex text-[11px] border-b" style="border-color:var(--border)">
-          <template x-for="v in [['appearance','Theme'],['nav','Navbar'],['topbar','Top bar']]" :key="v[0]">
-            <button @click="$store.app.prefsTab = v[0]" x-text="v[1]"
-                    class="flex-1 py-1.5 transition border-b-2"
-                    :style="$store.app.prefsTab === v[0]
-                      ? 'border-color:var(--accent);color:var(--text-primary)'
-                      : 'border-color:transparent;color:var(--text-secondary)'"></button>
-          </template>
+                  @click="$store.app.setTheme('dark'); $store.app.setAccent('')"
+                  title="Reset theme and accent to defaults">Reset</button>
         </div>
 
         <div class="max-h-[60vh] overflow-y-auto">
 
         <!-- Appearance: the cog is reachable from every tab and in bottom-nav mode,
              so theme and accent live here rather than only in Settings. -->
-        <div x-show="$store.app.prefsTab === 'appearance'">
+        <div>
         <div class="px-3 py-1.5 flex items-center justify-between gap-2">
           <span class="text-sm" style="color:var(--text-primary)">Theme</span>
           <div class="inline-flex rounded-md overflow-hidden border shrink-0" style="border-color:var(--border)">
@@ -344,103 +333,10 @@
         </p>
         </div>
 
-        <!-- Navigation: ONE order for the sidebar and the bottom bar. -->
-        <div x-show="$store.app.prefsTab === 'nav'" x-cloak>
-          <template x-for="(it, idx) in $store.app.navOrdered" :key="it.key">
-            <div class="px-3 py-1.5 flex items-center justify-between gap-2">
-              <label class="flex items-center gap-2 text-sm min-w-0"
-                     :class="$store.app.navPinned(it.key) ? 'opacity-60' : 'cursor-pointer'"
-                     style="color:var(--text-primary)">
-                <input type="checkbox" class="shrink-0" :checked="it.on || !!$store.app.navPinned(it.key)"
-                       :disabled="!!$store.app.navPinned(it.key)"
-                       @change="$store.app.toggleNavItem(it.key)">
-                <span class="truncate" x-text="$store.app.navLabel(it.key)"></span>
-                <span x-show="$store.app.navPinned(it.key)" class="chip muted shrink-0" style="font-size:.5rem"
-                      x-text="$store.app.navPinned(it.key) === 'both' ? 'pinned' : 'sidebar 2nd'"></span>
-              </label>
-              <div class="flex items-center gap-0.5 shrink-0">
-                <button @click="$store.app.moveNavItem(it.key, -1)"
-                        :disabled="idx === 0 || $store.app.navPinned(it.key) === 'both'"
-                        class="p-0.5 disabled:opacity-25 hover:text-slate-200" style="color:var(--text-faint)" title="Move up">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18 15l-6-6-6 6"/></svg>
-                </button>
-                <button @click="$store.app.moveNavItem(it.key, 1)"
-                        :disabled="idx === $store.app.navOrdered.length - 1 || $store.app.navPinned(it.key) === 'both'"
-                        class="p-0.5 disabled:opacity-25 hover:text-slate-200" style="color:var(--text-faint)" title="Move down">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
-                </button>
-              </div>
-            </div>
-          </template>
-          <!-- Not tabs: Terminal opens the console drawer, Guide the docs panel. Shown
-               as locked rows so it is obvious why they occupy slots in the bar. -->
-          <div class="px-3 py-1.5 flex items-center justify-between gap-2 opacity-60">
-            <label class="flex items-center gap-2 text-sm min-w-0" style="color:var(--text-primary)">
-              <input type="checkbox" class="shrink-0" :checked="$store.app.advancedTools" disabled>
-              <span class="truncate">Terminal</span>
-              <span class="chip muted shrink-0" style="font-size:.5rem"
-                    x-text="$store.app.advancedTools ? 'console drawer' : 'advanced tools off'"></span>
-            </label>
-          </div>
-          <div class="px-3 py-1.5 flex items-center justify-between gap-2 opacity-60">
-            <label class="flex items-center gap-2 text-sm min-w-0" style="color:var(--text-primary)">
-              <input type="checkbox" class="shrink-0" checked disabled>
-              <span class="truncate">Guide</span>
-              <span class="chip muted shrink-0" style="font-size:.5rem">docs panel</span>
-            </label>
-          </div>
-          <p class="px-3 py-2 text-[10px] border-t" style="color:var(--text-faint);border-color:var(--border)">
-            One order for both navs. The bottom bar shows as many as fit
-            (<span x-text="$store.app.barMax"></span> here) and puts the rest under More;
-            Terminal and Guide are fixed extras, not tabs.
-          </p>
-        </div>
-
-        <!-- Top bar -->
-        <div x-show="$store.app.prefsTab === 'topbar'" x-cloak>
-        <div class="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wide" style="color:var(--text-faint)">Centre indicators</div>
-        <template x-for="(it, idx) in $store.app.topbarPrefs.centre" :key="it.id">
-          <div class="px-3 py-1.5 flex items-center justify-between gap-2">
-            <label class="flex items-center gap-2 text-sm cursor-pointer min-w-0" style="color:var(--text-primary)">
-              <input type="checkbox" class="shrink-0" :checked="it.on" @change="$store.app.toggleTopbarItem('centre', it.id)">
-              <span class="truncate" x-text="it.label"></span>
-            </label>
-            <div class="flex items-center gap-0.5 shrink-0">
-              <button @click="$store.app.moveTopbarItem('centre', it.id, -1)" :disabled="idx===0"
-                      class="p-0.5 disabled:opacity-25 hover:text-slate-200" style="color:var(--text-faint)" title="Move up">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18 15l-6-6-6 6"/></svg>
-              </button>
-              <button @click="$store.app.moveTopbarItem('centre', it.id, 1)" :disabled="idx===$store.app.topbarPrefs.centre.length-1"
-                      class="p-0.5 disabled:opacity-25 hover:text-slate-200" style="color:var(--text-faint)" title="Move down">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
-              </button>
-            </div>
-          </div>
-        </template>
-
-        <div class="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wide border-t" style="color:var(--text-faint);border-color:var(--border)">Right buttons</div>
-        <template x-for="(it, idx) in $store.app.topbarPrefs.right" :key="it.id">
-          <div class="px-3 py-1.5 flex items-center justify-between gap-2">
-            <label class="flex items-center gap-2 text-sm cursor-pointer min-w-0" style="color:var(--text-primary)">
-              <input type="checkbox" class="shrink-0" :checked="it.on" @change="$store.app.toggleTopbarItem('right', it.id)">
-              <span class="truncate" x-text="it.label"></span>
-            </label>
-            <div class="flex items-center gap-0.5 shrink-0">
-              <button @click="$store.app.moveTopbarItem('right', it.id, -1)" :disabled="idx===0"
-                      class="p-0.5 disabled:opacity-25 hover:text-slate-200" style="color:var(--text-faint)" title="Move up">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18 15l-6-6-6 6"/></svg>
-              </button>
-              <button @click="$store.app.moveTopbarItem('right', it.id, 1)" :disabled="idx===$store.app.topbarPrefs.right.length-1"
-                      class="p-0.5 disabled:opacity-25 hover:text-slate-200" style="color:var(--text-faint)" title="Move down">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
-              </button>
-            </div>
-          </div>
-        </template>
-
-        <div class="px-3 py-2 text-[10px] border-t" style="color:var(--text-faint);border-color:var(--border)">
-          Gateway selector &amp; connection status are always shown.
-        </div>
+        <!-- Top bar, navbar and dashboard cards: the Customise dialog (#585). -->
+        <div class="px-3 py-2 border-t" style="border-color:var(--border)">
+          <button type="button" class="btn btn-secondary btn-sm w-full" data-testid="open-customise"
+                  @click="$store.app.openCustomise('topbar')">Customise top bar, navbar and cards…</button>
         </div>
         </div>
       </div>

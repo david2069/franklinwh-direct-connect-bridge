@@ -80,6 +80,14 @@ def _generator_source(gen: dict) -> str:
     return head + "not turned on, and no model or rating"
 
 
+def reported_solar_kwp(host) -> float | None:
+    """The solar size this gateway last reported (1903), from the derive cache: no read,
+    so a tick never waits on the gateway (#583). None until it has been read."""
+    hit = _derive_cache.get(host) if host else None
+    kwp = (hit[1] if hit else {}).get("solar_kwp")
+    return float(kwp) if isinstance(kwp, (int, float)) and kwp > 0 else None
+
+
 def _derive(settings, host) -> dict:
     """Best-effort derive from the aGate (solar 1903 + generator 1901), cached ~1 h.
     Returns {} when there's no host or the reads fail (stale cache re-used if present).
@@ -189,6 +197,18 @@ def _overrides(store, gateway_id: str) -> dict:
         return json.loads(raw) if raw else {}
     except Exception:                                           # noqa: BLE001
         return {}
+
+
+def solar_installed(vals: dict) -> bool | None:
+    """Is there solar (owner, 2026-11-13)? From your System Setup when you set the type (DC
+    solar is set there), else from the gateway's API (AC PV ports, remote solar); None
+    while neither has said, so nothing is hidden on a guess."""
+    if (vals.get("_overridden") or {}).get("solar_type"):
+        return vals.get("solar_type") not in (None, "", "none")
+    derived = (vals.get("_derived") or {}).get("solar_type")
+    if derived is None:
+        return None
+    return derived != "none"
 
 
 def values(store, settings=None, gateway_id=None, host=None) -> dict:

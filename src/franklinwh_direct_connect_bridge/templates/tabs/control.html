@@ -37,7 +37,7 @@
                         'no_sunspec':'NO SUNSPEC','ready':'READY'})[state] || 'UNAVAILABLE'"></span>
         <span x-text="({
           not_configured: 'Battery dispatch is not set up on this bridge.',
-          unreachable:    'The aGate did not answer on Modbus TCP 502.',
+          unreachable:    'The aGate did not answer on Modbus TCP '+ $store.app.ports.modbus + '.',
           no_sunspec:     'Modbus answered, but SunSpec did not — so a dispatch would not land.',
         })[state] || 'Force charge/discharge/standby drive the aGate over Modbus (WSet).'"></span>
       </div>
@@ -386,13 +386,13 @@
            : 'Manually disconnect from the grid and run off battery, or reconnect. Use with care.'"></p>
 
       <div x-show="$store.app.summary.writes_enabled">
-        <!-- Restore / reserve SoC: settable AND displayed. Held while islanded so the
-             battery is not drained below this floor before reconnecting. -->
+        <!-- Reconnect SoC (1723 offgridSoc): a user-requested off-grid returns to the
+             grid when the battery reaches it. Not a floor; an outage does not use it. -->
         <div class="flex items-center justify-between gap-3 mb-4 p-3 rounded-lg"
              style="background:var(--surface-2)" x-show="!$store.app.isOffGrid">
           <div>
-            <div class="text-sm" style="color:var(--text-primary)">Restore SoC floor</div>
-            <div class="text-xs text-slate-500">Battery reserve to hold while off-grid (%).</div>
+            <div class="text-sm" style="color:var(--text-primary)">Reconnect SoC</div>
+            <div class="text-xs text-slate-500">Off-grid you request returns to the grid when the battery reaches this (%).</div>
           </div>
           <div class="flex items-center gap-1">
             <input type="number" min="0" max="100" x-model.number="$store.app.offgridSoc"
@@ -427,7 +427,7 @@
     <div class="p-5">
       <div class="flex items-center justify-between gap-3">
         <div>
-          <div class="text-sm" style="color:var(--text-primary)">This bridge connects to the aGate's Modbus TCP Server (:502)</div>
+          <div class="text-sm" style="color:var(--text-primary)">This bridge connects to the aGate's Modbus TCP Server (:<span x-text="$store.app.ports.modbus"></span>)</div>
           <div class="text-xs text-slate-500">
             Powers battery ratings (max charge/discharge) and force dispatch. Off → this bridge
             falls back to the max-power constant and cannot force-dispatch.
@@ -456,8 +456,8 @@
              connection yet it reads "not probed" — NOT a claim that the port is shut. -->
         <span class="chip"
               :class="$store.app.summary.modbus_502 === true ? 'ok' : ($store.app.summary.modbus_502 === false ? 'error' : 'muted')"
-              :title="$store.app.summary.modbus_502 == null ? 'Not measured: the Modbus client of this bridge is off, this is a mock gateway, or it has not connected yet. The bridge does not probe the Modbus TCP Server of the aGate (:502) to show this; it reports its last real connection (a force, release, ratings read or Test). This is not a statement about the gateway — its own SunSpec Modbus setting is on the SunSpec Modbus card.' : 'The gateway\'s port 502 at the Modbus client\'s last real connection' + ($store.app.summary.modbus_502_at ? ' (' + new Date($store.app.summary.modbus_502_at * 1000).toLocaleString() + (($store.app.summary.modbus_502_source) ? ', ' + $store.app.summary.modbus_502_source : '') + ')' : '') + '. Not probed on a timer (#221).'"
-              x-text="$store.app.summary.modbus_502 === true ? 'Gateway port 502 reachable' : ($store.app.summary.modbus_502 === false ? 'Gateway port 502 not reachable' : 'Gateway port 502 not probed')"></span>
+              :title="$store.app.summary.modbus_502 == null ? 'Not measured: the Modbus client of this bridge is off, this is a mock gateway, or it has not connected yet. The bridge does not probe the Modbus TCP Server of the aGate (:' + $store.app.ports.modbus + ') to show this; it reports its last real connection (a force, release, ratings read or Test). This is not a statement about the gateway — its own SunSpec Modbus setting is on the SunSpec Modbus card.' : 'The gateway\'s port ' + $store.app.ports.modbus + ' at the Modbus client\'s last real connection' + ($store.app.summary.modbus_502_at ? ' (' + new Date($store.app.summary.modbus_502_at * 1000).toLocaleString() + (($store.app.summary.modbus_502_source) ? ', ' + $store.app.summary.modbus_502_source : '') + ')' : '') + '. Not probed on a timer (#221).'"
+              x-text="$store.app.summary.modbus_502 === true ? 'Gateway port ' + $store.app.ports.modbus + ' reachable' : ($store.app.summary.modbus_502 === false ? 'Gateway port ' + $store.app.ports.modbus + ' not reachable' : 'Gateway port ' + $store.app.ports.modbus + ' not probed')"></span>
         <span class="text-slate-500" x-show="!$store.app.modbus.enabled && $store.app.modbus.reason"
               x-text="$store.app.modbus.reason"></span>
       </div>
@@ -482,7 +482,7 @@
                    @keydown.enter="$store.app.saveModbusOverride()"></label>
           <label class="text-[11px] text-slate-500">Port
             <input type="number" min="1" max="65535" class="form-control form-control-sm w-full mt-1 font-mono"
-                   x-model="$store.app.modbus.port_override" placeholder="502"
+                   x-model="$store.app.modbus.port_override" :placeholder="$store.app.ports.modbus"
                    @keydown.enter="$store.app.saveModbusOverride()"></label>
         </div>
         <div class="flex items-center gap-2 flex-wrap">
