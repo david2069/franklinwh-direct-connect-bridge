@@ -16,6 +16,7 @@ from . import alerts
 from . import client
 from . import constants
 from . import providers
+from . import troubleshoot
 from .config import Settings, metrics_active
 from .db import get_store, maybe_maintain
 from .notify import Notifier, transitions
@@ -383,6 +384,9 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                         net_state = _ns(nb.get("connectivity"),
                                         _nfi(raw) if isinstance(raw, dict) else None,
                                         nb.get("switches"), nb.get("cloud"))
+                        # On 4G while the LAN works (#614): only the aGate's own
+                        # report shows it, since :9000 keeps answering.
+                        troubleshoot.note_local_network(gw.id, True, net_state)
                     except Exception as e:  # noqa: BLE001 — a network read never breaks the poll
                         log.debug("[%s] network read failed: %s", gw.id, e)
                 st.update(net_state)
@@ -435,6 +439,8 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                 # monitor applies the thresholds. No address means not set up yet (#265),
                 # which is not an outage.
                 if gw.active_host:
+                    if outcome != "ok":
+                        troubleshoot.note_local_network(gw.id, False, None)
                     alerts.set_condition(
                         gw.id, "GATEWAY_UNREACHABLE", outcome != "ok",
                         detail=f"{gw.label or gw.id} is not answering on the LAN: "

@@ -38,7 +38,9 @@ document.addEventListener('alpine:init', () => {
         const s = (await r.json()).alerts || {};
         this.summary = s;
         const sig = `${s.open}|${s.latest_id}|${s.changed_ts}`;
-        if ((force || sig !== this._sig) && await this.load()) this._sig = sig;
+        // While a condition is open its recovery moves without changing the summary
+        // (#614: "confirming, resolves in N s"), so the list is re-read every poll then.
+        if ((force || sig !== this._sig || this.openConditions) && await this.load()) this._sig = sig;
       } catch (e) { /* bridge restarting — the connection banner covers it */ }
     },
 
@@ -60,6 +62,9 @@ document.addEventListener('alpine:init', () => {
     /** The red bar: conditions still active that someone has already acknowledged. */
     get activeAcked() {
       return this.list.filter(a => a.kind === 'condition' && !a.resolved_ts && a.acked_ts);
+    },
+    get openConditions() {
+      return this.list.some(a => a.kind === 'condition' && !a.resolved_ts);
     },
     get allUnderstood() {
       return this.pending.length > 0 && this.pending.every(a => this.understood[a.id]);
@@ -116,15 +121,43 @@ document.addEventListener('alpine:init', () => {
       return 'Bridge log · HA pending';
     },
     barText(a) {
-      return `${a.title} since ${this.hm(a.opened_ts)}` + (a.gateway_id ? ` (${a.gateway_id})` : '');
+      const gw = a.gateway_id ? ` (${a.gateway_id})` : '';
+      if (a.recovering) return this.recoveryText(a) + gw;
+      return `${a.title} since ${this.hm(a.opened_ts)}` + gw + this.dropText(a);
+    },
+    /** #614: the link is back but the condition has not held good for its resolve time,
+     *  so the bar says so rather than "unreachable" beside an Online pill. */
+    recoveryText(a) {
+      if (!a.recovering) return '';
+      const what = a.code === 'GATEWAY_UNREACHABLE' ? 'Reconnecting' : 'Clearing';
+      return `${what} — confirming (resolves in ${a.recovering.resolves_in_s} s)` + this.dropText(a);
+    },
+    /** "· dropped 2× in 25 min" when the link went more than once during this alert. */
+    dropText(a) {
+      const d = a.drops;
+      if (!d || d.count < 2) return '';
+      return ` · dropped ${d.count}× in ${Math.max(1, Math.round(d.window_s / 60))} min`;
+    },
+    /** A recovering or warning condition is amber; a fault still on is red. */
+    barColor(a) {
+      return (a.recovering || a.severity !== 'critical') ? 'var(--warn, #f59e0b)' : 'var(--danger, #dc2626)';
+    },
+    /** The bar opens Troubleshoot for the aGate's link; anything else opens the list. */
+    barClick(a) {
+      if (this.help(a).tab === 'troubleshoot') this.go(a);
+      else this.listOpen = true;
     },
 
     // ── what it means and what to do, per code ──────────────────────────────
     HELP: {
       GATEWAY_UNREACHABLE: {
         means: 'The bridge cannot reach the aGate on your network. Live readings, schedules and controls sent through the bridge cannot run until it is back.',
-        todo: 'Check the aGate has power and its network connection. The Logs show each failed connection.',
-        tab: 'logs', link: 'Open Logs' },
+        todo: 'Troubleshoot asks the FranklinWH cloud whether the aGate left Wi-Fi for 4G or is offline, and runs a health check.',
+        tab: 'troubleshoot', link: 'Troubleshoot' },
+      AGATE_ON_4G: {
+        means: 'The aGate still answers on your network, but its internet goes over 4G: its Wi-Fi has no route out (often gateway 0.0.0.0). It may not return to Wi-Fi by itself.',
+        todo: 'Check the router, then reconnect it to Wi-Fi from Troubleshoot or the FranklinWH app.',
+        tab: 'troubleshoot', link: 'Troubleshoot' },
       LIVE_DATA_MISSING: {
         means: 'No live readings have arrived from the aGate. Values on the Dashboard and in Home Assistant are stale.',
         todo: 'The Logs show why each read failed. The bridge keeps retrying.',
@@ -173,6 +206,7 @@ document.addEventListener('alpine:init', () => {
     go(a) {
       this.listOpen = false;
       const h = this.help(a);
+      if (h.tab === 'troubleshoot') { Alpine.store('troubleshoot').open(a.gateway_id); return; }
       if (h.tab === 'logs') Alpine.store('app').logsView = h.view || 'log';
       Alpine.store('app').setActiveTab(h.tab);
     },

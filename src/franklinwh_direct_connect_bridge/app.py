@@ -64,6 +64,7 @@ from . import state
 from . import scheduler_worker
 from . import workers as _workers
 from . import alerts
+from . import troubleshoot
 from .config import get_settings, gateway_list, metrics_active, save_override
 from .ha_supervisor import apply_host_timezone, apply_supervisor_mqtt, discover_mqtt
 from .notify import Notifier
@@ -829,6 +830,13 @@ class ReserveReq(BaseModel):
 # Only these runtime-applicable fields are editable via PUT /api/settings; restart-only
 # fields (broker / host / poll_interval / metrics) stay read-only. log_level maps an
 # HA-style level name to a python logging level applied live to the bridge logger.
+class ReconnectWifiReq(BaseModel):
+    #: The Wi-Fi network stored on the aGate, as the panel showed it (#614). No password:
+    #: the library reuses the one the aGate stores, and only for this network.
+    ssid: str = Field(min_length=1, max_length=64)
+    confirm: bool = False
+
+
 class AlertAck(BaseModel):
     #: Who acknowledged (#271). This bridge has no users, so it records the source.
     source: str = "api"
@@ -5075,6 +5083,103 @@ def create_app() -> FastAPI:
             rows.append(row)
         return {"gateways": rows, "bridge": _dg.resources(), "ts": time.time()}
 
+    # -- Troubleshoot (#614): unreachable or on 4G --------------------------------
+    def _is_admin(request: Request) -> bool:
+        """Whether this viewer may reconnect: their role, or admin where nobody is signed
+        in (Security off, not HA's sidebar) — as the security middleware decides."""
+        p = getattr(request.state, "principal", None)
+        return security.can(p["role"] if p else "admin", "POST",
+                            "/api/troubleshoot/reconnect-wifi")
+
+    def _cloud_why_not(gw: GatewayState) -> str | None:
+        """Why the cloud can't be asked about this gateway, or None."""
+        s = get_settings()
+        if not (s.fwh_cloud_email and s.fwh_cloud_password):
+            return "No FranklinWH cloud account in the bridge (Settings → Integrations)."
+        refused = _cloud_target_refusal(gw)
+        if refused:
+            return refused
+        if providers.cloud_auth_status().get("state") in ("locked", "invalid"):
+            return "The FranklinWH cloud sign-in isn't working (Settings → Integrations)."
+        return None
+
+    @app.get("/api/troubleshoot/connectivity")
+    def api_troubleshoot_connectivity(request: Request, gateway: str = Depends(_gateway_q)):
+        """The Troubleshoot panel's verdict (#614): the bridge's own LAN link to the aGate,
+        and what the FranklinWH cloud says it is connected through (Wi-Fi / Ethernet / 4G,
+        online or offline). On 4G while the LAN works it publishes the AGATE_ON_4G fact.
+        Read-only: connection type and status, and the stored Wi-Fi network's NAME for
+        Reconnect to Wi-Fi — never its password. A cloud failure is shown, never a 500."""
+        gw = _gw_or_404(gateway)
+        lan = troubleshoot.lan_state(db.get_store(get_settings()), gw.id)
+        why = _cloud_why_not(gw)
+        got = None
+        if why is None:
+            s = get_settings()
+            try:
+                from . import cloud_status
+                got = cloud_status.read_connectivity(s.fwh_cloud_email, s.fwh_cloud_password,
+                                                     gw.serial)
+            except Exception as e:  # noqa: BLE001 — shown in the panel
+                log.warning("cloud call failed: connectivity — %s: %s", type(e).__name__, e)
+                why = f"The FranklinWH cloud didn't answer: {type(e).__name__}"
+        cloud = troubleshoot.cloud_block(got, reason=why)
+        v = troubleshoot.verdict(lan, cloud, (gw.last_state or {}).get("net_cloud_via"))
+        troubleshoot.note_cloud_verdict(gw.id, v, cloud)
+        ssid = (got or {}).get("stored_ssid") if cloud.get("connection") == "4g" else None
+        return {"gateway": gw.id, "label": gw.label or gw.id, "lan": lan, "cloud": cloud,
+                "verdict": v, "stored_ssid": ssid, "can_reconnect": bool(ssid),
+                "admin": _is_admin(request), "checked_ts": time.time()}
+
+    @app.get("/api/troubleshoot/health")
+    def api_troubleshoot_health(gateway: str = Depends(_gateway_q)):
+        """The panel's Health check (#614): LAN reachability, the local API (:9000), the
+        aGate's own cloud link and the last good poll, each pass/fail. One fresh session;
+        the Modbus TCP Server (aGate :502) is not probed."""
+        gw = _gw_or_404(gateway)
+        s = get_settings()
+        check = client.link_check(s, host=gw.active_host or gw.configured_host)
+        lan = troubleshoot.lan_state(db.get_store(get_settings()), gw.id)
+        return {"gateway": gw.id, "checked_ts": time.time(),
+                "checks": troubleshoot.health(check, lan, s.poll_interval,
+                                                port=s.fwh_port)}
+
+    @app.post("/api/troubleshoot/reconnect-wifi", status_code=202)
+    def api_troubleshoot_reconnect_wifi(req: ReconnectWifiReq,
+                                        gateway: str = Depends(_gateway_q)):
+        """Reconnect to Wi-Fi (#614), admin only: franklinwh-cloud ``switch_to_wifi(ssid,
+        password=None, confirm=True)`` puts the aGate back on the network it stores, with
+        the password it stores. The library refuses without a fallback and confirms the
+        link; that takes minutes, so this starts it (202) and GET gives the result.
+        428 without confirm; 409 when the cloud can't act for this gateway or one is
+        already running."""
+        _guard_writes()
+        _guard_consequential(req.confirm, "reconnect the aGate to Wi-Fi")
+        gw = _gw_or_404(gateway)
+        why = _cloud_why_not(gw)
+        if why:
+            raise HTTPException(status_code=409, detail=why)
+        s = get_settings()
+        from . import cloud_status
+        email, pw, serial, ssid = s.fwh_cloud_email, s.fwh_cloud_password, gw.serial, req.ssid
+        _audit("wifi_reconnect", gateway=gw.id, detail="stored Wi-Fi network (cloud)",
+               result="started")
+
+        def _done(res: dict) -> None:
+            _audit("wifi_reconnect", gateway=gw.id, detail="stored Wi-Fi network (cloud)",
+                   result=res["outcome"], ok=bool(res["ok"]))
+
+        if not troubleshoot.start(gw.id, lambda: cloud_status.switch_wifi(email, pw, serial, ssid),
+                                  on_done=_done):
+            raise HTTPException(status_code=409, detail="A reconnect is already running.")
+        return troubleshoot.job(gw.id)
+
+    @app.get("/api/troubleshoot/reconnect-wifi")
+    def api_troubleshoot_reconnect_status(gateway: str = Depends(_gateway_q)):
+        """The last Reconnect to Wi-Fi for this gateway: ``state`` idle / running / done,
+        and ``result`` when done."""
+        return troubleshoot.job(_gw_or_404(gateway).id)
+
     @app.get("/api/network/ping")
     def api_network_ping(gateway: str = Depends(_gateway_q), count: int = Query(5, ge=1, le=20)):
         """Latency test: N sendMqtt round-trips to the aGate in one session. Returns per-sample
@@ -6461,9 +6566,28 @@ def create_app() -> FastAPI:
             by_alert: dict = {}
             for d in st.alert_deliveries():
                 by_alert.setdefault(d["alert_id"], []).append(d)
+            now = time.time()
             for r in rows:
                 r["deliveries"] = by_alert.get(r["id"], [])
+                # Back but not yet confirmed (#614): the banner says "confirming".
+                r["recovering"] = alerts.recovery(r, now=now)
+                if r["code"] == "GATEWAY_UNREACHABLE" and not r.get("resolved_ts"):
+                    r["drops"] = _drops(st, r, now)
         return {"alerts": rows}
+
+    def _drops(st, row: dict, now: float) -> dict | None:
+        """How many times the LAN link dropped during this open alert (#614): the outages
+        that overlap it, and the span from the first one's start to now."""
+        try:
+            outs = [o for o in st.link_outages(row["gateway_id"], leg="local_9000", limit=100)
+                    if o.get("ended_ts") is None
+                    or float(o["ended_ts"]) >= float(row["opened_ts"])]
+        except Exception:  # noqa: BLE001 — the count is a nicety; never fail the list
+            return None
+        if not outs:
+            return None
+        first = min(float(o["started_ts"]) for o in outs)
+        return {"count": len(outs), "window_s": int(now - first)}
 
     @app.post("/api/alerts/{alert_id}/ack")
     def api_alert_ack(alert_id: int, req: AlertAck | None = None):

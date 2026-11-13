@@ -13,11 +13,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Changed
 
+- **The red bar follows the link** (#614). Once an unreachable aGate answers again, the bar turns amber and says "Reconnecting — confirming (resolves in N s)" until the alert clears, instead of "aGate unreachable" beside the Online pill. When the link dropped more than once during the alert it adds the count ("dropped 2× in 25 min"). Tapping it opens Troubleshoot.
+
 - **Tariffs live on the meter** (owner; phase 3, the Modbus Bridge's service layout). Each meter's card under Sites & Meters shows its tariff in force (retailer, name, dates) with New plan, Import, Edit and Export, and its other plans collapsed. The separate Utilities & Tariffs list is gone: the retailer is chosen in the tariff editor (+ New retailer), Import asks which meter, and tariffs on no meter stay listed with Use on meter. The meter editor no longer picks a tariff.
 - **Billing by date** (owner; phase 2, as the Modbus Bridge). Each day is priced with the tariff in force that day: energy, fixed charges and the `tariff.*` / `service.*` sensors. A tariff dated to start tomorrow takes over at midnight by itself, and the meter follows.
 
 ### Fixed
 
+- **Logs → time range showed "Last 1h" while it loaded 24 hours** (#614), so lines from hours earlier appeared under "Last 1h". The box now shows the range in use. The times are in bridge-host time, as the page says.
 - **A failing FranklinWH cloud link raised `WORKER_STALLED` (critical) every 30 min** (#616). The cloud status check backs off up to 30 min while the link fails, longer than the watchdog waits, so each back-off read as a stalled worker. The worker now tells the watchdog when its next beat is due; a worker that really hangs still raises `WORKER_STALLED`.
 - **Offline aGate values no longer look live** (#615). While the aGate is offline, the Dashboard's State of Charge, Power Flow and Battery cards and the top bar's run status and SoC grey out the last-good values and say **Last reading HH:MM (N min ago)**; the battery state reads **Unknown (offline)**, not Charging or Discharging. The summary marks them with `last_good` and `last_good_ts`.
 - **Network tab: the :502 line stayed green while the aGate was unreachable** (#617). The bridge never probes the Modbus TCP Server (aGate :502), so the line showed the Modbus client's (this bridge) last real result, however old. It is now green only for a success since the aGate's link last came up, red when the last attempt failed, and otherwise grey and dashed as "unknown · last OK HH:MM", in the diagram and the Reachability card.
@@ -25,6 +28,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- **Troubleshoot an unreachable aGate, or one on 4G** (#614). From the bar or the alert: what the FranklinWH cloud says the aGate is connected through (Wi-Fi, Ethernet or 4G, or offline) beside the bridge's own LAN link, a Health check (LAN, :9000, the aGate's cloud link, the last good poll; never the Modbus TCP Server (aGate :502)), Open Network, and the steps. When the cloud says 4G, **Reconnect to Wi-Fi** (admin, typed confirmation) asks the cloud to put the aGate back on the network it stores, with its stored password, through franklinwh-cloud `switch_to_wifi(ssid, password=None)`; the result stays in the panel. Without a cloud account, or when that fails, the FranklinWH app steps, for iOS or Android. The bridge never holds, logs or shows a Wi-Fi password.
+- **`AGATE_ON_4G` warning** (#614): the aGate answers on the LAN but its internet goes over 4G, from its own network report (every 10 minutes) or the cloud's. Raised after 5 minutes, cleared after 2 minutes back on Wi-Fi or Ethernet.
 - **Retired tariffs are locked** (owner). A plan whose end date has passed opens as View, so its rates and charges stay as they were for reconciling past bills. Unlock to edit, or delete: ended under 13 months ago takes two warnings and the plan's name typed; older takes one confirm. The server refuses a change without `unlock` (409) and such a delete without `?confirm_name=` (409).
 
 ## [0.5.42] — 2026-11-13
