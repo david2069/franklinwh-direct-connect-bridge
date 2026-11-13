@@ -19,6 +19,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ### Fixed
 
 - **A failing FranklinWH cloud link raised `WORKER_STALLED` (critical) every 30 min** (#616). The cloud status check backs off up to 30 min while the link fails, longer than the watchdog waits, so each back-off read as a stalled worker. The worker now tells the watchdog when its next beat is due; a worker that really hangs still raises `WORKER_STALLED`.
+- **Offline aGate values no longer look live** (#615). While the aGate is offline, the Dashboard's State of Charge, Power Flow and Battery cards and the top bar's run status and SoC grey out the last-good values and say **Last reading HH:MM (N min ago)**; the battery state reads **Unknown (offline)**, not Charging or Discharging. The summary marks them with `last_good` and `last_good_ts`.
+- **Network tab: the :502 line stayed green while the aGate was unreachable** (#617). The bridge never probes the Modbus TCP Server (aGate :502), so the line showed the Modbus client's (this bridge) last real result, however old. It is now green only for a success since the aGate's link last came up, red when the last attempt failed, and otherwise grey and dashed as "unknown · last OK HH:MM", in the diagram and the Reachability card.
 - **A billing period closed by a tariff switch** was stamped with the new tariff's name, ended at the cycle's end, and carried the new tariff's fixed charges for the whole period. It now carries the tariff that priced it, ends at the switch, and has that tariff's fixed charges for its own days.
 
 ### Added
