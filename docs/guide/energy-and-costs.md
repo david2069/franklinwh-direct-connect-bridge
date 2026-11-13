@@ -275,10 +275,14 @@ revenue-grade meter, and not a substitute for your bill.
 
 ## Tariffs
 
-![Settings → Sites & Billing → Utilities & Tariffs: a new utility](../images/energy-and-costs/06-tariffs.png)
+![Settings → Sites & Billing → Sites & Meters: a meter with its tariff and an earlier plan](../images/energy-and-costs/06-tariffs.png)
 
-Set up under **Settings → Sites & Billing → Utilities & Tariffs**. A tariff belongs to a
-utility and is assigned to a meter; the meter is what a gateway connects to. (See
+Set up on each meter's card under **Settings → Sites & Billing → Sites & Meters**: the
+tariff in force today (retailer, name, dates) with **New plan**, **Import**, **Edit** and
+**Export**, and the meter's other plans under **Show other plans**. The retailer is chosen
+(or added with **+ New retailer**) in the tariff editor. Tariffs on no meter, and retailers
+with no tariff, are listed under **Not on a meter**, where **Use on meter** moves a tariff
+to the default meter. The meter is what a gateway connects to. (See
 [Multi-gateway and sites](multi-gateway.md) for why the tariff hangs off the meter rather
 than the gateway.)
 

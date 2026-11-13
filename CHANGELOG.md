@@ -13,6 +13,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Changed
 
+- **Tariffs live on the meter** (owner; phase 3, the Modbus Bridge's service layout). Each meter's card under Sites & Meters shows its tariff in force (retailer, name, dates) with New plan, Import, Edit and Export, and its other plans collapsed. The separate Utilities & Tariffs list is gone: the retailer is chosen in the tariff editor (+ New retailer), Import asks which meter, and tariffs on no meter stay listed with Use on meter. The meter editor no longer picks a tariff.
 - **Billing by date** (owner; phase 2, as the Modbus Bridge). Each day is priced with the tariff in force that day: energy, fixed charges and the `tariff.*` / `service.*` sensors. A tariff dated to start tomorrow takes over at midnight by itself, and the meter follows.
 
 ### Fixed

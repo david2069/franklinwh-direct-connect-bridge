@@ -12,11 +12,11 @@ def test_dialog_has_paste_file_check_import_and_result():
     for tid in ("tariff-import-dialog", "tariff-import-paste", "tariff-import-file",
                 "tariff-import-check", "tariff-import-apply", "tariff-import-result"):
         assert f'data-testid="{tid}"' in HTML
-    assert "openTariffImport()" in HTML
+    assert "openTariffImport(" in HTML
 
 
 def test_import_runs_from_the_text_and_never_toasts():
-    a = JS.index("openTariffImport()")
+    a = JS.index("openTariffImport(meterId)")
     b = JS.index("editUtility(u)")
     code = JS[a:b]
     assert "dry_run=true" in code and "api/tariffs/import" in code

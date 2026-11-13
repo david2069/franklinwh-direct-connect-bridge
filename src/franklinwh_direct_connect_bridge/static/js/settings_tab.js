@@ -36,7 +36,8 @@ function settingsTab() {
     // ── Sites + Meters ──
     sites: [], meters: [], siteEdit: null, meterEdit: null,
     utilities: [], tariffs: [], utilEdit: null, tariffEdit: null, tariffMsg: null,
-    tariffImp: { open: false, text: '', preview: null, msg: null, busy: false, done: false },
+    tariffImp: { open: false, text: '', preview: null, msg: null, busy: false, done: false, meter_id: '' },
+    planHist: {},
     // ── Automation constants (const.* sensors) ──
     constants: {}, constSpec: {}, constModes: [], constSaving: false,
     systemSetup: {}, systemSpec: {}, systemSaving: false, systemLoaded: {},
@@ -531,7 +532,8 @@ function settingsTab() {
       const m = this.meterEdit;
       const body = { site_id: m.site_id, name: m.name, meter_number: m.meter_number || '',
                      ac_type: m.ac_type, rated_amps: (m.rated_amps === '' || m.rated_amps == null) ? null : Number(m.rated_amps),
-                     utility_id: m.utility_id || '', tariff_id: m.tariff_id || '' };
+                     // no utility/tariff here: a meter's tariffs are dated plans, set on its card
+                   };
       try {
         const r = await fetch(m.id ? 'api/meters/' + m.id : 'api/meters',
           { method: m.id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -628,6 +630,39 @@ function settingsTab() {
       finally { this.systemSaving = false; }
     },
     tariffsForUtility(uid) { return this.tariffs.filter(t => t.utility_id === uid); },
+    // ── a meter's tariffs (dated plans; one in force per day) ──
+    plansForMeter(m) {
+      return this.tariffs.filter(t => t.meter_id === m.id)
+        .sort((a, b) => (b.effective_start || '').localeCompare(a.effective_start || ''));
+    },
+    planNow(m) {
+      const ps = this.plansForMeter(m);
+      if (!ps.length) return this.tariffs.find(t => t.id === m.tariff_id) || null;   // set up before dated plans
+      return ps.find(t => this.tariffStatus(t) === 'active') || null;
+    },
+    planHistory(m) { const now = this.planNow(m); return this.plansForMeter(m).filter(t => t !== now); },
+    unassignedTariffs() {
+      return this.tariffs.filter(t => !t.meter_id && !this.meters.some(m => m.tariff_id === t.id));
+    },
+    unusedUtilities() { return this.utilities.filter(u => !this.tariffsForUtility(u.id).length); },
+    utilName(uid) { const u = this.utilities.find(x => x.id === uid); return u ? u.name : ''; },
+    newPlanForMeter(m) {
+      const cur = this.planNow(m);
+      if (cur) return this.supersedeTariff(cur);
+      const uid = m.utility_id || (this.utilities[0] || {}).id || '';
+      this.newTariff(uid);
+      this.tariffEdit.meter_id = m.id;
+    },
+    async assignTariff(t) {
+      const m = this.meters.find(x => x.is_default) || this.meters[0];
+      if (!m) return;
+      try {
+        const r = await fetch('api/tariffs/' + t.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ meter_id: m.id }) });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+        await this.loadUtilitiesTariffs(); await this.loadSitesMeters();
+      } catch (e) { this.$store.app.toast('Not moved to ' + m.name + ': ' + e.message, 'error'); }
+    },
     utilityName(id) { const u = this.utilities.find(x => x.id === id); return u ? u.name : '—'; },
     tariffName(id) { const t = this.tariffs.find(x => x.id === id); return t ? t.name : '—'; },
     tariffStatus(t) {
@@ -668,8 +703,9 @@ function settingsTab() {
     },
     // Import tariff (owner 2026-11-13): paste the JSON or choose a file — a phone often has
     // no file to hand. Check is the dry-run preview; results stay in the dialog.
-    openTariffImport() {
-      this.tariffImp = { open: true, text: '', preview: null, msg: null, busy: false, done: false };
+    openTariffImport(meterId) {
+      const m = this.meters.find(x => x.id === meterId) || this.meters.find(x => x.is_default) || this.meters[0];
+      this.tariffImp = { open: true, text: '', preview: null, msg: null, busy: false, done: false, meter_id: m ? m.id : '' };
     },
     async tariffImportFile(ev) {
       const file = ev.target.files[0]; ev.target.value = '';
@@ -678,7 +714,10 @@ function settingsTab() {
       await this.tariffImportCheck();
     },
     _tariffBundle() {
-      try { return JSON.parse(this.tariffImp.text); }
+      try {
+        const b = JSON.parse(this.tariffImp.text);
+        return (b && typeof b === 'object' && this.tariffImp.meter_id) ? { ...b, meter_id: this.tariffImp.meter_id } : b;
+      }
       catch (e) { this.tariffImp.msg = { kind: 'err', text: 'Not valid JSON: ' + e.message }; return null; }
     },
     async tariffImportCheck() {
@@ -737,7 +776,9 @@ function settingsTab() {
         const r = await fetch(u.id ? 'api/utilities/' + u.id : 'api/utilities',
           { method: u.id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+        const saved = await r.json().catch(() => ({}));
         this.utilEdit = null; await this.loadUtilitiesTariffs();
+        if (!u.id && saved.id && this.tariffEdit && !this.tariffEdit.utility_id) this.tariffEdit.utility_id = saved.id;
       } catch (e) { this.$store.app.toast('Utility save failed: ' + e.message, 'error'); }
     },
     async deleteUtility(u) {
