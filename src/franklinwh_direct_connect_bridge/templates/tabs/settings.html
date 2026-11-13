@@ -452,13 +452,44 @@
   </div>
   </div>
   <div x-show="sub==='billing'" x-cloak class="space-y-6">
+  <!-- Import tariff: paste the JSON or choose a file; Check previews, Import creates it -->
+  <div x-show="tariffImp.open" x-cloak class="fixed inset-0 z-[110] flex items-center justify-center p-4"
+       @keydown.escape.window="tariffImp.open=false" data-testid="tariff-import-dialog">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="tariffImp.open=false"></div>
+    <div class="relative w-full max-w-md rounded-xl border shadow-2xl"
+         style="background:var(--surface-0,#0f172a);border-color:var(--border)">
+      <div class="px-5 py-3 border-b flex items-center justify-between" style="border-color:var(--border)">
+        <div class="text-sm font-semibold" style="color:var(--text-primary)">Import tariff</div>
+        <button class="text-slate-400 hover:text-slate-200" @click="tariffImp.open=false"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="px-5 py-4 space-y-3">
+        <div class="text-xs text-slate-500">Paste a tariff (franklinwh-bridge/tariff-profile JSON), or choose a file.</div>
+        <textarea data-testid="tariff-import-paste" x-model="tariffImp.text" rows="8"
+                  @input="tariffImp.preview=null; tariffImp.msg=null"
+                  class="form-control w-full font-mono text-xs" placeholder='{"type": "franklinwh-bridge/tariff-profile", ...}'></textarea>
+        <input type="file" accept="application/json,.json" class="hidden" x-ref="tariffImportFile" @change="tariffImportFile($event)">
+        <div class="flex flex-wrap gap-2">
+          <button data-testid="tariff-import-file" class="btn btn-secondary btn-sm" @click="$refs.tariffImportFile.click()">Choose file</button>
+          <button data-testid="tariff-import-check" class="btn btn-secondary btn-sm"
+                  :disabled="tariffImp.busy || !tariffImp.text.trim()" @click="tariffImportCheck()">Check</button>
+          <button data-testid="tariff-import-apply" class="btn btn-primary btn-sm"
+                  :disabled="tariffImp.busy || !tariffImp.preview || tariffImp.done" @click="tariffImportApply()">Import</button>
+        </div>
+        <div x-show="tariffImp.preview" class="text-xs rounded-lg p-2 whitespace-pre-line"
+             style="background:var(--surface-2);color:var(--text-secondary)" x-text="tariffImportSummary()"></div>
+        <div data-testid="tariff-import-result" x-show="tariffImp.msg" class="text-sm"
+             :style="'color:' + (tariffImp.msg?.kind === 'ok' ? 'var(--success,#34d399)' : 'var(--danger,#f87171)')"
+             x-text="tariffImp.msg?.text"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ══ Utilities &amp; Tariffs ══ -->
   <div class="flex items-center gap-3">
     <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Utilities &amp; Tariffs <a :href="$store.app.guideUrl('energy-and-costs/#tariffs')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
     <div class="flex-1 border-t border-white/[0.08]"></div>
-    <input type="file" accept="application/json,.json" class="hidden" x-ref="tariffImportFile" @change="importTariffProfile($event)">
-    <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="$refs.tariffImportFile.click()"
-            title="Import a Modbus-bridge tariff export (franklinwh-bridge/tariff-profile)">Import tariff</button>
+    <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="openTariffImport()"
+            title="Import a tariff (franklinwh-bridge/tariff-profile): paste it or choose a file">Import tariff</button>
     <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="newUtility()">+ Add Utility</button>
   </div>
   <div class="card space-y-3">
