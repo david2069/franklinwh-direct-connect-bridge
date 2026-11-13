@@ -36,6 +36,7 @@ function settingsTab() {
     // ── Sites + Meters ──
     sites: [], meters: [], siteEdit: null, meterEdit: null,
     utilities: [], tariffs: [], utilEdit: null, tariffEdit: null, tariffMsg: null,
+    tariffImp: { open: false, text: '', preview: null, msg: null, busy: false, done: false },
     // ── Automation constants (const.* sensors) ──
     constants: {}, constSpec: {}, constModes: [], constSaving: false,
     systemSetup: {}, systemSpec: {}, systemSaving: false, systemLoaded: {},
@@ -665,34 +666,61 @@ function settingsTab() {
         a.click(); URL.revokeObjectURL(a.href);
       } catch (e) { this.$store.app.toast('Export failed: ' + e.message, 'error'); }
     },
-    async importTariffProfile(ev) {
+    // Import tariff (owner 2026-11-13): paste the JSON or choose a file — a phone often has
+    // no file to hand. Check is the dry-run preview; results stay in the dialog.
+    openTariffImport() {
+      this.tariffImp = { open: true, text: '', preview: null, msg: null, busy: false, done: false };
+    },
+    async tariffImportFile(ev) {
       const file = ev.target.files[0]; ev.target.value = '';
       if (!file) return;
-      let bundle;
-      try { bundle = JSON.parse(await file.text()); }
-      catch (e) { this.$store.app.toast('Import failed: not valid JSON — ' + e.message, 'error'); return; }
+      this.tariffImp.text = await file.text();
+      await this.tariffImportCheck();
+    },
+    _tariffBundle() {
+      try { return JSON.parse(this.tariffImp.text); }
+      catch (e) { this.tariffImp.msg = { kind: 'err', text: 'Not valid JSON: ' + e.message }; return null; }
+    },
+    async tariffImportCheck() {
+      const t = this.tariffImp;
+      Object.assign(t, { preview: null, msg: null, done: false });
+      const bundle = this._tariffBundle();
+      if (!bundle) return;
+      t.busy = true;
       try {
-        // preview
-        const pr = await fetch('api/tariffs/import?dry_run=true', {
+        const r = await fetch('api/tariffs/import?dry_run=true', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bundle) });
-        const pd = await pr.json();
-        if (!pr.ok) { this.$store.app.toast('Import rejected: ' + (pd.detail || pr.statusText), 'error'); return; }
-        const p = pd.preview || {};
-        const ok = await this.$store.app.confirmDialog(
-          `Import "${p.tariff_name}"?\n\nRetailer: ${p.retailer} · Network: ${p.network}\n`
-          + `Plan: ${p.plan_type} · ${p.seasons} season(s) · ${p.fixed_charges} fixed charge(s)\n`
-          + `${p.timezone ? 'Timezone: ' + p.timezone + '\n' : ''}`
-          + `\nCreates the utility + tariff and attaches them to the default meter.`,
-          { title: 'Import tariff' });
-        if (!ok) return;
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) t.msg = { kind: 'err', text: 'Not accepted: ' + (d.detail || r.statusText) };
+        else t.preview = d.preview || {};
+      } catch (e) { t.msg = { kind: 'err', text: 'Check failed: ' + e.message }; }
+      t.busy = false;
+    },
+    tariffImportSummary() {
+      const p = this.tariffImp.preview || {};
+      return `"${p.tariff_name}"\nRetailer: ${p.retailer} · Network: ${p.network}\n`
+        + `Plan: ${p.plan_type} · ${p.seasons} season(s) · ${p.fixed_charges} fixed charge(s)`
+        + (p.timezone ? `\nTimezone: ${p.timezone}` : '')
+        + (p.effective_start ? `\nFrom ${p.effective_start}` + (p.effective_end ? ` to ${p.effective_end}` : ' (current)') : '')
+        + (p.reuses_utility ? `\nAdds a plan to the existing ${p.retailer} utility.` : '')
+        + (p.replaces ? `\nEnds "${p.replaces}" on ${p.replaces_end}.` : '');
+    },
+    async tariffImportApply() {
+      const t = this.tariffImp;
+      const bundle = this._tariffBundle();
+      if (!bundle) return;
+      t.busy = true;
+      try {
         const r = await fetch('api/tariffs/import', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bundle) });
-        const d = await r.json();
+        const d = await r.json().catch(() => ({}));
         if (r.ok && d.ok) {
-          this.$store.app.toast('Imported ' + p.retailer + ' — ' + p.tariff_name, 'success');
+          t.msg = { kind: 'ok', text: `Imported ${t.preview.retailer} — ${t.preview.tariff_name}.` };
+          t.done = true;
           await this.loadUtilitiesTariffs(); await this.loadSitesMeters();
-        } else { this.$store.app.toast('Import failed: ' + (d.detail || 'error'), 'error'); }
-      } catch (e) { this.$store.app.toast('Import failed: ' + e.message, 'error'); }
+        } else t.msg = { kind: 'err', text: 'Import failed: ' + (d.detail || r.statusText) };
+      } catch (e) { t.msg = { kind: 'err', text: 'Import failed: ' + e.message }; }
+      t.busy = false;
     },
     editUtility(u) { this.utilEdit = { ...u, export_limit_kw: u.export_limit_kw ?? '',
       export_allowed: !!u.export_allowed, solar_export_allowed: !!u.solar_export_allowed, battery_export_allowed: !!u.battery_export_allowed,
