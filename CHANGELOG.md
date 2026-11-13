@@ -18,6 +18,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Offline aGate values no longer look live** (#615). While the aGate is offline, the Dashboard's State of Charge, Power Flow and Battery cards and the top bar's run status and SoC grey out the last-good values and say **Last reading HH:MM (N min ago)**; the battery state reads **Unknown (offline)**, not Charging or Discharging. The summary marks them with `last_good` and `last_good_ts`.
 - **A billing period closed by a tariff switch** was stamped with the new tariff's name, ended at the cycle's end, and carried the new tariff's fixed charges for the whole period. It now carries the tariff that priced it, ends at the switch, and has that tariff's fixed charges for its own days.
 
 ### Added
