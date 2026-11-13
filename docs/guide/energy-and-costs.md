@@ -289,8 +289,11 @@ charges); **Import** adds it as a plan of the default meter (rules below).
 The result, or why it was not accepted, is shown in the dialog.
 
 **One tariff in force per meter.** A tariff has **Effective from** and **Effective to**
-(blank = current). A meter has one tariff in force on any day, and prices from the one in
-force today:
+(blank = current). A meter has one tariff in force on any day, and each day is priced
+with the tariff in force that day (energy, fixed charges, the `tariff.*` sensors). A
+tariff dated to start tomorrow takes over at midnight by itself. The billing period it
+interrupts is closed at the switch and shows in history under the tariff that priced it,
+with that tariff's fixed charges for its own days.
 
 - Adding or importing a tariff for a meter ends its current tariff the day before the new
   one starts. With no start date, the new one starts today.

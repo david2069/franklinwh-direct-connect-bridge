@@ -41,6 +41,17 @@ def in_force(store, meter_id: str, day: dt.date | None = None) -> dict | None:
     return next((t for t in of_meter(store, meter_id) if _covers(t, day)), None)
 
 
+def tariff_for(store, meter: dict | None, day: dt.date | None = None) -> dict | None:
+    """The tariff that prices ``meter`` on ``day`` (default today): by date when the meter
+    has dated tariffs, else the tariff it points at (a meter set up before dated plans)."""
+    if not meter:
+        return None
+    if of_meter(store, meter["id"]):
+        return in_force(store, meter["id"], day)
+    tid = meter.get("tariff_id")
+    return store.tariff(tid) if tid else None
+
+
 def current(store, meter_id: str) -> dict | None:
     """The meter's open-ended tariff (no end date), if any."""
     return next((t for t in of_meter(store, meter_id) if not t.get("effective_end")), None)
@@ -79,8 +90,9 @@ def apply(store, meter_id: str, p: dict) -> None:
     repoint(store, meter_id)
 
 
-def repoint(store, meter_id: str | None) -> None:
+def repoint(store, meter_id: str | None, day: dt.date | None = None) -> None:
+    """Point the meter at the tariff in force on ``day`` (default today)."""
     if not meter_id or store.meter(meter_id) is None:
         return
-    t = in_force(store, meter_id)
+    t = in_force(store, meter_id, day)
     store.set_meter_plan(meter_id, t.get("utility_id") if t else None, t["id"] if t else None)

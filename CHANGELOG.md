@@ -11,6 +11,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+
+- **Billing by date** (owner; phase 2, as the Modbus Bridge). Each day is priced with the tariff in force that day: energy, fixed charges and the `tariff.*` / `service.*` sensors. A tariff dated to start tomorrow takes over at midnight by itself, and the meter follows.
+
+### Fixed
+
+- **A billing period closed by a tariff switch** was stamped with the new tariff's name, ended at the cycle's end, and carried the new tariff's fixed charges for the whole period. It now carries the tariff that priced it, ends at the switch, and has that tariff's fixed charges for its own days.
+
 ## [0.5.42] — 2026-11-13
 
 A grouped release: the owner overrode one-release-a-day because the backlog was large.
