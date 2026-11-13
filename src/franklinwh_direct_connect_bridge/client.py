@@ -233,6 +233,32 @@ def health(s: Settings, host: str | None = None) -> dict[str, Any]:
     return out
 
 
+def link_check(s: Settings, host: str | None = None) -> dict[str, Any]:
+    """Troubleshoot's health check (#614): ping (LAN), a login on the local API (:9000) with
+    its latency, and the aGate's own cloud link from 1118 ``awsStatus`` (the one the Network
+    tab trusts) with ``currentNetType``. Never touches the Modbus TCP Server (aGate :502):
+    not a probe, not even the Modbus client's last result."""
+    host = _need_host(host)
+    out: dict[str, Any] = {"host": host, "ping": discover.ping(host, timeout=1.0),
+                           "local_api": False, "latency_ms": None, "error": None,
+                           "aws_status": None, "net_type": None}
+    try:
+        with _client(s, host) as c:
+            t0 = time.time()
+            c.login()
+            out["latency_ms"] = round((time.time() - t0) * 1000, 1)
+            out["local_api"] = True
+            try:
+                from .cloud_compat import network_from_interfaces
+                ifc = network_from_interfaces(c.network_interfaces())
+                out["aws_status"], out["net_type"] = ifc.get("awsStatus"), ifc.get("currentNetType")
+            except (OSError, TransportError, TimeoutError):
+                pass
+    except (OSError, TransportError, TimeoutError) as e:
+        out["error"] = str(e)
+    return out
+
+
 def network_bundle(s: Settings, host: str | None = None) -> dict[str, Any]:
     """All local network diagnostics in ONE aGate session: reachability (ping/:9000/:502 +
     login latency), connectivity (1113 router/net/aws), interfaces (1118), interface switches

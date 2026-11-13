@@ -219,6 +219,52 @@ def read_power_control(email: str, password: str, gateway: str | None) -> dict:
     return asyncio.run(_run())
 
 
+def read_connectivity(email: str, password: str, gateway: str | None) -> dict:
+    """What the FranklinWH cloud says the aGate is connected through (#614), from the
+    library's ``get_network_state()`` (cmdTypes 317 + 339 + 341).
+
+    ``{"reachable": True, "network": <get_network_state()>, "stored_ssid": str | None}``,
+    or ``{"reachable": False, "detail": str}`` when the cloud cannot reach the aGate
+    (offline, or it did not answer). On 4G the Wi-Fi network stored on the aGate is named,
+    for Reconnect to Wi-Fi: cmdType 337 returns it with its password, and only the SSID is
+    kept — the password is never returned, stored or logged. Raises on a login or
+    transport failure."""
+    import asyncio
+
+    from franklinwh_cloud.exceptions import DeviceTimeoutException, GatewayOfflineException
+
+    async def _run():
+        async with await _client_for(email, password, gateway, "troubleshoot") as cloud:
+            try:
+                net = await cloud.get_network_state()
+            except (GatewayOfflineException, DeviceTimeoutException) as e:
+                return {"reachable": False, "detail": str(e) or type(e).__name__}
+            ssid = None
+            if (net.get("active") or {}).get("key") == "4g":
+                try:
+                    ssid = (await cloud.get_wifi_config()).get("wifi_ssid") or None
+                except Exception:  # noqa: BLE001 — the name only labels the button
+                    ssid = None
+            return {"reachable": True, "network": net, "stored_ssid": ssid}
+
+    return asyncio.run(_run())
+
+
+def switch_wifi(email: str, password: str, gateway: str | None, ssid: str) -> dict:
+    """The library's ``switch_to_wifi(ssid, password=None, confirm=True)`` (#614): back
+    onto the Wi-Fi network the aGate already stores, reusing its stored password. The
+    library refuses without a fallback transport, writes cmdType 337 (opt 1) and confirms the link
+    came up; its result dict carries no password. Raises ``ValueError`` when ``ssid`` is
+    not the stored network, and on a login or transport failure."""
+    import asyncio
+
+    async def _run():
+        async with await _client_for(email, password, gateway, "troubleshoot") as cloud:
+            return await cloud.switch_to_wifi(ssid, password=None, confirm=True)
+
+    return asyncio.run(_run())
+
+
 #: The day each aGate was activated on the cloud, by serial; it never changes.
 _SINCE: dict[str, str] = {}
 

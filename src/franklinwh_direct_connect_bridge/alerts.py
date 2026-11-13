@@ -44,6 +44,11 @@ CATALOGUE: dict[str, dict] = {
     "GATEWAY_UNREACHABLE": {"kind": CONDITION, "severity": CRITICAL,
                             "open_s": 300, "resolve_s": 120,
                             "title": "aGate unreachable"},
+    # The LAN works but the aGate's internet goes over 4G (#614): its Wi-Fi has no route
+    # out. Held 5 min, so a transport dip during roaming (seconds) never raises it.
+    "AGATE_ON_4G": {"kind": CONDITION, "severity": WARNING,
+                    "open_s": 300, "resolve_s": 120,
+                    "title": "aGate is using 4G — Wi-Fi has no internet"},
     "LIVE_DATA_MISSING": {"kind": CONDITION, "severity": CRITICAL,
                           "open_s": 120, "resolve_s": 60,
                           "title": "Live data missing"},
@@ -124,6 +129,20 @@ def set_condition(gateway_id: str, code: str, bad: bool, now: float | None = Non
 def facts() -> dict[tuple[str, str], dict]:
     with _facts_lock:
         return {k: dict(v) for k, v in _facts.items()}
+
+
+def recovery(row: dict, now: float | None = None) -> dict | None:
+    """An open condition whose fault has cleared but has not yet held good for its
+    ``resolve_s``: ``{"since", "resolves_in_s"}``, else None (#614). The banner says
+    "confirming" from this rather than "unreachable" while the link is already back."""
+    if row.get("kind") != CONDITION or row.get("resolved_ts"):
+        return None
+    f = facts().get((row.get("gateway_id") or "", row.get("code")))
+    if f is None or f["bad"]:
+        return None
+    ts = float(now if now is not None else time.time())
+    left = float(f["since"]) + CATALOGUE[row["code"]]["resolve_s"] - ts
+    return {"since": float(f["since"]), "resolves_in_s": max(0, int(round(left)))}
 
 
 def forget_gateway(store, gateway_id: str, now: float | None = None) -> list[int]:

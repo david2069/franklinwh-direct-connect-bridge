@@ -1889,6 +1889,7 @@ document.addEventListener('alpine:init', () => {
         go_off_grid: 'Go off-grid', reconnect_grid: 'Reconnect to grid',
         reboot_gateway: 'Reboot gateway', set_mode: 'Set operating mode',
         modbus_toggle: 'Modbus toggle', set_reserve: 'Set reserve SoC',
+        wifi_reconnect: 'Reconnect aGate to Wi-Fi',
       })[a] || a;
     },
     fmtTime(ts) {                                   // control audit trail — HOST zone (system of record)

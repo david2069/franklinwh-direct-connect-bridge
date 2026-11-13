@@ -1,0 +1,115 @@
+{% from "partials/dialog_msg.html" import dialog_msg %}
+<!-- ── Troubleshoot (#614): the aGate is unreachable or on 4G ─────────────────
+     Opened from the red bar and from the alert. Above the alert window (z-105), below the
+     typed-confirm dialog (z-125) that Reconnect to Wi-Fi opens. Results stay in here. -->
+<div x-show="$store.troubleshoot.isOpen" x-cloak
+     class="fixed inset-0 z-[115] flex items-center justify-center p-4"
+     @keydown.escape.window="$store.troubleshoot.isOpen && !$store.app.confirmState.open && $store.troubleshoot.close()"
+     role="dialog" aria-modal="true" aria-labelledby="troubleshootTitle">
+  <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="$store.troubleshoot.close()"></div>
+  <div class="relative w-full max-w-lg rounded-xl border shadow-2xl flex flex-col"
+       style="background:var(--surface-0, #0f172a);border-color:var(--border);max-height:calc(100dvh - 2rem)">
+    <div class="px-5 py-3 border-b flex items-center justify-between gap-2 shrink-0" style="border-color:var(--border)">
+      <div id="troubleshootTitle" class="text-sm font-semibold" style="color:var(--text-primary)">
+        Troubleshoot<span x-show="$store.troubleshoot.data" x-text="' · ' + ($store.troubleshoot.data && $store.troubleshoot.data.label)"></span>
+        <a :href="$store.app.guideUrl('ha-setup-and-notifications/#troubleshoot')" target="_blank" rel="noopener"
+           class="text-xs underline font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a>
+      </div>
+      <button class="btn btn-secondary btn-sm" @click="$store.troubleshoot.close()">Close</button>
+    </div>
+
+    <div class="px-5 py-4 space-y-4 overflow-y-auto min-h-0 text-sm">
+      <!-- The verdict -->
+      <section class="space-y-1.5">
+        <div class="flex items-center justify-between gap-2">
+          <div class="text-xs font-semibold uppercase tracking-wide" style="color:var(--text-secondary)">Connection</div>
+          <button class="btn btn-secondary btn-sm" :disabled="$store.troubleshoot.loading"
+                  @click="$store.troubleshoot.refresh()" x-text="$store.troubleshoot.loading ? 'Checking…' : 'Check again'"></button>
+        </div>
+        <div x-show="$store.troubleshoot.loading && !$store.troubleshoot.data" class="text-xs" style="color:var(--text-secondary)">
+          Asking the bridge and the FranklinWH cloud…</div>
+        {{ dialog_msg('$store.troubleshoot.msg') }}
+        <template x-if="$store.troubleshoot.data">
+          <div class="rounded-lg border px-3 py-2 space-y-1" :style="{borderColor: $store.troubleshoot.verdictColor}"
+               data-testid="troubleshoot-verdict">
+            <div class="font-semibold" :style="{color: $store.troubleshoot.verdictColor}"
+                 x-text="$store.troubleshoot.data.verdict.text"></div>
+            <div class="text-xs" style="color:var(--text-secondary)" x-text="$store.troubleshoot.lanLine"></div>
+            <div class="text-xs" style="color:var(--text-secondary)" x-text="$store.troubleshoot.cloudLine"></div>
+          </div>
+        </template>
+      </section>
+
+      <!-- Health check: never the Modbus TCP Server (aGate :502) -->
+      <section class="space-y-1.5">
+        <div class="flex items-center justify-between gap-2">
+          <div class="text-xs font-semibold uppercase tracking-wide" style="color:var(--text-secondary)">Health check</div>
+          <button class="btn btn-secondary btn-sm" :disabled="$store.troubleshoot.healthBusy"
+                  @click="$store.troubleshoot.runHealth()" x-text="$store.troubleshoot.healthBusy ? 'Checking…' : 'Health check'"></button>
+        </div>
+        {{ dialog_msg('$store.troubleshoot.healthMsg') }}
+        <template x-if="$store.troubleshoot.health">
+          <div class="space-y-1">
+            <template x-for="c in $store.troubleshoot.health.checks" :key="c.key">
+              <div class="flex items-start gap-2 text-xs">
+                <span class="chip shrink-0" style="font-size:.6rem" :style="{color: $store.troubleshoot.checkColor(c.ok)}"
+                      x-text="$store.troubleshoot.checkText(c.ok)"></span>
+                <span class="min-w-0">
+                  <span class="font-semibold" style="color:var(--text-primary)" x-text="c.label"></span>
+                  <span style="color:var(--text-secondary)"
+                        x-text="' — ' + c.detail + (c.ts ? ' (' + $store.alerts.at(c.ts) + ')' : '')"></span>
+                </span>
+              </div>
+            </template>
+          </div>
+        </template>
+        <button class="underline text-xs" :style="{color: 'var(--accent, #34d399)'}"
+                @click="$store.troubleshoot.openNetwork()">Open Network</button>
+      </section>
+
+      <!-- Reconnect to Wi-Fi: the cloud says 4G, and the aGate stores a Wi-Fi network -->
+      <section x-show="$store.troubleshoot.data && $store.troubleshoot.data.can_reconnect" class="space-y-1.5">
+        <div class="text-xs font-semibold uppercase tracking-wide" style="color:var(--text-secondary)">Reconnect to Wi-Fi</div>
+        <p class="text-xs" style="color:var(--text-secondary)">
+          The aGate falls back to 4G when its Wi-Fi loses the internet, and does not always come back
+          by itself. This asks the FranklinWH cloud to put it back on the network it already stores.
+        </p>
+        <button class="btn btn-primary btn-sm" data-testid="reconnect-wifi"
+                :disabled="!$store.troubleshoot.data || !$store.troubleshoot.data.admin || $store.troubleshoot.running"
+                @click="$store.troubleshoot.reconnect()"
+                x-text="$store.troubleshoot.running ? 'Reconnecting… (up to 3 min)'
+                        : 'Reconnect to Wi-Fi ' + (($store.troubleshoot.data && $store.troubleshoot.data.stored_ssid) || '')"></button>
+        <div x-show="$store.troubleshoot.data && !$store.troubleshoot.data.admin" class="text-xs" style="color:var(--text-faint)">
+          Admins only.</div>
+        {{ dialog_msg('$store.troubleshoot.reconnectMsg') }}
+      </section>
+
+      <!-- The FranklinWH app, one platform at a time -->
+      <section x-show="$store.troubleshoot.showApp" class="space-y-1.5" data-testid="use-the-app">
+        <div class="flex items-center justify-between gap-2">
+          <div class="text-xs font-semibold uppercase tracking-wide" style="color:var(--text-secondary)">Use the FranklinWH app</div>
+          <div class="flex gap-1">
+            <button class="btn btn-sm" :class="$store.troubleshoot.platform === 'ios' ? 'btn-primary' : 'btn-secondary'"
+                    @click="$store.troubleshoot.platform = 'ios'">iOS</button>
+            <button class="btn btn-sm" :class="$store.troubleshoot.platform === 'android' ? 'btn-primary' : 'btn-secondary'"
+                    @click="$store.troubleshoot.platform = 'android'">Android</button>
+          </div>
+        </div>
+        <ol x-show="$store.troubleshoot.platform === 'ios'" class="list-decimal pl-5 space-y-0.5 text-xs" style="color:var(--text-primary)">
+          <template x-for="s in $store.troubleshoot.appSteps('ios')" :key="s"><li x-text="s"></li></template>
+        </ol>
+        <ol x-show="$store.troubleshoot.platform === 'android'" class="list-decimal pl-5 space-y-0.5 text-xs" style="color:var(--text-primary)">
+          <template x-for="s in $store.troubleshoot.appSteps('android')" :key="s"><li x-text="s"></li></template>
+        </ol>
+      </section>
+
+      <!-- Steps -->
+      <section class="space-y-1.5">
+        <div class="text-xs font-semibold uppercase tracking-wide" style="color:var(--text-secondary)">Steps</div>
+        <ul class="list-disc pl-5 space-y-0.5 text-xs" style="color:var(--text-primary)">
+          <template x-for="s in $store.troubleshoot.steps" :key="s"><li x-text="s"></li></template>
+        </ul>
+      </section>
+    </div>
+  </div>
+</div>

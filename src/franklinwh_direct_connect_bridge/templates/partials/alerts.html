@@ -21,6 +21,8 @@
           <div class="text-sm font-semibold" style="color:var(--text-primary)"
                x-text="a.title + (a.gateway_id ? ' · ' + a.gateway_id : '')"></div>
           <div class="text-sm" style="color:var(--text-primary)" x-text="a.message"></div>
+          <div x-show="a.recovering" class="text-xs font-semibold" :style="{color: 'var(--warn, #f59e0b)'}"
+               x-text="$store.alerts.recoveryText(a)"></div>
           <div class="text-xs" style="color:var(--text-secondary)">
             <span class="font-semibold">What it means:</span> <span x-text="$store.alerts.help(a).means"></span>
           </div>
@@ -70,6 +72,10 @@
                   x-text="a.severity"></span>
             <span class="font-semibold" style="color:var(--text-primary)" x-text="a.title"></span>
             <span style="color:var(--text-secondary)" x-text="' — ' + a.message"></span>
+            <span x-show="a.recovering" class="block font-semibold" :style="{color: 'var(--warn, #f59e0b)'}"
+                  x-text="$store.alerts.recoveryText(a)"></span>
+            <button x-show="$store.alerts.help(a).tab === 'troubleshoot' && !a.resolved_ts" class="underline text-[11px]"
+                    :style="{color: 'var(--accent, #34d399)'}" @click="$store.alerts.go(a)">Troubleshoot</button>
             <span class="block text-[10px]" style="color:var(--text-faint)"
                   x-text="$store.alerts.delivery(a) + (a.acked_ts ? ' · acknowledged ' + $store.alerts.at(a.acked_ts) + ' (' + a.acked_by + ')' : '')"></span>
           </span>

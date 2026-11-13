@@ -200,7 +200,9 @@ setup) with its source, detail and result; see [Control](control.md).
   tile to show only that level; click it again to clear it.
 - **Search messages…** — filters on the message, source and level.
 - **All sources** and **All levels** — pick one source (logger) or one level.
-- **Time range** — Last 1h, Last 6h, Last 24h (the default), Last 7 days or All time.
+- **Time range** — Last 1h, Last 6h, Last 24h (the default), Last 7 days or All time. The
+  box shows the range that is loaded. It used to show "Last 1h" while it loaded the default
+  24 hours, so lines from hours earlier appeared under "Last 1h" (#614).
 - **Live** / **Paused** — click to stop the 10-second refresh, so the view holds still
   while you read. Click again to resume.
 - **Export** — downloads the lines currently shown, with your filters, as a `.log` file.
