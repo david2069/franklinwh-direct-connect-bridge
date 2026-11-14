@@ -13,6 +13,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Two gateways on one meter were each billed the meter's fixed charges and demand charge** (#611). Billing is now per meter: one set of fixed charges, demand from the meter's combined peak, energy from the gateways' readings by how each grid CT is wired, and one history, shown on each gateway's Energy Costs. A period running at upgrade carries on, with the gateways' totals added up.
 - **A retailer's Provider from / until dates and export restriction note did not save** (owner). Save sent neither; it now sends both, and a blank date saves as no date (until blank = current), with or without a start date.
 - **Empty date boxes showed today's date in grey** (owner) in Safari and the Home Assistant app, a date nobody set: retailer and tariff dates, the Scheduler's dates and an account's expiry. An empty box is now blank until you pick a date.
 - **Explain sent you to "Settings → Billing" for a tariff**, which doesn't exist. It now says Settings → Sites & Billing → your meter → + Add tariff.
@@ -20,6 +21,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- **Grid CT measures** (#611), per gateway (Gateways → Edit) on a meter with more than one gateway: its own part of the meter (readings added up) or the whole meter (counted once). Unset reads "please confirm" on the meter card and counts as its own part.
 - **Why a battery recording ended, and who started and stopped it** (owner). The Battery tab shows each recording's end (completed, stopped by an account or address, or the aGate unreachable), kept as `end_reason` on the session. The Logs show who started it, who pressed Stop, failed reads, and the end, with the samples captured.
 
 ## [0.5.43] — 2026-11-14

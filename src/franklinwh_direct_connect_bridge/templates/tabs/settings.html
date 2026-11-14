@@ -370,6 +370,8 @@
                   <span x-text="acLabel(m.ac_type)"></span><span x-show="m.rated_amps" x-text="' · ' + m.rated_amps + ' A'"></span><span x-show="m.meter_number" class="font-mono" x-text="' · ' + m.meter_number"></span><span x-show="m.pto_status && m.pto_status !== 'unknown'" class="chip" :class="m.pto_status === 'approved' ? 'ok' : (m.pto_status === 'pending' ? 'warn' : 'muted')" style="font-size:.6rem;margin-left:6px" x-text="'PTO ' + ptoLabel(m.pto_status)"></span>
                   · <span x-text="gateways.filter(g => g.meter_id === m.id).length"></span> gateway(s)
                 </div>
+                <div x-show="gateways.filter(g => g.meter_id === m.id).length > 1 && gateways.some(g => g.meter_id === m.id && !g.grid_ct)"
+                     class="text-[11px] mt-0.5 text-amber-300">Please confirm what each gateway's grid CT measures (Gateways → Edit): until then each counts as its own part of this meter.</div>
               </div>
               <div class="flex items-center gap-1.5 shrink-0">
                 <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="editMeter(m)">Edit</button>
@@ -1425,6 +1427,14 @@
             </template>
           </select>
           <span class="text-[10px] block mt-0.5" style="color:var(--text-faint)">Which meter this gateway connects to (→ its site).</span></label>
+        <label x-show="gateways.some(g => g.meter_id === gwEdit.meter_id && g.id !== gwEdit.id)" class="text-xs block" style="color:var(--text-secondary)">Grid CT measures
+          <span x-show="!gwEdit.grid_ct" class="text-amber-300">(please confirm)</span>
+          <select data-testid="gw-grid-ct" class="form-control form-control-sm block mt-1 w-full" x-model="gwEdit.grid_ct">
+            <option value="">Not set (counted as its own part)</option>
+            <option value="part">Its own part of the meter (a sub-board)</option>
+            <option value="meter">The whole meter</option>
+          </select>
+          <span class="text-[10px] block mt-0.5" style="color:var(--text-faint)">This meter has more than one gateway, and it is billed once: one set of fixed charges, demand from the combined peak. Own parts are added up; a whole-meter CT is counted once. FranklinWH doesn't record this.</span></label>
         <label class="text-xs block" style="color:var(--text-secondary)">Description
           <input class="form-control form-control-sm block mt-1 w-full" x-model="gwEdit.description" placeholder="optional"></label>
         <div class="space-y-1.5 text-xs" style="color:var(--text-secondary)">
