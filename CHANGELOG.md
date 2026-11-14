@@ -11,6 +11,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+
+- **A battery recording lost its planned samples while the aGate was unreachable** (owner). Each failed read used one up, so an outage shortened the recording. Failed reads no longer count: the recording carries on once the aGate answers again, and gives up after an hour with no good read.
+
+### Added
+
+- **Why a battery recording ended, and who started and stopped it** (owner). The Battery tab shows each recording's end (completed, stopped by an account or address, or the aGate unreachable), kept as `end_reason` on the session. The Logs show who started it, who pressed Stop, failed reads, and the end, with the samples captured.
+
 ## [0.5.43] — 2026-11-14
 
 A grouped release (owner override of one-release-a-day). Everything merged since 0.5.42, by area:

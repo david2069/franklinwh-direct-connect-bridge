@@ -6155,8 +6155,18 @@ def create_app() -> FastAPI:
     # A bounded burst of full per-cell snapshots, persisted for later charting.
     # Runs in a background thread, NOT the poll loop: it samples far faster than
     # the 30s poll and must not perturb the long-run history.
+    def _caller(request: Request) -> str:
+        """Who sent this request, for the log: the signed-in account (or HA user), else
+        the address it came from."""
+        p = getattr(request.state, "principal", None)
+        if p:
+            return f"{p['username']} ({p['via']})"
+        host = request.client.host if request.client else "unknown"
+        return f"{host} (not signed in)"
+
     @app.post("/api/battery/record")
-    def api_bms_record(req: BmsRecordReq, gateway: str = Depends(_gateway_q)):
+    def api_bms_record(req: BmsRecordReq, request: Request,
+                       gateway: str = Depends(_gateway_q)):
         """Start a recording session. 409 if one is already running, 422 on bad
         parameters, 503 if metrics storage is disabled."""
         store = db.get_store(get_settings())
@@ -6178,15 +6188,16 @@ def create_app() -> FastAPI:
             return bms_record.get_recorder().start(
                 store, _fetch, samples=req.samples, interval_s=req.interval_s,
                 gateway_id=gateway, apower_sn=sn, dev_id=req.id, label=req.label,
-                purge=(get_settings().bms_keep_days, get_settings().bms_max_mb))
+                purge=(get_settings().bms_keep_days, get_settings().bms_max_mb),
+                by=_caller(request))
         except ValueError as e:
             code = 409 if "already running" in str(e) else 422
             raise HTTPException(status_code=code, detail=str(e))
 
     @app.post("/api/battery/record/stop")
-    def api_bms_record_stop():
+    def api_bms_record_stop(request: Request):
         """Finish the running session early. Safe to call when none is active."""
-        return bms_record.get_recorder().stop()
+        return bms_record.get_recorder().stop(by=_caller(request))
 
     @app.get("/api/battery/record/status")
     def api_bms_record_status():
