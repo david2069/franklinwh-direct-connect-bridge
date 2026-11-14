@@ -802,7 +802,8 @@ function settingsTab() {
       const body = { name: u.name, network_dnsp: u.network_dnsp || '', country: u.country || '', plan_type: u.plan_type || 'unknown',
         export_allowed: u.export_allowed, solar_export_allowed: u.solar_export_allowed, battery_export_allowed: u.battery_export_allowed,
         charging_allowed: u.charging_allowed, discharging_allowed: u.discharging_allowed,
-        export_limit_kw: (u.export_limit_kw === '' || u.export_limit_kw == null) ? null : Number(u.export_limit_kw) };
+        export_limit_kw: (u.export_limit_kw === '' || u.export_limit_kw == null) ? null : Number(u.export_limit_kw),
+        export_note: u.export_note || '', effective_start: u.effective_start || '', effective_end: u.effective_end || '' };
       try {
         const r = await fetch(u.id ? 'api/utilities/' + u.id : 'api/utilities',
           { method: u.id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

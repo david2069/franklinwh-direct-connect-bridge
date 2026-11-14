@@ -6049,7 +6049,8 @@ def create_app() -> FastAPI:
             missing.append({"id": "capacity", "text": "Set the battery capacity (Settings → "
                             "Automation) for battery cycles and reserve sizes.", "tab": "settings"})
         if not site.get("tariff"):
-            missing.append({"id": "tariff", "text": "Add your tariff (Settings → Billing) for "
+            missing.append({"id": "tariff", "text": "Add your tariff (Settings → Sites & Billing → your meter → "
+                            "+ Add tariff) for "
                             "time-of-use advice and $ estimates.", "tab": "settings"})
         out.update(source=source, site=site, current=current, missing=missing,
                    objective_choices=ca.insights.OBJECTIVES)

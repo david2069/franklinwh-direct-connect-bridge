@@ -749,3 +749,14 @@ select.form-control:not([multiple]):not([size]) {
    them. `html .fwhca` outranks the panel's own stylesheet, which loads after this one. */
 html .fwhca { --ca-menu-bg: var(--surface-1); --ca-gridline: rgba(148,163,184,.12); --ca-muted: #64748b; }
 html .fwhca .fwhca-status { font-size: .75rem; }   /* as Local's note under its chart */
+
+/* Safari draws today's date, greyed, in an empty date box: a date nobody set (owner,
+   2026-11-14). Blank until focused or filled. */
+input[type="date"].date-empty:not(:focus),
+input[type="date"].date-empty:not(:focus)::-webkit-datetime-edit,
+input[type="date"].date-empty:not(:focus)::-webkit-datetime-edit-text,
+input[type="date"].date-empty:not(:focus)::-webkit-datetime-edit-day-field,
+input[type="date"].date-empty:not(:focus)::-webkit-datetime-edit-month-field,
+input[type="date"].date-empty:not(:focus)::-webkit-datetime-edit-year-field {
+  color: transparent; -webkit-text-fill-color: transparent;  /* the fields ignore color alone */
+}
