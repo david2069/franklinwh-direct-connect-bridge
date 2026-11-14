@@ -449,6 +449,10 @@ class MetricsStore:
         )
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS ix_bms_samples ON bms_samples(session_id, ts)")
+        # Why it ended (owner, 2026-11-14): completed, stopped by whom, or the aGate gone.
+        cols = [r[1] for r in self._conn.execute("PRAGMA table_info(bms_sessions)")]
+        if "end_reason" not in cols:
+            self._conn.execute("ALTER TABLE bms_sessions ADD COLUMN end_reason TEXT")
         # Scheduled recordings (owner, 2026-11-11): a start time on the site's clock, how
         # long, how often, which weekdays (Monday = 0), and the day it last ran.
         self._conn.execute(
@@ -950,6 +954,9 @@ class MetricsStore:
         allowed = ("network_dnsp", "country", "plan_type", "export_allowed",
                    "solar_export_allowed", "battery_export_allowed", "export_limit_kw",
                    "charging_allowed", "discharging_allowed", "export_note", "effective_start", "effective_end")
+        for k in ("effective_start", "effective_end"):   # a blank date is no date
+            if fields.get(k) == "":
+                fields[k] = None
         cols = ["id", "name", "created_at", "updated_at"] + [k for k in allowed if k in fields]
         vals = [uid, name, ts, ts] + [fields[k] for k in allowed if k in fields]
         with self._lock:
@@ -963,6 +970,9 @@ class MetricsStore:
                    "solar_export_allowed", "battery_export_allowed", "export_limit_kw",
                    "charging_allowed", "discharging_allowed", "export_note", "effective_start", "effective_end"}
         sets = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        for k in ("effective_start", "effective_end"):   # blank clears it (until blank = current)
+            if sets.get(k) == "":
+                sets[k] = None
         if not sets:
             return self.utility(uid)
         for k in ("export_allowed", "solar_export_allowed", "battery_export_allowed",
@@ -2058,13 +2068,23 @@ class MetricsStore:
         except Exception:  # pragma: no cover — history must never break the tick
             pass
 
-    def billing_periods(self, *, limit: int = 60, gateway_id: str | None = None) -> list[dict]:
+    def billing_periods(self, *, limit: int = 60, gateway_id: str | None = None,
+                        meter_id: str | None = None,
+                        gateway_ids: list[str] | None = None) -> list[dict]:
+        """Closed periods, newest first. ``meter_id`` (#611): the meter's periods, plus rows
+        from before #611 that only name one of ``gateway_ids``."""
         q = ("SELECT closed_at, gateway_id, meter_id, utility_id, tariff_id, retailer, "
              "network, plan_version, tariff_name, period_start, period_end, import_kwh, "
              "import_cost, export_credit, demand_peak_kw, demand_charge, bonus_credit, "
              "export_charge, fixed_total, net_total FROM billing_periods")
         args: list = []
-        if gateway_id:
+        if meter_id:
+            ids = list(gateway_ids or [])
+            q += " WHERE meter_id=?"; args.append(meter_id)
+            if ids:
+                q += f" OR (meter_id IS NULL AND gateway_id IN ({','.join('?' * len(ids))}))"
+                args.extend(ids)
+        elif gateway_id:
             q += " WHERE gateway_id=?"; args.append(gateway_id)
         q += " ORDER BY period_start DESC LIMIT ?"; args.append(max(1, min(limit, 200)))
         with self._lock:
@@ -2695,10 +2715,11 @@ class MetricsStore:
                  json.dumps(temps) if temps else None))
             self._conn.commit()
 
-    def end_bms_session(self, session_id: int, now=None) -> None:
+    def end_bms_session(self, session_id: int, now=None, reason: str | None = None) -> None:
         with self._lock:
-            self._conn.execute("UPDATE bms_sessions SET ended_ts=? WHERE id=?",
-                               (int(now if now is not None else time.time()), session_id))
+            self._conn.execute("UPDATE bms_sessions SET ended_ts=?, end_reason=? WHERE id=?",
+                               (int(now if now is not None else time.time()), reason,
+                                session_id))
             self._conn.commit()
 
     def bms_sessions(self, limit: int = 200, apower_sn: str | None = None) -> list[dict]:

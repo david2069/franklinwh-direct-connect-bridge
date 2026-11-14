@@ -533,7 +533,7 @@
 
       <!-- One-off date -->
       <label x-show="showDate" class="block text-xs" style="color:var(--text-secondary)">Date
-        <input type="date" class="form-control form-control-sm w-full mt-1"
+        <input type="date" :class="{ 'date-empty': !form.start_date }" class="form-control form-control-sm w-full mt-1"
                :value="form.start_date || ''" @change="form.start_date = $event.target.value || null">
         <span class="text-[11px] block mt-0.5" style="color:var(--text-faint)">Fires once on this date, then goes dormant.</span></label>
 
@@ -594,10 +594,10 @@
           <div class="text-[11px]" style="color:var(--text-secondary)">Restrict to a date range (optional)</div>
           <div class="grid grid-cols-2 gap-2">
             <label class="block text-[11px]" style="color:var(--text-secondary)">Start date
-              <input type="date" class="form-control form-control-sm w-full mt-1"
+              <input type="date" :class="{ 'date-empty': !form.start_date }" class="form-control form-control-sm w-full mt-1"
                      :value="form.start_date || ''" @change="form.start_date = $event.target.value || null"></label>
             <label class="block text-[11px]" style="color:var(--text-secondary)">End date
-              <input type="date" class="form-control form-control-sm w-full mt-1"
+              <input type="date" :class="{ 'date-empty': !form.end_date }" class="form-control form-control-sm w-full mt-1"
                      :value="form.end_date || ''" @change="form.end_date = $event.target.value || null"></label>
           </div>
         </div>

@@ -697,7 +697,8 @@ function batteryTab() {
             this._recTimer = null;
             this.loadSessions();
             this.recMsg = `Recording saved: ${this.rec.captured} sample(s)`
-              + (this.rec.errors ? `, ${this.rec.errors} failed` : '') + '.';
+              + (this.rec.errors ? `, ${this.rec.errors} failed` : '')
+              + (this.rec.end_reason ? ` — ${this.rec.end_reason}` : '') + '.';
           }
         } catch { clearInterval(this._recTimer); this._recTimer = null; }
       }, 2000);

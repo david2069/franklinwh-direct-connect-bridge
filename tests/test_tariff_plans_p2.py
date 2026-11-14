@@ -55,7 +55,7 @@ def test_billing_switches_at_midnight_and_closes_the_old_plan(st):
     assert p["import_cost"] == pytest.approx(p["import_kwh"] * 0.20, abs=0.01)
     assert p["fixed_total"] == pytest.approx(15.0, abs=0.05)   # 1 Nov → 16 Nov 00:01, $1/day
     assert st.meter("m1")["tariff_id"] == "t2"                  # the meter follows
-    assert billing._TRACKERS["gw1"]._s["tariff_id"] == "t2"
+    assert billing._TRACKERS["meter:m1"]._s["tariff_id"] == "t2"   # one tracker per meter (#611)
     assert pts is not None
 
 

@@ -11,6 +11,28 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.44] — 2026-11-15
+
+Everything merged since 0.5.43, by area:
+
+- **Billing:** two gateways on one meter share one bill (one set of fixed charges, demand from the combined peak, one history); each aGate's built-in grid CT counts as its own part, with nothing to set.
+- **Retailers:** Provider from / until dates and the export note save; a retailer saves with no start date.
+- **Date boxes:** an empty date box stays blank in Safari and the HA app.
+- **Explain:** points to Settings → Sites & Billing → your meter → + Add tariff.
+- **Battery recordings:** survive the aGate dropping off, and show why they ended and who started and stopped them.
+
+### Fixed
+
+- **Two gateways on one meter were each billed the meter's fixed charges and demand charge** (#611). Billing is now per meter: one set of fixed charges, demand from the meter's combined peak, energy from the gateways' readings added up (each aGate's built-in grid CT measures its own part), and one history, shown on each gateway's Energy Costs. A period running at upgrade carries on, with the gateways' totals added up.
+- **A retailer's Provider from / until dates and export restriction note did not save** (owner). Save sent neither; it now sends both, and a blank date saves as no date (until blank = current), with or without a start date.
+- **Empty date boxes showed today's date in grey** (owner) in Safari and the Home Assistant app, a date nobody set: retailer and tariff dates, the Scheduler's dates and an account's expiry. An empty box is now blank until you pick a date.
+- **Explain sent you to "Settings → Billing" for a tariff**, which doesn't exist. It now says Settings → Sites & Billing → your meter → + Add tariff.
+- **A battery recording lost its planned samples while the aGate was unreachable** (owner). Each failed read used one up, so an outage shortened the recording. Failed reads no longer count: the recording carries on once the aGate answers again, and gives up after an hour with no good read.
+
+### Added
+
+- **Why a battery recording ended, and who started and stopped it** (owner). The Battery tab shows each recording's end (completed, stopped by an account or address, or the aGate unreachable), kept as `end_reason` on the session. The Logs show who started it, who pressed Stop, failed reads, and the end, with the samples captured.
+
 ## [0.5.43] — 2026-11-14
 
 A grouped release (owner override of one-release-a-day). Everything merged since 0.5.42, by area:

@@ -180,8 +180,14 @@ Site  →  Meter  →  (Utility  →  Tariff)
 
 This is what makes costs meaningful on a site with two gateways behind one meter: the
 tariff is a property of the meter, not of the gateway, so the cost is computed once for
-the billing point rather than twice. Tariffs can be exported, imported and validated
-individually.
+the billing point rather than twice: one set of fixed charges, the demand charge from the
+meter's combined peak, and one history (Energy Costs shows the same bill on each of its
+gateways). Tariffs can be exported, imported and validated individually.
+
+**The meter's readings.** Each aGate's grid CT is built in and measures its own part of
+the meter, so the gateways' readings are added up, and an export on one nets against an
+import on another, as the meter does. A gateway that stops reporting for 5 minutes is
+left out until it reports again.
 
 The model is enforced rather than advisory: deleting a meter that gateways are still
 attached to is refused with **409** and a count — *"N gateway(s) connect to this meter —

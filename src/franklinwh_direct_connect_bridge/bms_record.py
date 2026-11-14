@@ -28,6 +28,9 @@ log = logging.getLogger(__name__)
 #: in Settings keep what is stored in check.
 MIN_INTERVAL_S = 5.0
 MAX_SAMPLES = 24 * 3600 // int(MIN_INTERVAL_S)
+#: A failed read doesn't use up a planned sample, so a recording carries on once the
+#: aGate is back (owner, 2026-11-14). It gives up after this long with no good read.
+GIVE_UP_AFTER_S = 3600
 
 
 class Recorder:
@@ -38,7 +41,9 @@ class Recorder:
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._state: dict = {"active": False, "session_id": None, "captured": 0,
-                             "planned": 0, "errors": 0, "last_error": None}
+                             "planned": 0, "errors": 0, "last_error": None,
+                             "end_reason": None}
+        self._stop_by: str | None = None
 
     def status(self) -> dict:
         with self._lock:
@@ -46,9 +51,11 @@ class Recorder:
 
     def start(self, store, fetch, *, samples: int, interval_s: float,
               gateway_id=None, apower_sn=None, dev_id: int = 1,
-              label: str | None = None, purge: tuple | None = None) -> dict:
+              label: str | None = None, purge: tuple | None = None,
+              by: str = "unknown") -> dict:
         """Begin a session. ``fetch()`` returns the 1705 cells dict per snapshot.
         ``purge`` is (keep_days, max_mb): run the recordings purge when it ends.
+        ``by`` says who started it, for the log.
 
         Raises ValueError for out-of-range parameters or if one is already running —
         the caller maps that to 409/422 rather than silently queuing.
@@ -65,46 +72,77 @@ class Recorder:
                 gateway_id=gateway_id, apower_sn=apower_sn, dev_id=dev_id,
                 interval_s=interval_s, planned=samples, label=label)
             self._state = {"active": True, "session_id": sid, "captured": 0,
-                           "planned": samples, "errors": 0, "last_error": None}
+                           "planned": samples, "errors": 0, "last_error": None,
+                           "end_reason": None}
+            self._stop_by = None
             self._stop.clear()
             self._thread = threading.Thread(
                 target=self._run, args=(store, fetch, sid, samples, interval_s, purge),
                 daemon=True, name=f"bms-record-{sid}")
             self._thread.start()
+            log.info("bms record: session %s started by %s: %d sample(s) every %gs, unit %s%s",
+                     sid, by, samples, interval_s, dev_id, f" ({label})" if label else "")
             return dict(self._state)
 
-    def stop(self) -> dict:
+    def stop(self, by: str = "unknown") -> dict:
         """Ask the session to finish early. The thread closes it out."""
+        with self._lock:
+            if self._state["active"] and not self._stop.is_set():
+                self._stop_by = by
+                log.info("bms record: session %s stop requested by %s",
+                         self._state["session_id"], by)
         self._stop.set()
         return self.status()
 
     def _run(self, store, fetch, sid, samples, interval_s, purge=None):
+        captured, down_since, reason = 0, None, "completed"
         try:
-            for _ in range(samples):
+            while captured < samples:
                 if self._stop.is_set():
                     break
                 try:
                     cells = fetch()
-                    if cells:
-                        store.add_bms_sample(sid, cells)
-                        with self._lock:
-                            self._state["captured"] += 1
+                    if not cells:
+                        raise ValueError("no cell data in the reply")
+                    store.add_bms_sample(sid, cells)
+                    captured += 1
+                    with self._lock:
+                        self._state["captured"] = captured
+                    if down_since is not None:
+                        log.info("bms record: session %s: aGate back after %.0fs, recording "
+                                 "resumes", sid, time.monotonic() - down_since)
+                        down_since = None
                 except Exception as e:  # noqa: BLE001
                     # A dropped read must not abort the session — this link drops
-                    # routinely and a partial session is still useful.
+                    # routinely. It doesn't count toward the planned samples either.
                     with self._lock:
                         self._state["errors"] += 1
                         self._state["last_error"] = str(e)
-                    log.warning("bms record: sample failed: %s", e)
+                    log.warning("bms record: session %s: sample failed: %s", sid, e)
+                    if down_since is None:
+                        down_since = time.monotonic()
+                    elif time.monotonic() - down_since >= GIVE_UP_AFTER_S:
+                        reason = (f"aGate unreachable for "
+                                  f"{(time.monotonic() - down_since) / 60:.0f} min")
+                        break
                 if self._stop.wait(interval_s):
                     break
+            if self._stop.is_set() and captured < samples:
+                reason = f"stopped by {self._stop_by or 'unknown'}"
+        except Exception as e:  # noqa: BLE001
+            reason = f"error: {e}"
+            raise
         finally:
             try:
-                store.end_bms_session(sid)
+                store.end_bms_session(sid, reason=reason)
             except Exception as e:  # noqa: BLE001
                 log.warning("bms record: could not close session %s: %s", sid, e)
             with self._lock:
                 self._state["active"] = False
+                self._state["end_reason"] = reason
+                errors = self._state["errors"]
+            log.info("bms record: session %s ended: %s (%d of %d sample(s), %d failed read(s))",
+                     sid, reason, captured, samples, errors)
             if purge:
                 try:
                     store.prune_bms(*purge)

@@ -2711,8 +2711,9 @@ def create_app() -> FastAPI:
     def api_billing_history(gateway: str = Depends(_gateway_q),
                             limit: int = Query(60, ge=1, le=200), fmt: str = Query("json")):
         """Closed billing periods (newest first), or a CSV export with ?fmt=csv."""
+        from . import billing
         st = _ha_store()
-        rows = st.billing_periods(limit=limit, gateway_id=gateway) if st else []
+        rows = billing.history(st, gateway, limit) if st else []
         if fmt == "csv":
             cols = ["period_start", "period_end", "retailer", "network", "tariff_name",
                     "import_kwh", "import_cost", "export_credit", "demand_peak_kw",
@@ -6049,7 +6050,8 @@ def create_app() -> FastAPI:
             missing.append({"id": "capacity", "text": "Set the battery capacity (Settings → "
                             "Automation) for battery cycles and reserve sizes.", "tab": "settings"})
         if not site.get("tariff"):
-            missing.append({"id": "tariff", "text": "Add your tariff (Settings → Billing) for "
+            missing.append({"id": "tariff", "text": "Add your tariff (Settings → Sites & Billing → your meter → "
+                            "+ Add tariff) for "
                             "time-of-use advice and $ estimates.", "tab": "settings"})
         out.update(source=source, site=site, current=current, missing=missing,
                    objective_choices=ca.insights.OBJECTIVES)
@@ -6155,8 +6157,18 @@ def create_app() -> FastAPI:
     # A bounded burst of full per-cell snapshots, persisted for later charting.
     # Runs in a background thread, NOT the poll loop: it samples far faster than
     # the 30s poll and must not perturb the long-run history.
+    def _caller(request: Request) -> str:
+        """Who sent this request, for the log: the signed-in account (or HA user), else
+        the address it came from."""
+        p = getattr(request.state, "principal", None)
+        if p:
+            return f"{p['username']} ({p['via']})"
+        host = request.client.host if request.client else "unknown"
+        return f"{host} (not signed in)"
+
     @app.post("/api/battery/record")
-    def api_bms_record(req: BmsRecordReq, gateway: str = Depends(_gateway_q)):
+    def api_bms_record(req: BmsRecordReq, request: Request,
+                       gateway: str = Depends(_gateway_q)):
         """Start a recording session. 409 if one is already running, 422 on bad
         parameters, 503 if metrics storage is disabled."""
         store = db.get_store(get_settings())
@@ -6178,15 +6190,16 @@ def create_app() -> FastAPI:
             return bms_record.get_recorder().start(
                 store, _fetch, samples=req.samples, interval_s=req.interval_s,
                 gateway_id=gateway, apower_sn=sn, dev_id=req.id, label=req.label,
-                purge=(get_settings().bms_keep_days, get_settings().bms_max_mb))
+                purge=(get_settings().bms_keep_days, get_settings().bms_max_mb),
+                by=_caller(request))
         except ValueError as e:
             code = 409 if "already running" in str(e) else 422
             raise HTTPException(status_code=code, detail=str(e))
 
     @app.post("/api/battery/record/stop")
-    def api_bms_record_stop():
+    def api_bms_record_stop(request: Request):
         """Finish the running session early. Safe to call when none is active."""
-        return bms_record.get_recorder().stop()
+        return bms_record.get_recorder().stop(by=_caller(request))
 
     @app.get("/api/battery/record/status")
     def api_bms_record_status():

@@ -112,7 +112,7 @@ def test_a_dropped_read_does_not_abort_the_session():
     while r.status()["active"]:
         time.sleep(0.05)
     st = r.status()
-    assert st["captured"] == 3 and st["errors"] == 1
+    assert st["captured"] == 4 and st["errors"] == 1   # a failed read uses no sample
     assert "dropped" in st["last_error"]
     s.close()
 

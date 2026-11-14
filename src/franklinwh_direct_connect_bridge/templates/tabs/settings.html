@@ -486,9 +486,9 @@
                   placeholder="e.g. 5 kW export limit per phase; zero-export approved sites only"></textarea></label>
       <div class="grid grid-cols-2 gap-3">
         <label class="text-[11px]" style="color:var(--text-secondary)">Provider from
-          <input type="date" class="form-control form-control-sm w-full mt-1" x-model="utilEdit.effective_start"></label>
+          <input type="date" :class="{ 'date-empty': !utilEdit.effective_start }" class="form-control form-control-sm w-full mt-1" x-model="utilEdit.effective_start"></label>
         <label class="text-[11px]" style="color:var(--text-secondary)">Provider until <span class="text-slate-600">(blank = current)</span>
-          <input type="date" class="form-control form-control-sm w-full mt-1" x-model="utilEdit.effective_end"></label>
+          <input type="date" :class="{ 'date-empty': !utilEdit.effective_end }" class="form-control form-control-sm w-full mt-1" x-model="utilEdit.effective_end"></label>
       </div>
       <p class="text-[10px]" style="color:var(--text-faint)">Switched retailers? Add the new provider with a
         <span class="font-mono">from</span> date and set the old one's <span class="font-mono">until</span> —
@@ -534,9 +534,9 @@
       </div>
       <div class="grid grid-cols-2 gap-2">
         <label class="text-[11px]" style="color:var(--text-secondary)">Effective from <span style="color:var(--text-faint)">(optional)</span>
-          <input type="date" class="form-control form-control-sm w-full mt-1" x-model="tariffEdit.effective_start"></label>
+          <input type="date" :class="{ 'date-empty': !tariffEdit.effective_start }" class="form-control form-control-sm w-full mt-1" x-model="tariffEdit.effective_start"></label>
         <label class="text-[11px]" style="color:var(--text-secondary)">Effective to <span style="color:var(--text-faint)">(blank = current)</span>
-          <input type="date" class="form-control form-control-sm w-full mt-1" x-model="tariffEdit.effective_end"></label>
+          <input type="date" :class="{ 'date-empty': !tariffEdit.effective_end }" class="form-control form-control-sm w-full mt-1" x-model="tariffEdit.effective_end"></label>
       </div>
       </fieldset>
       <!-- Modbus-style sub-tabs (Peak demand · Export bonus · Export charge · Standing charges · Energy rates) -->
@@ -1773,7 +1773,7 @@
           <span class="text-[11px] text-slate-500" x-text="u.last_login ? 'last sign-in ' + new Date(u.last_login * 1000).toLocaleString() : 'never signed in'"></span>
           <span class="flex-1"></span>
           <label class="flex items-center gap-1">Expires
-            <input type="date" class="form-control form-control-sm w-36"
+            <input type="date" :class="{ 'date-empty': !u.expires_at }" class="form-control form-control-sm w-36"
                    :value="u.expires_at ? new Date(u.expires_at * 1000).toISOString().slice(0, 10) : ''"
                    @change="editAccount(u, { expires_at: $event.target.value ? Date.parse($event.target.value + 'T23:59:59') / 1000 : null })"></label>
           <button class="btn btn-secondary btn-sm" @click="editAccount(u, { enabled: !u.enabled })" x-text="u.enabled ? 'Disable' : 'Enable'"></button>

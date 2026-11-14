@@ -476,6 +476,8 @@
                    x-text="`${s.samples} sample(s) @ ${Math.round(s.interval_s)}s`"></div>
               <div class="text-xs" style="color:var(--text-secondary)"
                    x-text="new Date(s.started_ts*1000).toLocaleString()"></div>
+              <div class="text-xs" style="color:var(--text-secondary)" x-show="s.end_reason"
+                   x-text="'Ended: ' + s.end_reason"></div>
               <div class="text-xs font-mono truncate" style="color:var(--text-secondary)"
                    x-text="(s.apower_sn || '').slice(-8)"></div>
             </div>
@@ -501,6 +503,8 @@
                    x-text="`${session.samples.length} snapshot(s) @ ${Math.round(session.interval_s)}s`"></div>
               <div class="text-xs font-mono" style="color:var(--text-secondary)"
                    x-text="session.apower_sn || ''"></div>
+              <div class="text-xs" style="color:var(--text-secondary)" x-show="session.end_reason"
+                   x-text="'Ended: ' + session.end_reason"></div>
             </div>
             <button class="btn btn-secondary btn-sm" @click="sessionCsv()">CSV</button>
           </div>
