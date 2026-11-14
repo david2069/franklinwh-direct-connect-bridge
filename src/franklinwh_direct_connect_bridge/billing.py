@@ -338,27 +338,21 @@ def _meter_gateways(store, meter: dict | None, gateway_id) -> list[dict]:
     except Exception:                                           # noqa: BLE001
         rows = []
     if not any(g.get("id") == gateway_id for g in rows):
-        rows.append({"id": gateway_id, "grid_ct": ""})
+        rows.append({"id": gateway_id})
     return rows
-
-
-def _feeds(gws: list[dict]) -> list[str]:
-    """Whose grid readings make the meter's (#611): one gateway whose grid CT measures the
-    whole meter, else every gateway's own part, summed."""
-    whole = [g["id"] for g in gws if g.get("grid_ct") == "meter"]
-    return whole[:1] or [g["id"] for g in gws]
 
 
 def _meter_ctx(store, gateway_id) -> tuple[str, str, list[str], list[str]]:
     """(tracker key, gateway that stamps the meter's periods, feeding gateways, all the
-    meter's gateways) for ``gateway_id``'s meter."""
+    meter's gateways) for ``gateway_id``'s meter. Each aGate's built-in grid CT measures
+    its own part of the meter, so every gateway feeds it (#611)."""
     gw = _gw_key(gateway_id)
     from . import scheduler
     meter = scheduler._meter_for_gateway(store, gw)
     gws = _meter_gateways(store, meter, gw)
     ids = [g["id"] for g in gws]
     key = "meter:" + meter["id"] if meter else gw
-    return key, ids[0], _feeds(gws), ids
+    return key, ids[0], ids, ids
 
 
 def _tracker(store, gateway_id) -> tuple[BillingTracker, str, list[str]]:

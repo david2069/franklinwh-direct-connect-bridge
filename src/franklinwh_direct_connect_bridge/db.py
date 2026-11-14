@@ -584,8 +584,7 @@ class MetricsStore:
 
     def update_gateway(self, gw_id: str, **fields) -> dict | None:
         allowed = {"label", "host", "port", "is_default", "enabled", "is_mock",
-                   "mock_seed", "mock_units", "publish_ha", "description", "meter_id",
-                   "grid_ct"}
+                   "mock_seed", "mock_units", "publish_ha", "description", "meter_id"}
         sets = {k: v for k, v in fields.items() if k in allowed and v is not None}
         if not sets:
             return self.gateway(gw_id)
@@ -724,10 +723,6 @@ class MetricsStore:
         cols = [r[1] for r in self._conn.execute("PRAGMA table_info(gateways)").fetchall()]
         if "meter_id" not in cols:
             self._conn.execute("ALTER TABLE gateways ADD COLUMN meter_id TEXT")
-        # What the gateway's grid CT measures (#611): 'meter' (the whole meter) or 'part'
-        # (its own share of it); '' = not set yet, billed as 'part'.
-        if "grid_ct" not in cols:
-            self._conn.execute("ALTER TABLE gateways ADD COLUMN grid_ct TEXT NOT NULL DEFAULT ''")
         # The aGate serial, locked to the gateway the first time it reports it (#381).
         # Empty until then; one gateway per serial.
         if "serial" not in cols:

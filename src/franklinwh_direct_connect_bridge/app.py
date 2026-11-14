@@ -454,7 +454,6 @@ class GatewayUpdate(BaseModel):
     publish_ha: bool | None = None
     description: str | None = None
     meter_id: str | None = None      # which meter this gateway connects to
-    grid_ct: Literal["meter", "part", ""] | None = None   # what its grid CT measures (#611)
 
 
 class SiteCreate(BaseModel):
@@ -2165,7 +2164,6 @@ def create_app() -> FastAPI:
             "publish_ha": bool(row.get("publish_ha")),
             "is_default": bool(row.get("is_default")),
             "meter_id": row.get("meter_id"),
-            "grid_ct": row.get("grid_ct") or "",
             "description": row.get("description") or "",
             "model": "aGate (mock)" if row.get("is_mock") else (base.get("model_detail") or "aGate"),
             "running": supervisor.is_running(row["id"]),

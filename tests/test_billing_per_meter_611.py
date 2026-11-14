@@ -12,7 +12,7 @@ from franklinwh_direct_connect_bridge.db import MetricsStore
 AUG = dt.datetime(2026, 8, 20, 12, 0, 0)
 
 
-def _setup(tmp_path, ct_a="", ct_b="", demand=False):
+def _setup(tmp_path, demand=False):
     st = MetricsStore(str(tmp_path / "m.db"))
     sid = st.create_site(sid="s1", name="Home")["id"]
     st.create_utility(uid="u1", name="AGL", network_dnsp="Ausgrid")
@@ -28,8 +28,8 @@ def _setup(tmp_path, ct_a="", ct_b="", demand=False):
     st.create_meter(mid="m1", site_id=sid, utility_id="u1", tariff_id="t1", is_default=True)
     st.create_gateway(gw_id="gwA", label="A", is_mock=True, is_default=True)
     st.create_gateway(gw_id="gwB", label="B", is_mock=True)
-    st.update_gateway("gwA", meter_id="m1", grid_ct=ct_a)
-    st.update_gateway("gwB", meter_id="m1", grid_ct=ct_b)
+    st.update_gateway("gwA", meter_id="m1")
+    st.update_gateway("gwB", meter_id="m1")
     billing._TRACKERS.clear()
     return st
 
@@ -58,12 +58,6 @@ def test_one_meter_two_gateways_one_bill(tmp_path):
     assert rows[0]["fixed_total"] == pytest.approx(31.0)
     assert rows[0]["import_kwh"] == pytest.approx(2.0, abs=0.05)
 
-
-def test_whole_meter_ct_counts_once(tmp_path):
-    st = _setup(tmp_path, ct_a="meter", ct_b="meter")
-    _run(st, 1000.0, 1000.0)
-    pts = billing.billing_read(st, "gwB", now=AUG + dt.timedelta(hours=1))
-    assert pts["energy.period_import_kwh"] == pytest.approx(1.0, abs=0.05)
 
 
 def test_the_meter_nets_one_gateways_export_against_the_others_import(tmp_path):
@@ -128,17 +122,11 @@ def test_history_for_either_gateway_shows_the_meters_periods(api):
         assert len(rows) == 1 and rows[0]["meter_id"] == "m1"
 
 
-def test_grid_ct_is_a_gateway_setting(api):
-    r = api.patch("/api/gateways/gwB", json={"grid_ct": "meter"})
-    assert r.status_code == 200, r.text
-    assert r.json()["grid_ct"] == "meter"
-    assert api.patch("/api/gateways/gwB", json={"grid_ct": "both"}).status_code == 422
-
-
-def test_the_gateway_editor_asks_what_the_grid_ct_measures():
+def test_grid_ct_is_not_asked():
+    """Owner: built into the aGate; nothing to confirm."""
     from pathlib import Path
     root = Path(billing.__file__).parent
     html = (root / "templates/tabs/settings.html").read_text()
     js = (root / "static/js/settings_tab.js").read_text()
-    assert 'data-testid="gw-grid-ct"' in html and 'x-model="gwEdit.grid_ct"' in html
-    assert "body.grid_ct = e.grid_ct" in js
+    assert "gw-grid-ct" not in html and "grid CT measures" not in html
+    assert "grid_ct" not in html and "grid_ct" not in js
