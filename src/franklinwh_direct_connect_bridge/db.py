@@ -954,6 +954,9 @@ class MetricsStore:
         allowed = ("network_dnsp", "country", "plan_type", "export_allowed",
                    "solar_export_allowed", "battery_export_allowed", "export_limit_kw",
                    "charging_allowed", "discharging_allowed", "export_note", "effective_start", "effective_end")
+        for k in ("effective_start", "effective_end"):   # a blank date is no date
+            if fields.get(k) == "":
+                fields[k] = None
         cols = ["id", "name", "created_at", "updated_at"] + [k for k in allowed if k in fields]
         vals = [uid, name, ts, ts] + [fields[k] for k in allowed if k in fields]
         with self._lock:
@@ -967,6 +970,9 @@ class MetricsStore:
                    "solar_export_allowed", "battery_export_allowed", "export_limit_kw",
                    "charging_allowed", "discharging_allowed", "export_note", "effective_start", "effective_end"}
         sets = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        for k in ("effective_start", "effective_end"):   # blank clears it (until blank = current)
+            if sets.get(k) == "":
+                sets[k] = None
         if not sets:
             return self.utility(uid)
         for k in ("export_allowed", "solar_export_allowed", "battery_export_allowed",

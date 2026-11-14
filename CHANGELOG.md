@@ -13,6 +13,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **A retailer's Provider from / until dates and export restriction note did not save** (owner). Save sent neither; it now sends both, and a blank date saves as no date (until blank = current), with or without a start date.
+- **Empty date boxes showed today's date in grey** (owner) in Safari and the Home Assistant app, a date nobody set: retailer and tariff dates, the Scheduler's dates and an account's expiry. An empty box is now blank until you pick a date.
+- **Explain sent you to "Settings → Billing" for a tariff**, which doesn't exist. It now says Settings → Sites & Billing → your meter → + Add tariff.
 - **A battery recording lost its planned samples while the aGate was unreachable** (owner). Each failed read used one up, so an outage shortened the recording. Failed reads no longer count: the recording carries on once the aGate answers again, and gives up after an hour with no good read.
 
 ### Added
