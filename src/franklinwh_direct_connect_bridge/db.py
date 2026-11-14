@@ -584,7 +584,8 @@ class MetricsStore:
 
     def update_gateway(self, gw_id: str, **fields) -> dict | None:
         allowed = {"label", "host", "port", "is_default", "enabled", "is_mock",
-                   "mock_seed", "mock_units", "publish_ha", "description", "meter_id"}
+                   "mock_seed", "mock_units", "publish_ha", "description", "meter_id",
+                   "grid_ct"}
         sets = {k: v for k, v in fields.items() if k in allowed and v is not None}
         if not sets:
             return self.gateway(gw_id)
@@ -723,6 +724,10 @@ class MetricsStore:
         cols = [r[1] for r in self._conn.execute("PRAGMA table_info(gateways)").fetchall()]
         if "meter_id" not in cols:
             self._conn.execute("ALTER TABLE gateways ADD COLUMN meter_id TEXT")
+        # What the gateway's grid CT measures (#611): 'meter' (the whole meter) or 'part'
+        # (its own share of it); '' = not set yet, billed as 'part'.
+        if "grid_ct" not in cols:
+            self._conn.execute("ALTER TABLE gateways ADD COLUMN grid_ct TEXT NOT NULL DEFAULT ''")
         # The aGate serial, locked to the gateway the first time it reports it (#381).
         # Empty until then; one gateway per serial.
         if "serial" not in cols:
@@ -2068,13 +2073,23 @@ class MetricsStore:
         except Exception:  # pragma: no cover — history must never break the tick
             pass
 
-    def billing_periods(self, *, limit: int = 60, gateway_id: str | None = None) -> list[dict]:
+    def billing_periods(self, *, limit: int = 60, gateway_id: str | None = None,
+                        meter_id: str | None = None,
+                        gateway_ids: list[str] | None = None) -> list[dict]:
+        """Closed periods, newest first. ``meter_id`` (#611): the meter's periods, plus rows
+        from before #611 that only name one of ``gateway_ids``."""
         q = ("SELECT closed_at, gateway_id, meter_id, utility_id, tariff_id, retailer, "
              "network, plan_version, tariff_name, period_start, period_end, import_kwh, "
              "import_cost, export_credit, demand_peak_kw, demand_charge, bonus_credit, "
              "export_charge, fixed_total, net_total FROM billing_periods")
         args: list = []
-        if gateway_id:
+        if meter_id:
+            ids = list(gateway_ids or [])
+            q += " WHERE meter_id=?"; args.append(meter_id)
+            if ids:
+                q += f" OR (meter_id IS NULL AND gateway_id IN ({','.join('?' * len(ids))}))"
+                args.extend(ids)
+        elif gateway_id:
             q += " WHERE gateway_id=?"; args.append(gateway_id)
         q += " ORDER BY period_start DESC LIMIT ?"; args.append(max(1, min(limit, 200)))
         with self._lock:

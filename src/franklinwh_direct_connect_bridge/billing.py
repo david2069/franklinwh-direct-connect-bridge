@@ -23,6 +23,12 @@ from typing import Any
 _KEY_PREFIX = "billing_state:"
 _PERSIST_EVERY_S = 60.0
 _DEFAULT_INTERVAL_MIN = 30
+#: A gateway's last grid reading counts toward its meter for this long (#611); after that
+#: it is left out until it reports again, rather than repeated.
+_FRESH_S = 300.0
+#: Running totals summed when the per-gateway state from before #611 becomes the meter's.
+_SUMMED = ("period_import_kwh", "import_cost", "export_credit", "unpriced_import_kwh",
+           "unpriced_export_kwh", "bonus_export_wh", "charge_export_wh", "interval_import_wh")
 
 
 def _num(v: Any, default: float = 0.0) -> float:
@@ -53,13 +59,15 @@ def _in_window(win: Any, now: dt.datetime) -> bool:
 
 
 class BillingTracker:
-    """One gateway's running billing state over the current period. Fed (grid_w, now)
-    each tick; integrates + prices; rolls over at the billing cycle day."""
+    """One meter's running billing state over the current period (#611; one gateway's
+    before). Fed (grid_w, now) each tick; integrates + prices; rolls over at the billing
+    cycle day."""
 
     def __init__(self) -> None:
         self._s = self._blank()
         self._last_persist = 0.0
         self._loaded = False
+        self.latest: dict[str, tuple[float, float]] = {}   # gateway -> (ts, grid_w)
 
     @staticmethod
     def _blank() -> dict[str, Any]:
@@ -90,6 +98,35 @@ class BillingTracker:
                 self._s.update({k: stored.get(k, v) for k, v in self._blank().items()})
         except Exception:                                       # noqa: BLE001
             pass
+
+    def _adopt(self, store, gws: list[str]) -> None:
+        """Take over the per-gateway state saved before #611: running totals summed,
+        the demand peak the highest."""
+        olds = []
+        for g in gws:
+            try:
+                raw = store.get_config(_KEY_PREFIX + g)
+                if raw:
+                    olds.append(json.loads(raw))
+            except Exception:                                   # noqa: BLE001
+                pass
+        if not olds:
+            return
+        s = self._blank()
+        s.update({k: olds[0].get(k, v) for k, v in s.items()})
+        for o in olds[1:]:
+            for k in _SUMMED:
+                s[k] = _num(s.get(k)) + _num(o.get(k))
+            s["peak_kwh"] = max(_num(s.get("peak_kwh")), _num(o.get("peak_kwh")))
+        self._s = s
+
+    def combined(self, feeds: list[str], now_ts: float) -> float | None:
+        """The meter's grid power now: the feeding gateways' fresh readings, summed (an
+        export on one nets against an import on another, as the meter does). None when
+        none is fresh."""
+        vals = [w for g in feeds for ts, w in [self.latest.get(g, (None, None))]
+                if ts is not None and 0 <= now_ts - ts <= _FRESH_S]
+        return sum(vals) if vals else None
 
     def _persist(self, store, gw: str, now_ts: float) -> None:
         if store is None or now_ts - self._last_persist < _PERSIST_EVERY_S:
@@ -253,7 +290,7 @@ class BillingTracker:
             return  # nothing accrued — don't clutter history (auto-close only)
         try:
             pts = self.as_points(cfg, now)
-            gwid = gw
+            gwid = getattr(self, "primary", None) or gw
             tar = store.tariff(s["tariff_id"]) if s.get("tariff_id") else None
             ps = dt.datetime.fromtimestamp(ps_ts)
             pe = now if switch else _period_end(ps, int(cfg.get("cycle_day", 1) or 1))
@@ -288,6 +325,62 @@ class BillingTracker:
                 export_charge=export_charge, fixed_total=fixed_total, net_total=net)
         except Exception:                                       # noqa: BLE001 — never break the tick
             pass
+
+
+def _meter_gateways(store, meter: dict | None, gateway_id) -> list[dict]:
+    """The enabled gateways on ``meter`` (default first), or just ``gateway_id`` when none
+    is recorded on it."""
+    rows = []
+    try:
+        if store is not None and meter:
+            rows = [g for g in store.gateways()
+                    if g.get("meter_id") == meter.get("id") and g.get("enabled", 1)]
+    except Exception:                                           # noqa: BLE001
+        rows = []
+    if not any(g.get("id") == gateway_id for g in rows):
+        rows.append({"id": gateway_id, "grid_ct": ""})
+    return rows
+
+
+def _feeds(gws: list[dict]) -> list[str]:
+    """Whose grid readings make the meter's (#611): one gateway whose grid CT measures the
+    whole meter, else every gateway's own part, summed."""
+    whole = [g["id"] for g in gws if g.get("grid_ct") == "meter"]
+    return whole[:1] or [g["id"] for g in gws]
+
+
+def _meter_ctx(store, gateway_id) -> tuple[str, str, list[str], list[str]]:
+    """(tracker key, gateway that stamps the meter's periods, feeding gateways, all the
+    meter's gateways) for ``gateway_id``'s meter."""
+    gw = _gw_key(gateway_id)
+    from . import scheduler
+    meter = scheduler._meter_for_gateway(store, gw)
+    gws = _meter_gateways(store, meter, gw)
+    ids = [g["id"] for g in gws]
+    key = "meter:" + meter["id"] if meter else gw
+    return key, ids[0], _feeds(gws), ids
+
+
+def _tracker(store, gateway_id) -> tuple[BillingTracker, str, list[str]]:
+    """The meter's tracker, loaded (from the gateways' own state saved before #611 when the
+    meter has none yet). Returns (tracker, stamping gateway, feeding gateways)."""
+    key, primary, feeds, ids = _meter_ctx(store, gateway_id)
+    tr = _TRACKERS.get(key)
+    if tr is None:
+        tr = _TRACKERS.setdefault(key, BillingTracker())
+        tr._load(store, key)
+        if store is not None and tr._s.get("period_start") is None:
+            tr._adopt(store, feeds)
+    tr.key, tr.primary = key, primary
+    return tr, primary, feeds
+
+
+def history(store, gateway_id, limit: int = 60) -> list[dict]:
+    """Closed periods of the gateway's meter (#611), with the rows saved per gateway before."""
+    key, _primary, _feeds_, ids = _meter_ctx(store, gateway_id)
+    if key.startswith("meter:"):
+        return store.billing_periods(limit=limit, meter_id=key[6:], gateway_ids=ids)
+    return store.billing_periods(limit=limit, gateway_id=gateway_id)
 
 
 def _period_meta(store, gateway_id, tar: dict | None = None) -> dict:
@@ -387,9 +480,11 @@ def billing_tick(store, gateway_id=None, grid_w: float | None = None,
             tariff_plans.repoint(store, meter["id"], now.date())
     except Exception:                                           # noqa: BLE001
         pass
-    key = _gw_key(gateway_id)
-    tr = _TRACKERS.get(key) or _TRACKERS.setdefault(key, BillingTracker())
-    tr.update(store, key, grid_w, cfg, now, dynamic_rate)
+    # One tracker per meter (#611): this gateway's reading joins the others' on its meter.
+    tr, _primary, feeds = _tracker(store, gateway_id)
+    if grid_w is not None:
+        tr.latest[_gw_key(gateway_id)] = (now.timestamp(), float(grid_w))
+    tr.update(store, tr.key, tr.combined(feeds, now.timestamp()), cfg, now, dynamic_rate)
     return tr.as_points(cfg, now)
 
 
@@ -451,14 +546,10 @@ def billing_read(store, gateway_id=None, now: dt.datetime | None = None) -> dict
     """Read the running billing sensors WITHOUT feeding a sample — Test/timeline
     preview, so on-demand reads don't perturb the tick-driven integration."""
     now = now or dt.datetime.now()
-    cfg = _billing_cfg(store, gateway_id)
+    cfg = _billing_cfg(store, gateway_id, now)
     if cfg is None:
         return {}
-    key = _gw_key(gateway_id)
-    tr = _TRACKERS.get(key)
-    if tr is None:
-        tr = BillingTracker()
-        tr._load(store, key)
+    tr, _primary, _feeds_ = _tracker(store, gateway_id)
     return tr.as_points(cfg, now)
 
 
@@ -472,11 +563,8 @@ def force_close_current(store, gateway_id=None, now: dt.datetime | None = None) 
     cfg = _billing_cfg(store, gateway_id)
     if cfg is None:
         return {"ok": False, "reason": "no tariff assigned to this meter"}
-    key = gwid = _gw_key(gateway_id)
-    tr = _TRACKERS.get(key)
-    if tr is None:
-        tr = _TRACKERS.setdefault(key, BillingTracker())
-        tr._load(store, key)
+    tr, gwid, _feeds_ = _tracker(store, gateway_id)
+    key = tr.key
     s = tr._s
     # A tracker that hasn't ticked since boot has no period_start — anchor it on the
     # current cycle so a fixed-charge-only period can still be closed.
@@ -495,7 +583,7 @@ def force_close_current(store, gateway_id=None, now: dt.datetime | None = None) 
     if abs(net) < 0.005 and _num(pts.get("energy.period_import_kwh")) <= 0:
         return {"ok": False, "reason": "nothing has accrued in this period yet"}
     tr._close_period(store, key, cfg, now, force=True)
-    rows = store.billing_periods(limit=1, gateway_id=gwid) or []
+    rows = history(store, gateway_id, 1) or []
     return {"ok": True, "closed": True, "period": (rows[0] if rows else None)}
 
 

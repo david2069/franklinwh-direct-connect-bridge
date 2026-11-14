@@ -454,6 +454,7 @@ class GatewayUpdate(BaseModel):
     publish_ha: bool | None = None
     description: str | None = None
     meter_id: str | None = None      # which meter this gateway connects to
+    grid_ct: Literal["meter", "part", ""] | None = None   # what its grid CT measures (#611)
 
 
 class SiteCreate(BaseModel):
@@ -2164,6 +2165,7 @@ def create_app() -> FastAPI:
             "publish_ha": bool(row.get("publish_ha")),
             "is_default": bool(row.get("is_default")),
             "meter_id": row.get("meter_id"),
+            "grid_ct": row.get("grid_ct") or "",
             "description": row.get("description") or "",
             "model": "aGate (mock)" if row.get("is_mock") else (base.get("model_detail") or "aGate"),
             "running": supervisor.is_running(row["id"]),
@@ -2711,8 +2713,9 @@ def create_app() -> FastAPI:
     def api_billing_history(gateway: str = Depends(_gateway_q),
                             limit: int = Query(60, ge=1, le=200), fmt: str = Query("json")):
         """Closed billing periods (newest first), or a CSV export with ?fmt=csv."""
+        from . import billing
         st = _ha_store()
-        rows = st.billing_periods(limit=limit, gateway_id=gateway) if st else []
+        rows = billing.history(st, gateway, limit) if st else []
         if fmt == "csv":
             cols = ["period_start", "period_end", "retailer", "network", "tariff_name",
                     "import_kwh", "import_cost", "export_credit", "demand_peak_kw",
