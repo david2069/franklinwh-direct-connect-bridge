@@ -11,6 +11,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+## [0.5.44] — 2026-11-15
+
+Everything merged since 0.5.43, by area:
+
+- **Billing:** two gateways on one meter share one bill (one set of fixed charges, demand from the combined peak, one history); each aGate's built-in grid CT counts as its own part, with nothing to set.
+- **Retailers:** Provider from / until dates and the export note save; a retailer saves with no start date.
+- **Date boxes:** an empty date box stays blank in Safari and the HA app.
+- **Explain:** points to Settings → Sites & Billing → your meter → + Add tariff.
+- **Battery recordings:** survive the aGate dropping off, and show why they ended and who started and stopped them.
+
 ### Fixed
 
 - **Two gateways on one meter were each billed the meter's fixed charges and demand charge** (#611). Billing is now per meter: one set of fixed charges, demand from the meter's combined peak, energy from the gateways' readings added up (each aGate's built-in grid CT measures its own part), and one history, shown on each gateway's Energy Costs. A period running at upgrade carries on, with the gateways' totals added up.
