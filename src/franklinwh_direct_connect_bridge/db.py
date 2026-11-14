@@ -449,6 +449,10 @@ class MetricsStore:
         )
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS ix_bms_samples ON bms_samples(session_id, ts)")
+        # Why it ended (owner, 2026-11-14): completed, stopped by whom, or the aGate gone.
+        cols = [r[1] for r in self._conn.execute("PRAGMA table_info(bms_sessions)")]
+        if "end_reason" not in cols:
+            self._conn.execute("ALTER TABLE bms_sessions ADD COLUMN end_reason TEXT")
         # Scheduled recordings (owner, 2026-11-11): a start time on the site's clock, how
         # long, how often, which weekdays (Monday = 0), and the day it last ran.
         self._conn.execute(
@@ -2695,10 +2699,11 @@ class MetricsStore:
                  json.dumps(temps) if temps else None))
             self._conn.commit()
 
-    def end_bms_session(self, session_id: int, now=None) -> None:
+    def end_bms_session(self, session_id: int, now=None, reason: str | None = None) -> None:
         with self._lock:
-            self._conn.execute("UPDATE bms_sessions SET ended_ts=? WHERE id=?",
-                               (int(now if now is not None else time.time()), session_id))
+            self._conn.execute("UPDATE bms_sessions SET ended_ts=?, end_reason=? WHERE id=?",
+                               (int(now if now is not None else time.time()), reason,
+                                session_id))
             self._conn.commit()
 
     def bms_sessions(self, limit: int = 200, apower_sn: str | None = None) -> list[dict]:

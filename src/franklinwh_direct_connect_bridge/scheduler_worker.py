@@ -197,7 +197,8 @@ def bms_schedule_tick(settings: Settings, *, now=None) -> list[dict]:
             rec.start(store, lambda h=host, d=dev: _client.battery(settings, h, d).get("cells"),
                       samples=sc["samples"], interval_s=float(sc["interval_s"]),
                       gateway_id=gw.id, dev_id=dev, label=f"Scheduled {sc['at']}",
-                      purge=(settings.bms_keep_days, settings.bms_max_mb))
+                      purge=(settings.bms_keep_days, settings.bms_max_mb),
+                      by=f"scheduled recording {sc['id']}")
             log.info("scheduled recording %s started: %d sample(s) every %gs",
                      sc["id"], sc["samples"], float(sc["interval_s"]))
             started.append(sc)
