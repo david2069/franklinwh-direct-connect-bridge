@@ -4,6 +4,8 @@ The behaviours here are the ones the backlog entry argues for, so they are pinne
 than left to be re-litigated: derive first, stay correctable, be re-runnable, and never
 conflate "this site does not have it" with "you may not use it".
 """
+from pathlib import Path
+
 import pytest
 
 from franklinwh_direct_connect_bridge import setup_wizard as w
@@ -102,6 +104,18 @@ def test_optional_steps_are_skippable_and_say_so():
             assert step["skippable"] is True and step["required"] is False
             assert "later" in step["note"].lower()
 
+
+
+def test_every_optional_step_opens_where_it_is_set_up():
+    """Tariffs & costs said "set this up later" and did nothing when tapped (owner,
+    2026-11-15). Each optional step opens the same place as the setup list's task."""
+    s = w.summary(_Store(), **_kw())
+    tasks = {t["id"]: t for t in w.tasks()}
+    for step in s["steps"]:
+        if step["id"] in w.OPTIONAL_STEPS:
+            assert step["open"] == tasks[step["id"]]["open"], step["id"]
+    html = (Path(w.__file__).parent / "templates/tabs/settings.html").read_text()
+    assert 'data-testid="setup-step-open"' in html
 
 # --- derived vs overridden -------------------------------------------------------------------
 

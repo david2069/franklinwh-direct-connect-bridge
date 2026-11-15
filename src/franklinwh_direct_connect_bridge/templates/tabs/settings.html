@@ -65,6 +65,10 @@
             <p class="text-xs mt-1" style="color:var(--text-secondary)" x-text="st.detail"></p>
             <p x-show="st.note &amp;&amp; !st.satisfied" class="text-xs mt-1"
                style="color:var(--text-faint)" x-text="st.note"></p>
+            <button x-show="st.open" class="btn btn-sm mt-2" data-testid="setup-step-open"
+                    :class="st.satisfied ? 'btn-secondary' : 'btn-primary'"
+                    @click="st.open.tab ? $store.app.setActiveTab(st.open.tab) : $dispatch('fwh-open-settings', { sub: st.open.sub, card: st.open.card })"
+                    x-text="st.satisfied ? 'Open' : 'Set up'"></button>
 
             <!-- The one step that is ASKED. Defaults to 1 each; the comparison with what
                  was actually found is the point. -->

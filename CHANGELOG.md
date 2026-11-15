@@ -11,6 +11,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+- **Tariffs & costs in Settings → Setup did nothing when tapped** (owner), and neither did Home Assistant or Notifications. Each optional step now has **Set up** (**Open** once done), which goes to where it is set up: Tariffs & costs to the meter's tariff under Sites & Billing.
+
 ## [0.5.44] — 2026-11-15
 
 Everything merged since 0.5.43, by area:

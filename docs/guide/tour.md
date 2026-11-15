@@ -60,7 +60,9 @@ Every change made here, and every Test, writes a line to **Logs** and a row to t
 **Audit trail** (Logs → Audit trail), saying whether it worked. None of them needs a restart.
 
 **Settings → Setup** is the same content, reachable for ever: every step reports whether it
-is already satisfied, so a second pass shows current state rather than blank fields.
+is already satisfied, so a second pass shows current state rather than blank fields. The
+optional steps (Home Assistant, Notifications, Tariffs & costs) have **Set up** (or **Open**
+once done), which goes straight to where each is set up.
 
 ---
 
