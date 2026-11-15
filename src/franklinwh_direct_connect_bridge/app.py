@@ -2723,6 +2723,59 @@ def create_app() -> FastAPI:
             return {"bill": None}
         return {"bill": billing_page.bill(st, meter, _dt.datetime.now(_dt.timezone.utc))}
 
+    @app.get("/api/billing/bills")
+    def api_billing_bills(meter: str | None = Query(None), limit: int = Query(12, ge=1, le=60),
+                          superseded: bool = Query(False)):
+        """Closed periods' bills worked out by hems (OUTUS bills, final), newest first (#613).
+        A period not yet billed is worked out on first view and kept."""
+        from . import billing_page
+        st = _ha_store()
+        if st is None:
+            return {"bills": []}
+        return {"bills": billing_page.closed_bills(st, meter, _dt.datetime.now(_dt.timezone.utc),
+                                                    limit=limit, include_superseded=superseded)}
+
+    @app.get("/api/billing/bills/{bid}")
+    def api_billing_bill_export(bid: str):
+        """One kept bill as an ``outus/bill`` document, to save."""
+        st = _ha_store()
+        b = st.outus_bill(bid) if st else None
+        if b is None:
+            raise HTTPException(404, "no such bill")
+        doc = {k: v for k, v in b.items() if k not in ("x-meter-id", "x-start", "x-end")}
+        name = "outus-bill-" + bid.replace(":", "-") + ".json"
+        return JSONResponse(doc, headers={"Content-Disposition": f"attachment; filename={name}"})
+
+    @app.post("/api/billing/bills/{bid}/recalculate")
+    def api_billing_bill_recalculate(bid: str):
+        """Work a kept bill out again with today's plan and readings; the new bill supersedes
+        it and the old one stays, marked superseded."""
+        from . import billing_page
+        _guard_writes()
+        st = _ha_store()
+        new = billing_page.recalculate(st, bid, _dt.datetime.now(_dt.timezone.utc)) if st else None
+        if new is None:
+            raise HTTPException(409, "this bill can't be recalculated (superseded, or no plan in force)")
+        return new
+
+    @app.get("/api/billing/usage")
+    def api_billing_usage(start: str, end: str, meter: str | None = Query(None)):
+        """The meter's 5-minute usage for [start, end) (ISO instants, e.g. a bill's period) as
+        an ``outus/usage`` document, to save."""
+        from . import billing_page
+        st = _ha_store()
+        try:
+            s_ = _dt.datetime.fromisoformat(start.replace("Z", "+00:00"))
+            e_ = _dt.datetime.fromisoformat(end.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(422, "start and end are ISO instants")
+        if s_.tzinfo is None or e_.tzinfo is None or e_ <= s_:
+            raise HTTPException(422, "start and end need a timezone, and end after start")
+        doc = billing_page.usage(st, meter, s_, e_) if st else None
+        if doc is None:
+            raise HTTPException(404, "no such meter")
+        return JSONResponse(doc, headers={"Content-Disposition": "attachment; filename=outus-usage.json"})
+
     @app.get("/api/billing/page")
     def api_billing_page(meter: str | None = Query(None)):
         """The Billing & Utilities page (#613): the meters, the chosen one (else the default)

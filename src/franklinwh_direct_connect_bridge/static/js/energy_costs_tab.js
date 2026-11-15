@@ -7,7 +7,9 @@
 function energyCostsTab() {
   return {
     ov: null,
-    bill: null,        // the open period's OUTUS bill, worked out by hems (#613)
+    bill: null,
+    bills: [], billsLoading: false, billOpen: {}, showSuperseded: false,
+    recalcBusy: false, recalcMsg: {},        // the open period's OUTUS bill, worked out by hems (#613)
     history: [],
     loading: false,
     closing: false,
@@ -49,6 +51,7 @@ function energyCostsTab() {
         this.bill = (await (await fetch('api/billing/bill' + mq)).json()).bill || null;
         this.ov = await (await fetch('api/billing/overview' + this.meterGwQuery('?'))).json();
         this.history = (await (await fetch('api/billing/history?limit=60' + this.meterGwQuery('&'))).json()).periods || [];
+        if (this.sub === 'history') this.loadBills();
       } catch (e) {
         this.$store.app.toast('Billing load failed: ' + e.message, 'error');
       } finally { this.loading = false; }
@@ -63,6 +66,57 @@ function energyCostsTab() {
         site_id: m && m.site_id } })), 50);
     },
 
+    // Closed periods' bills (hems, kept). The first view works out any not yet billed.
+    async loadBills() {
+      this.billsLoading = !this.bills.length;
+      try {
+        const q = new URLSearchParams();
+        if (this.meterId) q.set('meter', this.meterId);
+        if (this.showSuperseded) q.set('superseded', 'true');
+        const r = await fetch('api/billing/bills?' + q);
+        this.bills = r.ok ? ((await r.json()).bills || []) : [];
+      } catch (e) { this.bills = []; }
+      finally { this.billsLoading = false; }
+    },
+    billPeriod(b) {
+      // In the bill's zone: the period ends at midnight there, shown as its last day.
+      const tz = b['x-timezone'] || undefined;
+      const f = (iso, back) => { const d = new Date(new Date(iso).getTime() - (back ? 1000 : 0));
+        try { return d.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric', timeZone: tz }); }
+        catch (e) { return d.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }); } };
+      return f(b.period_start, false) + ' – ' + f(b.period_end, true);
+    },
+    billGroups(b) {
+      const names = b['x-tariffs'] || {}, out = [];
+      const add = (id, name) => {
+        const lines = (b.line_items || []).filter(x => (x.tariff_id ?? null) === id);
+        if (lines.length) out.push({ id: id || 'plan', name, lines,
+                                     subtotal: lines.reduce((t, x) => t + Number(x.amount || 0), 0) });
+      };
+      Object.keys(names).forEach(id => add(id, names[id]));
+      add(null, 'Plan charges');
+      return out;
+    },
+    usageUrl(b) {
+      const q = new URLSearchParams({ start: b.period_start, end: b.period_end });
+      if (this.meterId) q.set('meter', this.meterId);
+      return 'api/billing/usage?' + q;
+    },
+    // Work a bill out again; the result shows on the bill, and the list reloads.
+    async recalcBill(b) {
+      if (!await this.$store.app.confirmDialog('Work this bill out again with today\'s plan and readings? The current bill is kept, marked superseded.', {})) return;
+      this.recalcBusy = true;
+      try {
+        const r = await fetch('api/billing/bills/' + encodeURIComponent(b.id) + '/recalculate', { method: 'POST' });
+        const d = await r.json();
+        if (!r.ok) { this.recalcMsg = { ...this.recalcMsg, [b.id]: { ok: false, text: d.detail || 'Not recalculated' } }; return; }
+        await this.loadBills();
+        this.billOpen = { ...this.billOpen, [d.id]: true };
+        this.recalcMsg = { ...this.recalcMsg, [d.id]: { ok: true, text: 'Recalculated: ' + this.money(d.net_total) + ' (was ' + this.money(b.net_total) + ')' } };
+      } catch (e) { this.recalcMsg = { ...this.recalcMsg, [b.id]: { ok: false, text: String(e) } }; }
+      finally { this.recalcBusy = false; }
+    },
+
     // This period so far: hems's bill when there is one, else the running tracker.
     get sum() {
       const b = this.bill, o = this.ov || {};
@@ -73,19 +127,7 @@ function energyCostsTab() {
     },
 
     // The bill's lines grouped by tariff, then the plan's own charges (OUTUS order).
-    get groups() {
-      const b = this.bill;
-      if (!b) return [];
-      const names = b['x-tariffs'] || {}, out = [];
-      const add = (id, name) => {
-        const lines = b.line_items.filter(x => (x.tariff_id ?? null) === id);
-        if (lines.length) out.push({ id: id || 'plan', name, lines,
-                                     subtotal: lines.reduce((t, x) => t + Number(x.amount || 0), 0) });
-      };
-      Object.keys(names).forEach(id => add(id, names[id]));
-      add(null, 'Plan charges');
-      return out;
-    },
+    get groups() { return this.bill ? this.billGroups(this.bill) : []; },
 
     // Summary tiles: one per tariff and one for plan charges; the tracker's parts without a bill.
     get tiles() {
