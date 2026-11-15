@@ -102,6 +102,7 @@ class MetricsStore:
         self._migrate_service_details()
         self._migrate_tariff_meter()
         self._migrate_alerts()
+        self._migrate_health()
         self._conn.commit()
 
     def _migrate_gateway_id(self) -> None:
@@ -3295,12 +3296,144 @@ class MetricsStore:
             "db_bytes": db_bytes,
         }
 
+    # ── scheduled health check: daily snapshot and reports ──────────────────────
+    #: Snapshot columns (health_report.py fills them). Daily totals are Wh.
+    HEALTH_DAILY_COLS = ("gateway_id", "day", "ts", "soh", "soc", "battery_charged_wh",
+                         "battery_discharged_wh", "solar_wh", "grid_import_wh",
+                         "grid_export_wh", "load_wh", "alerts", "log_warnings",
+                         "log_errors")
+
+    def _migrate_health(self) -> None:
+        """``health_daily``: one row per gateway per site day (gateway '' is the bridge
+        itself), kept for good, so trends outlive the purges. ``health_reports``: the
+        daily and weekly reports, their body as JSON."""
+        self._conn.execute(
+            """CREATE TABLE IF NOT EXISTS health_daily(
+                   gateway_id TEXT NOT NULL, day TEXT NOT NULL, ts REAL NOT NULL,
+                   soh REAL, soc REAL, battery_charged_wh REAL,
+                   battery_discharged_wh REAL, solar_wh REAL, grid_import_wh REAL,
+                   grid_export_wh REAL, load_wh REAL, alerts INTEGER,
+                   log_warnings INTEGER, log_errors INTEGER,
+                   PRIMARY KEY(gateway_id, day))""")
+        self._conn.execute(
+            """CREATE TABLE IF NOT EXISTS health_reports(
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   kind TEXT NOT NULL, period TEXT NOT NULL, ts REAL NOT NULL,
+                   level TEXT NOT NULL, headline TEXT NOT NULL, body TEXT NOT NULL)""")
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_health_reports ON health_reports(kind, ts DESC)")
+        self._conn.commit()
+
+    def health_snapshot_days(self, day: str) -> set[str]:
+        """The gateways (and '' for the bridge) that already have a row for ``day``."""
+        with self._lock:
+            return {r[0] for r in self._conn.execute(
+                "SELECT gateway_id FROM health_daily WHERE day=?", (day,))}
+
+    def save_health_snapshot(self, row: dict) -> None:
+        cols = self.HEALTH_DAILY_COLS
+        with self._lock:
+            self._conn.execute(
+                f"INSERT OR IGNORE INTO health_daily({', '.join(cols)}) "
+                f"VALUES ({', '.join('?' * len(cols))})", tuple(row.get(c) for c in cols))
+            self._conn.commit()
+
+    def health_snapshots(self, gateway_id: str | None = None, days: int = 31) -> list[dict]:
+        """Newest first; ``gateway_id`` '' is the bridge's own row."""
+        q, args = "SELECT * FROM health_daily", []
+        if gateway_id is not None:
+            q += " WHERE gateway_id=?"; args.append(gateway_id)
+        q += " ORDER BY day DESC, gateway_id LIMIT ?"
+        args.append(int(days) * (1 if gateway_id is not None else 50))
+        with self._lock:
+            cur = self._conn.execute(q, args)
+            cols = [c[0] for c in cur.description]
+            return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+    def day_energy(self, gateway_id: str, start: float, end: float) -> dict | None:
+        """The day's daily counters (kWh, the aGate resets them at midnight) as their
+        highest value in [start, end), and the last SoC; None with no poll that day."""
+        keys = ("kwh_fhp_chg", "kwh_fhp_di", "kwh_sun", "kwh_uti_in", "kwh_uti_out",
+                "kwh_load")
+        sel = ", ".join(f"MAX(json_extract(poll, '$.\"power.{k}\"'))" for k in keys)
+        with self._lock:
+            row = self._conn.execute(
+                f"SELECT COUNT(*), {sel} FROM metrics WHERE gateway_id=? AND ts>=? AND ts<?",
+                (gateway_id, start, end)).fetchone()
+            if not row or not row[0]:
+                return None
+            soc = self._conn.execute(
+                "SELECT soc FROM metrics WHERE gateway_id=? AND ts>=? AND ts<? AND soc IS "
+                "NOT NULL ORDER BY ts DESC LIMIT 1", (gateway_id, start, end)).fetchone()
+        return {**dict(zip(keys, row[1:])), "soc": soc[0] if soc else None}
+
+    def count_alerts_opened(self, start: float, end: float,
+                            gateway_id: str | None = None) -> int:
+        q, args = "SELECT COUNT(*) FROM alerts WHERE opened_ts>=? AND opened_ts<?", [start, end]
+        if gateway_id is not None:
+            q += " AND gateway_id=?"; args.append(gateway_id)
+        with self._lock:
+            return int(self._conn.execute(q, args).fetchone()[0])
+
+    def count_logs(self, start: float, end: float, level_no_min: int,
+                   level_no_max: int = 100) -> int:
+        with self._lock:
+            return int(self._conn.execute(
+                "SELECT COUNT(*) FROM app_logs WHERE ts>=? AND ts<? AND level_no>=? AND "
+                "level_no<=?", (start, end, level_no_min, level_no_max)).fetchone()[0])
+
+    def problem_logs(self, since: float, until: float, limit: int = 100000) -> list[tuple]:
+        """``(ts, level_no, name, message)`` of warnings and worse, oldest first."""
+        with self._lock:
+            return self._conn.execute(
+                "SELECT ts, level_no, name, message FROM app_logs WHERE ts>=? AND ts<=? AND "
+                "level_no>=30 ORDER BY ts LIMIT ?", (since, until, limit)).fetchall()
+
+    def save_health_report(self, kind: str, period: str, ts: float, level: str,
+                           headline: str, body: str, keep_days: int) -> int:
+        with self._lock:
+            cur = self._conn.execute(
+                "INSERT INTO health_reports(kind, period, ts, level, headline, body) "
+                "VALUES (?,?,?,?,?,?)", (kind, period, ts, level, headline, body))
+            self._conn.execute("DELETE FROM health_reports WHERE ts<?",
+                               (ts - keep_days * 86400,))
+            self._conn.commit()
+            return int(cur.lastrowid)
+
+    def _health_rows(self, q: str, args) -> list[dict]:
+        with self._lock:
+            cur = self._conn.execute(q, args)
+            cols = [c[0] for c in cur.description]
+            return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+    def health_report(self, report_id: int) -> dict | None:
+        rows = self._health_rows("SELECT * FROM health_reports WHERE id=?", (int(report_id),))
+        return rows[0] if rows else None
+
+    def latest_health_report(self, kind: str = "daily") -> dict | None:
+        rows = self._health_rows("SELECT * FROM health_reports WHERE kind=? "
+                                 "ORDER BY ts DESC, id DESC LIMIT 1", (kind,))
+        return rows[0] if rows else None
+
+    def has_health_report(self, kind: str, period: str) -> bool:
+        return bool(self._health_rows("SELECT id FROM health_reports WHERE kind=? AND "
+                                      "period=? LIMIT 1", (kind, period)))
+
+    def health_reports(self, kind: str | None = None, limit: int = 60) -> list[dict]:
+        q, args = "SELECT id, kind, period, ts, level, headline FROM health_reports", []
+        if kind:
+            q += " WHERE kind=?"; args.append(kind)
+        q += " ORDER BY ts DESC, id DESC LIMIT ?"
+        args.append(max(1, min(int(limit), 400)))
+        return self._health_rows(q, args)
+
     # ── admin: storage insight + backup / restore / vacuum ────────────────────
     #: Tables surfaced in the storage view, richest-first bias handled at call time.
     _STORAGE_TABLES = ("metrics", "bms_samples", "bms_sessions", "dispatches",
                        "schedule_log", "control_log", "app_config", "gateways",
                        "sites", "meters", "utilities", "tariffs", "schedules",
-                       "notify_devices", "ha_instances", "ha_exposed")
+                       "notify_devices", "ha_instances", "ha_exposed",
+                       "health_daily", "health_reports")
     #: Of those, the time-series tables whose age span is worth showing.
     _TS_TABLES = frozenset({"metrics", "bms_samples", "schedule_log", "control_log",
                             "dispatches"})
