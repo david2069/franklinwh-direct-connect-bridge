@@ -249,11 +249,13 @@
           <select data-testid="tariff-retailer" class="form-control form-control-sm w-full mt-1" x-model="tariffEdit.utility_id"
                   x-init="$nextTick(() => { $el.value = tariffEdit.utility_id })">
             <option value="">— choose —</option>
+            <template x-if="tariffEdit?.pendingUtility"><option value="__new__"
+              x-text="[tariffEdit?.pendingUtility?.name, tariffEdit?.pendingUtility?.network_dnsp].filter(Boolean).join(' · ') + ' (new, saved with the tariff)'"></option></template>
             <template x-for="u in utilities" :key="u.id"><option :value="u.id" x-text="[u.name, u.network_dnsp].filter(Boolean).join(' · ')"></option></template>
           </select></label>
-        <button type="button" class="btn btn-secondary btn-sm" x-show="tariffEdit.utility_id" :disabled="!canWrite()"
+        <button type="button" class="btn btn-secondary btn-sm" x-show="tariffEdit.utility_id && tariffEdit.utility_id !== '__new__'" :disabled="!canWrite()"
                 @click="editUtility(utilities.find(u => u.id === tariffEdit.utility_id))">Edit retailer</button>
-        <button type="button" data-testid="tariff-new-retailer" class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="newUtility()">+ New retailer</button>
+        <button type="button" data-testid="tariff-new-retailer" class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="newUtility(true)">+ New retailer</button>
       </div>
       <div class="grid grid-cols-3 gap-2">
         <label class="text-[11px] col-span-2" style="color:var(--text-secondary)">Name

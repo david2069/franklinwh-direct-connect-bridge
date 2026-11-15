@@ -751,7 +751,9 @@ function settingsTab(opts = {}) {
       this.tariffMsg = { kind: 'info', text: `Saving ends "${t.name}" the day before this one starts.` };
     },
 
-    newUtility() { this.utilEdit = { id: '', name: '', network_dnsp: '', country: '', plan_type: 'unknown', export_allowed: true, solar_export_allowed: true, battery_export_allowed: true, charging_allowed: true, discharging_allowed: true, export_limit_kw: '', export_note: '', effective_start: '', effective_end: '' }; },
+    // forTariff: "+ New retailer" in the tariff editor. The retailer is made only when the
+    // tariff is saved (owner 2026-11-16, #650), so Cancel leaves nothing behind.
+    newUtility(forTariff = false) { this.utilEdit = { forTariff, id: '', name: '', network_dnsp: '', country: '', plan_type: 'unknown', export_allowed: true, solar_export_allowed: true, battery_export_allowed: true, charging_allowed: true, discharging_allowed: true, export_limit_kw: '', export_note: '', effective_start: '', effective_end: '' }; },
 
     // ── tariff-profile interchange with the Modbus bridge (FEAT-IMPORT-AGL-SETUP) ──
     async exportTariffProfile(t) {
@@ -842,6 +844,13 @@ function settingsTab(opts = {}) {
         charging_allowed: u.charging_allowed, discharging_allowed: u.discharging_allowed,
         export_limit_kw: (u.export_limit_kw === '' || u.export_limit_kw == null) ? null : Number(u.export_limit_kw),
         export_note: u.export_note || '', effective_start: u.effective_start || '', effective_end: u.effective_end || '' };
+      if (u.forTariff && !u.id && this.tariffEdit) {
+        if (!body.name.trim()) { this.$store.app.toast('Name the retailer', 'error'); return; }
+        this.tariffEdit.pendingUtility = body;
+        this.tariffEdit.utility_id = '__new__';
+        this.utilEdit = null;
+        return;
+      }
       try {
         const r = await fetch(u.id ? 'api/utilities/' + u.id : 'api/utilities',
           { method: u.id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -988,7 +997,8 @@ function settingsTab(opts = {}) {
     },
     get defaultRate() {
       const pr = this.tariffEdit && this.tariffEdit.pricing;
-      if (!pr) return null;
+      // The rate inputs are torn down after the editor closes: give them something (#667).
+      if (!pr) return { buy: '', sell: '' };
       if (!pr.default_rate) pr.default_rate = { buy: 0, sell: 0 };
       return pr.default_rate;
     },
@@ -1180,9 +1190,21 @@ function settingsTab(opts = {}) {
         demand_window: win(t.demand), bonus_window: win(t.bonus), charge_window: win(t.charge),
         fixed_charges: (t.fixed || []).filter(f => f.rate !== '' && f.rate != null)
           .map(f => ({ type: f.type || 'supply', levied_by: f.levied_by || 'utility', description: f.description || '', frequency: f.frequency || 'daily', rate: Number(f.rate) || 0, tax_rate: Number(f.tax_rate) || 0 })) };
+      let madeUtility = null;           // a retailer made just now, for this tariff (#650)
       try {
+        if (t.utility_id === '__new__' && t.pendingUtility) {
+          const u = await fetch('api/utilities', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(t.pendingUtility) });
+          if (!u.ok) throw new Error((await u.json().catch(() => ({}))).detail || u.statusText);
+          madeUtility = (await u.json()).id;
+          body.utility_id = madeUtility;
+        }
         const r = await fetch(t.id ? 'api/tariffs/' + t.id : 'api/tariffs',
           { method: t.id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!r.ok && madeUtility) {           // the tariff was refused: leave no retailer behind
+          await fetch('api/utilities/' + madeUtility, { method: 'DELETE' }).catch(() => {});
+          madeUtility = null;
+        }
         if (r.status === 404 && t.id) {
           // Deleted while this form was open: say so, and offer to add it again.
           this.tariffMsg = { kind: 'gone', text: 'This tariff no longer exists (it was deleted). Save as new adds it again.' };

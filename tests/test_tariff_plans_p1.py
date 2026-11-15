@@ -136,6 +136,6 @@ def test_ui_saves_against_a_meter_and_keeps_errors_in_the_form():
     save = js[js.index("async saveTariff()"):js.index("async deleteTariff(t)")]
     assert "meter_id" in save and "toast(" not in save
     assert "tariffMsg" in save and "saveTariffAsNew" in js
-    sup = js[js.index("async supersedeTariff(t)"):js.index("newUtility()")]
+    sup = js[js.index("async supersedeTariff(t)"):js.index("newUtility(forTariff")]
     assert "method: 'PATCH'" not in sup           # the server closes the old plan now
     assert 'data-testid="tariff-msg"' in html and "saveTariffAsNew()" in html

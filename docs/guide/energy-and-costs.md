@@ -320,8 +320,11 @@ revenue-grade meter, and not a substitute for your bill.
 Set up on each meter's card under **Billing & Utilities → Plans & meters**: the
 tariff in force today (retailer, name, dates) with **New plan**, **Import**, **Edit** and
 **Export**, and the meter's other plans under **Show other plans**. The retailer is chosen
-(or added with **+ New retailer**) in the tariff editor. Tariffs on no meter, and retailers
-with no tariff, are listed under **Not on a meter**, where **Use on meter** moves a tariff
+(or added with **+ New retailer**) in the tariff editor; a retailer added there is saved
+with the tariff, so **Cancel** leaves nothing behind. With one meter, a tariff on no meter
+goes onto it by itself when its dates don't clash with the meter's plans. Otherwise tariffs
+on no meter, and retailers with no tariff, are listed under **Not on a meter**, where
+**Use on meter** moves a tariff
 to the default meter. **Export** (the tariff-profile JSON) is on every saved tariff: the
 one in force, each of **Show other plans**, each under **Not on a meter**, and at the
 foot of the tariff editor (**Edit** or **View**). The meter is what a gateway connects to. (See
