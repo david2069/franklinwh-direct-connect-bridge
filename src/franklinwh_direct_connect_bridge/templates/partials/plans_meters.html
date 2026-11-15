@@ -170,6 +170,7 @@
           <div class="flex items-center gap-1 shrink-0">
             <button data-testid="tariff-assign" class="btn btn-secondary btn-sm" :disabled="!canWrite() || !meters.length" @click="assignTariff(t)"
                     :title="'Put it on ' + (meters.find(x => x.is_default) || meters[0] || {}).name">Use on meter</button>
+            <button class="btn btn-secondary btn-sm" @click="exportTariffProfile(t)" title="Export as a tariff profile (Modbus Bridge format)">Export</button>
             <button class="btn btn-secondary btn-sm" :disabled="!canWrite() && !tariffRetired(t)" @click="editTariff(t)" x-text="tariffRetired(t) ? 'View' : 'Edit'"></button>
             <button class="btn btn-danger btn-sm btn-icon" :disabled="!canWrite()" @click="deleteTariff(t)" aria-label="Delete tariff" title="Delete tariff"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
           </div>
@@ -242,7 +243,7 @@
         <span x-text="'Retired ' + tariffEdit.effective_end + ': locked, view only. Its rates and charges are kept so bills from then can be reconciled.'"></span>
         <button type="button" data-testid="tariff-unlock" class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="unlockTariff()">Unlock to edit</button>
       </div>
-      <fieldset :disabled="tariffEdit.locked" class="space-y-2">
+      <fieldset :disabled="!!tariffEdit.locked" class="space-y-2">
       <div class="flex items-end gap-2 flex-wrap">
         <label class="text-[11px] flex-1 min-w-[10rem]" style="color:var(--text-secondary)">Retailer
           <select data-testid="tariff-retailer" class="form-control form-control-sm w-full mt-1" x-model="tariffEdit.utility_id"
@@ -289,7 +290,7 @@
       </div>
 
       <!-- Energy rates tab (cloned from the Modbus bridge) -->
-      <fieldset :disabled="tariffEdit.locked" class="space-y-2">
+      <fieldset :disabled="!!tariffEdit.locked" class="space-y-2">
       <div x-show="tariffTab==='rates'" x-cloak class="space-y-2">
         <!-- Rate type: Static vs Wholesale (live) — per-tariff dynamic pricing -->
         <div class="flex items-center gap-2 text-xs">
@@ -742,6 +743,9 @@
       <div class="flex gap-2">
         <button class="btn btn-primary btn-sm" x-show="!tariffEdit.locked" @click="saveTariff()">Save</button>
         <button class="btn btn-secondary btn-sm" x-show="!tariffEdit.locked" @click="validateTariff()">Validate</button>
+        <!-- The saved tariff, as the Modbus Bridge reads it (#650). -->
+        <button data-testid="tariff-export" class="btn btn-secondary btn-sm" x-show="tariffEdit.id" @click="exportTariffProfile(tariffEdit)"
+                title="Export the saved tariff as a tariff profile (Modbus Bridge format)">Export</button>
         <button class="btn btn-secondary btn-sm" @click="tariffEdit = null; tariffMsg = null" x-text="tariffEdit.locked ? 'Close' : 'Cancel'"></button>
       </div>
     </div></template>

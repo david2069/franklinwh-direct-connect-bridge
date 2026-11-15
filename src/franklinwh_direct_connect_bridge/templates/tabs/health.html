@@ -3,12 +3,12 @@
 
   <!-- Daily report (owner 2026-11-15): the 07:00 bridge-health report, its colour and why.
        Bridge-wide, not per gateway. Read-only; Run now only builds and keeps one. -->
-  <div class="card" style="padding:0;overflow:hidden" x-data="healthReport" data-testid="health-report">
+  <div class="card" style="padding:0;overflow:hidden" x-data="healthReport('daily')" data-testid="health-report">
     <div class="px-5 py-3 flex items-center justify-between gap-3" style="border-bottom:1px solid var(--border)">
       <div class="card-label" style="margin-bottom:0">Daily report</div>
       <div class="flex items-center gap-2">
         <label class="text-xs flex items-center gap-1" style="color:var(--text-secondary)">
-          <input type="checkbox" :checked="daily" @change="setDaily($event.target.checked)"
+          <input type="checkbox" :checked="on" @change="setOn($event.target.checked)"
                  data-testid="health-report-daily"> 07:00 each day
         </label>
         <button class="btn-secondary text-xs" @click="runNow()" :disabled="busy"
@@ -71,6 +71,70 @@
             <select class="ml-2" @change="open($event.target.value)" data-testid="health-report-past">
               <template x-for="p in past" :key="p.id">
                 <option :value="p.id" :selected="cur && p.id === cur.id" x-text="`${p.period} · ${p.level}`"></option>
+              </template>
+            </select>
+          </label>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- Weekly battery report (owner 2026-11-15, phase 2): per gateway, from the daily
+       snapshot. Monday 07:00; Run now makes last week's at once (kept, not sent). -->
+  <div class="card" style="padding:0;overflow:hidden" x-data="healthReport('weekly')" data-testid="health-weekly">
+    <div class="px-5 py-3 flex items-center justify-between gap-3" style="border-bottom:1px solid var(--border)">
+      <div class="card-label" style="margin-bottom:0">Weekly battery report</div>
+      <div class="flex items-center gap-2">
+        <label class="text-xs flex items-center gap-1" style="color:var(--text-secondary)">
+          <input type="checkbox" :checked="on" @change="setOn($event.target.checked)"
+                 data-testid="health-weekly-on"> Mondays 07:00
+        </label>
+        <button class="btn-secondary text-xs" @click="runNow()" :disabled="busy"
+                data-testid="health-weekly-run" x-text="busy ? 'Working…' : 'Run now'"></button>
+      </div>
+    </div>
+    <div class="px-5 py-3 text-xs" x-show="err" :style="{color: 'var(--danger)'}" x-text="err"></div>
+    <div class="px-5 py-4 text-xs" x-show="!cur && !err" :style="{color: 'var(--text-secondary)'}">
+      No report yet. The first one comes on Monday at 07:00 site time, from the daily snapshots.
+    </div>
+    <template x-if="cur">
+      <div class="px-5 py-4 space-y-4 text-sm">
+        <div>
+          <div class="font-medium" style="overflow-wrap:anywhere" x-text="cur.headline"></div>
+          <div class="text-xs mt-1" style="color:var(--text-secondary)"
+               x-text="`${r.week.from} to ${r.week.to} · made ${when(cur.ts)}`"></div>
+        </div>
+        <template x-for="g in r.gateways" :key="g.gateway">
+          <div class="pt-3" style="border-top:1px solid var(--border)">
+            <div class="text-xs font-semibold uppercase tracking-wider mb-1" style="color:var(--text-secondary)"
+                 x-text="g.name"></div>
+            <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+              <span style="color:var(--text-secondary)">State of health</span>
+              <span x-text="g.soh.now == null ? 'not read yet' : num(g.soh.now, '%') + (g.soh.per_month == null ? '' : ` (${num(g.soh.per_month)} a month)`)"></span>
+              <span style="color:var(--text-secondary)">Round-trip efficiency</span>
+              <span x-text="g.efficiency ? `${g.efficiency.pct}% (${g.efficiency.out_kwh} out of ${g.efficiency.in_kwh} kWh, ${g.efficiency.days} days)` : 'no span with matching SoC'"></span>
+              <span style="color:var(--text-secondary)">Full cycles</span>
+              <span x-text="g.full_cycles.week != null ? num(g.full_cycles.week) : 'set Battery capacity (Settings → Automation)'"></span>
+              <span style="color:var(--text-secondary)">Cycles by depth</span>
+              <span x-text="`${g.cycles.cycles}` + (g.cycles.mean_depth == null ? '' : `, ${g.cycles.mean_depth} points deep on average`)"></span>
+              <template x-if="g.energy">
+                <div class="contents">
+                  <span style="color:var(--text-secondary)">Battery in / out</span>
+                  <span x-text="`${g.energy.battery_in_kwh} / ${g.energy.battery_out_kwh} kWh`"></span>
+                  <span style="color:var(--text-secondary)">Solar · home</span>
+                  <span x-text="`${g.energy.solar_kwh} · ${g.energy.home_kwh} kWh`"></span>
+                  <span style="color:var(--text-secondary)">Grid in / out</span>
+                  <span x-text="`${g.energy.grid_import_kwh} / ${g.energy.grid_export_kwh} kWh`"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+        <div x-show="past.length > 1">
+          <label class="text-xs" style="color:var(--text-secondary)">Earlier reports
+            <select class="ml-2" @change="open($event.target.value)" data-testid="health-weekly-past">
+              <template x-for="p in past" :key="p.id">
+                <option :value="p.id" :selected="cur && p.id === cur.id" x-text="`Week of ${p.period}`"></option>
               </template>
             </select>
           </label>

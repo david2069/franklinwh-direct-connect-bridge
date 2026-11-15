@@ -64,7 +64,7 @@ def test_ui_views_locked_plans_and_warns_before_unlock_or_delete():
     app = (PKG / "static" / "js" / "app.js").read_text()
     assert "confirmTyped(" in app
     assert "tariffEdit.locked" in html and 'data-testid="tariff-unlock"' in html
-    assert '<fieldset :disabled="tariffEdit.locked"' in html
+    assert '<fieldset :disabled="!!tariffEdit.locked"' in html   # a bare one disabled new tariffs (#651)
     d = js[js.index("async deleteTariff(t)"):js.index("async saveEditGateway()")]
     assert "_retiredWarnings(t, 'delete')" in d and "confirm_name=" in d
     w = js[js.index("async _retiredWarnings("):js.index("async unlockTariff()")]

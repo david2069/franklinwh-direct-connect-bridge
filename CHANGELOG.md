@@ -11,9 +11,23 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+- **System view:** **Options** is a drop-down over the diagram (zoom, Customise diagram, the extras, Start on System view), closed until you open it; a click outside it or Esc closes it. A **Smart circuits** switch in it hides the smart circuits, and the diagram is laid out again without them (#660). `franklinwh-system-view` 0.3.2 (was 0.3.1). See [the tour](docs/guide/tour.md).
+
+### Added
+- **Weekly battery report** (phase 2 of the scheduled health check). Every Monday at 07:00, per gateway, for the week just ended: state of health and its trend, round-trip efficiency, full cycles (discharge ÷ Battery capacity), cycles by depth and the week's energy. On **Health → Weekly battery report** and in one Home Assistant notification; not on the phones. SoH comes from the cell readings the alarm pass already makes, so there are no extra aGate reads. New dependency `rainflow` 3.2.0 (MIT, no dependencies). See [Health reports](docs/guide/health-report.md).
+
 ### Fixed
 - **Battery recordings:** a recording is finished only once its purge has run. It used to say it had ended first, so for a moment a new recording could start, or a caller could see old recordings not yet purged (#648).
+- **System view:** the aGate's alarms are the ones that matter now: conditions still active and events not yet acknowledged, each with its time ("since 15 Nov 14:34"). A condition that had cleared but was never acknowledged (two old "aGate is using 4G" alerts) showed as a current alarm, once per alert and with no time (#661). See [the tour](docs/guide/tour.md).
 - **Changelog:** each release in the index links to its notes on GitHub (`docs/changelog/X.Y.Z.md`), which every release contains; the docs site can lag a release. Links inside a release's notes now work from `docs/changelog/`: 0.5.46's did not, so its docs page was never built. Its link targets are corrected; its words are unchanged.
+- **Tariff editor:** **Rate type: Dynamic (live)** did nothing when clicked. A new tariff (**+ Add tariff**) opened with every control disabled: the editor's lock for retired plans read a setting a new tariff did not have. A new tariff now opens unlocked, so Dynamic (live) can be chosen; its provider, your site's region and the Home Assistant price entities save with the tariff and come back unchanged through **Export** and **Import** (#651). See [Billing & Utilities](docs/guide/energy-and-costs.md).
+
+- **Import tariff:** the preview's `has_demand` was true for every Modbus Bridge profile, even with peak demand off (`has_peak_demand` 0, `demand_rate` 0), because it tested for a demand window, which every profile has. It now says whether the demand charge is on (#650). See [Billing & Utilities](docs/guide/energy-and-costs.md).
+### Added
+- **Audit trail:** adding, editing and deleting sites, meters, retailers and tariffs, importing a tariff and a bill's **Recalculate** are recorded in Logs → Audit trail and the bridge log, with the name, the meter and the fields an edit changed (#650). See [Control and write safety](docs/guide/control.md) and [Billing & Utilities](docs/guide/energy-and-costs.md).
+### Changed
+- **Plans & meters:** **Export** is on every saved tariff: also on tariffs under **Not on a meter** and at the foot of the tariff editor, not only the meter's plans (#650). See [Billing & Utilities](docs/guide/energy-and-costs.md).
 
 ## Releases
 

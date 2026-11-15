@@ -322,14 +322,19 @@ tariff in force today (retailer, name, dates) with **New plan**, **Import**, **E
 **Export**, and the meter's other plans under **Show other plans**. The retailer is chosen
 (or added with **+ New retailer**) in the tariff editor. Tariffs on no meter, and retailers
 with no tariff, are listed under **Not on a meter**, where **Use on meter** moves a tariff
-to the default meter. The meter is what a gateway connects to. (See
+to the default meter. **Export** (the tariff-profile JSON) is on every saved tariff: the
+one in force, each of **Show other plans**, each under **Not on a meter**, and at the
+foot of the tariff editor (**Edit** or **View**). The meter is what a gateway connects to. (See
 [Multi-gateway and sites](multi-gateway.md) for why the tariff hangs off the meter rather
 than the gateway.)
 
 **Import tariff** takes a tariff as JSON (`franklinwh-bridge/tariff-profile`, the same
 format a tariff's Export writes and the Modbus Bridge uses): paste it into the box or
 choose a file. **Check** shows what it contains (retailer, network, plan, seasons, fixed
-charges); **Import** adds it as a plan of the default meter (rules below).
+charges); **Import** adds it as a plan of the default meter (rules below). In the
+preview (`POST /api/tariffs/import?dry_run=true`), `has_demand` is true only when the peak
+demand charge is on: `has_peak_demand` is not 0 and `demand_rate` is not 0. Every Modbus
+Bridge profile carries a demand window, on or off, so the window alone doesn't count.
 Why a tariff was not accepted is shown in the dialog. After **Import** the dialog says what
 was added and to which meter (and which plan it ended, if any); **Done** closes it. To import
 another, open Import again.
@@ -353,6 +358,11 @@ with that tariff's fixed charges for its own days.
 - Importing a tariff from the same retailer and network adds a plan to that utility
   instead of a second utility. The import preview says which tariff it replaces.
 - Deleting a utility lists its tariffs and deletes them with it.
+
+**Audit trail.** Adding, editing and deleting a site, meter, retailer or tariff, importing a
+tariff, and a bill's **Recalculate** are recorded in **Logs → Audit trail** and the bridge
+log: the name, the meter, and for an edit the fields it changed (see
+[Control and write safety](control.md)).
 
 **Retired plans are locked.** Once a plan's end date has passed, it opens as **View**:
 its rates and charges stay visible, unchanged, so bills from that time can be reconciled
@@ -387,6 +397,10 @@ The editor's **Rate type** toggle offers two, and only two, options:
     scaled to c/kWh.
 
   When both are configured, **the HA price entity wins over NEM.**
+
+  The provider, the region and the HA entities are saved with the tariff
+  (`pricing.kind: "dynamic"` and `pricing.dynamic` in the tariff profile, as the Modbus
+  Bridge's), so **Export** and **Import** carry them unchanged.
 
 A dynamic tariff drives two things at once: the billing figures on Billing & Utilities,
 and the `tariff.spot_price` / `tariff.feed_in_price` sensors available to the

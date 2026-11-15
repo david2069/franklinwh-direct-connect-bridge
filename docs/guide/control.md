@@ -47,6 +47,12 @@ Every consequential control is recorded **twice**: once as a structured row in t
 bridge-host time), and once as a line in **Logs → Bridge log**, so there is a single place to look even
 when the action came from the scheduler rather than from you.
 
+Billing & Utilities changes are recorded the same way: adding, editing and deleting a site
+(`site_add`, `site_edit`, `site_delete`), meter (`meter_*`), retailer (`retailer_*`) or
+tariff (`tariff_*`), importing a tariff (`tariff_import`) and a bill's **Recalculate**
+(`bill_recalculate`). The detail names it and its meter, and for an edit the fields it
+changed.
+
 ---
 
 ## The three gates

@@ -875,7 +875,12 @@ function settingsTab(opts = {}) {
       const m = this.meters.find(x => x.utility_id === uid) || this.meters.find(x => x.is_default) || this.meters[0];
       return m ? m.id : '';
     },
-    newTariff(uid) { this.tariffMsg = null; this.tariffEdit = { id: '', utility_id: uid, meter_id: this._meterFor(uid), name: '', billing_cycle_day: 1, effective_start: '', effective_end: '',
+    newTariff(uid) {
+      // `locked` must be set: the editor's fieldsets bind it, and a missing key left every
+      // control of a new tariff disabled (#651).
+      if (!this.nemSpot) this.loadNemSpot();   // the site's region, for Dynamic (live)
+      this.loadHaPriceOpts();                  // friendly HA price-entity names
+      this.tariffMsg = null; this.tariffEdit = { locked: false, unlock: false, id: '', utility_id: uid, meter_id: this._meterFor(uid), name: '', billing_cycle_day: 1, effective_start: '', effective_end: '',
       pricing: { default_rate: { buy: '', sell: '' }, seasons: [], kind: 'static', dynamic: { source: 'nem', region: '', buy_entity: '', feedin_entity: '' } },
       demand: { on: false, start: '15:00', end: '21:00', rate: '', interval_min: 30, basis: 'per_kw_day', months: [], days: [] },
       bonus: { on: false, start: '17:00', end: '21:00', rate: '', months: [], days: [] },
@@ -1143,6 +1148,10 @@ function settingsTab(opts = {}) {
             ...(b.days && b.days.length ? { days: b.days.map(Number) } : {}) })) };
       });
       const p = { ...t.pricing, default_rate: { buy: rate(dr.buy), sell: rate(dr.sell) }, seasons };
+      // Dynamic (live) from AusNEM prices at the site's region; keep it in the tariff so an
+      // export carries it, as the Modbus Bridge's profile does (#651).
+      if (p.kind === 'dynamic' && p.dynamic && p.dynamic.source === 'nem' && this.nemSpot && this.nemSpot.site_region)
+        p.dynamic = { ...p.dynamic, region: this.nemSpot.site_region };
       const d = t.demand || {}, b = t.bonus || {}, c = t.charge || {};
       if (d.on) { p.demand_rate = num(d.rate); p.demand_interval_min = Number(d.interval_min) || 30; p.demand_charge_basis = d.basis || 'per_kw_day'; }
       if (b.on) { p.export_bonus_rate = num(b.rate); }
