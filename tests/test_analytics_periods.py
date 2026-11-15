@@ -31,9 +31,10 @@ def test_one_chart_style_at_the_top_after_the_time_span_for_both_sources():
     assert HTML.count("setBars(false)") == 1 and "setBars(false)" in TOP
     assert TOP.index('aria-label="Chart style"') > TOP.index('aria-label="Time span"')
     m = JS[JS.index("FWHCloudAnalytics.mount("):][:500]
-    assert "styleControl: false" in m and "style: this.style" in m
+    # cloudStyle: the picked style, or bars where it isn't offered (Lifetime, 2026-11-15)
+    assert "styleControl: false" in m and "style: this.cloudStyle" in m
     body = JS[JS.index("setChartType(t) {"):][:400]
-    assert "this._cloud.setStyle(t)" in body
+    assert "this._cloud.setStyle(this.cloudStyle)" in body
 
 
 def test_the_cloud_panel_takes_the_shared_picker():

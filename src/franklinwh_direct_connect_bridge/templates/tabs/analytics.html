@@ -26,10 +26,13 @@
         </button>
         <div x-show="open" x-cloak role="menu" class="absolute left-0 mt-1 w-40 rounded-lg border shadow-xl z-40 overflow-hidden"
              style="background:var(--surface-1);border-color:var(--border)">
-            <button role="menuitemradio" :aria-checked="chartType === 'line'" class="w-full text-left px-3 py-2 text-xs hover:bg-white/[0.06] transition flex items-center gap-2" style="color:var(--text-primary)" @click="open = false; setChartType('line')">
-              <span class="w-3 text-emerald-400" x-text="chartType === 'line' ? '✓' : ''"></span>Line</button>
-            <button role="menuitemradio" :aria-checked="chartType === 'area'" class="w-full text-left px-3 py-2 text-xs hover:bg-white/[0.06] transition flex items-center gap-2" style="color:var(--text-primary)" title="Fill each line down to zero" @click="open = false; setChartType('area')">
-              <span class="w-3 text-emerald-400" x-text="chartType === 'area' ? '✓' : ''"></span>Area</button>
+            <!-- a type that can't draw the shown period is greyed with its reason (owner, 2026-11-15) -->
+            <button role="menuitemradio" :aria-checked="chartType === 'line'" class="w-full text-left px-3 py-2 text-xs hover:bg-white/[0.06] transition flex items-start gap-2 disabled:opacity-50 disabled:cursor-not-allowed" style="color:var(--text-primary)"
+                    :disabled="chartBlocked('line')" :title="chartBlocked('line')" @click="open = false; setChartType('line')">
+              <span class="w-3 text-emerald-400" x-text="chartType === 'line' ? '✓' : ''"></span><span>Line<span x-show="chartBlocked('line')" class="block text-[10px]" style="color:var(--text-secondary)" x-text="chartBlocked('line')"></span></span></button>
+            <button role="menuitemradio" :aria-checked="chartType === 'area'" class="w-full text-left px-3 py-2 text-xs hover:bg-white/[0.06] transition flex items-start gap-2 disabled:opacity-50 disabled:cursor-not-allowed" style="color:var(--text-primary)"
+                    :disabled="chartBlocked('area')" :title="chartBlocked('area') || 'Fill each line down to zero'" @click="open = false; setChartType('area')">
+              <span class="w-3 text-emerald-400" x-text="chartType === 'area' ? '✓' : ''"></span><span>Area<span x-show="chartBlocked('area')" class="block text-[10px]" style="color:var(--text-secondary)" x-text="chartBlocked('area')"></span></span></button>
             <button role="menuitemradio" :aria-checked="chartType === 'bars' && !stacked" class="w-full text-left px-3 py-2 text-xs hover:bg-white/[0.06] transition flex items-center gap-2" style="color:var(--text-primary)" @click="open = false; setBars(false)">
               <span class="w-3 text-emerald-400" x-text="chartType === 'bars' && !stacked ? '✓' : ''"></span>Bars</button>
             <button role="menuitemradio" :aria-checked="chartType === 'bars' && stacked" class="w-full text-left px-3 py-2 text-xs hover:bg-white/[0.06] transition flex items-center gap-2" style="color:var(--text-primary)" aria-label="Stacked bars" title="Stacked: where the energy came from above zero, where it went below" @click="open = false; setBars(true)">
@@ -235,7 +238,7 @@
        style="z-index:80;background:rgba(0,0,0,.6)">
     <div class="card w-full sm:max-w-lg max-h-[90dvh] overflow-y-auto space-y-4" style="padding:16px">
       <div class="flex items-center justify-between gap-2">
-        <h4 class="text-base font-semibold" style="color:var(--text-primary)">Explain
+        <h4 class="text-lg font-semibold" style="color:var(--text-primary)">Explain
           <span class="text-xs font-normal" style="color:var(--text-secondary)"
                 x-text="(source === 'cloud' ? 'Cloud' : 'Local') + ' · ' + periodLabel"></span></h4>
         <button type="button" class="btn btn-secondary btn-sm" aria-label="Close" @click="explainOpen = false">&times;</button>
@@ -258,56 +261,60 @@
       <div x-show="explainErr && !explainBusy" x-cloak class="text-sm" style="color:var(--danger,#f87171)" x-text="explainErr"></div>
 
       <template x-if="explainData && !explainErr && !explainBusy">
-        <div class="space-y-4">
+        <div>
+          <!-- sections apart (owner, 2026-11-15: "all the text and fonts are mushed together"):
+               a clear heading each, a divider and room between them and between items -->
           <section data-testid="explain-trends">
-            <h5 class="text-xs font-semibold uppercase tracking-wide mb-1" style="color:var(--text-secondary)">Trends</h5>
+            <h5 class="text-base font-semibold mb-3" style="color:var(--text-primary)">Trends</h5>
             <p x-show="!(explainData.trends || []).length" class="text-sm" style="color:var(--text-secondary)">
               No earlier period to compare with yet.</p>
-            <ul class="space-y-1">
+            <ul class="space-y-2">
               <template x-for="t in explainData.trends || []" :key="t.id">
-                <li class="text-sm flex gap-2" style="color:var(--text-primary)">
+                <li class="text-sm leading-relaxed flex gap-2" style="color:var(--text-primary)">
                   <span class="w-4 shrink-0" x-text="t.direction === 'up' ? '↑' : (t.direction === 'down' ? '↓' : '→')"></span>
                   <span x-text="t.headline"></span></li>
               </template>
             </ul>
           </section>
-          <section data-testid="explain-findings">
-            <h5 class="text-xs font-semibold uppercase tracking-wide mb-1" style="color:var(--text-secondary)">What it shows</h5>
-            <ul class="space-y-1.5">
+          <section data-testid="explain-findings" class="border-t pt-4 mt-4" style="border-color:var(--border)">
+            <h5 class="text-base font-semibold mb-3" style="color:var(--text-primary)">What it shows</h5>
+            <ul class="space-y-3">
               <template x-for="f in explainData.findings || []" :key="f.id">
-                <li class="text-sm"><div style="color:var(--text-primary)" x-text="f.headline"></div>
-                  <div class="text-xs" style="color:var(--text-secondary)" x-text="f.why"></div></li>
+                <li class="text-sm leading-relaxed"><div class="font-medium" style="color:var(--text-primary)" x-text="f.headline"></div>
+                  <div class="text-xs leading-relaxed mt-0.5" style="color:var(--text-secondary)" x-text="f.why"></div></li>
               </template>
             </ul>
           </section>
-          <section data-testid="explain-suggestions">
-            <h5 class="text-xs font-semibold uppercase tracking-wide mb-1" style="color:var(--text-secondary)">For your objectives</h5>
+          <section data-testid="explain-suggestions" class="border-t pt-4 mt-4" style="border-color:var(--border)">
+            <h5 class="text-base font-semibold mb-3" style="color:var(--text-primary)">For your objectives</h5>
             <p x-show="!explainObjs.length" class="text-sm" style="color:var(--text-secondary)">Pick an objective above.</p>
             <p x-show="explainObjs.length && !(explainData.suggestions || []).length" class="text-sm" style="color:var(--text-secondary)">
               Nothing to change for these objectives from this period.</p>
             <div class="space-y-3">
               <template x-for="s in explainData.suggestions || []" :key="s.id">
-                <div class="border-t pt-2" style="border-color:var(--border)">
-                  <div class="text-sm font-medium" style="color:var(--text-primary)" x-text="s.headline"></div>
-                  <div class="text-xs mt-0.5" style="color:var(--text-secondary)" x-text="s.why"></div>
-                  <div class="text-xs mt-1" style="color:var(--text-secondary)" x-show="explainEffect(s.effect)">
-                    <span class="font-medium" x-text="explainEffect(s.effect)"></span>
+                <div class="rounded-lg border p-3" style="border-color:var(--border);background:var(--surface-1)">
+                  <div class="text-sm font-semibold leading-snug" style="color:var(--text-primary)" x-text="s.headline"></div>
+                  <div class="text-xs leading-relaxed mt-1" style="color:var(--text-secondary)" x-text="s.why"></div>
+                  <div class="text-xs leading-relaxed mt-2" style="color:var(--text-secondary)" x-show="explainEffect(s.effect)">
+                    <span class="font-semibold" style="color:var(--text-primary)" x-text="explainEffect(s.effect)"></span>
                     <span x-text="' — ' + (s.effect && s.effect.note || '')"></span></div>
-                  <button type="button" class="btn btn-secondary btn-sm mt-1.5" @click="openSuggestion(s.action)"
+                  <button type="button" class="btn btn-secondary btn-sm mt-2.5" @click="openSuggestion(s.action)"
                           x-text="suggestionLink(s.action)"></button>
                 </div>
               </template>
             </div>
           </section>
-          <section x-show="(explainData.missing || []).length" data-testid="explain-missing">
-            <h5 class="text-xs font-semibold uppercase tracking-wide mb-1" style="color:var(--text-secondary)">For a fuller answer</h5>
-            <ul class="space-y-1">
+          <section x-show="(explainData.missing || []).length" data-testid="explain-missing" class="border-t pt-4 mt-4" :style="{ borderColor: 'var(--border)' }">
+            <h5 class="text-base font-semibold mb-3" style="color:var(--text-primary)">For a fuller answer</h5>
+            <ul class="space-y-3">
               <template x-for="m in explainData.missing || []" :key="m.id">
-                <li class="text-xs" style="color:var(--text-secondary)" x-text="m.text"></li>
+                <li class="text-sm leading-relaxed" style="color:var(--text-secondary)"><div x-text="m.text"></div>
+                  <button type="button" x-show="m.open" class="btn btn-secondary btn-sm mt-1.5" @click="openMissing(m)"
+                          x-text="m.link"></button></li>
               </template>
             </ul>
           </section>
-          <p class="text-[11px]" style="color:var(--text-faint)">Worked out from this period's totals by fixed rules;
+          <p class="text-[11px] leading-relaxed border-t pt-3 mt-4" style="color:var(--text-faint);border-color:var(--border)">Worked out from this period's totals by fixed rules;
             effects are estimates. Nothing is changed from here.</p>
         </div>
       </template>

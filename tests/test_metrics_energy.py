@@ -79,4 +79,6 @@ def test_the_page_reads_kwh_slots_and_shows_kw_for_a_day():
 
 
 def test_until_a_style_is_picked_a_day_is_lines_and_kwh_is_bars_like_cloud():
-    assert "get chartType() { return this.style || (this.energyMode ? 'bars' : 'line'); }" in JS
+    # A picked style wins unless it is blocked for the period (Lifetime: no line or area).
+    assert ("return this.style && !this.chartBlocked(this.style) ? this.style : "
+            "(this.energyMode ? 'bars' : 'line');") in JS

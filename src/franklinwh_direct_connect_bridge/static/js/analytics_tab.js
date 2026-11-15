@@ -311,11 +311,11 @@ function analyticsTab() {
         params: () => ({ gateway: this.$store.app.selectedGateway || '' }),
         periodPicker: false, period: this.period,        // the picker at the top serves both
         height: 380,                                      // as tall as the Local chart
-        styleControl: false, style: this.style,           // Line | Area | Bars at the top serves both
+        styleControl: false, style: this.cloudStyle,      // Line | Area | Bars at the top serves both
         stackControl: false, stacked: this.stacked,       // and Stack
         navControl: false, date: this.startDay,           // and the date picker
         refreshControl: false, statusBelow: true,         // Refresh at the top; the note under the chart, as Local's
-        socAxis: 'always',                                // the SoC axis every period, so the plots line up
+        socAxis: 'auto',                                  // the SoC axis only with SoC to draw (owner, 2026-11-15)
         onData: (p) => { this.cloudData = p; },           // the cards under the chart, from the same read
         ...this.cloudRange,                               // Custom's From-To, or a Day view's From / To
       });
@@ -431,6 +431,7 @@ function analyticsTab() {
     /** The time span picker: one for both views. */
     setPeriod(v) {
       this.period = v;
+      if (this._cloud && this.style !== 'flow') this._cloud.setStyle(this.cloudStyle);   // Lifetime: bars
       try { localStorage.setItem('fwh-analytics-period', v); } catch (e) { /* private mode */ }
       this.load();
     },
@@ -460,7 +461,7 @@ function analyticsTab() {
       const wasFlow = this.chartType === 'flow';
       this.style = t;
       try { localStorage.setItem('fwh-analytics-style', t); } catch (e) { /* private mode */ }
-      if (this._cloud && t !== 'flow') this._cloud.setStyle(t);
+      if (this._cloud && t !== 'flow') this._cloud.setStyle(this.cloudStyle);
       if (t === 'flow') this.loadFlow();
       else if (wasFlow) this.load();
       else this.render();
@@ -509,7 +510,18 @@ function analyticsTab() {
     /** Back to its source's colour. */
     clearDetailColour(k) { delete this.colours[k]; this.saveColours(); },
     get chips() { return this.energyMode ? ANALYTICS_ENERGY : this.metricDefs; },
-    get chartType() { return this.style || (this.energyMode ? 'bars' : 'line'); },
+    get chartType() {
+      return this.style && !this.chartBlocked(this.style) ? this.style : (this.energyMode ? 'bars' : 'line');
+    },
+    /** Why a chart type isn't offered for the shown period, or '' (owner, 2026-11-15): Lifetime
+     *  is one total a year, so a line or area joins partial years (and Cloud draws nothing for
+     *  a single year); it is shown as bars. */
+    chartBlocked(t) {
+      return this.period === 'lifetime' && (t === 'line' || t === 'area')
+        ? 'Lifetime is one total a year: shown as bars' : '';
+    },
+    /** The style the Cloud panel draws: the picked one, or bars where it isn't offered. */
+    get cloudStyle() { return this.style && this.chartBlocked(this.style) ? 'bars' : this.style; },
     get unit() { return this.energyMode ? 'kWh' : 'kW'; },
 
     /** What the Chart button says: the type shown (Line until one is picked for a day). */
@@ -727,6 +739,8 @@ function analyticsTab() {
           spanGaps: false,     // a missing stretch stays a gap
         }));
         const onY = datasets.filter(d => d.yAxisID === 'y');
+        // the SoC % axis only when a SoC line has a value (owner, 2026-11-15: an empty one)
+        const socShown = datasets.some(d => d.yAxisID === 'y1' && d.data.some(p => p.y != null));
         // stacked: the range is each slot's pile above zero and below it
         const sums = {};
         if (stack) onY.forEach(d => d.data.forEach(p => {
@@ -784,7 +798,7 @@ function analyticsTab() {
                    min: yr.min, max: yr.max, stacked: stack,
                    ticks: { color: '#64748b', font: { size: 10 }, stepSize: yr.step },
                    grid: { color: 'rgba(148,163,184,.08)' } },
-              y1: { position: 'right', min: 0, max: 100,
+              y1: { position: 'right', min: 0, max: 100, display: socShown,
                     title: { display: true, text: 'SoC %', color: self.colourOf('soc') },
                     ticks: { color: self.colourOf('soc'), font: { size: 10 } }, grid: { drawOnChartArea: false } },
             },
@@ -847,16 +861,39 @@ function analyticsTab() {
       catch (e) { /* no history card */ }
     },
 
-    /** The history card: how long the shown source has data for (owner, 2026-11-12). */
+    /** The history card (owner, 2026-11-15: "history should show the period shown in the
+     *  chart"): the period in view, then how long the shown source has data for. */
     get historyCard() {
       const now = Date.now() / 1000;
-      if (this.source === 'cloud') {
-        if (!this.cloudSince) return null;
-        const t = this.fromSiteLocal(this.cloudSince + 'T00:00');     // the site's midnight, not the browser's
-        return { label: 'History', value: analyticsSpan(t, now), note: 'cloud, since ' + this.dayLabel(t, true) };
+      const since = this.source === 'cloud'
+        ? (this.cloudSince ? this.fromSiteLocal(this.cloudSince + 'T00:00') : null)   // the site's midnight
+        : this.firstTs;
+      const note = since == null ? null : analyticsSpan(since, now) + ', '
+        + (this.source === 'cloud' ? 'cloud' : 'this bridge') + ', since ' + this.dayLabel(since, true);
+      return this.shownRange ? { label: 'History', value: this.shownRange, note } : null;
+    },
+    /** The period the chart shows, in the browser's own format: 15 Nov 2026, 9–15 Nov 2026,
+     *  1–30 Nov 2026, 1 Jan – 31 Dec 2026; a Day view's From / To and Custom with their
+     *  times. Lifetime runs from the shown source's first day to today. */
+    get shownRange() {
+      let start, end;
+      const now = Math.floor(Date.now() / 1000);
+      if (this.period === 'lifetime') {
+        start = this.source === 'cloud'
+          ? (this.cloudSince ? this.fromSiteLocal(this.cloudSince + 'T00:00') : null) : this.firstTs;
+        end = now;
+        if (start == null) return null;
+      } else {
+        const w = this.window;
+        start = w.start; end = w.end;
       }
-      return this.firstTs ? { label: 'History', value: analyticsSpan(this.firstTs, now),
-                              note: 'this bridge, since ' + this.dayLabel(this.firstTs, true) } : null;
+      const whole = (t) => (t + this.offMin * 60) % 86400 === 0;
+      const days = this.period === 'lifetime' || (whole(start) && whole(end));
+      const o = Object.assign({ day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' },
+        days ? {} : { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+      const f = new Intl.DateTimeFormat(undefined, o);
+      const a = this.siteDate(start), b = this.siteDate(days && this.period !== 'lifetime' ? end - 1 : end);
+      return f.formatRange ? f.formatRange(a, b) : f.format(a) + ' – ' + f.format(b);
     },
 
     /** The period's totals as cards, from whichever source is shown: kWh periods get the
@@ -893,13 +930,23 @@ function analyticsTab() {
     explainEffect(e) {
       if (!e) return '';
       const parts = [];
-      if (e.kwh_month != null) parts.push((e.kwh_month > 0 ? '≈ ' : '≈ −') + Math.abs(e.kwh_month).toFixed(0) + ' kWh a month from the grid');
-      if (e.money_month != null) parts.push((e.money_month >= 0 ? '≈ $' : '≈ −$') + Math.abs(e.money_month).toFixed(0) + ' a month');
+      // insights' sign: above zero is less from the grid (a saving), below zero more (a cost);
+      // the words carry it, so a number never reads against its note (owner, 2026-11-15)
+      if (e.kwh_month != null) parts.push('≈ ' + Math.abs(e.kwh_month).toFixed(0)
+        + (e.kwh_month < 0 ? ' kWh a month more from the grid' : ' kWh a month less from the grid'));
+      if (e.money_month != null) parts.push('≈ $' + Math.abs(e.money_month).toFixed(0) + ' a month '
+        + (e.money_month < 0 ? 'more on the bill' : 'saved'));
       return parts.join(' · ');
     },
     suggestionLink(a) {
       return ({ mode: 'Open Control (mode)', reserve: 'Open Control (reserve)',
                 schedule: 'Open Scheduler (templates)', schedules: 'Open Scheduler' })[(a || {}).type] || 'Open';
+    },
+    /** For a fuller answer: the page where it is set (Billing & Utilities → Plans & meters
+     *  for a tariff), the way Settings → Setup opens it. */
+    openMissing(m) {
+      this.explainOpen = false;
+      window.dispatchEvent(new CustomEvent('fwh:open-setup-task', { detail: { open: m.open } }));
     },
     openSuggestion(a) {
       const tab = ['mode', 'reserve'].includes((a || {}).type) ? 'control' : 'scheduler';
