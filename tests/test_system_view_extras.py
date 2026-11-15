@@ -48,11 +48,31 @@ def test_open_alerts_are_the_gateways_alarms(tmp_path):
     st.insert_alert(gateway_id="other", kind="event", severity="critical", code="SCHEDULE_FAILED",
                     title="Scheduled action failed", message=None, opened_ts=102.0)
     g = system_view.gateway_payload(gw(summary=us_summary()), store=st)
+    t0, t1 = system_view._when(100.0), system_view._when(101.0)
     assert g["alarms"] == [
         {"target": "agate", "code": "EXTERNAL_SETPOINT", "level": "warn",
-         "text": "Setpoint changed outside the bridge"},
+         "text": f"Setpoint changed outside the bridge ({t1})"},
         {"target": "agate", "code": "GATEWAY_UNREACHABLE", "level": "crit",
-         "text": "aGate unreachable: No answer for 5 min"}]
+         "text": f"aGate unreachable: No answer for 5 min (since {t0})"}]
+
+
+def test_a_condition_that_cleared_is_not_an_alarm_now(tmp_path):
+    """#661 (owner 2026-11-16): two AGATE_ON_4G alerts that had cleared, never
+    acknowledged, showed on the aGate as current alarms, doubled and with no time. The
+    diagram is the system now: only conditions still active, and events still to be
+    acknowledged, each with its time."""
+    st = MetricsStore(str(tmp_path / "m.db"))
+    for t in (100.0, 200.0):
+        a = st.insert_alert(gateway_id="gw1", kind="condition", severity="warning",
+                            code="AGATE_ON_4G", title="aGate is using 4G", message=None,
+                            opened_ts=t)
+        st.resolve_alert(a, resolved_ts=t + 60)
+    g = system_view.gateway_payload(gw(summary=us_summary()), store=st)
+    assert "alarms" not in g or g["alarms"] == []
+    st.insert_alert(gateway_id="gw1", kind="condition", severity="warning",
+                    code="AGATE_ON_4G", title="aGate is using 4G", message=None, opened_ts=300.0)
+    g = system_view.gateway_payload(gw(summary=us_summary()), store=st)
+    assert [a["text"] for a in g["alarms"]] == [f"aGate is using 4G (since {system_view._when(300.0)})"]
 
 
 def test_no_store_means_no_alarms_key():
@@ -71,4 +91,19 @@ def test_the_payload_builds_with_the_extras():
 
 def test_pins_the_overlay_with_the_extras():
     pin = (ROOT / "pyproject.toml").read_text()
-    assert '"franklinwh-system-view==0.3.1"' in pin
+    assert '"franklinwh-system-view==0.3.2"' in pin
+
+
+def test_smart_circuits_can_be_hidden_and_options_is_a_drop_down():
+    """#660 (owner 2026-11-16): Options is a drop-down, and the user can hide the smart
+    circuits (franklinwh-system-view 0.3.2): each gateway with circuits also gets scenes
+    laid out without them."""
+    import franklinwh_system_view as sv
+    s = us_summary()
+    g = system_view.gateway_payload(gw(summary=s))
+    if not g.get("circuits"):
+        g["circuits"] = [{"name": "Circuit 1", "on": False}]
+    scenes = sv.build({"version": 1, "gateways": [g]})["gateways"][0]["scenes"]
+    assert {"landscape_no_circuits", "portrait_no_circuits"} <= set(scenes)
+    js = (sv.static_dir() / "system-view.js").read_text()
+    assert '["circuits", "Smart circuits"]' in js and "fwhsv-menu" in js

@@ -56,15 +56,34 @@ def _energy(summ: dict) -> dict | None:
     return out if any(v is not None for v in out.values()) else None
 
 
+def _when(ts: float, tz=None) -> str:
+    """``15 Nov 14:34`` on the site's clock (else the host's)."""
+    import datetime as _dt
+    d = _dt.datetime.fromtimestamp(ts, tz) if tz else _dt.datetime.fromtimestamp(ts)
+    return f"{d.day} {d:%b %H:%M}"
+
+
 def _alarms(store, gateway_id: str) -> list[dict]:
-    """The gateway's open alerts, the set the bridge's own alert list shows (still active,
-    or not yet acknowledged), as the overlay's alarms on the aGate."""
+    """The gateway's alarms now, on the aGate: conditions still active (since when), and
+    events not yet acknowledged (when). A condition that cleared stays in the Alerts list
+    until acknowledged, but the diagram is the system now, so it isn't shown (#661)."""
+    from zoneinfo import ZoneInfo
+    from . import setup_wizard
+    try:
+        tz = ZoneInfo(setup_wizard.site_timezone(store)) if setup_wizard.site_timezone(store) else None
+    except Exception:  # noqa: BLE001 - an unknown zone: the host's clock
+        tz = None
     rows = store.alerts(open_only=True, gateway_id=gateway_id, limit=50)
     out = []
     for r in sorted(rows, key=lambda r: (r.get("code") or "")):
+        cond = r.get("kind") == "condition"
+        if cond and r.get("resolved_ts") is not None:
+            continue
         text = r.get("title") or r.get("code") or "Alert"
         if r.get("message"):
             text += f": {r['message']}"
+        when = _when(r["opened_ts"], tz)
+        text += f" (since {when})" if cond else f" ({when})"
         out.append({"target": "agate", "code": r.get("code"),
                     "level": LEVEL.get(r.get("severity"), "warn"), "text": text})
     return out
