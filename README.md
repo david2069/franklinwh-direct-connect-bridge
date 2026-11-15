@@ -11,6 +11,11 @@
 [![installs](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fanalytics.home-assistant.io%2Faddons.json&query=%24%5B%274a12892f_franklinwh_local_bridge%27%5D.total&label=installs&logo=homeassistant&logoColor=white&color=41BDF5)](https://analytics.home-assistant.io/)
 [![commit activity](https://img.shields.io/github/commit-activity/y/david2069/franklinwh-direct-connect-bridge)](https://github.com/david2069/franklinwh-direct-connect-bridge/commits/main)
 
+**Install in Home Assistant:** click to add this repository to your add-on store, then install
+**FranklinWH Direct Connect Bridge** from it ([full steps](INSTALL.md)).
+
+[![Add repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fdavid2069%2Ffranklinwh-direct-connect-bridge)
+
 This integration is a proof-of-concept demonstration of how to integrate with a FranklinWH aGate gateway over the (undocumented, unofficial) FranklinWH Direct Connect local API.
 
 > **On the names.** **Direct Connect** is FranklinWH's own term for the gateway's local
