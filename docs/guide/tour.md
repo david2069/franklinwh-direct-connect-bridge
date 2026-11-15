@@ -158,8 +158,10 @@ starting on the one shown.
   0 shows on that battery ("aPower 2: alarm level 3"). Read every 5 minutes.
 - **The aGate's event log**: only how many events it holds can be read locally, so more
   than none shows on the aGate as a count. Read every 15 minutes.
-- **The bridge's own open alerts** (aGate unreachable, a refused command), the ones the
-  alert list shows, on the aGate.
+- **The bridge's own alerts that matter now**, on the aGate: a condition still active
+  ("aGate unreachable (since 15 Nov 14:34)") and an event not yet acknowledged ("Command
+  refused (15 Nov 09:02)"). A condition that has cleared stays in the alert list until it is
+  acknowledged, but isn't shown on the diagram, which is the system now.
 
 ## The tabs
 

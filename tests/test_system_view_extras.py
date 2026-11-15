@@ -48,11 +48,31 @@ def test_open_alerts_are_the_gateways_alarms(tmp_path):
     st.insert_alert(gateway_id="other", kind="event", severity="critical", code="SCHEDULE_FAILED",
                     title="Scheduled action failed", message=None, opened_ts=102.0)
     g = system_view.gateway_payload(gw(summary=us_summary()), store=st)
+    t0, t1 = system_view._when(100.0), system_view._when(101.0)
     assert g["alarms"] == [
         {"target": "agate", "code": "EXTERNAL_SETPOINT", "level": "warn",
-         "text": "Setpoint changed outside the bridge"},
+         "text": f"Setpoint changed outside the bridge ({t1})"},
         {"target": "agate", "code": "GATEWAY_UNREACHABLE", "level": "crit",
-         "text": "aGate unreachable: No answer for 5 min"}]
+         "text": f"aGate unreachable: No answer for 5 min (since {t0})"}]
+
+
+def test_a_condition_that_cleared_is_not_an_alarm_now(tmp_path):
+    """#661 (owner 2026-11-16): two AGATE_ON_4G alerts that had cleared, never
+    acknowledged, showed on the aGate as current alarms, doubled and with no time. The
+    diagram is the system now: only conditions still active, and events still to be
+    acknowledged, each with its time."""
+    st = MetricsStore(str(tmp_path / "m.db"))
+    for t in (100.0, 200.0):
+        a = st.insert_alert(gateway_id="gw1", kind="condition", severity="warning",
+                            code="AGATE_ON_4G", title="aGate is using 4G", message=None,
+                            opened_ts=t)
+        st.resolve_alert(a, resolved_ts=t + 60)
+    g = system_view.gateway_payload(gw(summary=us_summary()), store=st)
+    assert "alarms" not in g or g["alarms"] == []
+    st.insert_alert(gateway_id="gw1", kind="condition", severity="warning",
+                    code="AGATE_ON_4G", title="aGate is using 4G", message=None, opened_ts=300.0)
+    g = system_view.gateway_payload(gw(summary=us_summary()), store=st)
+    assert [a["text"] for a in g["alarms"]] == [f"aGate is using 4G (since {system_view._when(300.0)})"]
 
 
 def test_no_store_means_no_alarms_key():
