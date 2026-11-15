@@ -12,6 +12,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Bill detail is worked out by hems from the meter's 5-minute ledger** (#613, phase 2). The open period's lines are grouped by tariff and then plan charges, each with its formula (`0.987 kWh × $0.25`, `14.21 days × $1.10`), with tax and the net so far. **Now** shows each tariff's rate and band now. The Summary's net, projection, day *n* of *N* and tiles (one per tariff, plus plan charges) come from the same bill. The ledger is built from the meter's gateways' grid readings (summed, #611), kept per meter and fed only new readings. With no site timezone, the page says time-of-use windows are in UTC. API: `/api/billing/bill`. hems pinned at 0.1.1 (`ledger.open_interval`, readable fixed-charge labels).
 - **Billing & Utilities page** (owner, #613, #629; it replaces Energy Costs, **Billing** in the menu). Sub-tabs in the order OUTUS presents a bill: **Summary**, **Bill detail**, **History** and **Plans & meters**, with **Meter** to pick one when there are several. The Summary lists the setup steps first while one is missing (Site → Meter → Plan → Tariffs), each ticked when done with **Set up** opening the editor that does it, then this period, its projection and last period's total. Bill detail lists the open period's lines and what drives them now (demand peak so far, free export left, energy with no rate). The steps come from **hems** 0.1.0, the OUTUS engine (new dependency).
 - **A tariff exports as an OUTUS plan**: `/api/tariffs/<id>/export?format=outus`.
 
@@ -20,6 +21,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - **Sites, meters, retailers and tariffs moved to Billing & Utilities → Plans & meters** (#613), with the same editors. Settings' **Sites & Billing** is now **Location & Prices** (Location & Solar and Prices). Explain, the scheduler's setup messages and the setup list's "Electricity utility, pricing & billing" point to the new place.
 
 ### Fixed
+- **A credit showed as "$-0.01"** on Billing & Utilities; it reads −$0.01.
 - **The billing period's progress bar was empty** (Energy Costs, now Billing & Utilities): its colour was lost to a string style binding.
 - **The price entity Filter found nothing** (owner). Typing "Amber" in a buy or feed-in price picker searched only the entities exposed to the bridge. It now also searches all of Home Assistant's sensors, and says "No sensor matches" when nothing does.
 - **Provider from / until overlapped on a phone** (owner). The two date boxes sat at different heights and ran into each other in Safari and the Home Assistant app. They are now the same size, side by side, with "blank = current" under the box. The same applies to a tariff's Effective from / to.
