@@ -30,6 +30,7 @@ window.setupWizard = function setupWizard() {
     scan_subnet: '',
     scan_source: '',
     scan_label: '',
+    scan_ports: '',                    // blank = 9000; a port, list or range finds emulators (#416)
     manual: { host: '' },
     // The four live Home Assistant checks, and whether to publish at all.
     ha: { checks: [], publishing: false, addon: false, busy: false, msg: '' },
@@ -388,7 +389,10 @@ window.setupWizard = function setupWizard() {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           // Several subnets, comma-separated: an aGate on a VPN or a second VLAN is not
           // on the network this container can see.
-          body: JSON.stringify(this.scan_subnet ? { subnet: this.scan_subnet } : {}),
+          body: JSON.stringify({
+            ...(this.scan_subnet ? { subnet: this.scan_subnet } : {}),
+            ...(this.scan_ports.trim() ? { ports: this.scan_ports.trim() } : {}),
+          }),
         });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) { this.error = d.detail || `Scan failed (HTTP ${r.status}).`; this.found = []; return; }
@@ -397,7 +401,7 @@ window.setupWizard = function setupWizard() {
       } catch (e) { this.error = String(e); this.found = []; } finally { this.busy = false; }
     },
 
-    async addFound(c) { await this._addGateway({ host: c.host, label: c.label || '' }); },
+    async addFound(c) { await this._addGateway({ host: c.host, port: c.port, label: c.label || '' }); },
 
     async addManual() {
       if (!this.manual.host) return;

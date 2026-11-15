@@ -519,6 +519,8 @@
                   <span class="font-medium" style="color:var(--text-primary)" x-text="gw.label"></span>
                   <span x-show="gw.is_mock" class="text-[9px] px-1.5 rounded"
                         style="background:rgba(167,139,250,.2);color:#c4b5fd">MOCK</span>
+                  <span x-show="gw.emulator" class="text-[9px] px-1.5 rounded"
+                        style="background:rgba(167,139,250,.2);color:#c4b5fd">Emulator</span>
                   <span x-show="gw.is_default" class="chip ok" style="font-size:.55rem">default</span>
                 </div>
                 <!-- Stopped: its aGate is not the one this gateway is locked to (#381) -->
@@ -564,21 +566,25 @@
             </button>
             <input class="form-control form-control-sm" style="width:11rem" x-model="scanSubnet"
                    placeholder="subnet (auto)" title="e.g. 192.0.2.0/24 — blank auto-detects">
+            <input class="form-control form-control-sm" style="width:8rem" x-model="scanPorts"
+                   :placeholder="'ports (' + $store.app.ports.dc + ')'" title="Blank = the Direct Connect port. A port, list or range finds emulators: 9020, 9000,9020 or 9020-9030">
             <button class="btn btn-secondary btn-sm ml-auto" @click="cancelAddGateway()">Close</button>
           </div>
-          <p class="text-[10px] mt-1" style="color:var(--text-faint)">Sweeps TCP <span x-text="$store.app.ports.dc"></span> and confirms each with a Direct-Connect Local-API login. No manual entry needed — finds 0, 1 or more.</p>
+          <p class="text-[10px] mt-1" style="color:var(--text-faint)">Sweeps TCP <span x-text="$store.app.ports.dc"></span>, where every aGate listens, and confirms each with a Direct-Connect Local-API login. No manual entry needed — finds 0, 1 or more. To find emulators, give a port, list or range (9020, 9000,9020 or 9020-9030): a gateway on any other port is an emulator.</p>
           <template x-if="scanCands !== null">
             <div class="mt-2 space-y-1">
               <template x-if="!confirmedCands().length">
                 <div class="text-xs" style="color:var(--text-secondary)">No aGates found on <span class="font-mono" x-text="scanSubnet"></span>.</div>
               </template>
-              <!-- Only CONFIRMED aGates (answered the Local-API login) are addable. -->
-              <template x-for="c in confirmedCands()" :key="c.host">
-                <div class="flex items-center gap-2 text-sm rounded px-2 py-1.5" style="background:var(--surface-2)">
+              <!-- Only CONFIRMED aGates (answered the Local-API login) are addable. One row per
+                   address and port (#416); any port but 9000 is an emulator. -->
+              <template x-for="c in confirmedCands()" :key="c.host + ':' + c.port">
+                <div class="flex flex-wrap items-center gap-2 text-sm rounded px-2 py-1.5" style="background:var(--surface-2)">
                   <span class="w-1.5 h-1.5 rounded-full shrink-0 bg-emerald-400"></span>
-                  <span class="font-mono" style="color:var(--text-primary)" x-text="c.host"></span>
+                  <span class="font-mono" style="color:var(--text-primary)" x-text="c.host + (c.port !== $store.app.ports.dc ? ':' + c.port : '')"></span>
                   <span class="font-mono text-xs" style="color:var(--text-secondary)" x-text="c.serial || ''"></span>
-                  <span class="text-[9px] px-1 rounded" style="background:rgba(52,211,153,.2);color:#6ee7b7">aGate</span>
+                  <span x-show="!c.emulator" class="text-[9px] px-1 rounded" style="background:rgba(52,211,153,.2);color:#6ee7b7">aGate</span>
+                  <span x-show="c.emulator" class="text-[9px] px-1 rounded" style="background:rgba(167,139,250,.2);color:#c4b5fd">Emulator</span>
                   <button class="btn btn-sm ml-auto" :class="c.already_added ? 'btn-secondary' : 'btn-primary'"
                           :disabled="c.already_added" @click="addFromScan(c)"
                           x-text="c.already_added ? 'Added' : 'Add'"></button>
@@ -586,7 +592,7 @@
               </template>
               <!-- Non-aGate hosts that merely had 9000 open — noted, not offered. -->
               <div x-show="unconfirmedCount()" class="text-[10px] pt-0.5" style="color:var(--text-faint)">
-                <span x-text="unconfirmedCount()"></span> other host(s) had TCP <span x-text="$store.app.ports.dc"></span> open but didn't answer the aGate login (not FranklinWH). Add one via "manually" below if you're sure.
+                <span x-text="unconfirmedCount()"></span> other host(s) had a searched port open but didn't answer the aGate login (not FranklinWH). Add one via "manually" below if you're sure.
               </div>
             </div>
           </template>
