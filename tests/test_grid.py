@@ -41,8 +41,11 @@ def _client(tmp_path, monkeypatch, ratings=(5000, 5000), profile=PROFILE):
 def test_grid_endpoint_structures_and_converts(tmp_path, monkeypatch):
     out = _client(tmp_path, monkeypatch).get("/api/grid" + G).json()
     gc, gl, inv = out["grid_connection"], out["grid_limits"], out["inverter"]
-    assert gc["three_phase"] is False and gc["service_amps"] == 100
-    assert gc["electric_supply_raw"] == 63                    # kept raw, flagged in the UI
+    assert gc["three_phase"] is False
+    # service_amps is the service/main (electricSupply); the air-switch rating
+    # (airSwitchCur) is air_switch_amps (#425). electric_supply_raw stays for old callers.
+    assert gc["service_amps"] == 63 and gc["air_switch_amps"] == 100
+    assert gc["electric_supply_raw"] == 63
     assert gl["export_enable"] is True and gl["pcs_discharge"] is True
     assert gl["grid_soft_limit"] == -1 and gl["grid_hard_limit"] == -1   # -1 = unlimited (UI renders it)
     assert inv["max_charge_kw"] == 5.0 and inv["max_discharge_kw"] == 5.0
@@ -140,3 +143,12 @@ def test_set_grid_limits_detects_silent_ignore(tmp_path, monkeypatch):
     out = client_mod.set_grid_limits(object(), {"gridExportEnable": 0})
     assert out["ok"] is False and out["confirmed"] is False
     assert out["mismatched"]["gridExportEnable"] == {"requested": 0, "actual": 1}
+
+
+def test_grid_tab_shows_the_air_switch_from_its_own_key():
+    """#425: the Grid tab's "Air switch rating" reads air_switch_amps, not service_amps."""
+    from pathlib import Path
+    html = (Path(app_module.__file__).parent / "templates/tabs/grid.html").read_text()
+    cell = html[html.index("Air switch rating"):]
+    cell = cell[:cell.index("</div>", cell.index("x-text"))]
+    assert "grid_connection.air_switch_amps" in cell and "service_amps" not in cell

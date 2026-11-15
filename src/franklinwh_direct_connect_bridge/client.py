@@ -1058,6 +1058,15 @@ def grid_present(p: dict) -> bool | None:
     return any(float(v) >= GRID_LEG_DEAD_V for v in legs)
 
 
+def _refusal(reply: Any) -> str | None:
+    """"result N, reason M" when the aGate answered with a refusal, else None (#426).
+    The library returns read replies unchecked, so a refusal looks like a reply with
+    every value missing."""
+    if not isinstance(reply, dict) or reply.get("result") in (0, None):
+        return None
+    return f"result {reply.get('result')}, reason {reply.get('reason')}"
+
+
 def summary(s: Settings, host: str | None = None, *, mock: bool = False) -> dict[str, Any]:
     """Everything the dashboard needs in ONE aGate session (one login) — efficient on the
     flaky local link vs. five separate connect/login round-trips. Reads ``host`` when given
@@ -1103,8 +1112,18 @@ def summary(s: Settings, host: str | None = None, *, mock: bool = False) -> dict
             manifest = c.login()
             out["connects"] = 1          # a fresh socket AND a fresh login, every poll
             out["latency_ms"] = round((time.time() - t0) * 1000, 1)
-            out["ok"] = True
+            # A refused login or power-flow read is a failed poll (#426): it used to be
+            # ok with every value blank, so the gateway looked healthy and nothing logged.
+            refused = _refusal(manifest)
+            if refused:
+                out["error"] = f"aGate refused the login (1101): {refused}"
+                return out
             pf = c.power_flow()
+            refused = _refusal(pf)
+            if refused:
+                out["error"] = f"aGate refused the power-flow read (1301): {refused}"
+                return out
+            out["ok"] = True
             out["power"] = {
                 "soc": pf.get("soc"), "grid_w": pf.get("p_uti"), "solar_w": pf.get("p_sun"),
                 "battery_w": pf.get("p_fhp"), "load_w": pf.get("p_load"),
