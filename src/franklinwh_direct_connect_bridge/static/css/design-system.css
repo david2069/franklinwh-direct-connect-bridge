@@ -760,3 +760,12 @@ input[type="date"].date-empty:not(:focus)::-webkit-datetime-edit-month-field,
 input[type="date"].date-empty:not(:focus)::-webkit-datetime-edit-year-field {
   color: transparent; -webkit-text-fill-color: transparent;  /* the fields ignore color alone */
 }
+
+/* iOS gives a date box its own width and, empty, a shorter height: side-by-side boxes
+   overlapped and sat at different heights (owner, 2026-11-15). Fit the column, keep the
+   height of a text box, value on the left. */
+input[type="date"].form-control {
+  -webkit-appearance: none; appearance: none; min-width: 0; max-width: 100%;
+  min-height: calc(1.5em + 12px); display: block; text-align: left;
+}
+input[type="date"].form-control::-webkit-date-and-time-value { text-align: left; }

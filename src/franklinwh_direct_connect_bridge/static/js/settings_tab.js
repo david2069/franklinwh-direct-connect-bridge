@@ -11,6 +11,7 @@ function settingsTab() {
     apowerSpecs: [], apowerModel: '', apowerCount: 1,
     haPriceOpts: [],   // {id:'ha:<inst>:<eid>', label:friendly, group:instance}
     haEventOpts: [],   // on/off HA entities for the price events (#582)
+    haPriceFound: {},  // filter text → matching HA sensors, exposed or not
     priceSrc: 'off',   // the price signal's source: off | nem | ha (#582)
     cfg: { connection: {}, mqtt: {}, control: {}, notifications: {},
            metrics: {}, environment: {} },
@@ -908,16 +909,32 @@ function settingsTab() {
       }
       await this.loadNemSpot();
     },
+    // The filter searches all of Home Assistant, not only the exposed entities
+    // (owner, 2026-11-15: "Amber" found nothing).
+    async haPriceSearch(q) {
+      const t = (q || '').toLowerCase().trim();
+      if (t.length < 2 || this.haPriceFound[t]) return;
+      try {
+        const d = await (await fetch('api/ha/entities?search=' + encodeURIComponent(t) + '&limit=200')).json();
+        this.haPriceFound = { ...this.haPriceFound, [t]: (d.entities || [])
+          .filter(e => ['sensor', 'number', 'input_number'].includes(e.domain))
+          .map(e => ({ id: `ha:${e.instance_id}:${e.entity_id}`, label: e.name || e.entity_id, group: e.instance || 'HA' })) };
+      } catch (e) { /* the exposed list still filters */ }
+    },
     haPriceLabel(id) {
       if (!id) return '';
-      const o = this.haPriceOpts.find(x => x.id === id);
+      const o = this.haPriceOpts.find(x => x.id === id)
+        || Object.values(this.haPriceFound).flat().find(x => x.id === id);
       return o ? o.label : (id.split(':').slice(2).join(':') || id);
     },
     haPriceItems(q) {
       const t = (q || '').toLowerCase().trim();
       const groups = {};
-      for (const o of this.haPriceOpts) {
+      const seen = new Set();
+      for (const o of [...this.haPriceOpts, ...(t ? this.haPriceFound[t] || [] : [])]) {
+        if (seen.has(o.id)) continue;
         if (t && !(o.label.toLowerCase().includes(t) || o.id.toLowerCase().includes(t))) continue;
+        seen.add(o.id);
         (groups[o.group] ||= []).push(o);
       }
       const out = [];
