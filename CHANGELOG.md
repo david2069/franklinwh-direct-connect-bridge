@@ -17,6 +17,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Changed
 - **Sites, meters, retailers and tariffs moved to Billing & Utilities → Plans & meters** (#613), with the same editors. Settings' **Sites & Billing** is now **Location & Prices** (Location & Solar and Prices). Explain, the scheduler's setup messages and the setup list's "Electricity utility, pricing & billing" point to the new place.
+- **Search finds gateways on any port** (owner, #416). Discover in Settings → Gateways and the setup wizard swept TCP 9000 only, and matched "already added" by IP alone, so several gateways on one address were mislabelled. It still searches 9000 by default, where every real aGate listens, and now takes a port, list or range (`9020`, `9000,9020`, `9020-9030`) to find emulators. Results are one per address and port, "already added" is matched on both, and **Add** keeps the port. A result or gateway on a port other than 9000, or with a serial starting `MOCK`, is labelled **Emulator**. Hosts × ports is capped at 1024 probes, and the Modbus TCP Server (aGate :502) is never probed.
 
 ### Fixed
 - **The billing period's progress bar was empty** (Energy Costs, now Billing & Utilities): its colour was lost to a string style binding.

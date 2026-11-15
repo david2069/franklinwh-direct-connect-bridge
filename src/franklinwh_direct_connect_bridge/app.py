@@ -660,6 +660,8 @@ class TariffValidateReq(BaseModel):
 
 class GatewayScanReq(BaseModel):
     subnet: str | None = None
+    #: Ports to search (#416): blank = 9000; a port, a list or a range ("9000,9020-9030").
+    ports: str | None = None
 
 
 class HaTestReq(BaseModel):
@@ -2145,6 +2147,12 @@ def create_app() -> FastAPI:
         except Exception:  # noqa: BLE001
             return None
 
+    def _is_emulator(port, serial) -> bool:
+        """A real aGate always listens on TCP 9000 (owner, 2026-10-31, #416): a gateway on
+        any other port is emulated, as is a serial starting MOCK (the emulator's marker)."""
+        return (int(port or 9000) != 9000
+                or str(serial or "").upper().startswith("MOCK"))
+
     def _gw_merged(row: dict) -> dict:
         """A roster row = DB config + live poller state (when the gateway is registered)."""
         gw = state.get_gateway(row["id"])
@@ -2166,6 +2174,8 @@ def create_app() -> FastAPI:
             "meter_id": row.get("meter_id"),
             "description": row.get("description") or "",
             "model": "aGate (mock)" if row.get("is_mock") else (base.get("model_detail") or "aGate"),
+            "emulator": (not row.get("is_mock")
+                         and _is_emulator(row.get("port"), base.get("serial") or row.get("serial"))),
             "running": supervisor.is_running(row["id"]),
         })
         # One poll status the All gateways view counts by (#383): stopped = disabled, no
@@ -2847,33 +2857,59 @@ def create_app() -> FastAPI:
 
     @app.post("/api/gateways/scan")
     async def api_gateway_scan(req: GatewayScanReq):
-        """Sweep a subnet for aGates on TCP 9000 and confirm each with a real Local-API
-        login (1101/1102). Returns candidates; the UI adds the confirmed ones."""
+        """Sweep a subnet for Direct Connect listeners and confirm each with a real
+        Local-API login (1101/1102). Returns candidates; the UI adds the confirmed ones.
+
+        Ports (#416): blank searches TCP 9000, where every real aGate listens; a port,
+        list or range finds emulators. One result per address and port. The Modbus TCP
+        Server (aGate :502) is never probed."""
         from franklinwh_direct_connect_api import discover as _disc
         subnet = (req.subnet or _default_scan_subnet()).strip()
         try:
             targets = _disc.expand_targets(subnet)
         except Exception as e:  # noqa: BLE001
             raise HTTPException(400, f"bad subnet '{subnet}': {e}")
-        if len(targets) > 1024:
-            raise HTTPException(400, "subnet too large (>1024 hosts) — narrow it")
+        spec = (req.ports or "").strip() or str(_disc.PORT_SENDMQTT)
+        try:
+            ports = _disc.expand_ports(spec)
+        except ValueError as e:
+            raise HTTPException(400, f"bad ports '{spec}': {e}")
+        ports = [p for p in ports if p != _disc.PORT_MODBUS]
+        if not ports:
+            raise HTTPException(400, "port 502 is the Modbus TCP Server (aGate :502), which "
+                                     "search doesn't probe. Give a Direct Connect port.")
+        probes = len(targets) * len(ports)
+        if probes > 1024:
+            raise HTTPException(400, (f"too many probes: {len(targets)} host(s) × {len(ports)} "
+                                      f"port(s) = {probes} (at most 1024) — narrow the subnet "
+                                      "or the ports"))
         results = await asyncio.to_thread(
-            _disc.scan, targets, ports=(_disc.PORT_SENDMQTT,), probe=True, timeout=1.0)
+            _disc.scan_ports, targets, ports, probe=True, timeout=1.0)
         st = _gw_store()
-        existing = {r.get("host") for r in (st.gateways() if st else [])}
+        # Matched on address AND port. A running mock's port is only in its live host
+        # ("127.0.0.1:<port>"), so the registered gateways count as well as the roster.
+        existing = set()
+        addrs = [(r.get("host"), r.get("port")) for r in (st.gateways() if st else [])]
+        addrs += [(g.active_host or g.configured_host, g.port) for g in state.gateways()]
+        for host, port in addrs:
+            host, port = host or "", int(port or _disc.PORT_SENDMQTT)
+            if host.count(":") == 1:          # a host given as "address:port"
+                host, _p = host.split(":")
+                port = int(_p) if _p.isdigit() else port
+            existing.add((host, port))
         cands = []
         for r in results:
-            if not getattr(r, "sendmqtt_open", False):
-                continue
-            serial = (r.manifest or {}).get("IBG_SN") if r.manifest else None
+            serial = r.serial
             cands.append({
                 "host": r.host,
-                "confirmed": bool(getattr(r, "sendmqtt_confirmed", False)),
+                "port": r.port,
+                "confirmed": bool(r.confirmed),
                 "serial": serial,
-                "already_added": r.host in existing,
+                "already_added": (r.host, r.port) in existing,
+                "emulator": _is_emulator(r.port, serial),
             })
-        cands.sort(key=lambda c: (not c["confirmed"], c["host"]))
-        return {"subnet": subnet, "count": len(cands), "candidates": cands}
+        cands.sort(key=lambda c: (not c["confirmed"], c["host"], c["port"]))
+        return {"subnet": subnet, "ports": ports, "count": len(cands), "candidates": cands}
 
     @app.get("/api/gateways/{gw_id}/summary")
     def api_gateway_summary(gw_id: str):

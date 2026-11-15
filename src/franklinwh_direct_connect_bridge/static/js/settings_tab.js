@@ -431,16 +431,18 @@ function settingsTab(opts = {}) {
 
     canWrite() { return !!(this.cfg.control && this.cfg.control.allow_writes); },
 
-    // ── Discover (scan TCP 9000 + Local-API login) ──
+    // ── Discover (scan TCP 9000, or the ports given, + Local-API login) ──
     scanning: false,
     scanCands: null,      // null = not scanned; [] = scanned, none found
     scanSubnet: '',
+    scanPorts: '',        // blank = 9000; a port, list or range finds emulators (#416)
 
     async discoverGateways() {
       if (!this.canWrite()) { this.gwErr = 'Enable writes (ALLOW_WRITES) to scan/add.'; return; }
       this.scanning = true; this.gwErr = ''; this.scanCands = null;
       try {
         const body = this.scanSubnet.trim() ? { subnet: this.scanSubnet.trim() } : {};
+        if (this.scanPorts.trim()) body.ports = this.scanPorts.trim();
         const r = await fetch('api/gateways/scan', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body) });
@@ -457,10 +459,11 @@ function settingsTab(opts = {}) {
 
     async addFromScan(c) {
       try {
-        const label = c.serial ? ('aGate ' + String(c.serial).slice(-4)) : c.host;
+        const kind = c.emulator ? 'Emulator ' : 'aGate ';
+        const label = c.serial ? (kind + String(c.serial).slice(-4)) : c.host;
         const r = await fetch('api/gateways', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ label, host: c.host, port: window.FWH_BOOT.ports.dc, enabled: true }) });
+          body: JSON.stringify({ label, host: c.host, port: c.port, enabled: true }) });
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
         c.already_added = true;
         await this.loadGateways();
