@@ -12,6 +12,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Fixed
+- **System view:** the aGate's alarms are the ones that matter now: conditions still active and events not yet acknowledged, each with its time ("since 15 Nov 14:34"). A condition that had cleared but was never acknowledged (two old "aGate is using 4G" alerts) showed as a current alarm, once per alert and with no time (#661). See [the tour](docs/guide/tour.md).
 - **Changelog:** each release in the index links to its notes on GitHub (`docs/changelog/X.Y.Z.md`), which every release contains; the docs site can lag a release. Links inside a release's notes now work from `docs/changelog/`: 0.5.46's did not, so its docs page was never built. Its link targets are corrected; its words are unchanged.
 
 ## Releases
