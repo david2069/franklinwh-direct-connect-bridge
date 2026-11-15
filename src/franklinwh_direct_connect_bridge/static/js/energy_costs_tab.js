@@ -34,7 +34,7 @@ function energyCostsTab() {
     },
 
     // The chosen meter's gateway: billing is per meter, read through any of its gateways.
-    gwq(sep) {
+    meterGwQuery(sep) {
       const g = this.page.meter && this.page.meter.gateway_ids[0];
       return g ? `${sep}gateway=${encodeURIComponent(g)}` : this.$store.app.gwQuery(sep);
     },
@@ -44,8 +44,8 @@ function energyCostsTab() {
       try {
         const pr = await fetch('api/billing/page' + (this.meterId ? '?meter=' + encodeURIComponent(this.meterId) : ''));
         if (pr.ok) { this.page = await pr.json(); this.meterId = (this.page.meter && this.page.meter.id) || ''; }
-        this.ov = await (await fetch('api/billing/overview' + this.gwq('?'))).json();
-        this.history = (await (await fetch('api/billing/history?limit=60' + this.gwq('&'))).json()).periods || [];
+        this.ov = await (await fetch('api/billing/overview' + this.meterGwQuery('?'))).json();
+        this.history = (await (await fetch('api/billing/history?limit=60' + this.meterGwQuery('&'))).json()).periods || [];
       } catch (e) {
         this.$store.app.toast('Billing load failed: ' + e.message, 'error');
       } finally { this.loading = false; }
@@ -104,7 +104,7 @@ function energyCostsTab() {
       const f = (ts) => { try { return new Date(ts * 1000).toLocaleDateString([], { day: 'numeric', month: 'short' }); } catch (e) { return '?'; } };
       return f(p.period_start) + ' – ' + f(p.period_end);
     },
-    exportCsv() { window.location = 'api/billing/history?fmt=csv' + this.gwq('&'); },
+    exportCsv() { window.location = 'api/billing/history?fmt=csv' + this.meterGwQuery('&'); },
 
     // One-click import of closed periods from a Modbus bridge (login → fetch → map → store).
     openModbusImport() { this.modbusImport.open = true; this.modbusImport.preview = null; this.modbusImport.msg = null; },
@@ -112,7 +112,7 @@ function energyCostsTab() {
       const m = this.modbusImport;
       m.busy = true; m.msg = null;      // results show inside the dialog (#293)
       try {
-        const r = await (await fetch('api/billing/import-modbus' + this.gwq('?'), {
+        const r = await (await fetch('api/billing/import-modbus' + this.meterGwQuery('?'), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ source_url: m.url, username: m.user, password: m.pass, dry_run: dry }),
         })).json();
@@ -140,7 +140,7 @@ function energyCostsTab() {
         return;
       this.closing = true;
       try {
-        const r = await (await fetch('api/billing/close' + this.gwq('?'), { method: 'POST' })).json();
+        const r = await (await fetch('api/billing/close' + this.meterGwQuery('?'), { method: 'POST' })).json();
         if (r.ok && r.closed) { this.$store.app.toast('Current period snapshotted to history', 'success'); await this.load(); }
         else { this.$store.app.toast(r.reason || 'Nothing to close yet', 'info'); }
       } catch (e) { this.$store.app.toast('Close failed: ' + e.message, 'error'); }

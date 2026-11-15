@@ -30,6 +30,7 @@ NOT_DEVICE_BOUND = {
     "api/meters",                  # meter roster — global config, not per-gateway
     "api/utilities",               # utility roster — global config, not per-gateway
     "api/tariffs",                 # tariff roster — global config, not per-gateway
+    "api/billing/page",            # meters + setup steps (#613) — global config, not per-gateway
     "api/constants",               # automation constants — global config, not per-gateway
     "api/mqtt/groups",             # MQTT publish-group preference — global, not per-gateway
     "api/admin",                   # DB storage/backup/restore/vacuum/export — bridge-wide DB (rows gateway-tagged inside), not a device read
@@ -69,7 +70,9 @@ NOT_DEVICE_BOUND = {
 #: mqtt_tab.js does ``const gwq = ...gwQuery('?')`` then appends ``gwq``. Both are
 #: correct; only an UNSCOPED call is a bug. Any name here must be proven to come
 #: from gwQuery() by :func:`test_scoping_locals_really_derive_from_gwquery`.
-SCOPE_TOKENS = ("gwQuery(", "gwq")
+# meterGwQuery(): Billing & Utilities reads through the chosen meter's gateway, falling back
+# to gwQuery() (#613).
+SCOPE_TOKENS = ("gwQuery(", "gwq", "meterGwQuery(")
 
 _FETCH = re.compile(r"fetch\(\s*([`'\"])(api/[^`'\"$]*)")
 
