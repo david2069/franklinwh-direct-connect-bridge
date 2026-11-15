@@ -11,6 +11,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+- **Daily health report** (phase 1 of the scheduled health check, as in the Modbus Bridge). At 07:00 site time the bridge checks its workers, polls, alerts, log and housekeeping over the last 24 hours against the 7 days before, and reports green, amber or red with the reason first. It is on **Health → Daily report** (with Run now and earlier reports), in one Home Assistant notification that the next replaces, and on the phones only when amber or red (new trigger: **Daily health report amber or red**). A daily snapshot of each gateway's totals is kept for good for the trends to come. Switch: **07:00 each day**. See [Daily health report](docs/guide/health-report.md).
+
 ### Fixed
 - **Changelog:** the release index has its own **Releases** heading, so Home Assistant's update dialog no longer shows it under [Unreleased], and its link to the full notes is a full web address, which works from that dialog.
 
