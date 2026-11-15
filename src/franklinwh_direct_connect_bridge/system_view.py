@@ -248,20 +248,53 @@ def save(values: dict) -> None:
     tmp.replace(p)
 
 
-def raw_payload(cfg=None) -> dict:
+AC_TYPES = ("single", "split", "three")
+
+
+def _members(store) -> dict[str, dict]:
+    """Each gateway's site, from its meter's site (gateways.meter_id → meters.site_id), with
+    that meter, so the overlay draws the gateways of one site together (#662). A gateway
+    with no meter, or a meter with no site, is left out and drawn on its own."""
+    sites = {s["id"]: s for s in store.sites()}
+    meters = {m["id"]: m for m in store.meters()}
+    out: dict[str, dict] = {}
+    for g in store.gateways():
+        m = meters.get(g.get("meter_id") or "")
+        s = sites.get((m or {}).get("site_id") or "")
+        if not s:
+            continue
+        amps = _n(m.get("rated_amps"))
+        out[g["id"]] = {"id": s["id"], "name": s.get("name") or "",
+                        "meter": {"id": m["id"], "name": m.get("name") or "",
+                                  "ac": m.get("ac_type") if m.get("ac_type") in AC_TYPES else None,
+                                  "rated_amps": amps if amps and amps > 0 else None}}
+    return out
+
+
+def raw_payload(cfg=None, *, store=None) -> dict:
     """The site from readings alone, before the user's answers."""
     gws = state.gateways()
     active = state.default_gateway()
     gws = sorted(gws, key=lambda g: active is None or g.id != active.id)
-    store = None
-    if cfg is not None:
+    if store is None and cfg is not None:
         try:
             from . import db
             store = db.get_store(cfg)
         except Exception:  # noqa: BLE001 - metrics off or unreadable: no alarms
             store = None
-    return {"version": 1, "site": site(cfg),
-            "gateways": [gateway_payload(g, store=store) for g in gws]}
+    members: dict[str, dict] = {}
+    if store is not None:
+        try:
+            members = _members(store)
+        except Exception as e:  # noqa: BLE001 - the view is still worth drawing gateway by gateway
+            log.debug("system view: sites unread: %s", e)
+    out = []
+    for g in gws:
+        p = gateway_payload(g, store=store)
+        if g.id in members:
+            p["site"] = members[g.id]
+        out.append(p)
+    return {"version": 1, "site": site(cfg), "gateways": out}
 
 
 INTRO = ("Where no reading tells the bridge how your site is built, tell it here. Empty or "

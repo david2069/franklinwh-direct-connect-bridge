@@ -137,17 +137,19 @@ class Recorder:
                 store.end_bms_session(sid, reason=reason)
             except Exception as e:  # noqa: BLE001
                 log.warning("bms record: could not close session %s: %s", sid, e)
+            # The purge first: until it has run the recorder is still busy (#648), so
+            # nothing sees the session as done, or starts another, while it prunes.
+            if purge:
+                try:
+                    store.prune_bms(*purge)
+                except Exception as e:  # noqa: BLE001 — the recording itself is saved
+                    log.warning("bms record: purge after session %s failed: %s", sid, e)
             with self._lock:
                 self._state["active"] = False
                 self._state["end_reason"] = reason
                 errors = self._state["errors"]
             log.info("bms record: session %s ended: %s (%d of %d sample(s), %d failed read(s))",
                      sid, reason, captured, samples, errors)
-            if purge:
-                try:
-                    store.prune_bms(*purge)
-                except Exception as e:  # noqa: BLE001 — the recording itself is saved
-                    log.warning("bms record: purge after session %s failed: %s", sid, e)
 
 
 def due(schedules: list[dict], now) -> list[dict]:

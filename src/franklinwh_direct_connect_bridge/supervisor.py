@@ -27,6 +27,8 @@ _deferred: dict[str, asyncio.Task] = {}
 #: How long a deferred start waits for the old poller before aborting it. A poll cycle
 #: can sit in a device read for ~30 s; stop_all allows 35 s for the same reason.
 DEFER_WAIT_S = 40.0
+#: How long shutdown waits for each poller before aborting it.
+STOP_GRACE_S = 35.0
 
 
 def is_running(gw_id: str) -> bool:
@@ -159,9 +161,17 @@ async def stop_all() -> None:
         w = registry.get(worker_name(gw_id))
         if w is not None:
             w.mark_stopping()
-    for _gw_id, (task, _stop) in ents:
+    for gw_id, (task, _stop) in ents:
         try:
-            await asyncio.wait_for(task, timeout=35)
+            await asyncio.wait_for(task, timeout=STOP_GRACE_S)
+        except asyncio.CancelledError:
+            # A poller already cancelled (an abort, an earlier loop's shutdown) raises
+            # CancelledError when awaited; that is its end, not ours (#648). Only a cancel
+            # of this shutdown itself goes on up.
+            cur = asyncio.current_task()
+            if not task.cancelled() or (cur is not None and cur.cancelling()):
+                raise
+            continue
         except asyncio.TimeoutError:
             # Graceful stop overran, so escalate to abort — and CONFIRM it, because a
             # cancel is a request, not an outcome. If it survives, it is a zombie and
@@ -171,8 +181,8 @@ async def stop_all() -> None:
                 task.cancel()
             else:
                 state = await workers_abort(w)
-                log.warning("poller for %s did not stop in 35s — abort -> %s",
-                            gw_id, state.value)
+                log.warning("poller for %s did not stop in %gs — abort -> %s",
+                            gw_id, STOP_GRACE_S, state.value)
             continue
         except Exception:  # noqa: BLE001
             pass
