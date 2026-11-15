@@ -11,13 +11,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+- **Changelog:** each release in the index links to its notes on GitHub (`docs/changelog/X.Y.Z.md`), which every release contains; the docs site can lag a release. Links inside a release's notes now work from `docs/changelog/`: 0.5.46's did not, so its docs page was never built. Its link targets are corrected; its words are unchanged.
+
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
 
 ## 2026-11-16
 
-### [0.5.46](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.46/)
+### [0.5.46](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.46.md)
 
 Added 1 · Changed 5 · Fixed 4
 
@@ -28,7 +31,7 @@ Added 1 · Changed 5 · Fixed 4
 
 ## 2026-11-15
 
-### [0.5.45](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.45/)
+### [0.5.45](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.45.md)
 
 Added 4 · Changed 4 · Fixed 10
 
@@ -39,7 +42,7 @@ Added 4 · Changed 4 · Fixed 10
 - Gateways: search takes a port, list or range (Emulator labelled)
 - Prices and dates: the price Filter searches all of Home Assistant
 
-### [0.5.44](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.44/)
+### [0.5.44](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.44.md)
 
 Added 1 · Fixed 5
 
@@ -51,7 +54,7 @@ Added 1 · Fixed 5
 
 ## 2026-11-14
 
-### [0.5.43](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.43/)
+### [0.5.43](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.43.md)
 
 Added 3 · Changed 3 · Fixed 5
 
@@ -64,7 +67,7 @@ Added 3 · Changed 3 · Fixed 5
 
 ## 2026-11-13
 
-### [0.5.42](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.42/)
+### [0.5.42](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.42.md)
 
 Added 18 · Changed 13 · Fixed 6
 
@@ -75,7 +78,7 @@ Added 18 · Changed 13 · Fixed 6
 - Setup and support: the setup list (FranklinWH Gateway Emulator, Modbus TCP), confirm
 - Battery: Record on the live trend, scheduled recordings, recordings purged after 90
 
-### [0.5.41](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.41/)
+### [0.5.41](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.41.md)
 
 Changed 1 · Fixed 3
 
@@ -86,7 +89,7 @@ Changed 1 · Fixed 3
 
 ## 2026-11-12
 
-### [0.5.40](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.40/)
+### [0.5.40](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.40.md)
 
 Added 2
 
@@ -95,7 +98,7 @@ Added 2
 
 ## 2026-11-11
 
-### [0.5.39](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.39/)
+### [0.5.39](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.39.md)
 
 Added 10 · Changed 10 · Fixed 3
 
@@ -108,7 +111,7 @@ Added 10 · Changed 10 · Fixed 3
 
 ## 2026-11-10
 
-### [0.5.38](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.38/)
+### [0.5.38](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.38.md)
 
 Added 1 · Changed 1
 
@@ -117,7 +120,7 @@ Added 1 · Changed 1
 
 ## 2026-11-09
 
-### [0.5.36](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.36/)
+### [0.5.36](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.36.md)
 
 Changed 1 · Fixed 2
 
@@ -127,7 +130,7 @@ Changed 1 · Fixed 2
 
 ## 2026-11-08
 
-### [0.5.35](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.35/)
+### [0.5.35](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.35.md)
 
 Changed 4 · Fixed 11
 
@@ -138,7 +141,7 @@ Changed 4 · Fixed 11
 - Health → Rediscovered is per gateway
 - Generator → Operating windows looks unavailable while the generator feature is off
 
-### [0.5.34](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.34/)
+### [0.5.34](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.34.md)
 
 Changed 1 · Fixed 8
 
@@ -151,7 +154,7 @@ Changed 1 · Fixed 8
 
 ## 2026-11-07
 
-### [0.5.33](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.33/)
+### [0.5.33](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.33.md)
 
 Changed 2 · Fixed 6 · Docs 3
 
@@ -164,7 +167,7 @@ Changed 2 · Fixed 6 · Docs 3
 
 ## 2026-11-05
 
-### [0.5.32](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.32/)
+### [0.5.32](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.32.md)
 
 Added 6 · Fixed 2
 
@@ -177,14 +180,14 @@ Added 6 · Fixed 2
 
 ## 2026-11-04
 
-### [0.5.30](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.30/)
+### [0.5.30](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.30.md)
 
 Changed 2
 
 - Send to → Chosen devices is a drop-down
 - Guide: Home Assistant setup and notifications brought up to date
 
-### [0.5.29](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.29/)
+### [0.5.29](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.29.md)
 
 Added 5 · Changed 1 · Fixed 6
 
@@ -195,7 +198,7 @@ Added 5 · Changed 1 · Fixed 6
 - Schedule editor: a {x} button to insert values
 - Critical alerts reach Home Assistant and phones on Docker and pip
 
-### [0.5.28](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.28/)
+### [0.5.28](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.28.md)
 
 Added 2 · Fixed 3
 
@@ -207,7 +210,7 @@ Added 2 · Fixed 3
 
 ## 2026-11-03
 
-### [0.5.27](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.27/)
+### [0.5.27](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.27.md)
 
 Added 7 · Changed 5 · Fixed 3
 
@@ -218,14 +221,14 @@ Added 7 · Changed 5 · Fixed 3
 - Home Assistant: Run Status Description
 - Home Assistant: Cloud Connection Via
 
-### [0.5.26](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.26/)
+### [0.5.26](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.26.md)
 
 Changed 1 · Fixed 1
 
 - Demo mode's mock aGates start again
 - franklinwh-modbus 0.10.1 → 0.13.0
 
-### [0.5.25](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.25/)
+### [0.5.25](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.25.md)
 
 Fixed 1
 
@@ -233,7 +236,7 @@ Fixed 1
 
 ## 2026-11-02
 
-### [0.5.24](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.24/)
+### [0.5.24](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.24.md)
 
 Fixed 5
 
@@ -245,14 +248,14 @@ Fixed 5
 
 ## 2026-11-01
 
-### [0.5.23](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.23/)
+### [0.5.23](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.23.md)
 
 Added 1 · Fixed 1
 
 - System view: Customise diagram, place name and weather
 - System view
 
-### [0.5.22](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.22/)
+### [0.5.22](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.22.md)
 
 Added 1 · Fixed 1 · Testing 1
 
@@ -262,14 +265,14 @@ Added 1 · Fixed 1 · Testing 1
 
 ## 2026-10-31
 
-### [0.5.21](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.21/)
+### [0.5.21](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.21.md)
 
 Added 2
 
 - Home Assistant gets Grid Voltage and Grid Frequency
 - Reserve SoC in Home Assistant
 
-### [0.5.20](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.20/)
+### [0.5.20](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.20.md)
 
 Added 1 · Security 1 · Docs 1
 
@@ -277,7 +280,7 @@ Added 1 · Security 1 · Docs 1
 - Home Assistant controls stop working when the Controls group is off
 - Up to two releases a day
 
-### [0.5.19](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.19/)
+### [0.5.19](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.19.md)
 
 Breaking 2 · Docs 1
 
@@ -287,7 +290,7 @@ Breaking 2 · Docs 1
 
 ## 2026-10-30
 
-### [0.5.18](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.18/)
+### [0.5.18](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.18.md)
 
 Added 1 · Changed 5 · Fixed 27 · Breaking 2
 
@@ -300,7 +303,7 @@ Added 1 · Changed 5 · Fixed 27 · Breaking 2
 
 ## 2026-10-27
 
-### [0.5.17](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.17/)
+### [0.5.17](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.17.md)
 
 Fixed 2
 
@@ -309,7 +312,7 @@ Fixed 2
 
 ## 2026-10-26
 
-### [0.5.16](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.16/)
+### [0.5.16](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.16.md)
 
 Added 1 · Fixed 6
 
@@ -322,7 +325,7 @@ Added 1 · Fixed 6
 
 ## 2026-10-24
 
-### [0.5.15](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.15/)
+### [0.5.15](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.15.md)
 
 Added 1 · Changed 1 · Fixed 1 · Security 1
 
@@ -333,7 +336,7 @@ Added 1 · Changed 1 · Fixed 1 · Security 1
 
 ## 2026-10-23
 
-### [0.5.14](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.14/)
+### [0.5.14](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.14.md)
 
 Added 9 · Changed 3 · Fixed 19 · Security 1
 
@@ -346,7 +349,7 @@ Added 9 · Changed 3 · Fixed 19 · Security 1
 
 ## 2026-10-21
 
-### [0.5.13](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.13/)
+### [0.5.13](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.13.md)
 
 Changed 1 · Fixed 6
 
@@ -357,7 +360,7 @@ Changed 1 · Fixed 6
 - The cloud card's fields are left-aligned
 - The cloud status check no longer signs in every 5 minutes
 
-### [0.5.12](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.12/)
+### [0.5.12](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.12.md)
 
 Changed 2
 
@@ -366,7 +369,7 @@ Changed 2
 
 ## 2026-10-20
 
-### [0.5.11](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.11/)
+### [0.5.11](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.11.md)
 
 Added 1 · Fixed 3
 
@@ -377,7 +380,7 @@ Added 1 · Fixed 3
 
 ## 2026-10-19
 
-### [0.5.10](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.10/)
+### [0.5.10](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.10.md)
 
 Changed 1
 
@@ -385,7 +388,7 @@ Changed 1
 
 ## 2026-10-18
 
-### [0.5.9](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.9/)
+### [0.5.9](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.9.md)
 
 Changed 1 · Fixed 3
 
@@ -396,13 +399,13 @@ Changed 1 · Fixed 3
 
 ## 2026-10-17
 
-### [0.5.8](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.8/)
+### [0.5.8](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.8.md)
 
 Fixed 1
 
 - Connecting to the aGate over Modbus no longer writes its operating mode and reserves
 
-### [0.5.7](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.7/)
+### [0.5.7](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.7.md)
 
 Fixed 5
 
@@ -412,25 +415,25 @@ Fixed 5
 - The caption says what the chart shows
 - Export CSV/JSON exports the range on screen,
 
-### [0.5.6](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.6/)
+### [0.5.6](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.6.md)
 
 Fixed 1
 
 - **A Force Charge above the battery's rated power no longer discharges it (and a…
 
-### [0.5.5](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.5/)
+### [0.5.5](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.5.md)
 
 Fixed 1
 
 - **A schedule set to turn a smart circuit Off no longer turns it On, and…
 
-### [0.5.4](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.4/)
+### [0.5.4](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.4.md)
 
 Fixed 1
 
 - **A Home Assistant sensor that is unavailable or unknown no longer counts as 0…
 
-### [0.5.3](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.3/)
+### [0.5.3](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.3.md)
 
 Added 1 · Fixed 3
 
@@ -441,13 +444,13 @@ Added 1 · Fixed 3
 
 ## 2026-10-16
 
-### [0.5.2](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.2/)
+### [0.5.2](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.2.md)
 
 Fixed 1
 
 - Turning a schedule on or off no longer wipes its settings
 
-### [0.5.1](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.1/)
+### [0.5.1](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.1.md)
 
 Added 2 · Changed 2 · Fixed 1
 
@@ -457,69 +460,69 @@ Added 2 · Changed 2 · Fixed 1
 - The HA Device info reads like the Modbus Bridge's
 - Diagnostic sensors are on the Diagnostic card
 
-### [0.5.0](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.0/)
+### [0.5.0](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.0.md)
 
 Fixed 1
 
 - Editing a gateway no longer stops it for good
 
-### [0.4.10](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.10/)
+### [0.4.10](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.4.10.md)
 
 Fixed 1
 
 - Power History and the other charts fill again on add-on installs
 
-### [0.4.9](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.9/)
+### [0.4.9](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.4.9.md)
 
 Fixed 1
 
 - No more false "worker_failed" entries
 
-### [0.4.8](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.8/)
+### [0.4.8](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.4.8.md)
 
 Changed 1
 
 - "Modbus" is always qualified in the UI
 
-### [0.4.7](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.7/)
+### [0.4.7](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.4.7.md)
 
 Fixed 2
 
 - State of Charge shows one decimal in Home Assistant
 - "Connection Lost" no longer flashes after one slow answer
 
-### [0.4.6](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.6/)
+### [0.4.6](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.4.6.md)
 
 Security 1
 
 - Taking the site off-grid always needs a confirmation
 
-### [0.4.5](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.5/)
+### [0.4.5](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.4.5.md)
 
 Fixed 1
 
 - Smart Circuit switches in Home Assistant show on or off
 
-### [0.4.4](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.4/)
+### [0.4.4](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.4.4.md)
 
 Fixed 1
 
 - The add-on keeps its link to Home Assistant after an update
 
-### [0.4.3](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.3/)
+### [0.4.3](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.4.3.md)
 
 Fixed 1
 
 - Eight Home Assistant sensors show values instead of "Unknown"
 
-### [0.4.2](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.2/)
+### [0.4.2](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.4.2.md)
 
 Fixed 2
 
 - "Bridge entities in Home Assistant" counts the right entities
 - "MQTT broker connected" no longer fails when nothing is publishing yet
 
-### [0.4.1](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.1/)
+### [0.4.1](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.4.1.md)
 
 Fixed 1
 
@@ -527,14 +530,14 @@ Fixed 1
 
 ## 2026-10-15
 
-### [0.4.0](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.0/)
+### [0.4.0](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.4.0.md)
 
 Changed 1 · Fixed 1
 
 - "Set up" opens the wizard
 - Each gateway is its own Home Assistant device, named after its serial
 
-### [0.3.3](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.3.3/)
+### [0.3.3](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.3.3.md)
 
 Added 3 · Changed 1 · Fixed 4
 
@@ -545,7 +548,7 @@ Added 3 · Changed 1 · Fixed 4
 - The broker is configured even while publishing is off
 - The Guide no longer shows `{"detail":"Not Found"}`
 
-### [0.3.2](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.3.2/)
+### [0.3.2](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.3.2.md)
 
 Added 2 · Fixed 1
 
@@ -553,7 +556,7 @@ Added 2 · Fixed 1
 - Discover says where its subnet came from
 - Adding a mock gateway no longer fails with "Internal Server Error"
 
-### [0.3.1](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.3.1/)
+### [0.3.1](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.3.1.md)
 
 Added 2 · Fixed 5
 
@@ -564,7 +567,7 @@ Added 2 · Fixed 5
 - The dashboard comes to life when a gateway appears
 - No more blank gateway row
 
-### [0.3.0](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.3.0/)
+### [0.3.0](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.3.0.md)
 
 Added 12 · Changed 5 · Fixed 13 · Documentation 2
 
