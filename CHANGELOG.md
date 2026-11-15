@@ -17,6 +17,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - **A tariff exports as an OUTUS plan**: `/api/tariffs/<id>/export?format=outus`.
 
 ### Changed
+- **The changelog is a short index, with full notes per version** (owner). `CHANGELOG.md` keeps `[Unreleased]` and one entry per release (counts and highlights); each version's full notes, word for word, are `docs/changelog/<version>.md` and a Changelog section on the docs site. A release writes both with `tools/changelog_index.py release`; the layout is in `docs/TEST_POLICY.md`.
 - **Sites, meters, retailers and tariffs moved to Billing & Utilities → Plans & meters** (#613), with the same editors. Settings' **Sites & Billing** is now **Location & Prices** (Location & Solar and Prices). Explain, the scheduler's setup messages and the setup list's "Electricity utility, pricing & billing" point to the new place.
 
 ### Fixed
@@ -26,2323 +27,542 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - **Provider from / until overlapped on a phone** (owner). The two date boxes sat at different heights and ran into each other in Safari and the Home Assistant app. They are now the same size, side by side, with "blank = current" under the box. The same applies to a tariff's Effective from / to.
 - **Tariffs & costs in Settings → Setup did nothing when tapped** (owner), and neither did Home Assistant or Notifications. Settings → Setup is now the one setup list. It shows the install steps, then the wizard's **Essentials** and **Advanced** tasks (Cloud, MQTT, Home Assistant, utility and billing, default mode, scheduling, notifications, security, accounts and more). Each task shows Done and has **Set up** or **Open**, which goes straight to where it is set up or opens that step of the wizard.
 
-## [0.5.44] — 2026-11-15
-
-Everything merged since 0.5.43, by area:
-
-- **Billing:** two gateways on one meter share one bill (one set of fixed charges, demand from the combined peak, one history); each aGate's built-in grid CT counts as its own part, with nothing to set.
-- **Retailers:** Provider from / until dates and the export note save; a retailer saves with no start date.
-- **Date boxes:** an empty date box stays blank in Safari and the HA app.
-- **Explain:** points to Settings → Sites & Billing → your meter → + Add tariff.
-- **Battery recordings:** survive the aGate dropping off, and show why they ended and who started and stopped them.
-
-### Fixed
-
-- **Two gateways on one meter were each billed the meter's fixed charges and demand charge** (#611). Billing is now per meter: one set of fixed charges, demand from the meter's combined peak, energy from the gateways' readings added up (each aGate's built-in grid CT measures its own part), and one history, shown on each gateway's Energy Costs. A period running at upgrade carries on, with the gateways' totals added up.
-- **A retailer's Provider from / until dates and export restriction note did not save** (owner). Save sent neither; it now sends both, and a blank date saves as no date (until blank = current), with or without a start date.
-- **Empty date boxes showed today's date in grey** (owner) in Safari and the Home Assistant app, a date nobody set: retailer and tariff dates, the Scheduler's dates and an account's expiry. An empty box is now blank until you pick a date.
-- **Explain sent you to "Settings → Billing" for a tariff**, which doesn't exist. It now says Settings → Sites & Billing → your meter → + Add tariff.
-- **A battery recording lost its planned samples while the aGate was unreachable** (owner). Each failed read used one up, so an outage shortened the recording. Failed reads no longer count: the recording carries on once the aGate answers again, and gives up after an hour with no good read.
-
-### Added
-
-- **Why a battery recording ended, and who started and stopped it** (owner). The Battery tab shows each recording's end (completed, stopped by an account or address, or the aGate unreachable), kept as `end_reason` on the session. The Logs show who started it, who pressed Stop, failed reads, and the end, with the samples captured.
-
-## [0.5.43] — 2026-11-14
-
-A grouped release (owner override of one-release-a-day). Everything merged since 0.5.42, by area:
-
-- **Connectivity:** Troubleshoot for an unreachable aGate or one on 4G, with Health check and Reconnect to Wi-Fi via the FranklinWH cloud; new `AGATE_ON_4G` warning; the red bar turns amber while a recovered link is confirmed.
-- **Offline values:** Dashboard and top bar grey out last-good values while the aGate is offline.
-- **Network tab:** the :502 line is no longer green on a result older than the link.
-- **Watchdog:** cloud-status back-off no longer raises `WORKER_STALLED`.
-- **Tariffs and billing:** tariffs live on the meter, billing by date, retired tariffs locked, and a period closed by a tariff switch carries the right tariff.
-- **Logs:** the time range shows the range in use.
-
-### Changed
-
-- **The red bar follows the link** (#614). Once an unreachable aGate answers again, the bar turns amber and says "Reconnecting — confirming (resolves in N s)" until the alert clears, instead of "aGate unreachable" beside the Online pill. When the link dropped more than once during the alert it adds the count ("dropped 2× in 25 min"). Tapping it opens Troubleshoot.
-
-- **Tariffs live on the meter** (owner; phase 3, the Modbus Bridge's service layout). Each meter's card under Sites & Meters shows its tariff in force (retailer, name, dates) with New plan, Import, Edit and Export, and its other plans collapsed. The separate Utilities & Tariffs list is gone: the retailer is chosen in the tariff editor (+ New retailer), Import asks which meter, and tariffs on no meter stay listed with Use on meter. The meter editor no longer picks a tariff.
-- **Billing by date** (owner; phase 2, as the Modbus Bridge). Each day is priced with the tariff in force that day: energy, fixed charges and the `tariff.*` / `service.*` sensors. A tariff dated to start tomorrow takes over at midnight by itself, and the meter follows.
-
-### Fixed
-
-- **Logs → time range showed "Last 1h" while it loaded 24 hours** (#614), so lines from hours earlier appeared under "Last 1h". The box now shows the range in use. The times are in bridge-host time, as the page says.
-- **A failing FranklinWH cloud link raised `WORKER_STALLED` (critical) every 30 min** (#616). The cloud status check backs off up to 30 min while the link fails, longer than the watchdog waits, so each back-off read as a stalled worker. The worker now tells the watchdog when its next beat is due; a worker that really hangs still raises `WORKER_STALLED`.
-- **Offline aGate values no longer look live** (#615). While the aGate is offline, the Dashboard's State of Charge, Power Flow and Battery cards and the top bar's run status and SoC grey out the last-good values and say **Last reading HH:MM (N min ago)**; the battery state reads **Unknown (offline)**, not Charging or Discharging. The summary marks them with `last_good` and `last_good_ts`.
-- **Network tab: the :502 line stayed green while the aGate was unreachable** (#617). The bridge never probes the Modbus TCP Server (aGate :502), so the line showed the Modbus client's (this bridge) last real result, however old. It is now green only for a success since the aGate's link last came up, red when the last attempt failed, and otherwise grey and dashed as "unknown · last OK HH:MM", in the diagram and the Reachability card.
-- **A billing period closed by a tariff switch** was stamped with the new tariff's name, ended at the cycle's end, and carried the new tariff's fixed charges for the whole period. It now carries the tariff that priced it, ends at the switch, and has that tariff's fixed charges for its own days.
-
-### Added
-
-- **Troubleshoot an unreachable aGate, or one on 4G** (#614). From the bar or the alert: what the FranklinWH cloud says the aGate is connected through (Wi-Fi, Ethernet or 4G, or offline) beside the bridge's own LAN link, a Health check (LAN, :9000, the aGate's cloud link, the last good poll; never the Modbus TCP Server (aGate :502)), Open Network, and the steps. When the cloud says 4G, **Reconnect to Wi-Fi** (admin, typed confirmation) asks the cloud to put the aGate back on the network it stores, with its stored password, through franklinwh-cloud `switch_to_wifi(ssid, password=None)`; the result stays in the panel. Without a cloud account, or when that fails, the FranklinWH app steps, for iOS or Android. The bridge never holds, logs or shows a Wi-Fi password.
-- **`AGATE_ON_4G` warning** (#614): the aGate answers on the LAN but its internet goes over 4G, from its own network report (every 10 minutes) or the cloud's. Raised after 5 minutes, cleared after 2 minutes back on Wi-Fi or Ethernet.
-- **Retired tariffs are locked** (owner). A plan whose end date has passed opens as View, so its rates and charges stay as they were for reconciling past bills. Unlock to edit, or delete: ended under 13 months ago takes two warnings and the plan's name typed; older takes one confirm. The server refuses a change without `unlock` (409) and such a delete without `?confirm_name=` (409).
-
-## [0.5.42] — 2026-11-13
-
-A grouped release: the owner overrode one-release-a-day because the backlog was large.
-Everything merged since 0.5.41, by area:
-
-- **Off-grid:** the notification gives stored kWh and time left at the current usage; the
-  OFF-GRID pill opens an Off-grid dialog (why, how long, Details, Reconnect); the Reconnect
-  SoC wording; the dialogs name the aGate and show the aGate going offline and back; each
-  switch is saved in the Audit Trail with a snapshot.
-- **Scheduler:** All gateways for rules that move no battery; failed / missed / aborted /
-  no-reply notifications; a timeline lane per gateway; the editor tidied.
-- **Prices, tariffs and solar:** prices in one place under Sites & Billing (price spike, HA
-  demand window); Location & Solar moves to Sites & Billing; solar size from your gateways;
-  no solar, no Solar tab; Import tariff takes pasted JSON.
-- **Analytics:** more cards on Local and Cloud, and Explain (trends and what to change).
-- **Setup and support:** the setup list (FranklinWH Gateway Emulator, Modbus TCP), confirm
-  what's installed, the `modbus_port` setting and ports never typed into the UI, support
-  info says which installation it is.
-- **Battery:** Record on the live trend, scheduled recordings, recordings purged after 90
-  days.
-- **UI:** Customise (drag the top bar, navbar and dashboard cards), one notify path for
-  Actionable Notifications, and the Home Assistant panel no longer shows "404: Not Found"
-  after the app was in the background.
-
-### Added
-- **Import tariff takes pasted JSON** (owner). Import tariff opens a dialog: paste the tariff or choose a file, Check previews it, Import creates it; results stay in the dialog. On a phone a tariff no longer needs a file.
-- **Off-grid Details** (owner). The OFF-GRID dialog has an expandable Details section per gateway: mode, SoC, battery, grid, solar, home, smart circuits (on/off, watts), and the generator and V2L when installed. `GET /api/offgrid/details`. The go-off-grid and reconnect dialogs name the aGate, and each switch is saved in the Audit Trail with that snapshot.
-- **OFF-GRID pill opens an Off-grid dialog** (owner). It lists each off-grid gateway with why, how long it has been off-grid, SoC, stored kWh and time left, and Go on-grid (reconnect) for an off-grid you requested. `GET /api/offgrid/status`.
-- **Off-grid notification says how long the battery will last.** It now gives the SoC, home load and solar, and an estimate at the current usage (SoC × Battery capacity ÷ net load), or says solar is covering the home. The FranklinWH app estimates from historical usage.
-- **Price events: price spike and an HA demand window** (#582, owner). Under Sites &
-  Billing → Prices: a spike at or above a number of c/kWh, or from a Home Assistant spike
-  sensor, gives `tariff.price_spike` and `tariff.spike_threshold`; a Home Assistant binary
-  sensor, calendar or switch can supply the demand / peak window
-  (`tariff.demand_window_active`), winning over the tariff's.
-- **Scheduler timeline: a lane per gateway** (#579, owner), as the Modbus Bridge. Pick a
-  gateway or **All gateways**; each lane has its own planned windows, mode band, SoC line
-  and fire markers (before, every gateway's markers and schedules showed on one chart).
-  All gateways rules are drawn once on a **Site** row, and Every N minutes, cron and
-  Always schedules are drawn too. `GET /api/schedules/timeline` returns `lanes` and
-  `site`; `?all=true` gives every gateway.
-- **Scheduler notifications: failed, missed, aborted and no reply** (#581, owner). A
-  **Scheduler** group under Notifications → Auto-notify triggers: **Run failed** (on),
-  **Run missed** (on), **Run aborted** (off: stopped, deferred or ended early) and **No
-  reply to an actionable notification** (on), each with its own switch and Send to. Every
-  message names the gateway, and each also writes a warning to the bridge log in the same
-  words. No reply goes to the devices that were asked.
-- **Scheduler: All gateways for rules that move no battery** (#578, owner). The gateway
-  picker offers **All gateways** when a rule has no battery action, such as a low-SoC
-  notification: each gateway runs it with its own values, and each message names the
-  gateway that fired. A battery action stays on one gateway. The list and Explain say
-  "All gateways" (scheduler guide, Targets).
-- **Analytics → Explain: trends and what to change for your objectives** (#588, owner).
-  For the period shown, on Local or Cloud: each total against the previous period and last
-  year (with runs of rises or falls), what the period shows, and suggestions for the
-  objectives you pick (lowest bill, most self-sufficiency, backup ready, most export
-  earnings, battery care) with the numbers, why and an estimated effect a month. Nothing is
-  applied; each suggestion opens Control or the Scheduler. Objectives are remembered per
-  gateway. `GET /api/analytics/insights`, `PUT /api/analytics/insights/objectives`
-  (franklinwh-ha-cloud-analytics 0.1.27).
-- **Analytics: more cards, on Local and Cloud, and how much history there is** (owner).
-  Under the chart: battery discharged and charged, self-sufficiency, solar used on site,
-  battery cycles (with the capacity set) and **History**, how long the shown source has data
-  for ("1 year 23 days": the bridge's oldest sample, or the aGate's activation on the cloud).
-  Cloud now has the cards too, from the same read as its chart (franklinwh-ha-cloud-analytics
-  0.1.26, `onData`).
-- **Setup list: Connect to FranklinWH Gateway Emulator and Modbus TCP** (owner). Both are
-  answered in the wizard: add an emulator as a gateway by its address and Direct Connect
-  port, and turn the Modbus client on or off, set its address and port, and Test it, with
-  the results shown in the wizard.
-- **Logged: the default mode saved, a gateway added, a Modbus Test** (owner). Each now
-  writes a line to Logs and a row to the Audit Trail, worked or failed, like the cloud
-  sign-in, publishing and the Modbus settings already did. None needs a restart.
-- **The setup wizard opens on a setup list** (owner). After the first steps, and whenever
-  it is reopened on a bridge with a gateway, the wizard lists everything else worth setting
-  up, each **Done** or **To do**: the FranklinWH cloud, publishing to Home Assistant, the
-  Home Assistant connection, utility & billing, the default operating mode and scheduling;
-  under Advanced, HA notifications & devices, security, user & API accounts and System
-  View. The cloud sign-in, publishing and the default mode are answered in the wizard; the
-  others open the Settings card, tab or overlay that already does them. `/api/setup`
-  returns the list as `tasks`.
-- **`modbus_port` setting** (owner). The aGate's Modbus TCP Server port is now a setting
-  (default 502), like `fwh_port` (default 9000) for Direct Connect. Control → Modbus's
-  port override still wins over it.
-- **Support info says which installation it is** (owner). A new **install** line: a random
-  install id made on the first start and kept, how the bridge was installed (add-on on
-  HAOS or Supervised, Docker, Podman, pip or a source checkout), the OS and CPU, Python,
-  the Home Assistant version on an add-on, the install date with the first version, and
-  the version now. Also in the JSON under `meta.install`.
-- **Battery → Record on the live trend** (owner). The trend card has a **Record** button that
-  keeps the readings on the bridge from that moment: at the live interval (at least every
-  5 s), for the aPower shown, until **Stop** or a day has passed. Closing the page doesn't
-  stop it, and its progress and result show in the card. A recording can now run for a day
-  (it was capped at 500 samples).
-- **Battery → Charts: scheduled recordings** (owner). Add a start time (on the site's clock),
-  how many minutes, how often and which weekdays; each has an on/off switch and delete. The
-  bridge starts it once a day; if a recording is already running, it is skipped and logged.
-- **Battery recordings are purged** (owner). Finished recordings older than **90 days** are
-  deleted, and past **200 MB** the oldest go first; one still recording is never deleted. Both
-  limits, and the size the recordings take now, are in Settings → Admin → Local history. The
-  purge runs with the hourly history upkeep and when a recording ends.
-
-### Changed
-- **One tariff in force per meter, by date** (owner; same rules as the Modbus Bridge). Adding or importing a tariff ends the meter's current one the day before it starts and moves the meter to the tariff in force today; overlapping dates are refused. Import reuses the utility with the same retailer + network, says which tariff it replaces, and import/export carry `profile.effective_start` / `effective_end`. New plan (↻) no longer end-dates the old tariff before you save.
-- **Off-grid SoC is the Reconnect SoC, not a floor** (owner). An off-grid you request returns to the grid when the battery reaches it; the go-off-grid dialog, the Control card ("Reconnect SoC") and the done line say so. The off-grid notification adds stored kWh and, for a requested off-grid, gives the time until it reconnects. While the aGate switches, the dialog says it is waiting, shows the aGate going offline and back online, and says a notification follows when that push is on.
-- **No solar, no Solar tab** (owner). The Solar tab and the Dashboard's Solar Forecast card
-  are hidden when the gateway's API reports no AC PV ports and no remote solar, or System
-  Setup says none (DC solar is set there). Unknown, before the gateway is read, keeps them.
-- **Location & Solar moves to Sites & Billing, with the site** (owner, #582 follow-up). It
-  sits right after Sites & Meters; the default site shows its location and solar size and
-  links to it; the card links to the Solar tab, and the Solar tab links back.
-- **Scheduler editor tidied** (#580, owner-approved review). The action box is **Gateway
-  action** (it also holds smart circuits and off-grid); **Priority** shows only with a
-  gateway action and **If busy** only with a force; **Quick preset** is **Repeat pattern**
-  (Templates fill a whole rule); a One-off no longer shows Time windows, which it never
-  used; **Put the previous mode back when the window ends** (`restore_on_exit`) is in the
-  form. Fields the trigger doesn't show are cleared on change and on save, so a Weekly made
-  Daily no longer runs only on the old weekdays. **Test** and **Test against live** read the
-  schedule's own gateway. Test, Evaluate and **Run now** build their values as the tick does,
-  so Run now's guards and `%vars%` see tariff, constants and derived values. The Modbus Bridge
-  export defaults **If busy** to override and says what it drops. The "Not available here"
-  note for a kind the form never offered is gone, and the scheduler docs no longer describe
-  the Default gateway choice removed in #379.
-- **Solar size comes from your gateways; yours wins when set** (#583, owner). Location &
-  Solar's PV size is the gateways' own rating (summed over the site) unless you enter a
-  number: larger for DC panels or remote solar, smaller allowed with a note. The field
-  shows both with **Use gateway**. The forecast, Analytics → Explain and the Solar tab use
-  it. With neither, the field asks you to confirm and there is no forecast: the 5 kWp
-  default is gone.
-- **Prices in one place under Sites & Billing** (#582, owner). The price signal for
-  automation (AEMO NEM or Home Assistant price entities) moves from Integrations to Sites &
-  Billing → Prices, and the AEMO region is your site's (Sites & Meters → Region, AU-NSW →
-  NSW1) for both the price signal and a Dynamic tariff: the region pickers in Location &
-  Solar and in the tariff editor are gone. A saved region is given to sites with none at
-  start-up. The **High wholesale price** template is now **Price spike — ask to export**,
-  using `tariff.price_spike` instead of a fixed 50 c/kWh.
-- **Customise: drag to reorder the top bar, navbar and dashboard cards in one dialog**
-  (#585, owner), as the Modbus Bridge. The cog's **Customise top bar, navbar and cards…**
-  and the Dashboard's **Cards** button open it. Each row has a drag handle (mouse or
-  finger), up/down arrows kept as the fallback, and a switch. Saved as you go, with Undo
-  and Reset in the dialog. Saved preferences carry over. The Dashboard's Cards panel and
-  the cog's Navbar / Top bar lists are gone; Theme stays in the cog.
-- **A missed schedule run is a warning of its own** (#581, owner): `SCHEDULE_MISSED`,
-  worded apart from a failure. A failed run stays the critical `SCHEDULE_FAILED`, which now
-  names the gateway; its push follows the Scheduler group's Run failed switch and Send to.
-- **Actionable Notifications: one notify path** (#576, owner). A schedule notifies only
-  from its **Home Assistant actions** notify rows. **Ask before continuing** is now the
-  **Actionable notification** option on a notify row (buttons, wait, if no reply, Send
-  to), not a block of its own; one per schedule, On entry. **Notify (Home Assistant)** is
-  no longer in the Battery action list. Saved schedules move over when the bridge starts;
-  an import or API call in the old shape is moved over the same way.
-- **A gateway's port is never its Modbus port** (owner). A gateway added as `address:port`
-  (an emulator, say) uses that port for Direct Connect only; the Modbus client reaches it
-  on the Modbus TCP Server port (`modbus_port`, or the override). Before, it tried the
-  Direct Connect port for Modbus too.
-- **No port typed into the UI** (owner). Every label that named 9000 or 502 (connection
-  check, Health, Network, Dashboard, Control, Settings → Gateways, the setup wizard) now
-  shows the port from the settings: `fwh_port` for Direct Connect, and for Modbus the
-  Control tab's override or `modbus_port`. Add Gateway starts on `fwh_port`. Link names,
-  notifications and the capability list say the port the same way.
-- **Confirm what's installed: one line per fact, opened one at a time** (owner). Each fact
-  the gateway reports is a single line (label, value, **Confirmed** or **To check**); tap it
-  to see where it was read from and its **Confirm** button. Opening one closes the other.
-  The questions the gateway can't answer stay open.
-
-### Fixed
-- **Saving a tariff that was deleted while its editor was open** now says so in the editor and offers Save as new, instead of "Tariff save failed: no tariff 'tar_…'". Tariff save errors show in the editor, not as a toast. Deleting a utility with tariffs lists them and deletes them with it.
-- **Home Assistant panel no longer shows "404: Not Found" after the app was in the background** (owner). Home Assistant's ingress session had ended and its 401 sent the page to the absolute `/signin`, which is on Home Assistant's origin. Under ingress the page now stays (Home Assistant renews the session), and the sign-in links are relative.
-- **Scheduler timeline: the planned-window bars were drawn empty** (found while building
-  #579): the bar lost its colour and height, so only the grey track showed.
-- **A schedule's notify messages named the wrong gateway** (#577). A **+ notify** row under
-  Home Assistant actions named the first gateway, not the one the schedule ran on, on
-  entry, on exit and with **Run now**. It now names the gateway that ran it, as the Notify
-  battery action and Ask already did.
-- **Automation → Battery capacity: Derive from aPower showed "model…" on a real aGate.** It
-  looked for the aPowers in the latest status read, which doesn't carry them; it now uses
-  the aPowers System Setup reads from the gateway (as the Setup card's Batteries row does),
-  so the model and count are filled in, for example aPower X × 1.
-- **Confirm what's installed said the gateway "Couldn't be read"** on every real aGate. It
-  looked for the hardware id (1101 SyHdVersion) in the latest status read, which never
-  carries it; it now uses the id the poller keeps, as the gateway list does, so it names the
-  model, for example "aGate X-01-AU (AU)".
-
-## [0.5.41] — 2026-11-13
-
-### Changed
-- **The Audit trail moved to Logs, and is easier to read** (owner). It is now a sub-tab,
-  **Logs → Audit trail**, next to **Bridge log**, instead of a card at the bottom of
-  Control. Its rows are no longer shaded, the detail wraps instead of being cut off, and
-  its text is brighter. A refused-command alert's **Open Audit trail** goes straight there.
-
-### Fixed
-- **Ask before continuing names who it asks, and doesn't clash with notify actions**
-  (owner). The editor shows **Asks: Phone, Tablet** (All enabled devices was never
-  resolved to names), the list and Explain name them, and the log says
-  `asked "…" on Phone, Tablet`. Only Companion apps are asked, since only they show the
-  buttons. A chosen device that is switched off or removed stays in the list, marked, so it
-  can be unticked; a removed one no longer stops the schedule from saving ("unknown
-  device"). With notify actions: On entry messages go once per run, not again on every
-  retry of a failed action, and a run Ask skipped sends no On exit message either. Import
-  warns about Ask devices it doesn't know.
-- **System view: smart circuits by their aGate names, and Customise one gateway at a time**
-  (owner). Circuits showed "Circuit 1–3" while the Smart Circuits tab showed the names saved
-  on the aGate ("Test Switch"); the System view now uses them, read in the same poll as the
-  on/off state, and Customise diagram still changes them. With several gateways, Customise
-  diagram has a **Gateway** picker instead of listing every gateway (franklinwh-system-view
-  0.3.1).
-- **Analytics: Local's SoC on Lifetime, and "Home load" on both sources** (owner). A SoC
-  value with nothing either side of it (Lifetime's one year) is drawn as a dot; it had no
-  line to join and didn't show. Local now says Home load, as Cloud does. The Analytics
-  guide says the cloud keeps SoC for the day views only.
-
-## [0.5.40] — 2026-11-12
-
-### Added
-- **System view: voltage & frequency, today's energy, power on wires and alarms**
-  (franklinwh-system-view 0.3.0; owner). Each has its own switch under **Options**, off until
-  switched on and remembered in the browser. The bridge now sends today's kWh (the same
-  reading as the Dashboard's Now / Today toggle) and the gateway's open alerts (the alert
-  list's set) as the aGate's alarms; voltage and frequency were already sent but not shown.
-- **System view → Alarms from the devices** (owner). Beside the bridge's open alerts, Alarms
-  now shows the FranklinWH app's active alarms when the bridge is signed in to the cloud (a
-  count on the aGate, read with the 5-minute cloud pass), any aPower whose alarm level isn't
-  0 (on that battery, read every 5 minutes) and how many events the aGate's log holds when
-  above none (read every 15 minutes; their details can't be read locally). Each is left out
-  until it has been read.
-
-## [0.5.39] — 2026-11-11
-
-### Added
-- **Local history: how long it is kept, and an off switch, in Settings** (#540). Settings →
-  Admin → Local history → **Keep for** 90 days, 1 year (default), 2 years or **Forever**,
-  with the database size and its growth; the switch turns recording off after a
-  confirmation that Dashboard power history, Analytics and Energy Costs stop getting new
-  data. Both apply at once and survive a restart. An explicit `METRICS_ENABLED` /
-  `METRICS_RETENTION_DAYS` still wins and shows as set for the install. On the add-on, the
-  card says this overlaps Home Assistant's recorder. New `PUT /api/metrics/settings`;
-  `GET /api/metrics/info` adds the choices, locks and growth.
-- **Local history keeps full resolution for 10 days, then 5-minute rows** (#540): each
-  gateway's older samples become one row per 5 minutes (average, with min, max and count,
-  the last mode and tier counters), so energy totals are unchanged and long Keep for
-  choices stay small. Runs hourly and logs what it did ("Local history: N samples older than
-  10 days kept as M five-minute rows", "deleted N rows older than D days"). Windows reaching
-  past 10 days are read in buckets of at least 5 minutes. The Local history card shows
-  growth measured from the database (the old fixed 0.35–0.7 MB a day predates the per-poll
-  record, about 8 MB a day for recent days); Database storage counts the WAL and SHM files
-  and shows each table's size.
-- **Analytics → Cloud** (#215, phase 1). A **Local | Cloud** switch on Analytics; Cloud
-  shows the FranklinWH cloud's energy history for the gateway in the top bar: Day (5-min)
-  as kW lines, Day (hourly), Week, Month, Year and Lifetime as kWh bars, with a period
-  dropdown and date stepping on the site's calendar. Read-only, through the new shared
-  package franklinwh-ha-cloud-analytics 0.1.5 (also for the Modbus Bridge), in the
-  `cloud` extra. New `GET /api/analytics/cloud?gateway=&period=&date=`. The switch has its
-  own row under the title, full size. While the cloud account is missing or refused, the
-  Cloud view links straight to Settings → Integrations → **FranklinWH Cloud API**. Cloud has
-  **Today**, a chip per series to show or hide it, **Line | Area | Bars** for every period,
-  and, on hover or tap, every value at that time. Dates are in the browser's own format
-  (5 Nov in Australia, Nov 5 in the US). **Export CSV**, **JSON** and **Refresh** at the top
-  of Analytics serve whichever source is shown; Cloud exports the shown period.
-- **Analytics → Local steps through history:** **‹ ›** move the shown window back or forward
-  by its own length (24h, 3d, 7d, 30d or a custom range), **Today** comes back to now, and
-  **‹** stops at the oldest stored sample. The caption says where the history starts, and
-  the custom range can't be set before it. `GET /api/metrics` returns `first_ts`. Local now
-  has the Cloud view's layout: a period dropdown (24 hours, 3 days, 7 days, 30 days, Custom,
-  remembered in this browser), **‹ day › Today** on the right with a day picker, and the
-  chips and **Line | Area | Bars** under the chart (remembered; SoC stays a line); its dates
-  are in the browser's own format.
-- **Energy flow: hover or tap a flow to see what it carried** (#543): on the Dashboard card
-  and in Analytics → Flow, a label such as "Solar → Battery 321.7 kWh" appears over the
-  flow, which stays bright while the others dim. Keyboard focus shows it too.
-- **Analytics: a time in the date picker on the Day views** (#543): on Day (5-min) the
-  calendar takes an hour and minute (in 5-minute steps), on Day (hourly) an hour; the chart,
-  Local or Cloud, then opens with its readout at that time, and the date button shows it
-  ("9 Nov 2026 · 14:30"). **Clear** takes it away. franklinwh-ha-cloud-analytics 0.1.20.
-- **Analytics: Chart ▾ → Colours…** (#543): a colour for each series (Home, Solar, Battery
-  discharged and charged, Grid imported and exported, SoC, Generator), used by Local and
-  Cloud alike and remembered in this browser, with **Dark background** and **Light
-  background** presets and **Reset to defaults**. SoC's default is now magenta (#d946ef);
-  it was a green close to Battery discharged.
-- **Analytics: Colours and Time in sight** (#543): the legend, Local and Cloud, ends in a
-  **Colours** button (the Chart ▾ → Colours… dialog), and Day (5-min) and Day (hourly) show
-  a **Time** button beside the date that opens the calendar at its Time row; the picked time
-  shows on that button rather than on the date.
-- **Analytics: a Custom From → To range** (#543): **Custom** in the time span list, with
-  **From** and **To** each picked as a day and a time; Local, Cloud and Flow show it, with
-  5-minute power up to 2 days, hourly kWh up to 31 days, daily up to a year and monthly
-  beyond, the same on both. The time is picked from a styled grid of hours and 5-minute
-  steps, here and on the Day views, instead of the browser's lists.
-  `GET /api/analytics/cloud?period=custom&from=&to=`. franklinwh-ha-cloud-analytics 0.1.23.
-- **Dashboard → Energy Flow: Local | Cloud and Analytics' calendar** (#543): the card has
-  Analytics' Local | Cloud switch, one choice shared with Analytics (Cloud when signed in
-  until one is picked; Cloud greyed out with a sign-in hint until then; a cloud that fails
-  says why and shows Local), and Analytics' styled calendar in place of the browser's date
-  box and the repeated "November 2026" chip. Both use one calendar.
-
-### Changed
-- **Analytics: the Day views take a start and an end time** (#543; owner: "i really [want] a
-  start n end time"): **From** and **To** beside the date replace the single Time, which only
-  moved the readout. Local, Cloud and Flow show just that stretch, in the view's own slots
-  (a To at or before From runs into the next day); **Whole day** clears them.
-  franklinwh-ha-cloud-analytics 0.1.24 (a range's slots on request).
-- **Dashboard → Energy Flow: where the data comes from has its own line** under the heading
-  ("Cloud · metered by the FranklinWH cloud", "Local · N days of data"), so switching Local |
-  Cloud no longer re-wraps the heading.
-- **Analytics: one top row and the same periods for Local and Cloud** (owner). The time span
-  picker sits at the top for both sources with Cloud's periods: Day (5-min), Day (hourly),
-  Week, Month, Year and Lifetime. Local now steps by site day, Monday-to-Sunday week, month
-  or year like Cloud; 24 hours, 3 days, 7 days, 30 days and Custom are gone. **Local |
-  Cloud**, **Export ▾** (CSV, JSON) and **Refresh** are on the same row. Cloud panel
-  franklinwh-ha-cloud-analytics 0.1.6 (the host's picker).
-- **Analytics: one styled date picker, Bars stacked for both, Details ▾ for Cloud** (owner): the
-  browser's own date input (a different size on each card) is replaced by one picker above
-  Local, Cloud and Flow: **‹ period › Today**, where the period button (9 Nov 2026, Week
-  of 2 Nov 2026, October 2026, 2026) opens a calendar of days, months or years; it offers
-  nothing after today, nor, on Local, before the oldest sample. One **Chart ▾** button holds
-  every chart type (Line, Area, Bars, **Bars stacked**, Flow) and Analytics opens on the last
-  one picked in this browser; stacked bars work for Local too (sources above zero, home,
-  charging and export below). Cloud's chart is drawn
-  like Local's (rotated kWh title, a green SoC % axis in tens, a solid SoC line, vertical
-  grid lines), with its note under the chart where Local's is and no ↻ of its own (Refresh at
-  the top serves both), and Local's Day (5-min) takes Cloud's colours. The two plots line up:
-  Cloud keeps its SoC % axis for every period, and Local labels its kWh bars as Cloud does
-  (every few bars from the first, under the bar). Cloud's chips look like
-  Local's, and its detailed metrics (solar → battery, export from solar, …) are ticked under
-  **Details ▾** (it scrolls, and follows the dark theme) instead of being a row of chips.
-  franklinwh-ha-cloud-analytics 0.1.20.
-- **Analytics → Flow: the Energy Flow Sankey for any period, Local or Cloud** (#543): a
-  fourth chart type, **Flow**, beside Line | Area | Bars, draws the Sankey for the shown
-  time span and day (Day to Lifetime). Local is this bridge's estimate with its coverage;
-  Cloud is the FranklinWH cloud's own metered breakdown. The period's totals are under the
-  diagram, and **Export ▾** downloads them. `GET /api/energy/flow` takes spans up to 10
-  years and returns `first_ts`.
-- **Dashboard → Energy Flow says where its data comes from** (#543): signed in to the
-  cloud, the card shows the cloud's metered breakdown with a cloud icon; otherwise this
-  bridge's estimate with a slashed cloud and "Local · N days of data" (Local again if the
-  cloud can't answer). **In Analytics** opens the period in Analytics → Flow, and Week,
-  Month and Year show the period's first day rather than the day picked.
-- **Analytics: Line | Area | Bars at the top** (owner): one chart-style choice in the top
-  row, right after the time span, serving Local and Cloud (remembered in this browser);
-  it is no longer under each chart.
-- **Analytics → Cloud: the cloud's other fields as chips** (owner): every other field with
-  data for the shown period gets a chip that starts off: home from solar, grid and battery;
-  battery charged from solar and grid; export from solar and battery; and on a day, each
-  5-minute flow. Empty fields (V2L, solar sub-meters) get no chip; **Export ▾ → JSON** keeps
-  every array the cloud returned.
-- **Analytics: Local and Cloud charts match in size and scale, and Cloud shows SoC**
-  (owner): both charts are 380 px tall, and Local's kW/kWh axis uses Cloud's rule (zero
-  always shown, four even steps), so the same data reads the same in both. Cloud's Day
-  (5-min) and Day (hourly) draw the battery's state of charge on a 0–100 % axis at the right,
-  as Local does.
-- **Analytics → Local shows what Cloud shows** (owner): Day (5-min) is power in **kW** (it
-  was W); Day (hourly), Week, Month, Year and Lifetime are **kWh** per hour, day, month or
-  year with Cloud's six series (home, solar, battery discharged and charged, grid imported
-  and exported; charge and export below zero) and SoC, summed from the bridge's power
-  samples as Energy Flow does: an estimate, with the share of the period that has samples.
-  A slot with no samples is empty, never 0. The strip under the chart shows the period's
-  kWh totals. Until a style is picked, a day draws lines and the kWh periods bars, as Cloud
-  does. New `GET /api/metrics/energy?edges=`.
-
-### Fixed
-- **Analytics → Colours: Cloud's detailed metrics couldn't be coloured** (#543): every
-  Details ▾ field took its source's colour (all the solar flows Solar's yellow) and the
-  dialog had no row for them. **Detailed metrics** in the dialog now lists each one, its
-  source's colour until one is picked, with **Use its source's** to go back.
-  franklinwh-ha-cloud-analytics 0.1.25.
-- **Analytics → Colours couldn't be closed on an iPad** (#543): the browser's own colour
-  picker opened over the dialog and hid its ×. Each series now opens a palette of colours
-  (and a hex field) inside the dialog, which ends in **Done**.
-- **The guide said Local history is off by default on the add-on with MQTT**; it has been on
-  everywhere since 0.4.10 (#136). The guide and Settings now say so (#540).
-
-## [0.5.38] — 2026-11-10
-
-There is no 0.5.37: an image with that number was published by mistake from the wrong
-branch, so the number was skipped.
-
-### Added
-- **Notifications when the bridge starts, restarts or stops**, under a new trigger
-  **Bridge started / restarted / stopped** (on by default), like the Energipays bridge (#528). A
-  start after a clean stop says it restarted, how long it was down and, after an update, the
-  version it came from; a start with no clean stop before it says started. The stop
-  notification goes out after any battery dispatch the bridge holds is
-  released, and before notifications shut down, waiting at most 3 s (Home Assistant stops
-  an add-on after 10 s).
-
-### Changed
-- **The off-grid notification says why:** "user requested" (someone asked for off-grid) or
-  "grid outage" (no request was made), the same words as the top bar, or "reason unknown"
-  when that wasn't read. Before, every off-grid message read the same (#528).
-
-## [0.5.36] — 2026-11-09
-
-### Changed
-- **Every number each poll reads is kept, not just the chart values.** A poll reads about
-  84 values (each aPower's battery, relays, today's energy, comms, grid voltage) but only 8
-  were stored; the rest were shown live and lost. Now all of them are stored with each
-  sample (numbers only, so serials and names are never kept). Like Home Assistant's
-  recorder, full detail is kept for 10 days and then rolled up into hourly mean/min/max for
-  the rest of the metrics retention; the 8 chart values are unchanged. New read-only
-  `GET /api/metrics/raw?gateway=&start=&end=` returns stored rows with every column, plus
-  the hourly roll-ups.
-
-### Fixed
-- **Metrics export leaves mock gateways out** unless that gateway is named (#9). With no
-  gateway named it exports the real gateways' rows; each row already names its gateway.
-- **The metrics export says which gateway each row is from** (#9). Without `gateway=` it
-  exports every gateway's rows, mocks included, and nothing told them apart. CSV and JSON
-  now have a `gateway_id` column, added last so the other columns keep their place.
-
-## [0.5.35] — 2026-11-08
-
-### Changed
-- **System view on a phone** (franklinwh-system-view 0.2.4). The zoom buttons, Customise
-  diagram and Start on System view are under an **Options** button, folded on phones and
-  shown on wider screens, and the choice is remembered; on a phone they took more room
-  than the diagram. The overlay's own gateway buttons are gone: it shows the gateway
-  picked in the top bar, the one place to choose. It always opens fitted to the screen.
-- **Top-bar menus on a phone** (gateway, operating mode, preferences) open full width just
-  under the top bar and dim the page behind them; a tap outside or a scroll closes them.
-  The gateway menu could open partly off the left edge, over the page, with nothing to
-  show it was a menu.
-- **The dashboard's Power Flow card reads like the Modbus Bridge's:** one row per source
-  with its value and what it is doing (Solar · Generating, Battery · Charging, Grid ·
-  Exporting, Home · Consuming; Idle at 0 W). A **Now / Today** toggle in the card switches
-  to today's kWh (produced, used, charged, discharged, imported, exported) from the same
-  read; the choice is remembered in the browser. The separate Energy card is unchanged.
-- **The top bar gateway menu shows each gateway's SoC** (#373). Each row shows the last
-  SoC read, for example "55%", from the poller's cache, so no new device reads. When the
-  reading is older than the poll interval allows, its age is added: "55% · 4 min ago".
-  `/api/gateways` rows now also carry `poll_interval`.
-
-### Fixed
-- An empty gap could sit between the top bar and System view when it opened while the top
-  bar was still loading; the overlay now follows the top bar's height.
-- **`POST /api/reboot` description no longer says it is gated by `allow_writes`** (#178).
-  That setting stopped blocking writes in 0.5.2; the route only needs `confirm=true`.
-- **Control and Circuits no longer say "Set ALLOW_WRITES=true"** (#87). The read-only
-  card told users to set a switch that stopped blocking writes in 0.5.2; it is removed.
-- **Each tab sets itself up once, not twice** (#376). Alpine already calls a component's
-  `init()`, and fourteen templates called it again with `x-init="init()"`, so their
-  watchers and first reads ran twice (for example two `GET /api/system-setup` on one
-  gateway switch). The extra `x-init` is gone, and a test stops it coming back.
-- **Health → Rediscovered is per gateway** (#163). It compared each gateway's address
-  with the global host, so with several gateways every gateway but one showed
-  **Rediscovered: true**, a mock included. It is now true only when re-discovery moved
-  that gateway to a new address, and n/a for a mock.
-- **Generator → Operating windows looks unavailable while the generator feature is off**
-  (#368). Its Edit buttons were already disabled, but the card wasn't dimmed like the
-  others and the reason was only in a tooltip. The card is now dimmed and says on screen
-  to install and configure the generator module first.
-- **Swagger UI (`/docs`) and ReDoc (`/redoc`) work through Home Assistant ingress**
-  (#177). They loaded the schema from `/openapi.json`, which under ingress is Home
-  Assistant's root, not the bridge. They now take the ingress path from
-  `X-Ingress-Path`, the same way the web UI does.
-- **The top-bar gateway menu is no longer cut off under the sidebar** (#372). It was
-  always right-aligned to the selector, so when the selector sat near the content's left
-  edge the gateway names were hidden. It now opens left-aligned when there is no room to
-  the left, and is never wider than the screen on a phone.
-- **Selects are the same height as text and number fields in Safari** (#393). Safari drew
-  them as native pop-up menus that ignore padding, so they came out shorter. Selects now
-  draw their own chevron and take the same padding as inputs, as in the Modbus Bridge.
-- **Settings → Setup: Mark complete shows its result** (#395). A failed save looked the
-  same as success, and success showed nothing. The Setup card now shows the result, or the
-  error with its HTTP status, and keeps it there. It also shows the stored state
-  (Complete, Skipped or Not done), and once setup is complete the button becomes
-  **Mark not complete**.
-- **Settings → Setup: the Mark complete result line binds its colour as an object**, not a
-  string, so Alpine's `x-show` can't wipe the element's `display` when the message changes
-  (#395 follow-up).
-
-## [0.5.34] — 2026-11-08
-
-Notifications with buttons: fixes from a peer review (#523), and the test-reliability fixes.
-
-### Changed
-- **franklinwh-ha-notify 0.1.4** (was 0.1.3). Ledger writes from a worker thread, two
-  waits on one question both get the tap, a question no phone received is not left open,
-  a tap handler that asks its own question gets its answer, and a send with no targets is
-  recorded as SKIPPED (was ERROR), as the notifications log already described it.
-
-### Fixed
-- **A late Release tap no longer releases a different force.** A Release / Keep question
-  works for 15 minutes; if a schedule started a force on that aGate in the meantime, a tap
-  released it. Release now acts only on the force it asked about, and otherwise answers
-  "not released: a different force is running".
-- **Release on a VPP found at start-up checks the VPP.** It checked the Modbus force (WSet)
-  instead, so a VPP that is not a Modbus force was answered "already released" while it was
-  still running. It now answers "already released" only when the VPP has ended, and
-  "not released: the VPP is not a Modbus force this bridge can release" when it has not.
-- **A restart just after a schedule asks no longer sends the question twice.** The run
-  recorded its question only once the send had finished, so a restart in between asked
-  again. The run now finds its question among the open ones and waits for that (#523).
-- The notifications' own database connection is closed when the bridge stops, rather than
-  left open until the process exits (#523).
-- **Notifications guide corrections** (#523). A tap made while the bridge is restarting or
-  reconnecting to Home Assistant is lost (Home Assistant does not resend it), so it counts
-  as no reply; the guide said it was used, and now suggests **If no reply: Skip this run**
-  for questions before battery or mode changes. Recent notifications keeps 30 days, not
-  the last 2,000. Critical alerts are ordinary pushes that do not get past silent mode or
-  Do Not Disturb.
-- **Version reported from a source checkout matches pyproject.toml.** `__version__` (the
-  MQTT device `sw_version`, `/health`, the API title) came from the installed package's
-  metadata, which an editable install freezes at install time: after a version bump a
-  development checkout reported the old version (0.5.18 against 0.5.32). It is now read
-  from the `pyproject.toml` of the source tree the code runs from, and from the package
-  metadata when there is none. The add-on image is installed from the same tree, so
-  the version it reports does not change.
-- **Tests: three intermittent failures made reliable.** The Ask-step tests read the fake
-  phone's questions right after the tick, but the question is sent on the Notifier's own
-  event loop, so under load it had not arrived yet; they now wait for it. Tests that add a
-  gateway through a test client without its shutdown left their cancelled poller tasks in
-  the supervisor's module state, and the next app's shutdown awaited one and failed with
-  `CancelledError` (`test_app_start_registers_workers_paused_or_beating`, and likely the
-  start-up/shutdown `CancelledError` seen once in
-  `test_start_up_binds_to_the_default_gateway`); finished poller tasks are now dropped
-  before each test.
-- **Tests: the send-to tests wait for the question** (`notifier.asked()`), the same race
-  fixed for the ask-step tests in #516; it failed a full-suite run on main.
-
-## [0.5.33] — 2026-11-07
-
-What's installed, in plain words (#496), and greyed-out scheduler values that can't work
-(#471).
-
-### Changed
-- **What's installed, in plain words** (#496). The setup wizard's Confirm step and
-  **Settings → Setup** now show one card per gateway. Everything the gateway reports
-  (model, number of aPowers, grid connection, operating modes, solar and its size,
-  generator, Smart Circuits, V2L) is shown in plain words with where it was read from, and
-  waits for **Confirm**. Only what the gateway can't tell is asked: what the battery backs
-  up (whole home or a backup-loads panel), solar wired into an aPower S, and an optional
-  battery name. Confirming never stops a value being re-read; if it later
-  reads differently it asks again. Two new `system.*` scheduler values: aPower model and V2L.
-  Generator, Smart Circuits and V2L read as **Installed** or **Not installed**; a generator
-  counts as installed when it is turned on or reports a model, rating or run state.
-- **Scheduler pickers grey out values and templates that can't work** (#471). Every value
-  knows the feature it comes from (gateway, Modbus client, solar forecast, wholesale or
-  feed-in price, tariff, utility, a Home Assistant instance). When that feature is off, not
-  set up or in error, the condition picker and the `{x}` picker show the value greyed and
-  not selectable, with the reason, for example "(not set up: solar forecast — set your
-  location in Settings → Integrations → Location & Solar)". A template whose feature isn't
-  working is greyed the same way and its **Use** button is disabled. A value whose feature
-  works but has no reading right now stays selectable and shows "no value". Existing
-  schedules are not changed: a condition row whose feature is now off shows a warning that
-  it can't be met. Tariff and utility are checked against the default meter.
-
-### Fixed
-- **The aPower model is read from the gateway** (#496). Each aPower's model code
-  (`PE_HW_VER` in the login reply) is looked up in franklinwh-cloud's device catalogue, the
-  same way the aGate model already is: code 2 is the aPower X-01-AU. The install-profile
-  card shows it ("1 aPower X-01-AU") instead of asking, the battery-capacity helper in
-  Settings → Automation pre-selects it, and the support info lists it. The model is asked
-  only when a code isn't in the catalogue.
-- **History counts as evidence** (#496). Each install-profile card adds what the bridge's
-  own history shows: "Your history: solar up to 5.8 kW, most recently 2026-11-05", and the
-  same for the generator and the grid connection (from the stored samples, up to the
-  metrics retention). A generator that has run, or a V2L whose meter shows energy, reads as
-  **Installed**; solar seen in history but not in the aGate's PV settings (such as DC solar
-  on an aPower S) is shown as "Solar seen in your history".
-- **Support info lists what's installed** (#496). Each gateway in **Settings → Admin →
-  Support info** now has the install-profile card in four short lines: what's installed
-  (model, aPowers, grid, solar, generator, Smart Circuits, V2L), the modes, your answers,
-  and how much is confirmed.
-- **A site without solar no longer counts as having solar** (#496). The setting "none" was
-  read as yes, so the Solar tab and the wizard showed solar everywhere.
-- **Saving System Setup keeps the gateway's readings** (#496). The form saved every field,
-  which pinned all of them as your own values; it now saves only what you changed.
-- **Remote solar size matches the Solar tab** (#496). The install profile read the remote
-  solar rating in watts while the Solar tab reads it in 100 W steps; both now use the Solar
-  tab's reading. The unit is not yet confirmed on a remote-solar site, so the size is shown
-  for you to confirm.
-
-### Docs
-- **README badges**: version, build, docs, add-on image, Home Assistant add-on, Python,
-  licence and commit activity. A test keeps them pointing at real workflows and facts.
-- **README installs badge**: the add-on's install count from Home Assistant analytics
-  (only systems with analytics switched on are counted).
-- **Guide: Home Assistant setup and notifications has screenshots** of the HA
-  Instances list and the add-instance form, the setup wizard's four Home Assistant checks,
-  the Push notifications switch with the Notifications check, Companion Devices and the
-  Add device form after Discover, an Auto-notify trigger's Send to list, Recent
-  notifications, a schedule's Ask before continuing step, and the Ask templates.
-
-## [0.5.32] — 2026-11-05
-
-0.5.31 was built but never released: a defect found by its release gates (#491) went in,
-and published image tags are not rebuilt.
-
-### Added
-- **API tokens and the api role** (#457 phase 4). An admin adds an **api** account (no
-  password; it can't sign in or use the web UI) and, under **Settings → Admin → Security →
-  API tokens**, makes a token for it: named, valid 30, 90 or 365 days, shown once (it starts
-  `fwhdc_`), kept as a hash. Callers send `Authorization: Bearer <token>` to the HTTPS port and
-  get the account's role: an api account reads everything and sends battery commands, not
-  settings or schedules. The list shows each token's account, last four characters, expiry
-  and last use, with **Revoke**; disabling or deleting the account stops its tokens. A bad
-  token gets 401. Port 8101 ignores tokens. `GET`/`POST /api/security/tokens`,
-  `DELETE /api/security/tokens/{id}`.
-- **Home Assistant users get the role of their HA group** (#457 phase 3b). Every Home
-  Assistant user can now open the bridge from the sidebar (the add-on sets `panel_admin:
-  false`; HA's default showed it to administrators only). HA administrators and owners are
-  admin, read-only users are viewer, other users are user: they can send battery commands
-  and manage schedules but not change settings. This applies with Security on or off. The
-  group comes from the Supervisor (2026.10.4 or later); with an older one the user stays
-  admin while Security is off and is user while it is on, and Settings says why.
-- **Accounts, sign-in, roles and the Security switch** (#457 phase 3). **Settings → Admin →
-  Security** has a **Security** switch: on, browsers and API callers sign in on the HTTPS
-  port, port 8101 redirects there (503 with the reason if HTTPS isn't running), and each
-  account's role decides what it can do. admin: everything. user: battery commands (force,
-  release, mode, reserve, off-grid, acknowledging alerts) and schedules; everything else
-  read-only. viewer: read-only. Anything else that changes something is admin only; a
-  refused request gets 403 "Your role (…) can't do this." Off for an upgraded install, on
-  for a new one; it can only be turned on with an admin account and a running HTTPS port.
-  **Accounts** adds, edits (role, expiry, disable), resets and deletes accounts and shows
-  sign-in activity; the last admin can't be removed. Passwords are argon2id hashes; 5
-  failed sign-ins in 15 minutes lock an account for 60 s; sessions last 30 days. The first
-  admin: on Docker and pip from `ADMIN_USERNAME`/`ADMIN_PASSWORD`, else (with Security on)
-  `admin` with a generated password printed to the log once; on the add-on you add it from
-  the sidebar. `franklinwh-direct-connect-bridge reset-password <name>` resets a password.
-  Home Assistant's sidebar panel needs no sign-in and is admin for now. The bridge now
-  depends on `argon2-cffi`.
-- **The HTTPS port** (#457 phase 2). The bridge serves the same web UI and REST API over
-  HTTPS on port 8102, next to 8101, on every install; trusted networks apply, and there is
-  no sign-in yet. The certificate is your own (`ssl_certfile` / `ssl_keyfile`; on the
-  add-on a bare name is looked up in Home Assistant's `/ssl`, which the add-on now maps
-  read-only) or a self-signed one the bridge makes for its host name and addresses, valid
-  825 days and renewed 30 days before it runs out or when the address changes. **Settings →
-  Admin → Security → HTTPS port** shows whether it runs, the certificate, its SHA-256
-  fingerprint and **Download certificate** (`GET /api/security/certificate`). If HTTPS
-  can't start, the reason shows there and 8101 carries on. `HTTPS_PORT` changes the port,
-  0 turns it off. The add-on publishes 8102, the Docker image exposes it, and the bridge
-  now depends on `cryptography`.
-- **Trusted networks** (#457 phase 1). **Settings → Admin → Security** lists the networks
-  allowed to reach the bridge; a request from anywhere else gets 403 "Your network is not
-  trusted by this bridge", pages and API alike, and one log line per address every 10
-  minutes. An upgraded install starts with **Any network**, so nothing changes. A new install
-  (no install date yet on its first start) starts with the private ranges and loopback, IPv4
-  and IPv6. Home Assistant's sidebar panel (the add-on's ingress proxy with HA's ingress
-  header) and `/api/live` always get in. A list that leaves out the address saving it is
-  refused. `GET /api/security`, `PUT /api/security/trusted-networks`. The Security switch,
-  the HTTPS port, sign-in and tokens come in later phases.
-- **Guide: Security** (#457). A new page for all of the above: upgrades keep today's
-  behaviour and new installs start with Security on (it can be turned off); trusted
-  networks; the HTTPS port and its certificate, including how to trust it on a phone; Home
-  Assistant users' roles; the first admin; the roles admin, user, viewer and api; API
-  tokens. The REST API guide's Authentication section and Control's read-only section now
-  point to it.
-
-### Fixed
-- **A pip install has its whole web UI** (#487). The package listed only the top-level files of
-  `static/` and `templates/`, so `pip install` (INSTALL.md, "Without Docker") left out the
-  `css/`, `js/`, `tabs/` and `partials/` folders: the page's styles and scripts answered 404
-  and the main page failed. Docker and the Home Assistant add-on were not affected (they
-  install from the source tree). Found by the new standalone release gate.
-- **Under Podman the bridge keeps its data on the /data volume** (#491). It looked only for
-  Docker's `/.dockerenv` to know it runs in a container; Podman makes `/run/.containerenv`
-  instead, so the bridge wrote its database, settings, gateways and (from 0.5.32) accounts to
-  `/app/data` inside the container, and lost them whenever the container was recreated (an
-  image update). Docker and the Home Assistant add-on were not affected. A Podman install that
-  has been running already has its data in the container's `/app/data`. Before updating,
-  copy it to the folder mapped to `/data` (`./data` with `docker-compose.yml`):
-  `podman cp <container>:/app/data/. ./data/`. Otherwise set things up again after the update.
-
-## [0.5.30] — 2026-11-04
-
-### Changed
-- **Send to → Chosen devices is a drop-down** (owner, iPad, 2026-11-04). Instead of a row of
-  checkboxes, one field names the ticked devices ("DSH iPhone, ipad", or "Choose devices")
-  and opens the list of devices with their checkboxes and badges. Used everywhere Send to
-  appears: the schedule's **Ask before continuing**, each Auto-notify trigger, **Critical
-  alerts**, **Release / Keep a running force** and the **Send test** dialog. Tapping outside,
-  **Done** or Escape closes it; Escape no longer reaches the dialog behind it. On a phone the
-  list opens in place under the field.
-
-### Changed
-- **Guide: Home Assistant setup and notifications brought up to date.** No restart after
-  adding an HA instance; Send to on every notification (triggers, critical alerts,
-  Release / Keep, Ask); the 5-minute Ask wait and its window rule; questions surviving a
-  restart; the {x} picker; the eight Ask templates; the Notifications check and its
-  troubleshooting table. Code and API references moved to a developer section at the end.
-
-## [0.5.29] — 2026-11-04
-
-### Added
-- **Notifications check and Test critical alert** (refs #464). Settings → Integrations →
-  Notifications has a **Notifications check**: the Push notifications switch, the default
-  HA instance (reachable, token accepted, and where persistent notifications go: the
-  instance, the add-on's Supervisor or `HA_URL`), the button taps listener for each enabled
-  instance, at least one enabled `mobile_app_*` phone, the last **Test with buttons** result
-  and its time (now kept in the database), and where critical alerts go. Each line shows
-  Pass, Fail or Not set up, with its fix. `GET /api/notify/checks`. **Test critical alert**
-  runs the path (Home Assistant notification created, sent to devices with Acknowledge,
-  Acknowledge tapped) and shows each step in its window; no alert is recorded, so no alert
-  window opens (`POST /api/notify/test-alert`, `GET /api/notify/test-alert/{id}`). Support
-  info includes the check lines, without names, URLs, addresses or tokens. The guide has a
-  troubleshooting table.
-- **Send to for critical alerts and Release / Keep** (refs #281). Settings → Push
-  notifications, under the Auto-notify triggers: two rows, "Critical alerts" (Acknowledge /
-  Re-discover) and "Release / Keep a running force", each with the same Send to picker as
-  the triggers — All devices (the default; nothing changes until you pick) or Chosen
-  devices with ticks. A chosen device that is switched off, or on a switched-off Home
-  Assistant instance, is not sent to. When none of the chosen devices can show buttons,
-  the existing fallback applies: the plain Release push, and for alerts the Home Assistant
-  notification only. Saved with `PUT /api/notify/triggers` (`asks`); roles are refused. A
-  failed save on these rows and the triggers now shows under them instead of as a toast.
-- **Ask templates and two off-grid sensors** (refs #463). New scheduler sensors
-  `grid.offgrid_reason` ("user requested", "grid outage" or "unknown"; no value on grid) and
-  `grid.offgrid_min` (minutes since this off-grid period began; after a bridge restart while
-  off-grid it counts from the first reading). Eight new templates, each watching its
-  conditions continuously and asking once when they become true (5-minute wait, no reply
-  skips): Off-grid (user requested) for 30 min → asks to go back on-grid; Off-grid (grid
-  outage) for 30 min → Acknowledge, no battery action; Cheap price → charge, from the
-  wholesale price (≤ 5 c/kWh) or the tariff import rate (≤ $0.05/kWh); High price →
-  export, from the wholesale price (≥ 50 c/kWh) or the tariff feed-in rate (≥ $0.50/kWh),
-  only at or above the min discharge SoC constant; Demand charge window → Self-Consumption
-  for the window, then the previous mode put back (restore on exit), only at or above the
-  demand-charge min SoC constant; Battery export bonus → export. The five force templates
-  need Modbus.
-- **Send to: all enabled devices or the devices you choose** (#281, N3 by device). A
-  schedule's **Ask before continuing** step has a **Send to** choice: all enabled
-  notification devices (the default) or the ones ticked, listed from the enabled companion
-  devices (Companion apps — mobile_app — are marked as the ones that show the buttons). The
-  server refuses an unknown device or a role. Schedules saved before this still ask every
-  enabled device. Each **Auto-notify trigger** in Settings can now go to several chosen
-  devices, not just one; a trigger already sent to one device keeps it.
-- **Schedule editor: a {x} button to insert values** (#462). Every schedule text field that
-  takes `%sensor.id%` values has a **{x}** button beside it: the **Ask before continuing**
-  question, the notify title and message (on entry, on exit, or both) and the raw service
-  entity_id and data. It opens a list of the same sensors as the condition picker, in the
-  same groups, with a search box; each row shows the name, the value now and the
-  `%id%` code. Tapping a row puts the code where the cursor was (at the end if the field
-  was never used) and returns to the field. On a phone the list fills the screen.
-
-### Changed
-- **Ask before continuing: 5-minute wait, must fit the window, deadline in the question.**
-  A new schedule waits 5 minutes for a reply (was 10). Saving a wait longer than the
-  schedule's window is refused with "the wait (N min) is longer than the schedule's window
-  (M min)", since a reply after the window closes cannot run the action. The window is the
-  duration (0 = the start minute only, so 1 minute), or the shortest window of a Recurring
-  windows schedule; Always has no window and takes any wait. Schedules already saved keep
-  loading and running, and an edit that leaves their wait and window alone (the on/off
-  switch) is still accepted. The question sent ends with " (reply within N min)";
-  `%sensor%` values are filled in as before.
-
-### Fixed
-- **Critical alerts reach Home Assistant and phones on Docker and pip** (refs #464). Home
-  Assistant persistent notifications (alerts, and the aGate / Modbus TCP Server (aGate
-  :502) / firmware / moved / cloud-credential events) now go to the default enabled HA
-  instance under Settings → Integrations → HA Instances (else the first enabled one). On
-  the add-on that is its own instance, "Home Assistant (this add-on)", so nothing changes
-  there. `HA_URL` / `HA_TOKEN` (and, on the add-on, the Supervisor token) are used only
-  when no instance is set up, so existing setups keep working. Before, outside the
-  add-on, they were the only target, so a user who had set up an instance and phones got
-  no critical alert in Home Assistant or on a phone. A critical alert is now also sent to
-  the notification devices when the persistent notification fails or has nowhere to go;
-  before, a failed create kept it off the phones. Retries of the persistent notification
-  do not send to the phones again.
-- **An HA instance added in Settings listens for button taps at once** (franklinwh-ha-notify#5).
-  Adding, editing (URL, token, on/off) or deleting an instance under **Settings →
-  Integrations → HA Instances** now starts, re-signs-in or closes its tap listener on the
-  running bridge; before, a new instance's buttons did nothing until the bridge restarted,
-  and a deleted one kept listening. The add-on's own instance does the same when a new
-  container brings a new Supervisor token. Needs franklinwh-ha-notify 0.1.3 (pinned).
-- **Questions with buttons survive a bridge restart** (franklinwh-ha-notify#6). Uses
-  franklinwh-ha-notify 0.1.2, which keeps open requests in the bridge database
-  (new table `notify_requests`, added to existing databases on start). A tap on
-  **Release** / **Keep**, **Acknowledge** or **Re-discover** inside its time limit after a
-  restart now runs as it would have before it; it used to be ignored. Releasing a force
-  that is no longer running, or acknowledging an alert someone already acknowledged, does
-  nothing and logs it. A schedule waiting on **Ask before continuing** finds its question
-  again after a restart and waits only for the time left; a reply given while the bridge
-  was down is used, and a question that expired meanwhile follows **If no reply** once. The
-  question and the decision are kept on the run, so it is never asked or decided twice,
-  and `%ask.answer%` still reads the answer.
-- **Ask before continuing skips phones on a switched-off Home Assistant instance.** A
-  schedule's question still went to the devices of an HA instance that was disabled in
-  Settings; every other notification already skipped them. It now uses the same device
-  lookup as the rest, whether it asks all enabled devices or the ones chosen in **Send to**.
-- **Hidden messages, labels and list rows stay hidden.** 16 elements in the web UI
-  coloured themselves with a text style, which Alpine applies by replacing the whole style
-  attribute, wiping the `display:none` that hides them: the same cause as the blank rows in
-  the sensor list. Among them: the HA price-entity pickers in Settings → Tariff showed
-  blank rows under each heading, an active tariff could show "· active", and empty
-  message boxes could appear in dialogs. They now set colours property by property, and a
-  test fails if any element that can be hidden binds a text style again.
-- **Schedule editor: no blank rows in the sensor list.** Once a condition had a sensor
-  chosen, every group heading in its drop list showed an empty row beneath it, so
-  **Ask before continuing** had a gap above its one sensor and **Automation Constants**
-  looked empty at the bottom of the view (owner, iPad, 2026-11-04). The highlight of the
-  chosen sensor replaced the style that hides the unused part of each row; it now sets
-  only its colour and weight.
-
-## [0.5.28] — 2026-11-04
-
-### Added
-- **Ask before continuing: your own buttons, a text reply, and the answer passed on**
-  (#374). Instead of Yes and No, a schedule's question can offer 2 to 4 buttons you name,
-  each set to run the action or skip this run. One of them can ask for a typed reply. The
-  answer (the button's label, or the text typed) is the new **Ask: answer** sensor, so an
-  exit condition or an HA action's guard can test it, and `%ask.answer%` puts it in a
-  message. The run log shows which button was tapped and any reply. Schedules without
-  their own buttons still ask Yes and No as before.
-- **Schedule conditions: widen the sensor field and resize the sensor list, also with a
-  finger** (owner, 2026-11-04, on an iPad). A **⋮** grip just right of a condition's sensor
-  field drags it wider or narrower; every condition row follows, and a wider field moves
-  the rest of its row to the next line. The sensor list that opens from the field (and the
-  Lookup list) has a **◢** corner that drags it wider and taller, never smaller than its
-  default or past the dialog. This browser remembers both sizes. Applies to Entry
-  conditions and End early when…, including groups. Same as the Modbus Bridge scheduler.
-
-### Fixed
-- The Ask before continuing question now fills in `%sensor.id%` values, like messages do.
-- **Logs on a phone**: each line stays on one row and the list swipes left and right, as in
-  the other bridges. Before, the message column wrapped a few letters per line. From tablet
-  width up, messages wrap as before.
-- **Companion devices on a phone or a narrow iPad**: the row wraps, so the device name stays
-  readable and the buttons go underneath. The button test's result ("you tapped Yes") has
-  its own line, and the header's Broadcast and + Add device no longer run off the screen.
-
-## [0.5.27] — 2026-11-03
-
-### Changed
-- **One path for phone notifications** (#374). Trigger notifications, VPP dispatch
-  notices, the restart reconcile notice, scheduler Notify actions and Broadcast now all go
-  through the same sender, and every send is recorded. Recent notifications reads that
-  record and still shows the notifications sent before this change.
-- A device whose Home Assistant instance is switched off is now left out of a send, so
-  Recent notifications shows "(no devices)" when it was the only one, instead of a line
-  per switched-off device.
-- **Go off-grid and Reconnect keep their dialog open until the aGate answers** (#288). After
-  OK, the dialog shows *Sent to the aGate* and then *aGate reports off-grid* (or on-grid)
-  with a running timer, and ends with the result: "done in N s", the aGate's refusal, or
-  "No confirmation after 2 min" with a pointer to the top bar. Before, it closed on OK and a
-  toast said only that the command was sent. Hide closes it early; the result then comes
-  as a toast.
-- **franklinwh-cloud 0.6.4 → 0.6.5** (the `cloud` extra, installed in the add-on). 0.6.5
-  ships its device catalogue in the wheel; before, it was only in a source checkout. The
-  aGate model, SKU and country in the System view and support bundle now come from that
-  catalogue, so a new aGate model is named once the library knows it. Rated amps, circuit
-  count and vendor model name are not in the catalogue and stay in the bridge's table, which
-  also answers when franklinwh-cloud is not installed. The five known models read the same.
-- **franklinwh-direct-connect-api 0.6.0** (was 0.5.x). Nothing the bridge uses changed. Its
-  mock aGate now answers the off-grid read (1723), so the Go Off-Grid switch has a state
-  on a mock gateway too.
-### Fixed
-- The button listener for Home Assistant started twice when the bridge started, leaving one
-  listener running with nothing tied to it. Found in the release test before 0.5.27 shipped;
-  no release had it.
-- **The Push notifications switch now stops every notification** (#171). Trigger
-  notifications, VPP dispatch notices, scheduler Notify actions and Broadcast used to go
-  out while it was off. With it off they are recorded as not sent; Broadcast says
-  "Push notifications are off" in its dialog, and a scheduler Notify action records
-  "skipped: notifications are off".
-- **Notifications name the gateway** (#361). aGate offline and online, off-grid, SoC,
-  dispatch and reconcile notices, scheduler Notify actions, the firmware-updated notice
-  and Home Assistant alert notifications say which gateway, by its name rather than its
-  id. Recent notifications shows the gateway beside each line.
-### Added
-- **Notification targets** (#281). Each auto-notify trigger has a "Send to" drop-down:
-  All devices (the default) or one chosen device. **Send test** now opens a dialog to send
-  to all enabled devices or the ones you tick; with no devices it says so and offers
-  **+ Add device**, and the result stays in the dialog. Companion devices have a type
-  (phone, tablet, TV, speaker, other), shown as an icon with an On/Off label; Discover
-  suggests the type and shows each device by its Home Assistant name, and you can change
-  the type in the device dialog, which also asks you to send a test before saving.
-- **Buttons on notifications** (#374). On a phone with the Home Assistant Companion app:
-  - a force still running when the bridge starts (one it did not start, or one a restart
-    interrupted) comes with **Release** and **Keep**. Release does what the top-bar
-    Release does, on that aGate.
-  - bridge alerts now also go to your notification devices, with **Acknowledge**. An
-    "aGate unreachable" alert also has **Re-discover**, which looks for the aGate on the
-    network at once instead of waiting for the next scheduled search.
-  - Settings → Companion Devices has **Test with buttons** on each phone. It sends Yes / No
-    and shows on that row which one you tapped, or that no reply came within 2 minutes.
-
-  Where a phone can show buttons, the notification with buttons replaces the plain one, so
-  you get one message, not two. Buttons expire (15 minutes for Release, 1 hour for alerts)
-  and work once; every tap and its result is in the notification record.
-- **Schedules can ask before they run** (#374). Turn on *Ask before continuing* in a
-  schedule and set a question, how long to wait for a reply, and what to do if nobody
-  answers. When the schedule is due, your enabled notification devices get the question
-  with **Yes** and **No** (only phones with the Home Assistant Companion app show the
-  buttons). Yes runs the action, No skips this run, and no reply follows your choice:
-  continue or skip. The schedule's log and run history say which happened and why. Other
-  schedules keep running while one waits for an answer.
-- **Groundwork for notifications with buttons** (#374). The bridge now uses the shared
-  franklinwh-ha-notify package. It keeps one connection to each Home Assistant
-  instance for button taps, opened when the bridge starts and over Home Assistant's
-  authenticated WebSocket only. It also keeps a record of every notification sent and
-  every tap. Nothing sends buttons yet, and the existing notifications are unchanged. The
-  "Push notifications" switch turns the new path off too.
-- **Home Assistant: Run Status Description** (diagnostic). Run Status is the bare code; this
-  says it in words as the FranklinWH cloud does: Standby, Charging, Discharging, Off-Grid
-  Standby / Charging / Discharging. It reads **VPP Mode** while the aGate runs programme 9,
-  the VPP signal; run_status keeps reporting the battery's direction under VPP. Run Status
-  itself is unchanged, so automations on the code keep working.
-- **Home Assistant: Cloud Connection Via** (diagnostic): the link the aGate is using now,
-  Ethernet 0, Ethernet 1, WiFi or 4G, from the network read the bridge already makes
-  (`currentNetType`). The aGate switches links on its own, so this is what it's using, not
-  a setting.
-- **Home Assistant: Go Off-Grid switch** (#386). On islands the house and Off reconnects it.
-  It's the same 1723 write as Control → Off-grid, with that route's default off-grid floor
-  (5 %), and no confirm step: in HA, the switch is the explicit action (owner, 2026-11-03).
-  The switch shows what was requested (1723 `offgridSet`), so a grid outage islands the
-  house with the switch still off. Grid Status says which it is: SimulatedOffGrid or Outage.
-
-## [0.5.26] — 2026-11-03
-
-### Changed
-- **franklinwh-modbus 0.10.1 → 0.13.0** for Battery Control. With 0.13.0, closing the Modbus
-  client after a force, release, status check or ratings read closes the TCP socket. Before,
-  the aGate's single Modbus session stayed held until garbage collection (franklinwh-modbus
-  #138). The bridge sends forces in watts, which 0.11.0 left unchanged; the bridge uses none
-  of the APIs that 0.11.0 and 0.13.0 change (percent forces, enum descriptions,
-  `check_state()`, `read_battery_status()`).
-
-### Fixed
-- **Demo mode's mock aGates start again** (#427). `docker-compose.demo.yml` ran them on port
-  9000, which franklinwh-direct-connect-api 0.5.1 and later refuse (9000 is reserved for a
-  real aGate and the official Gateway Emulator), so on a fresh build both restarted in a
-  loop. They now run on 19000, under `franklinwh-direct-connect emulate` instead of the
-  deprecated `franklinwh-local` name, and the demo bridge (`FWH_PORT`) reaches them there.
-  Discover sweeps 9000 only, so it can't find them until #416.
-
-## [0.5.25] — 2026-11-03
-
-### Fixed
-- **A dispatch naming a gateway the Modbus Bridge cannot address is refused** (#365). The
-  Bridge's `/api/command` has no gateway selector and this bridge keeps no record of which
-  aGate that Bridge polls, so `POST /api/dispatch` with a `gateway_id` other than the stored
-  default used to sign in to the Bridge and dispatch anyway, echoing the requested id. It
-  now answers 409 before any provider I/O and names the stored default gateway; Battery
-  Control on the other gateway's own page acts on the gateway on screen (#375).
-
-## [0.5.24] — 2026-11-02
-
-### Fixed
-- System view and the top bar's gateway picker show the same gateway. The overlay opens on
-  the picker's gateway and follows it, and a gateway picked in the overlay becomes the
-  picker's. Before, the overlay could show one gateway while the picker said another.
-- System view is in the phone's More sheet, by name. On a phone it was only the top bar's
-  unlabelled icon, always last. It is now in Top bar preferences, first by default, so it
-  can be moved or hidden like the other buttons (saved preferences get it at the end).
-- When the top bar wraps to two rows, the sidebar's logo row grows with it; a strip of
-  sidebar no longer shows between the logo and System view.
-- `franklinwh-system-view` 0.2.3 (was 0.2.0): adds the gateway hooks above; 0.2.1 draws
-  objects a bridge marks unavailable, which this bridge doesn't send.
+Full notes for each release are in [`docs/changelog/`](docs/changelog/), also on the docs site. One entry per release below: counts, then highlights.
+
+## 2026-11-15
+
+### [0.5.44](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.44/)
+
+Added 1 · Fixed 5
+
+- Billing: two gateways on one meter share one bill (one set of fixed charges, demand from…
+- Retailers: Provider from / until dates and the export note save
+- Date boxes: an empty date box stays blank in Safari and the HA app
+- Explain: points to Settings → Sites & Billing → your meter → + Add tariff
+- Battery recordings: survive the aGate dropping off, and show why they ended and who…
+
+## 2026-11-14
+
+### [0.5.43](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.43/)
+
+Added 3 · Changed 3 · Fixed 5
+
+- Connectivity: Troubleshoot for an unreachable aGate or one on 4G, with Health check and…
+- Offline values: Dashboard and top bar grey out last-good values while the aGate is offline
+- Network tab: the :502 line is no longer green on a result older than the link
+- Watchdog: cloud-status back-off no longer raises `WORKER_STALLED`
+- Tariffs and billing: tariffs live on the meter, billing by date, retired tariffs locked…
+- Logs: the time range shows the range in use
+
+## 2026-11-13
+
+### [0.5.42](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.42/)
+
+Added 18 · Changed 13 · Fixed 6
+
+- Off-grid: the notification gives stored kWh and time left at the current usage
+- Scheduler: All gateways for rules that move no battery
+- Prices, tariffs and solar: prices in one place under Sites & Billing (price spike, HA
+- Analytics: more cards on Local and Cloud, and Explain (trends and what to change)
+- Setup and support: the setup list (FranklinWH Gateway Emulator, Modbus TCP), confirm
+- Battery: Record on the live trend, scheduled recordings, recordings purged after 90
+
+### [0.5.41](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.41/)
+
+Changed 1 · Fixed 3
+
+- Ask before continuing names who it asks, and doesn't clash with notify actions
+- System view: smart circuits by their aGate names, and Customise one gateway at a time
+- Analytics: Local's SoC on Lifetime, and "Home load" on both sources
+- The Audit trail moved to Logs, and is easier to read
+
+## 2026-11-12
+
+### [0.5.40](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.40/)
+
+Added 2
+
+- System view: voltage & frequency, today's energy, power on wires and alarms
+- System view → Alarms from the devices
+
+## 2026-11-11
+
+### [0.5.39](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.39/)
+
+Added 10 · Changed 10 · Fixed 3
+
+- Local history: how long it is kept, and an off switch, in Settings
+- Local history keeps full resolution for 10 days, then 5-minute rows
+- Analytics → Cloud
+- Analytics → Local steps through history
+- Energy flow: hover or tap a flow to see what it carried
+- Analytics: a time in the date picker on the Day views
+
+## 2026-11-10
+
+### [0.5.38](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.38/)
+
+Added 1 · Changed 1
+
+- Notifications when the bridge starts, restarts or stops
+- The off-grid notification says why
+
+## 2026-11-09
+
+### [0.5.36](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.36/)
+
+Changed 1 · Fixed 2
+
+- Metrics export leaves mock gateways out
+- The metrics export says which gateway each row is from
+- Every number each poll reads is kept, not just the chart values
+
+## 2026-11-08
+
+### [0.5.35](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.35/)
+
+Changed 4 · Fixed 11
+
+- An empty gap could sit between the top bar and System view when it opened while…
+- `POST /api/reboot` description no longer says it is gated by `allow_writes`
+- Control and Circuits no longer say "Set ALLOW_WRITES=true"
+- Each tab sets itself up once, not twice
+- Health → Rediscovered is per gateway
+- Generator → Operating windows looks unavailable while the generator feature is off
+
+### [0.5.34](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.34/)
+
+Changed 1 · Fixed 8
+
+- A late Release tap no longer releases a different force
+- Release on a VPP found at start-up checks the VPP
+- A restart just after a schedule asks no longer sends the question twice
+- The notifications' own database connection is closed when the bridge stops…
+- Notifications guide corrections
+- Version reported from a source checkout matches pyproject.toml
+
+## 2026-11-07
+
+### [0.5.33](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.33/)
+
+Changed 2 · Fixed 6 · Docs 3
+
+- The aPower model is read from the gateway
+- History counts as evidence
+- Support info lists what's installed
+- A site without solar no longer counts as having solar
+- Saving System Setup keeps the gateway's readings
+- Remote solar size matches the Solar tab
+
+## 2026-11-05
+
+### [0.5.32](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.32/)
+
+Added 6 · Fixed 2
+
+- API tokens and the api role
+- Home Assistant users get the role of their HA group
+- Accounts, sign-in, roles and the Security switch
+- The HTTPS port
+- Trusted networks
+- Guide: Security
+
+## 2026-11-04
+
+### [0.5.30](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.30/)
+
+Changed 2
+
+- Send to → Chosen devices is a drop-down
+- Guide: Home Assistant setup and notifications brought up to date
+
+### [0.5.29](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.29/)
+
+Added 5 · Changed 1 · Fixed 6
+
+- Notifications check and Test critical alert
+- Send to for critical alerts and Release / Keep
+- Ask templates and two off-grid sensors
+- Send to: all enabled devices or the devices you choose
+- Schedule editor: a {x} button to insert values
+- Critical alerts reach Home Assistant and phones on Docker and pip
+
+### [0.5.28](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.28/)
+
+Added 2 · Fixed 3
+
+- Ask before continuing: your own buttons, a text reply, and the answer passed on
+- **Schedule conditions
+- The Ask before continuing question now fills in `%sensor.id%` values, like…
+- Logs on a phone
+- Companion devices on a phone or a narrow iPad
+
+## 2026-11-03
+
+### [0.5.27](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.27/)
+
+Added 7 · Changed 5 · Fixed 3
+
+- Notification targets
+- Buttons on notifications
+- Schedules can ask before they run
+- Groundwork for notifications with buttons
+- Home Assistant: Run Status Description
+- Home Assistant: Cloud Connection Via
+
+### [0.5.26](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.26/)
+
+Changed 1 · Fixed 1
+
+- Demo mode's mock aGates start again
+- franklinwh-modbus 0.10.1 → 0.13.0
+
+### [0.5.25](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.25/)
+
+Fixed 1
+
+- A dispatch naming a gateway the Modbus Bridge cannot address is refused
+
+## 2026-11-02
+
+### [0.5.24](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.24/)
+
+Fixed 5
+
+- System view and the top bar's gateway picker show the same gateway
+- System view is in the phone's More sheet, by name
+- When the top bar wraps to two rows, the sidebar's logo row grows with it
+- `franklinwh-system-view` 0.2.3 (was 0.2.0)
 - On a phone, tapping an object in System view left its hover box over the details
-  panel's ✕, so the details couldn't be closed ("Can't dismiss this view", iPhone).
-  Fixed in `franklinwh-system-view` 0.2.3.
-
-## [0.5.23] — 2026-11-01
-
-### Added
-- **System view: Customise diagram, place name and weather** (#428). A **Customise diagram**
-  button lets you name the site, each gateway and each smart circuit. You can also set the
-  service legs, the battery model, where solar connects, whether a generator is fitted, a
-  picture for each smart circuit (heating/cooling, hot water, EV, pool, other) and whether
-  weather shows. The answers are saved in the bridge (`system_view.json`), so every browser
-  shows the same diagram. Where the aGate has a reading, it's shown beside your answer; a
-  mismatch is flagged, never overridden. Nothing is sent to the aGate. Above the diagram
-  are the site's name (by default the place from your location setting) and the weather
-  now, from the solar page's Open-Meteo forecast. The forecast refreshes in the background,
-  so opening the view never waits for it.
-
-### Fixed
-- **System view:** "100%" fits inside the battery ring, and the hover text no longer covers
-  the label under the picture (`franklinwh-system-view` 0.2.0).
-
-## [0.5.22] — 2026-11-01
-
-### Added
-- **System view** (#428, phase 1): a picture of your whole system: grid, aGate, batteries,
-  solar, home, smart circuits and generator, with live flows. Open it from **System view**
-  in the sidebar or the top bar. Tick **Start on System view** to make it the page this
-  browser opens on; **Standard dashboard** returns to today's dashboard. It fits desktop,
-  tablet and phone (zoom − / Fit / +, pinch, drag). Hover a picture for a sentence, click
-  for details. Grey means offline, amber a warning, red critical (for example a grid outage).
-  Only what your aGate reports is drawn: no solar, no solar picture. It reads the bridge's
-  cached data only and never sends anything to the aGate.
-
-### Fixed
-- **A pip install starts again.** The history store was fixed at `/data/metrics.db`, so the
-  INSTALL.md "Without Docker" install stopped at start-up on any host without a writable
-  `/data` (macOS, or Linux as a normal user). It now lives under the bridge's data folder:
-  `./data` for a pip install, `/data` in the add-on and Docker as before. `METRICS_DB` still
-  overrides it (#410).
-
-### Testing
-- **Every PR now installs the bridge the two standalone ways INSTALL.md offers.** Docker
-  Compose and pip into a fresh venv, each with and without a broker, then a mock gateway is
-  added and checked (`install-smoke.yml`, #409). Until now only the Home Assistant add-on
-  was tested; the first run found that a pip install does not start (#410).
-
-## [0.5.21] — 2026-10-31
-
-### Added
-- **Home Assistant gets Grid Voltage and Grid Frequency** (#386). The bridge already read
-  both every poll; now they're published, with the Modbus Bridge's entity IDs. No new reads
-  of the aGate.
-- **Reserve SoC in Home Assistant** (C2). Two numbers: TOU and Self-Consumption
-  Reserve SOC (Emergency Backup's reserve is fixed at 100 %). They write through the FranklinWH
-  cloud, because the aGate discards a local reserve write. They appear only when cloud
-  credentials are set for this gateway's aGate. Each shows the reserve the aGate reports
-  every poll.
-
-## [0.5.20] — 2026-10-31
-
-Second release today, after 0.5.19 (two a day are now allowed).
-
-### Added
-- **Home Assistant gets Grid Status, Active Reserve SOC, Firmware Version and four relay
-  sensors** (#386). Grid Status says whether the aGate is connected, off grid on request,
-  or off grid without a request. Active Reserve SOC is the reserve of the mode in use.
-  The relays are Main Relay 1 and 2, Grid Relay 2 and Black Start Relay. All of them come
-  from reads the bridge already makes every poll; no new reads of the aGate.
-
-### Security
-- **Home Assistant controls stop working when the Controls group is off** (#399). Turning
-  off Controls (writable) in the MQTT settings removed the Operating Mode select and the
-  Smart Circuit switches from Home Assistant, but the bridge still obeyed commands sent to
-  their MQTT topics. Now it stops listening for them, and refuses (and logs) any that
-  arrive anyway. Turning the group back on restores them.
-
-### Docs
-- **Up to two releases a day** (TEST_POLICY). Each still passes its own gates, including the
-  HAOS acceptance run; a release that changes how Home Assistant identifies things is still
-  released alone.
-
-## [0.5.19] — 2026-10-31
-
-### Breaking
-- **Every schedule names its gateway** (#379). The schedule form starts on the active
-  gateway, always shows the gateway, and has no "Default gateway" choice. Saving a schedule
-  with no gateway, or an unknown one, is refused (422). `/api/schedules/import` needs
-  `?gateway=`; entries with no gateway, or one this bridge doesn't have, are bound to it.
-  On update, schedules saved with no gateway, and billing and System Setup data saved under
-  "default", are given to the default gateway at start-up (or to the first gateway you add),
-  so nothing stops running. A schedule with no gateway no longer runs on the default.
-- **No call falls back to the default gateway's address** (#379). An internal aGate call
-  with no host is refused instead of going to the configured `fwh_host` or the default
-  gateway. The poller and Home Assistant controls use the gateway's re-discovered address,
-  else its configured one. Nothing registers a gateway on first use any more; the roster
-  is what start-up registered. `FWH_MODBUS_HOST` is no longer read: each gateway's Modbus
-  client connects to its own host (the host override in Control still applies to the
-  default gateway). A scheduler pass for no gateway runs no schedule. Settings → Connection
-  shows the active gateway's host, and none in All gateways.
-
-### Docs
-- **The README no longer credits the library with the force watchdog.** The bridge gives
-  `franklinwh-modbus` no duration; its own watchdog is the only safety. The README also
-  named the wrong add-on slug (it is `franklinwh_local_bridge`), the editable install
-  pointed at `../franklinwh-local` (now `../franklinwh-direct-connect-api`), and
-  `docs/API_COMPARISON.md` counted 29 `/api/cmd/*` routes (there are 36). A test now
-  checks the slug, the route count and the install path.
-
-## [0.5.18] — 2026-10-30
-
-### Breaking
-- **Every API call that acts on an aGate must name its gateway** (#379). `?gateway=`
-  takes the gateway's ID or its locked aGate serial. Leaving it out used to mean the default
-  gateway, and the metrics routes then mixed every gateway's rows. Now it is refused with
-  400, before any device I/O. A malformed value gets 422, an unknown one 404 and a
-  gateway stopped for its identity 409. This applies to single-gateway installs too.
-  `/api/dispatch` needs `gateway_id`. Scripts, dashboards and other bridges that call this
-  API must add the gateway. The web UI always does.
-- **A cloud aGate serial must be one of this bridge's gateways** (#379). The serial in the
-  cloud settings, and the one typed when signing in, must be locked to one of this
-  bridge's gateways. An unknown serial gets 404 and a malformed one 422, before any
-  sign-in. The grid-limit cloud check reads the gateway's own serial, or nothing. It used
-  to read the configured serial, whichever gateway was being written. The cloud's VPP
-  status is stored only on the gateway with that serial, never on the default.
-
-### Added
-- **Scheduler Monitor** (#345). A Monitor card at the top of Scheduler → History shows
-  why each schedule is or is not running: idle, blocked (with the failing conditions and
-  their live values), holding, ready, running, skipped, deferred, retrying or done. One
-  line per schedule every tick; tap or hover for each condition. Kept in memory only (the last
-  500 lines). It reads nothing extra from the aGate. Also at
-  `GET /api/scheduler/monitor`.
-
-### Changed
-- **The default gateway takes over when the active one can't be shown** (#383). If the
-  gateway on screen is disabled, removed, offline or stopped for its identity, the page
-  switches to the default gateway. The top bar now names the active gateway even when
-  it's the only one, and disabled gateways aren't offered in the selector.
-- **"Site (All Gateways)" is replaced by a read-only All gateways view** (#383). The page
-  always shows and controls one gateway. **All gateways…** in the gateway selector opens
-  every gateway at a glance, laid out like FWHAI's Gateways tab: counts (Registered,
-  Polling active, Unavailable, Stopped), one row per gateway with its health, grid, mode,
-  SoC, poll status, last poll and power flows, and a site total. Clicking a row shows that
-  gateway; there are no controls. The page now opens on the default gateway, which is
-  always listed first; it no longer reopens the gateway picked last time. Removing the
-  default gateway makes the next one the default straight away, not at the next start.
-- **The schedule form can be made bigger** (#337). **Default**, **Medium** and **Full**
-  size it, and its corner drags to any size in between; the browser remembers the size.
-  A notification's message is now a box that grows as you type and can hold several
-  lines. Same as the Modbus Bridge.
-
-- **Scheduler Explain remembers its level** (#336). Min, Medium or Full stays as you
-  last chose it in that browser.
-
-- **After a restart, a force the bridge left running is released by default** (#199). The
-  default `dispatch_interrupt_policy` is now `release` (was `notify`): at start-up a force
-  this bridge recorded and never released is released if its window has ended, or its
-  auto-release is re-armed if not. A force with no record here is left alone. A policy you
-  saved is kept. The unused `release_stale()`, which would have released any force, is gone.
-
-### Fixed
-- **The VPP monitor watches every gateway** (#379). It only checked the default gateway,
-  so another gateway's remote VPP dispatch (1707 programme 9) never showed on its row in
-  the All gateways view, and its start and end were never logged or notified. Each gateway
-  is now checked from its own cached reading, with no extra device reads. Its state is kept
-  apart from the others, and every message names the gateway.
-- **Each gateway is locked to one aGate serial** (#381). The bridge used to take whatever
-  serial a gateway's aGate reported on every read, so a gateway pointed at another aGate
-  carried on as if nothing had changed, and two gateways could share one aGate. Now the
-  serial is stored and locked to the gateway the first time it is reported. A gateway
-  that later reports a different serial, or one another gateway already has, is stopped:
-  nothing is recorded, published or written for it. The reason is logged, sent as a
-  "FranklinWH gateway stopped" notice and shown on the gateway, and the API refuses it
-  with 409. Existing gateways lock on their first read after the update. A gateway's ID
-  is always the bridge's own: if the roster cannot be read at start-up, no gateway is
-  set up under its IP address any more; the bridge logs the error instead.
-- **Re-discovery adopts only this gateway's own aGate** (#356). When a gateway stopped
-  answering, the network sweep could pick another aGate: a gateway whose serial was never
-  read used the default gateway's serial, and with no serial match the first aGate that
-  answered was taken. Two gateways could then poll the same aGate, and forces and
-  schedules acted on the wrong battery. Now only an aGate with the gateway's own serial is
-  adopted, never an address another gateway uses, and a gateway with no serial yet does
-  not sweep. The "FranklinWH aGate moved" notice names the gateway.
-- **Site view no longer writes to the default gateway** (#350). Site view shows every
-  gateway, but some per-gateway controls (the top bar's operating mode, grid limits, the
-  raw console and Terminal, MQTT Republish/Unpublish, battery recording, Energy costs
-  close and import, System Setup save, location sync) sent their write to the default
-  gateway. In Site view every per-gateway control is now disabled and says "Choose a
-  gateway to change this", and the page refuses such a write before sending it. The API is unchanged:
-  a call with no `?gateway=` still means the default gateway. (Site view itself is now
-  replaced by the read-only All gateways view: #383.)
-
-- **The reserve SoC is written to the gateway on screen** (#351). It used to go to the
-  gateway in the cloud settings, while the audit row named the gateway you were viewing.
-  It now goes to that gateway's serial. It's refused with the reason for a mock gateway,
-  for a gateway whose serial hasn't been read yet, and for a gateway other than the one in
-  the cloud settings. The audit row names the gateway written.
-
-- **Switching gateway reloads Circuits, Generator, Solar, Health, Device and System
-  Setup** (#352). They kept the first gateway's data, so a circuit toggle, generator
-  edit or System Setup save could write one gateway's values to another. They now clear
-  on a switch and reload, their controls come back only with the new gateway's data, and
-  a late reply for the previous gateway is dropped.
-
-- **Battery Control and the top bar's Release act on the gateway on screen** (#349). They
-  used to force and release the default gateway (or `FWH_MODBUS_HOST`), whichever gateway
-  you were viewing, and showed the default's force, ratings and SoC.
-  `/api/battery/command` now takes `?gateway=`. In Site view the widget asks you to
-  choose a gateway, and Release releases each force this bridge holds on its own gateway.
-- **The Modbus client host override and `FWH_MODBUS_HOST` apply only to the default
-  gateway** (#354). They used to redirect every gateway's forces and releases to one
-  host. A force is now recorded under the gateway's own host, so the scheduler's conflict
-  check also sees a force started from Battery Control.
-- **Two forces started at the same moment keep their own SoC limit** (#355). A force on one
-  gateway could pick up another gateway's SoC reader, so its target SoC was checked
-  against the wrong battery.
-- **The default gateway no longer changes when you edit a gateway** (#182, #146). It used
-  to be whichever gateway was registered first, so editing, restarting or republishing
-  the default quietly made another gateway the default. Unbound schedules, the VPP check
-  and every call that names no gateway then went to a different aGate. Now one gateway is
-  stored as the default and shown with a badge. **Make default** in a gateway's Edit
-  dialog is the only way to move it. On update, the gateway that was the default at
-  start-up is marked, so nothing changes.
-- **Gateways are enabled, disabled and removed from the Edit dialog** (#146). The Enabled
-  toggle in the table did nothing. The default gateway can't be disabled, and a gateway
-  can be removed only once it is disabled. Each refusal says why in the dialog. The
-  "Please confirm" box now opens above the Edit dialog instead of behind it.
-- **Disabling a gateway releases this bridge's force on it first** (#353). Before, the
-  force kept running with no window end to release it and no target-SoC check. If the
-  release fails, the gateway stays enabled.
-- **A schedule's window end releases only its own force** (#189). It used to send Release
-  whether or not it had fired, which also ended a force from another schedule or from
-  Battery Control. History now says "no release: this schedule did not hold the force".
-  On-exit HA actions still run at every window close, as before.
-
-- **A refused force or a rejected mode write is a failure, not *fired*** (#191). A force
-  refused because the Modbus client (this bridge) is off or can't reach the aGate, and a
-  mode or off-grid write the aGate rejects, are now logged *error* and retried while the
-  window is open.
-
-- **Deleting a running schedule releases its force** (#195). Before, the force kept
-  running until its duration or target SoC ended it.
-
-- **Priority now counts against a running force** (#196). A force schedule that becomes
-  ready later no longer takes over a running force of higher priority under
-  *If busy = override*; it is deferred and History names the schedule that holds it.
-
-- **A force on one gateway no longer drops another gateway's limits** (#194). The bridge
-  supervised one force for the whole site, so a second gateway's force ended the first
-  one's time limit and target SoC. Each gateway's force now has its own.
-
-- **Stop, Pause, shutdown and the start-up check act on the right gateway** (#192). They
-  released the default gateway's aGate. Stop and Pause now release on the gateway the force
-  was sent to, a shutdown releases every gateway holding a force, and the start-up check
-  covers every gateway.
-
-- **Run now uses the schedule's gateway** (#193). It used the gateway selected in the top
-  bar. A schedule bound to a gateway now runs there; the top bar's gateway is used only for
-  an unbound or scope "all" schedule.
-
-- **A scope "all" schedule fires on every gateway** (#270). The first gateway to fire marked
-  the occurrence done for all of them, so it ran on only one gateway. Each gateway now fires
-  it once per occurrence.
-
-- **A failing write no longer holds up every schedule** (#197). Scheduled writes made up
-  to 5 attempts with waits inside one scheduler tick, so every gateway's schedules waited.
-  Now each tick makes one attempt, and the existing backoff (30 s up to 10 min) retries.
-
-- **FORCE is back, for this bridge's own forces** (#333). 0.5.17 showed every force as
-  VPP. The top bar, the gateway switcher and Run status now show **FORCE** while this
-  bridge holds a force, and **VPP** when another remote controller has the aGate
-  (programme id 9). A force from another client still shows VPP: the bridge does not
-  read SunSpec Model 704.
-
-- **Dialogs show their results inside, not in a toast behind them** (#293). Errors,
-  missing fields and test failures now stay in the dialog until your next action:
-  the schedule form and its Test buttons, schedule Import, the grid limits write,
-  Energy Costs import, smart-circuit and generator schedules, the Home Assistant
-  instance forms, Broadcast, acknowledging alerts and the history date range. A
-  "Saved" message appears only after the dialog closes. When a write is sent but the
-  read-back does not confirm it (smart circuits, generator), the dialog now stays open
-  and says so instead of closing.
-
-- **The version and build show on a phone** (#326). They were only in the sidebar
-  footer, which is hidden on a narrow screen. The **More** sheet now shows them.
-
-- **Copy works over http** (#327). Settings → Support info **Copy** did nothing when the
-  bridge was opened over plain http, which is common through Home Assistant. It now
-  copies there too. If the browser blocks copying, it says so next to the button. The
-  Device console's **Copy both** no longer says "Copied" when nothing was copied.
-
-- **Settings → Integrations: turning a Home Assistant instance off or on no longer
-  reports an error** (#170). The change was applied, but the page then called a function
-  that does not exist and showed "Could not change it".
-
-- **Scheduler Explain says when a Home Assistant action runs** (#335). An action set to
-  run on exit was listed as if it ran when the schedule fired. It now reads "… when it
-  ends", or "… when it starts and when it ends" for entry & exit, the same wording as the
-  Modbus Bridge.
-
-## [0.5.17] — 2026-10-27
-
-### Fixed
-- **Dashboard Run status shows the state that matters** (#313). It showed only the
-  aGate's battery run status, so it read "Standby" in Debug Mode and kept saying
-  "Discharging" during VPP. It now shows the first of these that applies: Debug Mode,
-  Off-grid, VPP, Reconnecting, then the battery run status. Hover it to
-  see the source. In the top bar the FORCE chip is now **VPP**: the aGate reports a force
-  from this bridge as VPP too, like the FranklinWH app. SUPPORT SESSION is now **DEBUG
-  MODE**. Debug Mode is still recognised only from run status 8. Reading the aGate's Debug
-  Mode setting comes with #311. Known gap: a WSet force (Model 704) is no longer
-  shown apart from VPP; they are different states, and #333 brings FORCE back.
-
-- **After a reconnect, the aGate's all-zero answers no longer show or record as 0 W** (#309).
-  For a minute or two after a reboot or a lost connection the aGate reports 0 for the
-  battery charge and every power flow. The dashboard showed 0 W, history recorded it and
-  Home Assistant received it. Those values now read "--", the dashboard says "aGate
-  reconnecting — no readings yet", nothing is recorded or sent to Home Assistant, and the
-  log says when the zeros start and when real readings return. Per-aPower values from the
-  same answer were real and are still shown.
-
-## [0.5.16] — 2026-10-26
-
-### Added
-- **User guide: shorter names in Home Assistant** (#320). How to rename the bridge's
-  device in Home Assistant so friendly names stop being cut to "FranklinWH Dir…" in
-  history graphs and on phones. Entity IDs, history and automations are unchanged. With
-  screenshots.
-
-### Fixed
-- **Network tab: missing link data reads "not reported"** (#302). When the aGate's answer
-  had no network fields (as with the library Emulator), the tab showed every link as off,
-  every interface as disabled and down, and Write safety as "single link". It now says
-  "not reported", and Write safety says "unknown".
-
-- **Grid & Inverter: the limits are shown and entered in kW** (#312). `1701` stores them in
-  watts, so a stored 2000 showed as "2000 kW", and the dialog's "Custom kW" box wrote its
-  number unchanged (2 would have set 2 W). The dialog no longer says the write is
-  "confirmed ignored": with Debug Mode on (firmware V12R02B60D00, one test) it is stored;
-  with it off, earlier firmware ignored it; enforcement is not yet tested.
-
-- **The worker-restart guard for an active force works** (#175). It read a field the force
-  status never returns, and it named a module it never imported, so it refused every
-  guarded restart with "cannot determine dispatch state". It now refuses only while this
-  bridge holds a force, and says which one. No worker uses this path yet; the dispatch
-  watchdog is still thread-based.
-- **The Battery tab's charts refresh again** (#317). The Trend chart, the Watch-live
-  chart and the per-aPower cell charts stopped redrawing after their first draw: each
-  refresh failed silently, so the chart froze while samples kept arriving. Switching metric
-  redrew it once. The "updated" time above the cells now uses the site's time zone, like
-  the chart.
-- **Battery Control forces through the Modbus client (this bridge) use franklinwh-modbus
-  0.10.1.** The library now writes the force in watts (WSetMod=1 + WSet) and reads it back,
-  instead of a percentage of 5000 W. On aGate firmware V12R02B60D00 the percentage form was
-  refused above 10 % (500 W), as reported by the library. A refused write now says
-  "Rejected by the aGate" at once. Charging is still refused on V12 (a firmware limit).
-- **A running force no longer shows as "Force Standby".** With franklinwh-modbus 0.10.1 the
-  force is held in watts (WSetMod=1 + WSet) and the percentage reads 0, which the bridge took
-  for "standby". It now reads the field the aGate is using.
-
-## [0.5.15] — 2026-10-24
-
-### Added
-- **Guide opens the page for the tab you're on** (#306), in the sidebar and the phone
-  menu, instead of the guide's front page. Sections link to their topic: Companion Devices
-  to getting the Companion app and adding a device, Mapping to the Probe, and the Home
-  Assistant Instances list to its guide section. About 40 more sections now carry a
-  **Guide** link to their topic: alerts and notification settings; MQTT entities, groups,
-  republish and the broker; the scheduler and each part of the schedule editor; battery
-  control and the Modbus client; tariffs, solar forecast, analytics and costs; gateways
-  and sites; generator, grid limits, logs and setup.
-
-### Changed
-- **The battery dispatch (VPP) log lines and notifications say what the site was doing**
-  (#300). "Battery dispatch STARTED" and "ENDED" now carry battery, grid, solar and load power
-  and the SoC at that moment. ENDED also says how long the dispatch lasted when the bridge
-  saw it start.
-
-### Fixed
-- **The unofficial-software disclaimer is asked once per installation** (#303). One
-  acceptance now covers every browser, device and address. Before, each one asked again,
-  and so did clearing the browser's storage, because the acceptance was tied to an id kept
-  there. Until someone accepts, every visit still asks.
-
-### Security
-- **franklinwh-cloud is pinned to 0.6.4.** Its logs no longer show the gateway serial in
-  the gateway-list debug response (the one line 0.6.1 still missed), in the rate-limit
-  warning, or in its timeout and gateway-selection error messages. Debug responses also mask
-  e-mail, names, addresses, coordinates, site and device names and Wi-Fi names.
-
-## [0.5.14] — 2026-10-23
-
-### Added
-- **A bridge-wide "Bridge problem" sensor in Home Assistant** (#286), on the bridge's own
-- **The terminal has a Copy button,** next to clear. It copies everything on screen, and
-  works over plain http (HA ingress) too.
-  device next to "Bridge heartbeat". It carries every open alert, including those of a
-  gateway that has never answered and so has no device of its own. The per-gateway
-  sensors stay.
-
-- **Alerts are stored records** (#271, the shared alert spec agreed with the Modbus
-  Bridge). A new `alerts` table in the bridge's database keeps each fault, how often it
-  repeated, when it cleared and who acknowledged it, across restarts. Closed alerts are
-  kept 90 days; open ones are never removed.
-- **Alert API** (#271). `GET /api/alerts` lists alerts (filters `open`, `kind`, `since`),
-  `POST /api/alerts/{id}/ack` acknowledges one and records where it came from
-  (`source:ui`, `source:api` or `source:ha`), and the new `GET /api/status` gives the summary
-  `alerts: {level, open, latest_id, changed_ts}`; `changed_ts` moves whenever an alert
-  opens, resolves or is acknowledged. An alert monitor runs in the background as a listed
-  worker; if it stops, `/api/status` says so and the bridge's health check is unaffected.
-- **What raises an alert** (#271). The aGate unreachable for 5 minutes, or no live data for
-  2 minutes (critical); the MQTT broker disconnected for 5 minutes (warning); a background
-  worker that stopped responding or crashed (critical); any control the Audit Trail records
-  as failed, such as a refused worker restart (critical, "Command refused"); a scheduled
-  action that failed or missed its window (critical). Each clears or is counted by the
-  shared spec's rules: a condition resolves after 2 minutes good (1 for live data), and
-  repeats of the same event within 10 minutes add to one alert rather than making new ones.
-- **Critical alerts reach Home Assistant even with no phone set up** (#271). Each critical
-  alert creates a Home Assistant persistent notification (`fwh_dc_alert_<id>`) whenever the
-  bridge can reach Home Assistant, whether or not any notification device is configured.
-  It is retried until delivered, and dismissed when the alert is acknowledged in the bridge.
-  Dismissing it in Home Assistant does not acknowledge the alert.
-- **Switching Home Assistant notifications off keeps alerts in the bridge** (#271). With
-  the Push notifications switch (`ha_notify`) off, critical alerts create no Home Assistant
-  notification; each skipped one is recorded as "skipped: HA channel off". The bridge's
-  alert window still opens, and Settings → Notifications shows "Critical alerts reach only
-  the bridge UI" for as long as the switch is off.
-- **"Bridge problem" and "Bridge heartbeat" in Home Assistant** (#271). Each gateway's
-  device gets a `problem` binary sensor that is on while an alert is open, with the open
-  alerts as attributes; it stays available while the aGate is offline, so automations can
-  react without any `notify` service. A separate "FranklinWH Direct Connect Bridge" device
-  has one "Bridge heartbeat" timestamp, sent every minute by the alert monitor while MQTT
-  is on and connected, whatever any gateway is doing. A heartbeat that stops moving means
-  the bridge itself has stopped.
-- **Critical alerts open a window that stays until acknowledged** (#271). It says what
-  happened, when (in the site's time), what it means and what to do, with a link. Each alert
-  has its own "I understand" box, and OK is enabled once every box is ticked; Escape and
-  clicking outside do not close it. Alerts raised while no browser was open, for example by a
-  schedule, show on the next visit, and a condition that clears while unacknowledged updates
-  to "…–13:27, resolved" without waiting for another alert. A condition that has been acknowledged but is still
-  active shows as a red bar under the top bar until it clears, and a badge in the top bar
-  counts open alerts and opens the list, where warnings are acknowledged.
-
-### Security
-- **Logs no longer carry the FranklinWH cloud sign-in token or the gateway serial** (#295).
-  At log level DEBUG, the HTTP client's own loggers wrote every request header to the log,
-  the cloud login token and cookie included. At the normal level they wrote each cloud request
-  address, which contains the gateway serial. Those loggers now show warnings only,
-  whatever the bridge's log level. If you ran at DEBUG with the cloud signed in, sign in
-  again (Settings → Integrations → FranklinWH Cloud API) to get a new token.
-
-### Changed
-
-- **franklinwh-cloud is pinned to 0.6.1.** Its debug logging no longer writes the FranklinWH
-  sign-in token, passwords or full serials, which it did before at debug level. Turning
-  debug logging on also no longer starts a new cloud session.
-- **Guide opens this bridge's published docs** (#257). The sidebar, the More sheet and
-  Settings → Help link straight to **Docs** and **User Guide** on the bridge's own site, in a
-  new window. The in-app panel that said the docs weren't bundled, and pointed at the
-  library's site, is gone.
-- **Logs show a short source name** (#239): `poller` instead of
-  `franklinwh_direct_connect_bridge.poller`. The full name is the tooltip and the filter
-  value, and the column now shows on phones.
-
-### Fixed
-- **The companion device dialog shows its own results** (#293). Discover, Send test and a
-  failed Save now answer inside the dialog, and the message stays until your next action.
-  Before, they went to a toast behind the dialog that faded away unseen.
-
-- **No false OFF-GRID after the aGate restarts** (#288, #44). For a minute after a reboot
-  the aGate reports every value as 0, which read as "off-grid, SoC 0%" and could send an
-  off-grid notification. That start-up frame now counts as no reading, and SoC shows as
-  unknown rather than 0. Off-grid is decided by the aGate's own off-grid state (1723) when
-  it's read; the relays only corroborate it.
-- **An unreachable gateway no longer stalls the scheduler** (#284). Each tick read the dead
-  gateway's clock and waited about a minute for it, delaying every other gateway's
-  schedules and raising "Background worker stalled". Only a poll that reads the gateway
-  now counts as fresh data, so the scheduler skips a gateway that is down and says why.
-- **Settings → Setup → "Where is this site?" reads the aGate and can be set there** (#263).
-  With a real aGate it shows the offset and location the aGate reports, marked READ, and
-  offers the timezones at that offset to confirm. It has its own Save, so the wizard no
-  longer has to be re-run. A demo with mock gateways only is still simply asked.
-- **Every notification is also in the app log** (Logs tab), as a warning. With no companion
-  devices set up, the notifications were recorded only in Settings → Notifications and
-  delivered nowhere. In that list the time now comes first.
-- **A schedule with unknown fields is refused** (#269). `POST`/`PUT /api/schedules` ignored
-  fields it didn't recognise, so a mis-shaped request saved a schedule built from defaults.
-  It now answers 422 and names the field.
-- **The first-use disclaimer fits a phone screen** (#231). Its text scrolls and its Continue
-  button stays in view; Documentation opens the published guide instead of a page that was
-  not found.
-- **The wizard's "Yes" to Home Assistant works on the add-on** (#264). It was disabled
-  whenever MQTT was already on, the add-on's default, so the wizard's gateway was never
-  published.
-- **No connection warnings before a gateway is set up** (#265). A fresh install logged
-  "Name does not resolve" on every page load.
-- **Editing a schedule through the API no longer switches it back on** (#168). A
-  `PUT /api/schedules/{id}` that left out `enabled` turned a disabled schedule on; it now keeps
-  its on/off state unless `enabled` is sent.
-- **The scheduler sensor `grid.connected` follows the off-grid state** (#206). It was worked
-  out from grid power and read 0 (disconnected) whenever grid power was exactly 0 W while on
-  grid. It now reads 1 on grid and 0 off grid, and has no value when the off-grid state is
-  not known.
-- **A stale AEMO NEM price is no longer used forever** (#207). When AEMO could not be reached,
-  `tariff.spot_price` (and a dynamic NEM tariff) kept the last price however old it was, so a
-  price-gated schedule could act on a price from hours earlier. The last price is now kept for
-  30 minutes, as on the Modbus Bridge, and then the sensor has no value until AEMO answers.
-- **Next fire is right for Every N minutes of 24 hours or more** (#208). The card showed the
-  anchor plus N, but the schedule runs daily at the anchor; it now shows the next anchor. The
-  same applies to the last slot of a day when N does not divide 24 hours.
-- **A force charge or discharge with no power set is refused** (#209). Sent through the API
-  with an empty `power`, it ran as a 0 W force; it is now skipped with the reason "no power
-  set". **Always** and zero-duration schedules no longer give a failed write only 1 second to
-  retry: they use the normal retry time limit.
-- **An Always schedule fires every time its conditions start to hold** (#190). It fired once,
-  ever: its single stored run stayed finished, across restarts, so every later rising edge
-  sent nothing. Each rising edge is now its own run. The release on the falling edge is
-  unchanged.
-- **A schedule with its key setting missing no longer fires every day** (#198). **Weekly** with
-  no days, **Monthly** with no day of the month and **One-off** with no date now never fire, and
-  a **Recurring window** whose start equals its end is empty instead of open all day. Saving or
-  importing one of these is refused with the reason (HTTP 422 on save); schedules already
-  saved this way stop firing.
-- **Schedules are checked when they are saved or imported** (#202). A schedule whose action,
-  Home Assistant actions, conditions, cron expression, interval, days, months, day of the month
-  or dates the engine cannot use is refused with the reason (HTTP 422 on save; listed as an
-  error per entry on import), instead of failing or being skipped when it runs. Import also
-  warns about a condition on a sensor this bridge does not know, or on a Home Assistant entity
-  that is not exposed. An imported Modbus Bridge entry whose Home Assistant action this bridge
-  cannot run is now reported as an error rather than saved.
-- **Scheduler history names the gateway** (#205). Each row written by a gateway's scheduler run
-  now records that gateway, and History shows its name beside the schedule, so the rows of a
-  rule that runs on every gateway can be told apart. `GET /api/schedules/log` returns it as
-  `gateway_id`. The history table gains a `gateway_id` column; older rows have none.
-- **Next fire, the timeline and Test follow the site's clock** (#161). They used the bridge
-  container's clock while schedules fire on the aGate's, so when the two zones differed the
-  card's **Next:**, **● active**, the timeline and **Test** were off by the difference. They now
-  use the clock of the schedule's gateway (the default gateway for an unbound schedule), and
-  **Test** evaluates that gateway's values instead of always the default gateway's. When the
-  aGate's clock cannot be read, the scheduler keeps using the zone it last read, and logs it,
-  instead of silently switching to the container's.
-
-## [0.5.13] — 2026-10-21
-
-Hotfix: the FranklinWH cloud can be connected from the add-on again, it signs in once instead of every 5 minutes, and a rejected password stops all sign-ins before the account can lock. Save mappings works.
-
-### Changed
-
-- **franklinwh-cloud is pinned to 0.6.0** (#254). It was an open range, so each new library
-  release went into the image untested. 0.6.0 adds the library features the bridge now uses
-  instead of its own: clear sign-in errors (no more `TypeError` on an unexpected reply), a
-  distinct rate-limit error, `resolve_gateway()` (never guesses among several aGates), and
-  closing each session properly.
-
-### Fixed
-
-- **Settings → Integrations → Save mappings works** (#247). It failed every time since the
-  Mapping panel arrived (0.5.0), with an internal server error that Safari showed as "The
-  string did not match the expected pattern". Errors that aren't JSON now show their HTTP
-  status instead of the browser's parse message.
-- **The FranklinWH Cloud API card can save your credentials** (#248). The email, password and
-  serial you typed were never saved, and **Test** only checked what was already stored, so
-  the cloud could not be connected from the add-on. **Save & test** now signs in with what you
-  typed and stores it only if that works. The gateway serial is optional when your account
-  has one aGate; with several, it lists them and asks you to choose, instead of quietly using
-  the first.
-- **One rejected cloud sign-in now stops all of them** (#248). FranklinWH locks the account,
-  the FranklinWH app included, after a few wrong passwords, warning first ("you still have 2
-  chances"). As soon as FranklinWH rejects a sign-in, the bridge puts cloud sign-in **on hold**:
-  nothing is sent from any part of the bridge, whatever is typed, until you check the password
-  in the FranklinWH app and press **Clear hold**. The card shows FranklinWH's exact reply.
-- **Every cloud sign-in is in the Audit Trail** — where it came from (the card, the status
-  check, a reserve write), the account (masked), and FranklinWH's reply; the password never.
-  Cloud credential changes are audited too (which field, not its value).
-- **The cloud card's fields are left-aligned**, the password can be shown, and the browser no
-  longer fills it in with an unrelated saved password.
-- **The cloud status check no longer signs in every 5 minutes** (#233). It signs in once and
-  reuses the session (the library renews it when it expires). After a failed check it now
-  waits longer each time, up to 30 minutes, instead of retrying every 45 seconds, so a
-  rate-limited account is not polled harder.
-
-## [0.5.12] — 2026-10-21
-
-The add-on installs a prebuilt, tested image instead of building on your machine.
-
-### Changed
-
-- **The add-on now installs a prebuilt image instead of building on your machine** (#243).
-  Home Assistant downloads `ghcr.io/david2069/{arch}-franklinwh-direct-connect-bridge`, built
-  and tested before release, so installs and updates are faster and everyone runs the same
-  build. GitHub's download count for the image also tells us roughly how many installs and
-  updates there are; nothing else is collected.
-- **Supported architectures are now aarch64 and amd64 only.** armhf, armv7 and i386 are no
-  longer offered: they can't be tested here, and the image is not built for them.
-
-## [0.5.11] — 2026-10-20
-
-The Generator tab is always available, as in the FranklinWH app, and the bridge no longer changes the generator mode.
-
-### Fixed
-
-- **The Generator tab is always available, as in the FranklinWH app** (#238, #229). It was
-  hidden unless the bridge guessed a generator was present, which also hid the switch to turn
-  the generator feature on. The bridge can't know what is wired up; the tab now says what the
-  aGate reports instead of "installed" or "not installed". Generator figures on the dashboard
-  still appear only while the feature is on.
-- **The generator mode can no longer be changed from the bridge** (#237). The Auto / Manual
-  buttons wrote a field that the FranklinWH app's own traffic shows is a manual start/stop
-  command, not the mode. The mode fields are now shown raw, and the mode endpoint refuses
-  without writing. Use the FranklinWH app to change the mode.
-- **No more Bad Gateway errors from the Generator before a gateway is set up** (#94). Opening
-  the app before the setup wizard has added a gateway asked the generator endpoint for data,
-  which answered 502 and put two errors in the browser console on every load. It now answers
-  "No gateway is set up yet."
-
-### Added
-
-- A **Generator** page in the user guide.
-
-## [0.5.10] — 2026-10-19
-
-The Modbus library is pinned to the version this bridge was tested with.
-
-### Changed
-
-- **The franklinwh-modbus library is pinned to 0.9.6** (#219). The bridge used to accept any
-  0.9 or later, so each new library release went into new installs and rebuilds before it was
-  tested here — 0.9.6 and 0.10.0 both arrived that way within two days. 0.9.6 is the version
-  0.5.9 was tested with on a real aGate. With it, failed Modbus status reads are logged as
-  WARNING (rate-limited), not DEBUG.
-
-## [0.5.9] — 2026-10-18
-
-The Modbus client (this bridge) stops connecting to the aGate just to show a status, and is off by default on new installs.
-
-### Changed
-
-- **The Modbus client (this bridge) is off by default on a new install.** Turn it on under
-  Control → Modbus client (this bridge) to use Battery Control's force commands and the
-  battery ratings read. Some sites don't have the aGate's Modbus TCP Server (:502)
-  switched on, on some gateways it misbehaves, and it serves only one client at a time,
-  so the bridge no longer connects to it unless asked. An existing install keeps its
-  setting, including one that was on only because that used to be the default (#88).
-  Without the metrics store (no saved settings), the client is now off.
-
-### Fixed
-
-- **The bridge no longer connects to the aGate's Modbus TCP Server (:502) just to show a
-  status.** The Modbus TCP Server serves one client at a time, and this bridge was a second
-  client next to the Modbus Bridge: up to three connections on every poll to show "Modbus
-  :502 Up" (#221), and a full Modbus session every 30 s for each open browser tab, to show
-  whether Battery Control was available (#223). The Modbus status now shows the result of
-  the bridge's last real connection (a force, a release, the hourly ratings read, or
-  Control → Modbus client → Test), with its time. Battery Control re-checks when it is
-  shown, at most once per 30 s, and otherwise hourly. A force still checks the
-  connection itself before it runs.
-- **A mock gateway is never contacted over Modbus.** A mock-only install logged
-  `ERROR … Error scanning SunSpec base addresses` within seconds (#95). The bridge now
-  reports "a mock gateway has no Modbus TCP Server to reach" without trying.
-- **Release reports what the aGate says.** It reads the aGate back after releasing and
-  reports "released" only if no force is still enabled; otherwise it says the release was
-  sent but not confirmed. With the Modbus client switched off, a Release now explains that
-  the force this bridge started is still active, and how to clear it (#174).
-
-## [0.5.8] — 2026-10-17
-
-Hotfix: connecting to the aGate over Modbus no longer writes to it.
-
-### Fixed
-
-- **Connecting to the aGate over Modbus no longer writes its operating mode and reserves.** The
-  franklinwh-modbus library (0.9.5) tested whether the mode and reserve registers (15507–15509)
-  were writable on every connect, by writing a test value and then the original back. This bridge
-  connects for every force, release and availability check, so on a site where those registers
-  are writable the mode and reserves could briefly change, or stay changed if the connection
-  dropped in between. On the AU aGate tested so far those writes are discarded. The bridge now
-  turns that test off. (#224)
-
-## [0.5.7] — 2026-10-17
-
-Analytics charts read in the selected gateway's time, on a real time axis.
-
-### Fixed
-
-- **Analytics shows the selected gateway's time, not another gateway's.** The time zone was read
-  once at start-up, before the gateway list had loaded, so it came from the default gateway (a mock
-  on one site, which put every label 10 hours out). It now follows the gateway you select. (#144)
-- **The Analytics chart is drawn on a real time axis.** Spacing is proportional to time, a period
-  with no samples shows as a gap, and lines are straight between samples instead of smoothed
-  shapes that weren't readings. Axis labels are 24-hour HH:MM, with a short date ("16 Oct") on a
-  second line where the day changes. (#145)
-- **Custom range takes a date and a time, in the gateway's zone.** A day used to start at UTC
-  midnight. The default is today 00:00 to now, and a **Today** button resets it. (#145)
-- **The caption says what the chart shows:** points, bucket size, the first and last sample, the
-  time zone, and "no data before …" when the history is shorter than the range. (#145)
-- **Export CSV/JSON exports the range on screen,** including a custom range;
-  `GET /api/admin/metrics/export` accepts `start` and `end`. (#145)
-
-## [0.5.6] — 2026-10-17
-
-Hotfix: a force above the battery's rated power keeps its direction.
-
-### Fixed
-
-- **A Force Charge above the battery's rated power no longer discharges it (and a Force Discharge
-  above it no longer charges).** The request went to the franklinwh-modbus library unlimited, and
-  that library's own limit (0.9.5) returns the rating with the opposite sign, so the battery ran
-  the other way at full power. The bridge now limits the power to the rating itself, keeping the
-  direction, and the result says when it did. Percentages are kept to 0–100. Applies to Battery
-  Control, the battery command and scheduled forces. (#213)
-
-## [0.5.5] — 2026-10-17
-
-Hotfix: a schedule's Off now means off for smart circuits and the off-grid action.
-
-### Fixed
-
-- **A schedule set to turn a smart circuit Off no longer turns it On, and "reconnect to the grid"
-  no longer takes the site off-grid.** The schedule form saved the choice as the text "false", which
-  the scheduler read as on. On/Off is now read strictly and saved as true/false; a value that is
-  neither is refused, with nothing sent to the gateway. Schedules saved before this release are read
-  correctly without re-saving. **If you have a schedule with a smart-circuit or off-grid action,
-  check what it did.** (#188)
-
-## [0.5.4] — 2026-10-17
-
-Hotfix: a Home Assistant sensor that is down no longer satisfies a schedule condition.
-
-### Fixed
-
-- **A Home Assistant sensor that is unavailable or unknown no longer counts as 0 in schedule
-  conditions.** A condition such as *price < 10* was true while the price sensor was down, so a
-  schedule could start a force charge or discharge. Such a sensor now has no reading, and every
-  condition that uses it is false, as for a sensor that doesn't exist. (#167)
-
-## [0.5.3] — 2026-10-17
-
-The bridge no longer loses the aGate when it misses a few reads, and a new Link & load card shows why a link is slow.
-
-### Added
-
-- **Link & load diagnostics.** A *Link & load* card on Health, `GET /api/diagnostics/link` and
-  `franklinwh-direct-connect-bridge ping [HOST]` show:
-  - a timed ping and a timed connection to the aGate's Direct Connect port;
-  - how many connections this bridge holds to the aGate: Direct Connect :9000, and the aGate
-    Modbus TCP Server :502 used by this bridge's Modbus client;
-  - the bridge's own CPU, memory, threads and open files.
-
-  Read-only: the aGate Modbus TCP Server is counted, never opened. (#123)
-
-### Fixed
-
-- **The bridge no longer sweeps your whole network every time the aGate is slow to answer.**
-  It searched all 254 addresses after every failed poll, once a minute while the aGate struggled,
-  adding load exactly when the aGate could least take it. It now searches only after three failed
-  polls **and** when the aGate's known address answers neither ping nor its port. It backs off from
-  5 minutes to 60 while the aGate stays away.
-- **The search no longer probes the aGate Modbus TCP Server (:502),** or port 502 on every other
-  device on your network. It looks for Direct Connect (:9000) only. (#123)
-- **"aGate moved" is announced only when the address actually changed.** (#123)
-
-## [0.5.2] — 2026-10-16
-
-Hotfix: turning a schedule on or off no longer wipes its settings.
-
-### Fixed
-
-- **Turning a schedule on or off no longer wipes its settings.** The on/off switch saved only a few
-  fields and the rest were reset to defaults: the trigger type and windows, calendar days and months,
-  exit conditions, hold time, priority, *If busy*, *restore on exit* and *all gateways*. Saving from
-  the edit form likewise lost *restore on exit* and *all gateways*. A save now changes only what it
-  sends. **If you switched a schedule on or off before this release, check its settings.** (#157)
-
-## [0.5.1] — 2026-10-16
-
-Home Assistant clean-up: a real Unpublish, network diagnostics, and a device page like the Modbus Bridge's.
-
-### Added
-
-- **Unpublish that stays unpublished.** *Clear HA* is now **Unpublish**. It turns publishing off for the
-  selected gateway (kept across restarts), removes everything the bridge published for it (entities of
-  every group, state and availability), checks the broker afterwards and tells you how many topics it
-  removed. Before you confirm, it shows how many it will remove. *Republish* turns publishing back on.
-  Other gateways and other FranklinWH software are not touched. (#119)
-- **aGate network state in Home Assistant**, on the device's Diagnostic card:
-  - network in use and networks available;
-  - write safety and fallback;
-  - Wi-Fi and 4G signal;
-  - each interface's link;
-  - cloud connection and endpoint.
-
-  Read every 10 minutes, real gateways only. No MAC or IP addresses, Wi-Fi name or credentials are
-  published. (#134)
-
-### Changed
-
-- **The HA Device info reads like the Modbus Bridge's:** the manufacturer is *FranklinWH Technologies
-  Co., Ltd*, the model is the aGate's actual model (*aGate (mock)* for mocks), *Firmware* is the bridge
-  version and *Hardware* is the aGate firmware. The device name, its identifiers and every entity are
-  unchanged. (#140)
-- **Diagnostic sensors are on the Diagnostic card:** latency, run status and ambient temperature, as
-  on the Modbus Bridge. (#121)
-
-### Fixed
-
-- **A gateway with publishing off no longer appears in Home Assistant.** Mocks, which start with
-  publishing off, were published anyway within one poll. The setup wizard's *Publish to Home
-  Assistant? Yes* now turns publishing on for the gateways it added. (#98)
-  **On update:** a gateway whose publishing is off has its leftover entities removed from Home
-  Assistant when it starts. Its device disappears instead of sitting *unavailable*. Turn publishing
-  on (Republish) to bring it back.
-
-## [0.5.0] — 2026-10-16
-
-Poller: editing a gateway keeps it running.
-
-### Fixed
-
-- **Editing a gateway no longer stops it for good.** Changing a gateway in Settings (for example turning
-  *Publish to Home Assistant* on) restarts its poller. If the old poller was still finishing a read,
-  the restart was refused and never retried. The gateway stopped updating and its Home Assistant
-  entities went *unavailable* until the add-on was restarted. The restart now waits for the old
-  poller to finish, and never runs two at once. (#82)
-
-## [0.4.10] — 2026-10-16
-
-Hotfix: history is recorded again on add-on installs.
-
-### Fixed
-
-- **Power History and the other charts fill again on add-on installs.** With MQTT publishing on, the add-on
-  stopped recording history, assuming Home Assistant's recorder would keep it. But the bridge's own
-  charts (dashboard Power History, Analytics, costs) read only the bridge's history, so they went empty.
-  This hit every new add-on install since 0.3.3. History is now recorded unless you set
-  `metrics_enabled: false`. The gap from before the update cannot be filled in. (#136)
-
-## [0.4.9] — 2026-10-16
-
-No more false worker failures in the log and audit trail.
-
-### Fixed
-
-- **No more false "worker_failed" entries.** The VPP monitor, the cloud-status check and the dispatch
-  watchdog were reported as failed every few minutes, filling the audit trail and the log with errors,
-  although nothing was wrong. They now report that they are alive. When one has nothing to do, it says
-  *paused* with the reason (for example *no cloud credentials*, or *no force active*) instead of going
-  quiet. A worker that really stops is still reported. (#93)
-
-## [0.4.8] — 2026-10-16
-
-Clearer Modbus labels.
-
-### Changed
-
-- **"Modbus" is always qualified in the UI.** The aGate's listener is *aGate Modbus TCP Server :502*.
-  This bridge's own optional connection to it is *Modbus client (this bridge)*. The old labels
-  ("Modbus :502", "Use Modbus from this bridge") made the bridge's switch read like a setting that
-  turns off the aGate's Modbus service. Nothing changes in behaviour.
-
-## [0.4.7] — 2026-10-16
-
-Tidier numbers in Home Assistant, and no false "Connection Lost" at start-up.
-
-### Fixed
-
-- **State of Charge shows one decimal in Home Assistant**, not six (99.8 %, not 99.789474 %). Power
-  shows whole watts, daily energy two decimals and temperature one. History keeps full precision.
-  (#114)
-- **"Connection Lost" no longer flashes after one slow answer.** Just after the add-on starts, the
-  first page updates wait on a fresh reading from the aGate and can take longer than the page waits.
-  The banner now needs two failures in a row. (#113)
-
-## [0.4.6] — 2026-10-16
-
-Security hotfix.
-
-### Security
-
-- **Taking the site off-grid always needs a confirmation.** One API route could switch the site off-grid
-  or back without the confirmation the Off-grid control requires. It now requires it too.
-
-## [0.4.5] — 2026-10-16
-
-Smart Circuit switches in Home Assistant show their state.
-
-### Fixed
-
-- **Smart Circuit switches in Home Assistant show on or off.** They always read *unknown*: the bridge
-  accepted on/off commands but never published the circuits' state. Each poll now reads it in the same
-  session (one extra read, no extra login). (C1 in docs/MQTT_CONTROLS_PLAN.md, #96)
-
-## [0.4.4] — 2026-10-16
-
-The add-on keeps working with Home Assistant after it is updated.
-
-### Fixed
-
-- **The add-on keeps its link to Home Assistant after an update.** Home Assistant gives each updated
-  add-on a new access token, but the bridge kept the one from its first start. After any update, the
-  setup checks, Home Assistant entities in schedules, Home Assistant actions and the notification pickers
-  failed with *"token rejected"*. The add-on now picks up the new token at start. Home Assistant
-  instances you added yourself are not touched. (#99)
-
-## [0.4.3] — 2026-10-16
-
-Eight Home Assistant sensors that were always "Unknown" now show values.
-
-### Fixed
-
-- **Eight Home Assistant sensors show values instead of "Unknown".** These are the five daily totals (solar,
-  grid import, grid export, battery charged and discharged), home load today, ambient temperature, and
-  battery state. They read field names the bridge never published, so they stayed unknown on every
-  install, real gateway or mock. Nothing about the entities changes: same names, same ids, same history.
-  The three smart-circuit switches still show unknown. Their state needs a reading the poll doesn't make
-  yet, which is tracked separately. (#96)
-
-## [0.4.2] — 2026-10-16
-
-The setup checks at the end of the wizard (and in Settings → Setup) report what is true.
-
-### Fixed
-
-- **"Bridge entities in Home Assistant" counts the right entities.** Since 0.4.0 it reported
-  *"0 entities — plus N left over from removed gateways"* for a working install, and advised deleting live
-  devices. It recognised entities by their name, which 0.4.0 changed. It now asks Home Assistant
-  which entities belong to this bridge's devices. It also no longer counts other FranklinWH
-  integrations' entities as this bridge's leftovers. (#83)
-- **"MQTT broker connected" no longer fails when nothing is publishing yet.** It read only the first
-  gateway's connection. With no gateway it always said *Not connected* and **Check again** could
-  not change it. With a stopped first gateway it said the same while others were publishing.
-  It now reports the gateways that publish. Before any gateway publishes it says *No gateway
-  publishing yet*, which is not a failure. (#84)
-
-## [0.4.1] — 2026-10-16
-
-Hotfix: a fresh Home Assistant add-on install could not add any gateway, so setup could not finish.
-It affected any add-on with MQTT publishing on and `metrics_enabled` unset, which has been the
-default for new installs since 0.3.3. Docker and standalone installs were not affected.
-
-### Fixed
-
-- **A fresh add-on install can add a gateway again.** Since 0.3.3 the add-on publishes over MQTT by default,
-  and with MQTT on the bridge turned its local database off. That database also holds the gateway list,
-  so adding a gateway, real or mock, failed with *"metrics store is disabled; gateway roster needs it"*
-  and setup could not finish. The database now always opens. `metrics_enabled` decides only whether
-  power history is recorded, so an add-on that publishes to Home Assistant still leaves history to HA's
-  recorder. If you set `metrics_enabled: true` as a workaround, you can leave it or remove it. (#81)
-
-## [0.4.0] — 2026-10-15
-
-Each gateway is now its own Home Assistant device, named after its serial — ten gateways
-are ten distinguishable devices instead of ten identical ones. "Set up" opens the wizard.
-
-### Changed
-
-- **Each gateway is its own Home Assistant device, named after its serial.** The device was
-  the fixed string "FranklinWH aGate (Local Bridge)", so ten gateways produced ten devices
-  with the same name and the only way to tell them apart was to open each one. It now reads
-  **FranklinWH Direct 24170091** — the last 8 characters of that gateway's serial. The
-  device `identifiers` are untouched, so this is a rename, not a new device: entities,
-  their ids and their history all survive. Entities published by earlier versions are still
-  recognised as ours, so the orphan purge does not walk past its own leftovers.
-
-### Fixed
-
-- **"Set up" opens the wizard.** The dashboard banner jumped to Settings → Setup — the same
-  information as a checklist, which is not what a button labelled *Set up* promises.
-  Settings → Setup also gains a **Run the wizard** button, and the wizard can be reopened
-  at any time: its state only governs whether it appears *unasked*.
-
-## [0.3.3] — 2026-10-15
-
-The add-on publishes to Home Assistant out of the box, like its sibling bridges; turning
-publishing on takes effect immediately; notification targets are chosen from a real picker;
-and the Guide links to the published documentation instead of showing a 404 body.
-
-### Changed
-
-- **The add-on publishes to Home Assistant out of the box.** `mqtt_enabled` now defaults
-  to **true** for new installs: in the add-on the Supervisor supplies the broker, so
-  publishing works without configuration — and an add-on whose entities never appear reads
-  as broken. Existing installs keep whatever they have.
-
-### Fixed
-
-- **Turning publishing on takes effect immediately.** It said "restart the add-on", because
-  enabling replaced the settings object while every running poller held the old one. The
-  live object is mutated instead, and the poller's existing retry tick connects within the
-  minute.
-
-- **The broker is configured even while publishing is off.** Auto-configuration required
-  `mqtt_enabled`, so flipping the switch found no broker set and the user had to go looking
-  for one the Supervisor could have named all along.
-
-### Added
-
-- **Picking a notification target is a picker, not a search of 3804 entities.** Discover
-  now asks the **chosen** Home Assistant instance rather than all of them — one bridge can
-  read several, and a notification goes to exactly one. Each target shows Home Assistant's
-  own friendly name (and fills the alias from it), when it was **last seen**, and whether
-  it is a **duplicate** of another: HA re-registers a companion app as `notify.x_2` beside
-  `notify.x` and gives no hint which is live, so last-seen — the only evidence there is —
-  is shown instead of left to be hunted for.
-
-- **A Home Assistant instance can be disabled without deleting it.** Its devices stop being
-  offered and stop receiving, while their aliases and delivery history survive — for a
-  holiday, a moved server, or a token that needs replacing. A device on a disabled instance
-  says so rather than looking enabled and silently delivering nothing, and the delivery log
-  records those as *skipped*, not *failed*: nothing went wrong, it was switched off.
-
-- The add-on's own Home Assistant now reads as **"This Home Assistant (Supervisor)"** with
-  an *auto-detected* badge, instead of showing `http://supervisor/core`.
-
-### Fixed
-
-- **The Guide no longer shows `{"detail":"Not Found"}`.** The documentation site is built
-  from the sibling library checkout into `docs_site/`, which is gitignored — so the Home
-  Assistant add-on, built from the repository, had no site to serve and the Guide panel
-  rendered FastAPI's 404 body as the page. The bridge now reports whether the docs are
-  bundled, and the panel links to the published documentation when they are not.
-
-- **The add-device dialog no longer discards a half-filled form** on a click outside it —
-  the same fix as the schedule editor.
-
-## [0.3.2] — 2026-10-15
-
-Mock gateways can be created again, and setup now ends on Home Assistant: four live checks
-with their own remedies, and a plain yes/no about publishing.
-
-### Fixed
-
-- **Adding a mock gateway no longer fails with "Internal Server Error".** The Home
-  Assistant add-on installs `franklinwh-direct-connect-api` from PyPI, which served 0.4.0 —
-  a version without the emulator's `tz_offset_hours` parameter — so creating a mock raised
-  `TypeError` and left a half-built roster row behind. The library is now pinned to
-  **>=0.5** (released for this), and `mockgw` degrades to the seeded clock instead of
-  failing if it ever meets an older one again.
-
-### Added
-
-- **The setup wizard ends on Home Assistant, with live checks and one question.** Four
-  things decide whether this bridge shows up in Home Assistant, they fail independently,
-  and each remedy is in a different place — so they are reported as four lines, not one
-  verdict: our broker connection, our link *into* Home Assistant, Home Assistant's own MQTT
-  integration, and whether the entities actually arrived (including ones left over from
-  gateways that no longer exist, which nobody finds on their own). "Could not be checked"
-  is a third state, shown as such rather than as a failure. Publishing is then a plain
-  **Yes/No** — "No" changes nothing at all.
-
-- **Discover says where its subnet came from**, and takes several. A prefilled value with
-  no provenance cannot be told apart from a guess, and one of the sources *is* a guess:
-  the box now reads "from the Home Assistant host network", "from a gateway you already
-  have", or "a common default — check it matches your network". Comma-separated subnets are
-  accepted, with a note that an aGate on a VPN, Tailscale or another VLAN needs its own
-  network typed in — this bridge can only sweep what it can reach.
-
-## [0.3.1] — 2026-10-15
-
-Everything a first add-on install runs into: the dashboard now comes to life on its own,
-Discover looks at the right network, the add-on configures what the Supervisor already
-knows, and no dialog throws your work away.
-
-### Fixed
-
-- **The schedule editor no longer throws your work away.** Clicking outside it closed the
-  dialog instantly — minutes of conditions, windows and HA actions gone, with no warning
-  and no undo. The backdrop no longer closes it at all, and Cancel or Escape asks first
-  whenever anything has changed (dirtiness is measured against a snapshot of the form as
-  opened, not a flag someone has to remember to set).
-
-- **Confirmation dialogs are the app's, not the browser's.** Five native `confirm()` boxes
-  were still in use — unstyled white browser chrome in a dark UI — including the one that
-  appears when saving a schedule that is running. They now use the themed dialog, and each
-  one says what will actually happen.
-
-- **The dashboard comes to life when a gateway appears.** Selecting a gateway has to
-  REFETCH, and `loadGateways()` only assigned the id — so on a fresh install the first
-  gateway was selected silently and the dashboard sat on its empty state until something
-  else happened to poll. Picking the same gateway from the switcher worked, which is
-  exactly the difference. The roster is also polled every 10s while there is no gateway
-  (120s once there is one), instead of leaving a two-minute gap on the one screen that has
-  nothing to show.
-
-- **No more blank gateway row.** With nothing configured the roster invented a row from the
-  unconfigured placeholder — no name, no host, disabled — which reads as a *broken* gateway
-  rather than as "none yet". An empty roster is the honest answer. Creating a real gateway
-  with no host is now refused outright (mocks are exempt; theirs is assigned when the
-  emulator starts).
-
-- **Discover scans the right network in the add-on.** It offered `172.30.33.0/24` — the
-  Supervisor's internal docker network, where an aGate can never be — because the subnet
-  was derived from the container's own interfaces. It now asks the Supervisor for the
-  HOST's LAN, filters out docker ranges, and falls back to `192.168.0.0/24`.
-
-### Added
-
-- **The PV array size can come from the gateway.** The aGate reports it (1903 `solar_pv`),
-  so the solar forecast's kWp no longer has to be typed from memory. Offered, never
-  applied: a deliberately different number — a shaded array, a clipped inverter — is a real
-  answer and is not overwritten, and the hint only appears when the two differ. "Could not
-  read the gateway" stays distinct from "no solar".
-
-- **The add-on configures what the Supervisor already knows.** It registers the Home
-  Assistant it is installed in as an instance automatically (read-only, via the Supervisor
-  token — no long-lived token to create, no URL to paste), only when no instance exists, so
-  a user's own instances are never touched. For MQTT it goes one step less far on purpose:
-  the broker is **offered** on the MQTT tab with a one-click adopt, because turning
-  publishing on creates entities in the user's Home Assistant and that is a decision, not a
-  startup side effect.
-
-## [0.3.0] — 2026-10-15
-
-The Home Assistant add-on works properly: the panel renders under ingress, the add-on has
-its own icon, and setup asks where the site is. Battery dispatch is now gated on a Modbus
-path that has been confirmed rather than merely configured.
-
-### Fixed
-
-- **The Home Assistant add-on panel renders properly.** Every asset and API call in the UI
-  is relative and resolves against `<base href>`, which was hardcoded to `/` — so under
-  ingress (`/api/hassio_ingress/<token>/`) they all resolved to the root of the Home
-  Assistant host, outside ingress, and 404ed. The panel came up as unstyled HTML with
-  oversized raw SVGs; the add-on log showed `GET /` and then not a single `/static/…`
-  request. The base path is now read per request from the Supervisor's `X-Ingress-Path`
-  header (the token rotates, so it can never be cached), and the standalone install is
-  unchanged.
-
-- **The add-on has its own icon, and a description that is not clipped.** It was showing
-  the Supervisor's generic puzzle piece, and the store cut the description mid-phrase at
-  "…over the Direct Connect". `icon.png` (128×128) and `logo.png` (250×150) are generated
-  by `tools/make_addon_icons.py` from the same mark as the web UI's favicon.
-
-- **The setup wizard no longer opens on a bridge that is already working.** Adding the
-  site-timezone step as required made "something required is missing" true on every
-  existing install, and that was what decided whether to prompt — so installs that had been
-  running for weeks were offered first-run setup. The rule is now what the wizard always
-  meant: it prompts only when **no real gateway is configured**. Completeness is still
-  reported on Settings → Setup, where the user went looking for it.
-
-### Added
-
-- **Battery dispatch is gated on a CONFIRMED Modbus path, in four states.** `not_configured`
-  / `unreachable` / `no_sunspec` / `ready`, because the remedy differs in each case and a
-  single "unavailable" sends people to the network when the gateway's own SunSpec setting
-  is what is off. Confirmation is a SunSpec read that returns — a socket that opens is not a
-  dispatch path. The **API refuses** a force unless the state is `ready` (the UI disabling
-  the buttons is not the gate), while **Release is never blocked**: refusing to stop a
-  dispatch because the path looks unhealthy is the wrong way round. The Control tab now
-  names the state and the fix instead of greying out.
-
-- **The setup wizard offers the FranklinWH app account, optionally, and says why.** It is
-  checked by SIGNING IN and stored only if that works — an unverified password means
-  discovering months later that a reserve-SoC write has been failing. The step states what
-  an account actually adds (the reserve SoC, which has no proven local write; naming a VPP
-  dispatch the local channel reports as plain charging; cross-checking a grid-limit write),
-  that credentials are stored in plain text in the bridge's settings file, and that
-  skipping is fine.
-
-- **A mock gateway no longer publishes to Home Assistant by default.** The Settings UI
-  already sent `publish_ha: false` for mocks; the setup wizard did not, and the API
-  defaulted to true — so three mock gateways created on a live install published three fake
-  FranklinWH devices (63 entities, energy sensors included) to the owner's Home Assistant.
-  The default is now decided server-side from `is_mock`, which fixes every caller. Passing
-  `publish_ha: true` explicitly still works.
-
-- **The gateway switcher shows each gateway's operating mode and battery direction.**
-  SELF / TOU / EMGY, and an up or down arrow for charging or discharging, read from the
-  same run-status enum as the top-bar pill. On a multi-gateway site the switcher is where
-  you choose between gateways, so it is where the difference has to be visible. Unknown
-  shows nothing — no reading is not "idle".
-
-- **The wizard's last step reports every gateway, not one.** Solar, generator and backup
-  wiring are per-gateway facts — one aGate can have 6.6 kWp of PV and another none — and a
-  single profile at the end of setup silently claimed they were alike. Each gateway now gets
-  its own card, with its solar stated plainly (including "No solar reported").
-
-### Changed
-
-- **The sidebar says "Direct Connect", not "Local Bridge".** The project was renamed; the
-  dashboard's own name badge and the Network topology diagram were still on the old one.
-  The Home Assistant device name is deliberately NOT renamed — it is identity, not a label
-  (see `publish/entities.py`), and changing it would orphan every discovered entity.
-
-### Documentation
-
-- **`docs/HA_HISTORY.md` — keeping your Home Assistant history.** What is possible when you
-  switch to this bridge or reinstall it: keep the entity id (recommended), start clean
-  (also recommended), or merge series by hand (**discouraged**, with the reasons and the
-  third-party tools named but not endorsed). Includes the four things that must match
-  before any two series may be joined — the one that catches people is a *daily* counter
-  against a *lifetime* one, which matching units will not reveal.
-
-- **INSTALL.md now warns about reinstalling.** An upgrade keeps your Home Assistant
-  entities; a remove-and-reinstall can leave Home Assistant holding the old entity id and
-  give the newly discovered one a `_2` suffix, which restarts its history. The remedy —
-  free the old id, rename the new entity to it, and Home Assistant carries history and
-  long-term statistics across the rename — is written out, with the units/`state_class`
-  caveat and the Developer Tools → Statistics fix for a jumped total.
-
-### Added
-
-- **The setup wizard asks where the site is, and every gateway uses that one zone.** Nothing
-  on the Direct Connect channel supplies a timezone — the aGate reports an OFFSET and leaves
-  `timezoneStr` empty — so it is asked, defaulting to the browser's zone. Mock gateways are
-  started on it (the bridge owns their clock, so there the rule is enforced literally); a real
-  gateway whose clock disagrees is **named** in the wizard's timezone step rather than
-  silently corrected, because there is no verified write for the aGate's clock.
-
-### Fixed
-
-- **A gateway with a wrong clock no longer kills every scheduler tick.** The site offset is
-  derived from the aGate's wall-clock minus UTC; a gateway answering with a stale date made
-  that 571 days, `datetime.timezone()` refuses anything past ±24 h, and the exception took out
-  the tick that was supposed to run the schedule. Offsets outside the real range (UTC-12:00 to
-  UTC+14:00) are now refused — falling back to the gateway's reported base offset, or to
-  "could not be established", which callers already handle.
-
-- **The wizard builds the site you described.** Declaring 3 aGates created exactly one mock,
-  every mock was called "Mock aGate" so the switcher could not tell them apart, and finishing
-  left the UI on *Site · All Gateways*, where the per-gateway tabs (Battery, Device, Grid &
-  Inverter) error against an empty host. It now creates one numbered mock per declared aGate,
-  each with the declared aPower count, and selects a real gateway when it finishes.
-
-- **A mock gateway can answer the grid and clock reads.** The emulator had no 1701
-  `install_profile` or live 1201 `time_location`, so Grid & Inverter reported the gateway
-  unreachable against a mock that was plainly online, and the site clock came from the
-  reference capture's date. Both are now synthesised
-  (`franklinwh-direct-connect-api`), with `fhpRatePower`/`genRatePower` left at 0 to mirror
-  the real firmware.
-
-- **Battery dispatch over the Modbus Bridge REST API now authenticates.** It never had: the
-  Modbus Bridge requires a session with the `control` capability and we sent nothing, so this
-  path could not have worked against any secured install — while reporting itself
-  **available**, because availability was probed with an unauthenticated `/api/health` that a
-  secured bridge answers `200`. New `modbus_bridge_username` / `modbus_bridge_password`
-  settings (also in the add-on options), a cookie session that re-authenticates once on 401,
-  and availability measured on **authorised access**. Four states are reported distinctly —
-  `unreachable`, `unauthenticated`, `forbidden`, `ready` — because a `viewer` account signs in
-  happily and still cannot dispatch, and no connectivity error would ever point at that
-  remedy. (#56)
-
-- **A simulated island and a real outage are no longer the same badge.** The top bar now
-  reads **OFF-GRID · SIMULATED** when the island was requested (`1723 offgridSet = 1`) and
-  **OFF-GRID · OUTAGE** when it was not — the same electrical state, completely different
-  news. Unknown stays plain **OFF-GRID** rather than guessing. (#45)
-- **Off-grid is detected again.** The bridge reported on-grid throughout a real island on
-  2026-10-15: it decided from `1301 run_status in (5,6,7)` alone, and on this firmware that
-  field never carries the off-grid codes. It now uses every signal — `1723 offgridState`
-  (primary), `dspRunstatus`, `main_sw[0]` and the `1707` main relays — and reports **which**
-  fired, plus whether they disagree. `1709 gridRelayOpen` is no longer consulted: it read 0
-  for the whole island. (#45)
-
-- **Schedules and tariff windows are evaluated on the site's clock, not the container's.**
-  `docs/TIMEZONES.md` has always said a schedule rule is authored in gateway wall-clock; the
-  scheduler used naive container-local time. Standalone Docker hid it by mounting
-  `/etc/localtime`, so the two clocks agreed — but as a Home Assistant add-on nothing sets a
-  timezone, and a gateway can sit in a different zone from the host in any case. Affects cron
-  windows and `tariff.demand/bonus/charge_window_active`, which gate dispatch. (#41)
-
-- **Modbus reachability is no longer reported as "Down" when it was never probed.** Two
-  reachability paths opened TCP to the aGate's `:502` with no disable guard, so loading the
-  Network tab made "Modbus is off" untrue; both now honour the switch. `None` means *not
-  probed* and renders as **Not probed** across the dashboard, health, network and control
-  views, instead of asserting the port is enabled and unreachable. (#30, #32, #34)
-- **A clean clone can be built again.** `docker build .` failed at `COPY wheels/` for
-  anyone who cloned the repository, including the Home Assistant add-on builder running on
-  the user's own host, because that directory only existed on a developer's machine. The
-  Direct Connect API library now resolves from PyPI like any other dependency, with no
-  sibling checkouts. (#37)
-- **An accepted reserve shows immediately.** The aGate takes ~8s to reflect a cloud reserve
-  write, and until it did the row behind the modal still showed the old value beside a
-  success message. (#39)
-
-### Changed
-
-- **A Mosquitto add-on installed after this one is now found.** MQTT auto-configuration ran
-  once at startup; the poller's existing retry then reconnected to the same unset broker for
-  ever. It re-asks the Supervisor before each attempt, so the broker is picked up without a
-  restart. User-supplied credentials are still never overwritten. (FEAT-HA-ADDON-PARITY)
-- **The add-on container takes the host's timezone**, read from the Supervisor in Python.
-  Nothing set one before, so it ran UTC and every log line and rendered local time was hours
-  out. Schedules are unaffected either way — since #41 those follow the aGate's clock.
-  (FEAT-HA-ADDON-PARITY)
-
-- Dependencies come from `pyproject.toml` alone. The Dockerfile used to repeat the list and
-  install with `--no-deps`, so an end-user image could silently differ from a developer's. (#37)
-- `README.md` separates **Run it yourself** from **Develop**. The old instructions required a
-  sibling checkout and recommended `docker compose up --build`, which does nothing here. (#37)
-
-### Added
-
-- **First-run setup.** A dashboard prompt when required steps are outstanding, and a
-  **Settings → Setup** view that is re-runnable by design: each step reports whether it is
-  already satisfied, so a second pass is a review rather than a blank form. The install
-  profile is **read from the gateway** and each field is marked `READ` or `SET BY YOU`, so a
-  default is never presented as a measurement — and anything derived can be contradicted.
-  Optional steps say "you can set this up later" and skipping disables nothing.
-  (FEAT-SETUP-WIZARD)
-
-- **A copy-paste Home Assistant dashboard card**, on Home Assistant → Published by bridge.
-  Grouped or single layout, diagnostics opt-in, with a Copy button that falls back to
-  selecting the text when `navigator.clipboard` is unavailable — which it is on HA ingress,
-  because that is plain `http`. Shape agreed with the other FranklinWH integrations: plain
-  core cards, no custom cards, no theme line. **Entity ids are never guessed**: each one is
-  confirmed against Home Assistant, a `_2` collision suffix is followed, and anything that
-  cannot be found is listed rather than written into the YAML. (FEAT-HA-DASHBOARD-YAML)
-
-- `tools/dev.sh` builds the image, restarts the container and **proves** the container is
-  running the current working tree, exiting non-zero if not. `GET /api/version` reports the
-  same stamp as `source_sha`. A fix had been "verified" against a container that was never
-  rebuilt. (#35)
-- Working rules in `CLAUDE.md`, agreed across the FranklinWH repositories: evidence and
-  citation, claims from other sessions, publishable evidence, testing, verification of
-  critical changes, and defect tracking. With `tools/pii_check.py`, severity and nature
-  labels, and a pull-request template. (#29, #31, #33)
-- `test/mqtt-shared/run.sh` fails loudly when a harness container does not stay up. One had
-  been crash-looping unnoticed for eight days. (#38)
-- This file, and a rule in `CLAUDE.md` requiring it to be updated in the same commit as any
-  user-facing change. The project had no changelog at all until now.
+
+## 2026-11-01
+
+### [0.5.23](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.23/)
+
+Added 1 · Fixed 1
+
+- System view: Customise diagram, place name and weather
+- System view
+
+### [0.5.22](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.22/)
+
+Added 1 · Fixed 1 · Testing 1
+
+- System view
+- A pip install starts again
+- Every PR now installs the bridge the two standalone ways INSTALL.md offers
+
+## 2026-10-31
+
+### [0.5.21](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.21/)
+
+Added 2
+
+- Home Assistant gets Grid Voltage and Grid Frequency
+- Reserve SoC in Home Assistant
+
+### [0.5.20](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.20/)
+
+Added 1 · Security 1 · Docs 1
+
+- **Home Assistant gets Grid Status, Active Reserve SOC, Firmware Version and…
+- Home Assistant controls stop working when the Controls group is off
+- Up to two releases a day
+
+### [0.5.19](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.19/)
+
+Breaking 2 · Docs 1
+
+- Every schedule names its gateway
+- No call falls back to the default gateway's address
+- The README no longer credits the library with the force watchdog
+
+## 2026-10-30
+
+### [0.5.18](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.18/)
+
+Added 1 · Changed 5 · Fixed 27 · Breaking 2
+
+- Scheduler Monitor
+- The VPP monitor watches every gateway
+- Each gateway is locked to one aGate serial
+- Re-discovery adopts only this gateway's own aGate
+- Site view no longer writes to the default gateway
+- The reserve SoC is written to the gateway on screen
+
+## 2026-10-27
+
+### [0.5.17](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.17/)
+
+Fixed 2
+
+- Dashboard Run status shows the state that matters
+- After a reconnect, the aGate's all-zero answers no longer show or record as 0 W
+
+## 2026-10-26
+
+### [0.5.16](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.16/)
+
+Added 1 · Fixed 6
+
+- User guide: shorter names in Home Assistant
+- Network tab: missing link data reads "not reported"
+- Grid & Inverter: the limits are shown and entered in kW
+- The worker-restart guard for an active force works
+- The Battery tab's charts refresh again
+- **Battery Control forces through the Modbus client (this bridge) use…
+
+## 2026-10-24
+
+### [0.5.15](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.15/)
+
+Added 1 · Changed 1 · Fixed 1 · Security 1
+
+- Guide opens the page for the tab you're on
+- The unofficial-software disclaimer is asked once per installation
+- The battery dispatch (VPP) log lines and notifications say what the site was doing
+- franklinwh-cloud is pinned to 0.6.4
+
+## 2026-10-23
+
+### [0.5.14](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.14/)
+
+Added 9 · Changed 3 · Fixed 19 · Security 1
+
+- A bridge-wide "Bridge problem" sensor in Home Assistant
+- The terminal has a Copy button,
+- Alerts are stored records
+- Alert API
+- What raises an alert
+- Critical alerts reach Home Assistant even with no phone set up
+
+## 2026-10-21
+
+### [0.5.13](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.13/)
+
+Changed 1 · Fixed 6
+
+- Settings → Integrations → Save mappings works
+- The FranklinWH Cloud API card can save your credentials
+- One rejected cloud sign-in now stops all of them
+- Every cloud sign-in is in the Audit Trail
+- The cloud card's fields are left-aligned
+- The cloud status check no longer signs in every 5 minutes
+
+### [0.5.12](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.12/)
+
+Changed 2
+
+- The add-on now installs a prebuilt image instead of building on your machine
+- Supported architectures are now aarch64 and amd64 only
+
+## 2026-10-20
+
+### [0.5.11](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.11/)
+
+Added 1 · Fixed 3
+
+- A **Generator** page in the user guide
+- The Generator tab is always available, as in the FranklinWH app
+- The generator mode can no longer be changed from the bridge
+- No more Bad Gateway errors from the Generator before a gateway is set up
+
+## 2026-10-19
+
+### [0.5.10](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.10/)
+
+Changed 1
+
+- The franklinwh-modbus library is pinned to 0.9.6
+
+## 2026-10-18
+
+### [0.5.9](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.9/)
+
+Changed 1 · Fixed 3
+
+- **The bridge no longer connects to the aGate's Modbus TCP Server (:502) just to…
+- A mock gateway is never contacted over Modbus
+- Release reports what the aGate says
+- The Modbus client (this bridge) is off by default on a new install
+
+## 2026-10-17
+
+### [0.5.8](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.8/)
+
+Fixed 1
+
+- Connecting to the aGate over Modbus no longer writes its operating mode and reserves
+
+### [0.5.7](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.7/)
+
+Fixed 5
+
+- Analytics shows the selected gateway's time, not another gateway's
+- The Analytics chart is drawn on a real time axis
+- Custom range takes a date and a time, in the gateway's zone
+- The caption says what the chart shows
+- Export CSV/JSON exports the range on screen,
+
+### [0.5.6](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.6/)
+
+Fixed 1
+
+- **A Force Charge above the battery's rated power no longer discharges it (and a…
+
+### [0.5.5](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.5/)
+
+Fixed 1
+
+- **A schedule set to turn a smart circuit Off no longer turns it On, and…
+
+### [0.5.4](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.4/)
+
+Fixed 1
+
+- **A Home Assistant sensor that is unavailable or unknown no longer counts as 0…
+
+### [0.5.3](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.3/)
+
+Added 1 · Fixed 3
+
+- Link & load diagnostics
+- The bridge no longer sweeps your whole network every time the aGate is slow to answer
+- The search no longer probes the aGate Modbus TCP Server (:502),
+- "aGate moved" is announced only when the address actually changed
+
+## 2026-10-16
+
+### [0.5.2](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.2/)
+
+Fixed 1
+
+- Turning a schedule on or off no longer wipes its settings
+
+### [0.5.1](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.1/)
+
+Added 2 · Changed 2 · Fixed 1
+
+- Unpublish that stays unpublished
+- aGate network state in Home Assistant
+- A gateway with publishing off no longer appears in Home Assistant
+- The HA Device info reads like the Modbus Bridge's
+- Diagnostic sensors are on the Diagnostic card
+
+### [0.5.0](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.0/)
+
+Fixed 1
+
+- Editing a gateway no longer stops it for good
+
+### [0.4.10](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.10/)
+
+Fixed 1
+
+- Power History and the other charts fill again on add-on installs
+
+### [0.4.9](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.9/)
+
+Fixed 1
+
+- No more false "worker_failed" entries
+
+### [0.4.8](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.8/)
+
+Changed 1
+
+- "Modbus" is always qualified in the UI
+
+### [0.4.7](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.7/)
+
+Fixed 2
+
+- State of Charge shows one decimal in Home Assistant
+- "Connection Lost" no longer flashes after one slow answer
+
+### [0.4.6](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.6/)
+
+Security 1
+
+- Taking the site off-grid always needs a confirmation
+
+### [0.4.5](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.5/)
+
+Fixed 1
+
+- Smart Circuit switches in Home Assistant show on or off
+
+### [0.4.4](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.4/)
+
+Fixed 1
+
+- The add-on keeps its link to Home Assistant after an update
+
+### [0.4.3](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.3/)
+
+Fixed 1
+
+- Eight Home Assistant sensors show values instead of "Unknown"
+
+### [0.4.2](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.2/)
+
+Fixed 2
+
+- "Bridge entities in Home Assistant" counts the right entities
+- "MQTT broker connected" no longer fails when nothing is publishing yet
+
+### [0.4.1](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.1/)
+
+Fixed 1
+
+- A fresh add-on install can add a gateway again
+
+## 2026-10-15
+
+### [0.4.0](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.4.0/)
+
+Changed 1 · Fixed 1
+
+- "Set up" opens the wizard
+- Each gateway is its own Home Assistant device, named after its serial
+
+### [0.3.3](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.3.3/)
+
+Added 3 · Changed 1 · Fixed 4
+
+- Picking a notification target is a picker, not a search of 3804 entities
+- A Home Assistant instance can be disabled without deleting it
+- The add-on's own Home Assistant now reads as **"This Home Assistant…
+- Turning publishing on takes effect immediately
+- The broker is configured even while publishing is off
+- The Guide no longer shows `{"detail":"Not Found"}`
+
+### [0.3.2](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.3.2/)
+
+Added 2 · Fixed 1
+
+- The setup wizard ends on Home Assistant, with live checks and one question
+- Discover says where its subnet came from
+- Adding a mock gateway no longer fails with "Internal Server Error"
+
+### [0.3.1](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.3.1/)
+
+Added 2 · Fixed 5
+
+- The PV array size can come from the gateway
+- The add-on configures what the Supervisor already knows
+- The schedule editor no longer throws your work away
+- Confirmation dialogs are the app's, not the browser's
+- The dashboard comes to life when a gateway appears
+- No more blank gateway row
+
+### [0.3.0](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.3.0/)
+
+Added 12 · Changed 5 · Fixed 13 · Documentation 2
+
+- Battery dispatch is gated on a CONFIRMED Modbus path, in four states
+- The setup wizard offers the FranklinWH app account, optionally, and says why
+- A mock gateway no longer publishes to Home Assistant by default
+- The gateway switcher shows each gateway's operating mode and battery direction
+- The wizard's last step reports every gateway, not one
+- The setup wizard asks where the site is, and every gateway uses that one zone
