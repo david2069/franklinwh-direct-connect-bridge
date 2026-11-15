@@ -71,4 +71,19 @@ def test_the_payload_builds_with_the_extras():
 
 def test_pins_the_overlay_with_the_extras():
     pin = (ROOT / "pyproject.toml").read_text()
-    assert '"franklinwh-system-view==0.3.1"' in pin
+    assert '"franklinwh-system-view==0.3.2"' in pin
+
+
+def test_smart_circuits_can_be_hidden_and_options_is_a_drop_down():
+    """#660 (owner 2026-11-16): Options is a drop-down, and the user can hide the smart
+    circuits (franklinwh-system-view 0.3.2): each gateway with circuits also gets scenes
+    laid out without them."""
+    import franklinwh_system_view as sv
+    s = us_summary()
+    g = system_view.gateway_payload(gw(summary=s))
+    if not g.get("circuits"):
+        g["circuits"] = [{"name": "Circuit 1", "on": False}]
+    scenes = sv.build({"version": 1, "gateways": [g]})["gateways"][0]["scenes"]
+    assert {"landscape_no_circuits", "portrait_no_circuits"} <= set(scenes)
+    js = (sv.static_dir() / "system-view.js").read_text()
+    assert '["circuits", "Smart circuits"]' in js and "fwhsv-menu" in js

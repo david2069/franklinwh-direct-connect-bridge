@@ -11,6 +11,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+- **System view:** **Options** is a drop-down over the diagram (zoom, Customise diagram, the extras, Start on System view), closed until you open it; a click outside it or Esc closes it. A **Smart circuits** switch in it hides the smart circuits, and the diagram is laid out again without them (#660). `franklinwh-system-view` 0.3.2 (was 0.3.1). See [the tour](docs/guide/tour.md).
+
 ### Fixed
 - **Changelog:** each release in the index links to its notes on GitHub (`docs/changelog/X.Y.Z.md`), which every release contains; the docs site can lag a release. Links inside a release's notes now work from `docs/changelog/`: 0.5.46's did not, so its docs page was never built. Its link targets are corrected; its words are unchanged.
 
