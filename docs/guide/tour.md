@@ -145,6 +145,13 @@ Circuits tab does. **Options → Customise diagram** changes a name or picks a p
 the diagram only; with several gateways, its **Gateway** picker shows one gateway at a time,
 starting on the one shown.
 
+**A site with several gateways** is one diagram. Gateways whose meters belong to the same
+site (Billing & Utilities → Plans & meters; see `docs/guide/multi-gateway.md`) are drawn
+together: the grid and the site's service meter on the left, then one row per aGate with
+its batteries, solar, smart circuits and home. The gateway chosen in the top-bar picker is
+highlighted; tap another aGate to choose that gateway instead. A gateway alone on its site,
+or with no meter, is drawn on its own as before.
+
 **Alarms** come from four places, each shown only once it has been read:
 
 - **The FranklinWH app's active alarms**, when the bridge is signed in to the FranklinWH

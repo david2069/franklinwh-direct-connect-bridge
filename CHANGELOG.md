@@ -11,6 +11,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+- **System view:** the gateways of one site are one diagram (#662), as the FranklinWH emulator draws a site: the grid and the service meter on the left, then one row per aGate with its batteries, solar, smart circuits and home. Each gateway's site comes from its meter's site; the gateway chosen in the top-bar picker is highlighted, and tapping another aGate chooses that gateway. Needs franklinwh-system-view 0.4.0. See `docs/guide/tour.md`.
+
 ### Fixed
 - **Changelog:** each release in the index links to its notes on GitHub (`docs/changelog/X.Y.Z.md`), which every release contains; the docs site can lag a release. Links inside a release's notes now work from `docs/changelog/`: 0.5.46's did not, so its docs page was never built. Its link targets are corrected; its words are unchanged.
 
