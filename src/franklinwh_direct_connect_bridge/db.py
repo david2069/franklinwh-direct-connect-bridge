@@ -3367,6 +3367,13 @@ class MetricsStore:
                 "NOT NULL ORDER BY ts DESC LIMIT 1", (gateway_id, start, end)).fetchone()
         return {**dict(zip(keys, row[1:])), "soc": soc[0] if soc else None}
 
+    def soc_series(self, gateway_id: str, start: float, end: float) -> list[float]:
+        """The gateway's SoC readings in [start, end), oldest first."""
+        with self._lock:
+            return [r[0] for r in self._conn.execute(
+                "SELECT soc FROM metrics WHERE gateway_id=? AND ts>=? AND ts<? AND soc IS NOT "
+                "NULL ORDER BY ts", (gateway_id, start, end))]
+
     def count_alerts_opened(self, start: float, end: float,
                             gateway_id: str | None = None) -> int:
         q, args = "SELECT COUNT(*) FROM alerts WHERE opened_ts>=? AND opened_ts<?", [start, end]

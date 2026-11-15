@@ -14,6 +14,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ### Changed
 - **System view:** **Options** is a drop-down over the diagram (zoom, Customise diagram, the extras, Start on System view), closed until you open it; a click outside it or Esc closes it. A **Smart circuits** switch in it hides the smart circuits, and the diagram is laid out again without them (#660). `franklinwh-system-view` 0.3.2 (was 0.3.1). See [the tour](docs/guide/tour.md).
 
+### Added
+- **Weekly battery report** (phase 2 of the scheduled health check). Every Monday at 07:00, per gateway, for the week just ended: state of health and its trend, round-trip efficiency, full cycles (discharge ÷ Battery capacity), cycles by depth and the week's energy. On **Health → Weekly battery report** and in one Home Assistant notification; not on the phones. SoH comes from the cell readings the alarm pass already makes, so there are no extra aGate reads. New dependency `rainflow` 3.2.0 (MIT, no dependencies). See [Health reports](docs/guide/health-report.md).
+
 ### Fixed
 - **System view:** the aGate's alarms are the ones that matter now: conditions still active and events not yet acknowledged, each with its time ("since 15 Nov 14:34"). A condition that had cleared but was never acknowledged (two old "aGate is using 4G" alerts) showed as a current alarm, once per alert and with no time (#661). See [the tour](docs/guide/tour.md).
 - **Changelog:** each release in the index links to its notes on GitHub (`docs/changelog/X.Y.Z.md`), which every release contains; the docs site can lag a release. Links inside a release's notes now work from `docs/changelog/`: 0.5.46's did not, so its docs page was never built. Its link targets are corrected; its words are unchanged.

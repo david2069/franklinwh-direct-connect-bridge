@@ -218,7 +218,8 @@ def _dispatch_kind(gw) -> tuple:
 
 
 class HealthReportSettingsReq(BaseModel):
-    daily: bool
+    daily: bool | None = None
+    weekly: bool | None = None
 
 
 class ModeReq(BaseModel):
@@ -1871,34 +1872,39 @@ def create_app() -> FastAPI:
         out["report"] = _json.loads(row["body"])
         return out
 
+    _HEALTH_KIND = Query("daily", pattern="^(daily|weekly)$")
+
     @app.get("/api/health/report")
-    def api_health_report(id: int | None = Query(None)):
-        """The latest daily report (or the one with ``id``) and whether it is switched on."""
+    def api_health_report(id: int | None = Query(None), kind: str = _HEALTH_KIND):
+        """The latest daily or weekly report (or the one with ``id``), and whether each is
+        switched on."""
         store = db.get_store(get_settings())
         if store is None:
             raise HTTPException(status_code=503, detail="metrics store is off")
-        row = store.health_report(id) if id is not None else store.latest_health_report("daily")
+        row = store.health_report(id) if id is not None else store.latest_health_report(kind)
         if id is not None and row is None:
             raise HTTPException(status_code=404, detail="no such report")
-        return {"report": _health_row(row), "daily": health_report.daily_on(store)}
+        return {"report": _health_row(row), "daily": health_report.daily_on(store),
+                "weekly": health_report.weekly_on(store)}
 
     @app.get("/api/health/reports")
-    def api_health_reports(limit: int = Query(60, ge=1, le=400)):
+    def api_health_reports(limit: int = Query(60, ge=1, le=400), kind: str = _HEALTH_KIND):
         """Past reports, newest first: id, period, time, colour and headline."""
         store = db.get_store(get_settings())
         if store is None:
             raise HTTPException(status_code=503, detail="metrics store is off")
-        return {"reports": store.health_reports("daily", limit)}
+        return {"reports": store.health_reports(kind, limit)}
 
     @app.post("/api/health/report/run")
-    def api_health_report_run():
-        """Build and keep today's report now. Not sent: the 07:00 one is."""
+    def api_health_report_run(kind: str = _HEALTH_KIND):
+        """Build and keep a report now: today's daily one, or last week's battery report.
+        Not sent: the scheduled ones are."""
         store = db.get_store(get_settings())
         if store is None:
             raise HTTPException(status_code=503, detail="metrics store is off")
         out = health_report.run(store, time.time(),
                                 gateways=health_report.enabled_gateways(store),
-                                backups_fn=lambda: _list_backups())
+                                backups_fn=lambda: _list_backups(), kind=kind)
         return {k: out[k] for k in ("id", "ts", "period", "level", "headline")}
 
     @app.put("/api/health/report/settings")
@@ -1906,8 +1912,11 @@ def create_app() -> FastAPI:
         store = db.get_store(get_settings())
         if store is None:
             raise HTTPException(status_code=503, detail="metrics store is off")
-        health_report.set_daily(store, req.daily)
-        return {"daily": health_report.daily_on(store)}
+        if req.daily is not None:
+            health_report.set_daily(store, req.daily)
+        if req.weekly is not None:
+            health_report.set_weekly(store, req.weekly)
+        return {"daily": health_report.daily_on(store), "weekly": health_report.weekly_on(store)}
 
     @app.get("/api/health/link")
     def api_health_link(gateway: str = Depends(_gateway_q), limit: int = Query(20, ge=1, le=200)):

@@ -15,6 +15,7 @@ GWS = [{"id": "gw1", "name": "Home"}]
 @pytest.fixture
 def st(tmp_path):
     s = MetricsStore(str(tmp_path / "m.db"))
+    hr.set_weekly(s, False)             # the weekly report has its own tests
     yield s
     s.close()
 
@@ -167,13 +168,13 @@ def test_api_runs_lists_and_reads_reports():
     alerts.reset()
     c = TestClient(app_module.create_app())
     store = db.get_store(config.get_settings())
-    assert c.get("/api/health/report").json() == {"report": None, "daily": True}
+    assert c.get("/api/health/report").json() == {"report": None, "daily": True, "weekly": True}
     made = c.post("/api/health/report/run").json()
     assert made["level"] in ("green", "amber", "red")
     got = c.get("/api/health/report").json()["report"]
     assert got["id"] == made["id"] and got["report"]["kind"] == "daily"
     assert c.get("/api/health/reports").json()["reports"][0]["id"] == made["id"]
     assert c.get(f"/api/health/report?id={made['id']}").json()["report"]["id"] == made["id"]
-    assert c.put("/api/health/report/settings", json={"daily": False}).json() == {"daily": False}
+    assert c.put("/api/health/report/settings", json={"daily": False}).json()["daily"] is False
     assert store.get_config(hr.DAILY_KEY) == "off"
     c.put("/api/health/report/settings", json={"daily": True})
