@@ -66,7 +66,8 @@ def test_device_alarms_join_the_bridge_alerts(tmp_path):
     g = gw(summary=us_summary())
     g.apower_alarms, g.device_alarms_ts = {1: 1}, time.time()
     al = system_view.gateway_payload(g, store=st)["alarms"]
-    assert [a["text"] for a in al] == ["aPower 1: alarm level 1", "aGate unreachable"]
+    assert [a["text"] for a in al] == ["aPower 1: alarm level 1",
+                                     f"aGate unreachable (since {system_view._when(100.0)})"]
 
 
 def test_the_payload_still_validates():
