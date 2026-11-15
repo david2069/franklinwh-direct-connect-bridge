@@ -567,10 +567,10 @@
             <input class="form-control form-control-sm" style="width:11rem" x-model="scanSubnet"
                    placeholder="subnet (auto)" title="e.g. 192.0.2.0/24 — blank auto-detects">
             <input class="form-control form-control-sm" style="width:8rem" x-model="scanPorts"
-                   placeholder="port 9000" title="Blank = 9000. A port, list or range finds emulators: 9020, 9000,9020 or 9020-9030">
+                   :placeholder="'ports (' + $store.app.ports.dc + ')'" title="Blank = the Direct Connect port. A port, list or range finds emulators: 9020, 9000,9020 or 9020-9030">
             <button class="btn btn-secondary btn-sm ml-auto" @click="cancelAddGateway()">Close</button>
           </div>
-          <p class="text-[10px] mt-1" style="color:var(--text-faint)">Sweeps TCP 9000, where every aGate listens, and confirms each with a Direct-Connect Local-API login. No manual entry needed — finds 0, 1 or more. To find emulators, give a port, list or range (9020, 9000,9020 or 9020-9030): a gateway on any port but 9000 is an emulator.</p>
+          <p class="text-[10px] mt-1" style="color:var(--text-faint)">Sweeps TCP <span x-text="$store.app.ports.dc"></span>, where every aGate listens, and confirms each with a Direct-Connect Local-API login. No manual entry needed — finds 0, 1 or more. To find emulators, give a port, list or range (9020, 9000,9020 or 9020-9030): a gateway on any other port is an emulator.</p>
           <template x-if="scanCands !== null">
             <div class="mt-2 space-y-1">
               <template x-if="!confirmedCands().length">
@@ -581,7 +581,7 @@
               <template x-for="c in confirmedCands()" :key="c.host + ':' + c.port">
                 <div class="flex flex-wrap items-center gap-2 text-sm rounded px-2 py-1.5" style="background:var(--surface-2)">
                   <span class="w-1.5 h-1.5 rounded-full shrink-0 bg-emerald-400"></span>
-                  <span class="font-mono" style="color:var(--text-primary)" x-text="c.host + (c.port !== 9000 ? ':' + c.port : '')"></span>
+                  <span class="font-mono" style="color:var(--text-primary)" x-text="c.host + (c.port !== $store.app.ports.dc ? ':' + c.port : '')"></span>
                   <span class="font-mono text-xs" style="color:var(--text-secondary)" x-text="c.serial || ''"></span>
                   <span x-show="!c.emulator" class="text-[9px] px-1 rounded" style="background:rgba(52,211,153,.2);color:#6ee7b7">aGate</span>
                   <span x-show="c.emulator" class="text-[9px] px-1 rounded" style="background:rgba(167,139,250,.2);color:#c4b5fd">Emulator</span>

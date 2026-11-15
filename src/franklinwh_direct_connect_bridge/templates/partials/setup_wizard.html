@@ -113,14 +113,14 @@
           <!-- 4. Find it. Discover does the work; the address is the fallback. -->
           <template x-if="step === 'find'">
             <div class="space-y-3">
-              <p>Scanning your network for aGates on TCP 9000, where every aGate listens.</p>
+              <p>Scanning your network for aGates on TCP <span x-text="$store.app.ports.dc"></span>, where every aGate listens.</p>
               <div class="flex flex-wrap items-end gap-2">
                 <label class="text-xs">Subnet(s) to search, comma-separated
                   <input class="form-control form-control-sm block mt-1" style="width:16rem"
                          x-model="scan_subnet" placeholder="192.168.0.0/24"></label>
                 <label class="text-xs">Ports
                   <input class="form-control form-control-sm block mt-1" style="width:8rem"
-                         x-model="scan_ports" placeholder="9000"></label>
+                         x-model="scan_ports" :placeholder="$store.app.ports.dc"></label>
                 <button class="btn btn-secondary btn-sm" :disabled="busy" @click="scan()">
                   Search</button>
               </div>
@@ -134,8 +134,8 @@
                 aGate on a VPN, Tailscale or another VLAN? Type its own network here —
                 this bridge can only sweep networks it can reach.</p>
               <p class="text-xs" style="color:var(--text-faint)">
-                Ports: leave blank for 9000. To find emulators, give a port, list or range
-                (9020, 9000,9020 or 9020-9030): a gateway on any port but 9000 is an emulator.</p>
+                Ports: leave blank for <span x-text="$store.app.ports.dc"></span>. To find emulators, give a port, list or range
+                (9020, 9000,9020 or 9020-9030): a gateway on any other port is an emulator.</p>
               <div x-show="busy" class="text-xs" style="color:var(--text-faint)">Scanning…</div>
               <template x-if="!busy &amp;&amp; found !== null">
                 <div class="space-y-2">
@@ -147,7 +147,7 @@
                     <div class="flex items-center gap-2 rounded px-2 py-1.5 text-xs"
                          style="background:var(--surface-2)">
                       <span class="font-mono" style="color:var(--text-primary)"
-                            x-text="c.host + (c.port !== 9000 ? ':' + c.port : '')"></span>
+                            x-text="c.host + (c.port !== $store.app.ports.dc ? ':' + c.port : '')"></span>
                       <span x-show="c.emulator" class="text-[9px] px-1 rounded"
                             style="background:rgba(167,139,250,.2);color:#c4b5fd">Emulator</span>
                       <button class="btn btn-primary btn-sm ml-auto" :disabled="busy"

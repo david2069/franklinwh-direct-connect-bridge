@@ -2860,7 +2860,8 @@ def create_app() -> FastAPI:
         """Sweep a subnet for Direct Connect listeners and confirm each with a real
         Local-API login (1101/1102). Returns candidates; the UI adds the confirmed ones.
 
-        Ports (#416): blank searches TCP 9000, where every real aGate listens; a port,
+        Ports (#416): blank searches the Direct Connect port setting (9000, where every
+        real aGate listens); a port,
         list or range finds emulators. One result per address and port. The Modbus TCP
         Server (aGate :502) is never probed."""
         from franklinwh_direct_connect_api import discover as _disc
@@ -2869,7 +2870,7 @@ def create_app() -> FastAPI:
             targets = _disc.expand_targets(subnet)
         except Exception as e:  # noqa: BLE001
             raise HTTPException(400, f"bad subnet '{subnet}': {e}")
-        spec = (req.ports or "").strip() or str(_disc.PORT_SENDMQTT)
+        spec = (req.ports or "").strip() or str(get_settings().fwh_port)   # 9000 by default
         try:
             ports = _disc.expand_ports(spec)
         except ValueError as e:
