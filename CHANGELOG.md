@@ -25,6 +25,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 - **Battery: "Fetch is aborted — showing the last good reading" with no reading** (owner). The browser gave up on a BMS read after 20 s (the read is a login and five commands, and a busy aGate took longer), Safari called it "Fetch is aborted", and the banner claimed a reading it didn't have. It now waits 60 s, says "The aGate didn't answer within 60 s", says "no reading yet" when there is none, and has **Try again**.
+
+- **Open alerts squeezed the message to one word a line on a phone** (owner). A long timestamp sat in a fixed column. Each alert is now lines: severity, a short time (`15 Nov 2:30–3:32 PM`) and its state (resolved, ongoing, or how many times it fired) with **Acknowledge**; then the title; then the message.
 - **A credit showed as "$-0.01"** on Billing & Utilities; it reads −$0.01.
 - **The billing period's progress bar was empty** (Energy Costs, now Billing & Utilities): its colour was lost to a string style binding.
 - **The price entity Filter found nothing** (owner). Typing "Amber" in a buy or feed-in price picker searched only the entities exposed to the bridge. It now also searches all of Home Assistant's sensors, and says "No sensor matches" when nothing does.

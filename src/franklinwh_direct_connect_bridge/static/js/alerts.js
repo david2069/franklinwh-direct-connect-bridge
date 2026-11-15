@@ -111,6 +111,25 @@ document.addEventListener('alpine:init', () => {
       }
       return this.at(a.opened_ts) + (a.count > 1 ? ` · ${a.count}×, last ${this.hm(a.last_ts)}` : '');
     },
+    /** The list's short time (owner, 2026-11-15): "15 Nov 2:34–3:36 pm", the date once,
+     *  am/pm once when both ends share it; a range over two days names both days. */
+    short(a) {
+      const day = ts => Alpine.store('app')._fmtSiteTime(ts, { month: 'short', day: 'numeric' });
+      const s = a.opened_ts;
+      const e = a.resolved_ts || (a.count > 1 ? a.last_ts : null);
+      if (!e) return `${day(s)} ${this.hm(s)}`;
+      const t1 = this.hm(s), t2 = this.hm(e);
+      if (day(s) !== day(e)) return `${day(s)} ${t1} – ${day(e)} ${t2}`;
+      const m1 = t1.match(/^(.*?)\s*([ap]\.?\s?m\.?)$/i), m2 = t2.match(/^(.*?)\s*([ap]\.?\s?m\.?)$/i);
+      const same = m1 && m2 && m1[2].toLowerCase() === m2[2].toLowerCase();
+      return `${day(s)} ${same ? m1[1] : t1}–${t2}`;
+    },
+    /** Its state beside the time: resolved, ongoing, or how many times it fired. */
+    state(a) {
+      if (a.resolved_ts) return 'resolved';
+      if (a.kind === 'condition') return 'ongoing';
+      return a.count > 1 ? `${a.count}×` : '';
+    },
     /** Where it went. Every alert is in the bridge's log; critical ones also go to HA. */
     delivery(a) {
       const d = (a.deliveries || []).find(x => x.channel === 'ha_persistent');
