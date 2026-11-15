@@ -22,6 +22,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - **Analytics:** for **Lifetime**, Line and Area are greyed in the Chart menu with the reason, and the chart shows bars: Lifetime is one total a year.
 
 ### Fixed
+- **Import tariff:** after **Import** the dialog now says what was added and to which meter, with a **Done** button, instead of one small line under the preview and only the corner × to leave. **Check** can no longer be pressed again to import the same file a second time, which would have ended the plan just added (#654). See [Billing & Utilities](docs/guide/energy-and-costs.md).
 - **Analytics → Explain:** a suggestion's effect says "less from the grid" or "more from the grid" (and "saved" or "more on the bill"), so **Backup ready**'s raise-the-reserve effect no longer reads "≈ −102 kWh a month from the grid — At most this much more from the grid".
 - **Analytics:** the SoC % axis shows only when a SoC line is drawn; Week, Month, Year and Lifetime on Cloud (which has no SoC for them) and Local with SoC switched off no longer show an empty 0–100 axis.
 - **Changelog:** the release index has its own **Releases** heading, so Home Assistant's update dialog no longer shows it under [Unreleased], and its link to the full notes is a full web address, which works from that dialog.
