@@ -11,7 +11,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+- **Analytics → Explain:** the dialog's headings (Trends, What it shows, For your objectives, For a fuller answer) stand out, its sections are divided and spaced, and each suggestion sits in its own box, on a phone and on the desktop.
+- **Analytics → Explain:** "For a fuller answer" has an **Open Billing & Utilities (Plans & meters)** button for the missing tariff, like the suggestions' Open buttons.
+- **Analytics:** the **History** card shows the period in the chart (such as 9–15 Nov 2026), with how long the shown source has data for on its second line, on Local and Cloud and for every period.
+- **Analytics:** for **Lifetime**, Line and Area are greyed in the Chart menu with the reason, and the chart shows bars: Lifetime is one total a year.
+
 ### Fixed
+- **Analytics → Explain:** a suggestion's effect says "less from the grid" or "more from the grid" (and "saved" or "more on the bill"), so **Backup ready**'s raise-the-reserve effect no longer reads "≈ −102 kWh a month from the grid — At most this much more from the grid".
+- **Analytics:** the SoC % axis shows only when a SoC line is drawn; Week, Month, Year and Lifetime on Cloud (which has no SoC for them) and Local with SoC switched off no longer show an empty 0–100 axis.
 - **Changelog:** the release index has its own **Releases** heading, so Home Assistant's update dialog no longer shows it under [Unreleased], and its link to the full notes is a full web address, which works from that dialog.
 
 ## Releases

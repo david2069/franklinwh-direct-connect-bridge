@@ -77,7 +77,8 @@ def test_the_cloud_panel_takes_this_pages_theme():
 def test_local_and_cloud_plots_line_up():
     # Owner, 2026-11-10: "the charts are still not aligning".
     mount = JS[JS.index("FWHCloudAnalytics.mount("):][:1100]
-    assert "socAxis: 'always'" in mount                            # same plot width every period
+    # owner, 2026-11-15: no empty SoC axis; it shows only with SoC to draw
+    assert "socAxis: 'auto'" in mount
     render = JS[JS.index("render() {"):][:3000]
     assert "slotTick" in render and "< 520 ? 4 : 8" in render       # Cloud's tick rule for kWh slots
     assert "this.edges = edges;" in JS and "slotTickLabel(start) {" in JS

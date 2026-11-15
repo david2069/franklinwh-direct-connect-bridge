@@ -6197,7 +6197,9 @@ def create_app() -> FastAPI:
         if not site.get("tariff"):
             missing.append({"id": "tariff", "text": "Add your tariff (Billing & Utilities → Plans & meters → "
                             "your meter → + Add tariff) for "
-                            "time-of-use advice and $ estimates.", "tab": "energy_costs"})
+                            "time-of-use advice and $ estimates.", "tab": "energy_costs",
+                            "open": {"tab": "energy_costs", "billing": "plans"},
+                            "link": "Open Billing & Utilities (Plans & meters)"})
         out.update(source=source, site=site, current=current, missing=missing,
                    objective_choices=ca.insights.OBJECTIVES)
         return out
