@@ -11,36 +11,21 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
-### Added
-- **System view:** the gateways of one site are one diagram (#662), as the FranklinWH emulator draws a site: the grid and the service meter on the left, then one row per aGate with its batteries, solar, smart circuits and home. Each gateway's site comes from its meter's site; the gateway chosen in the top-bar picker is highlighted, and tapping another aGate chooses that gateway. Needs franklinwh-system-view 0.4.0. See `docs/guide/tour.md`.
-### Changed
-- **System view:** **Options** is a drop-down over the diagram (zoom, Customise diagram, the extras, Start on System view), closed until you open it; a click outside it or Esc closes it. A **Smart circuits** switch in it hides the smart circuits, and the diagram is laid out again without them (#660). `franklinwh-system-view` 0.3.2 (was 0.3.1). See [the tour](docs/guide/tour.md).
-
-### Added
-- **Unusual changes in the daily report** (phase 3 of the scheduled health check). Yesterday against the median of the 28 days before (at least 7): a drop in state of health or efficiency turns the report amber; unusual daily energy or counts of warnings, errors and alerts are listed under **Unusual yesterday** on Health and in the notifications, without changing the colour. See [Health reports](docs/guide/health-report.md).
-- **Weekly battery report** (phase 2 of the scheduled health check). Every Monday at 07:00, per gateway, for the week just ended: state of health and its trend, round-trip efficiency, full cycles (discharge ÷ Battery capacity), cycles by depth and the week's energy. On **Health → Weekly battery report** and in one Home Assistant notification; not on the phones. SoH comes from the cell readings the alarm pass already makes, so there are no extra aGate reads. New dependency `rainflow` 3.2.0 (MIT, no dependencies). See [Health reports](docs/guide/health-report.md).
-
-### Fixed
-- **Shutdown:** a gateway poller that had already been cancelled made the bridge's shutdown raise and stop part-way, and a poller that overran its 35 s stop window got the wrong gateway's poller aborted (#648). Both fixed; this was behind the test that failed now and then under load.
-- **Battery recordings:** a recording is finished only once its purge has run. It used to say it had ended first, so for a moment a new recording could start, or a caller could see old recordings not yet purged (#648).
-
-- **Plans & meters:** with one meter, a tariff on no meter goes onto it by itself (on start and when added) when its dates don't clash with the meter's plans; **+ New retailer** in the tariff editor saves the retailer with the tariff, so **Cancel** or a refused save leaves no stray retailer (owner decisions on #650). See [Billing & Utilities](docs/guide/energy-and-costs.md).
-- **Tariff editor:** closing it after editing the rates raised a page error (#667); importing a tariff with peak demand (or export bonus) switched off kept its window, so the editor showed it on at $0 and `tariff.demand_window_active` followed it (#667).
-- **System view:** the aGate's alarms are the ones that matter now: conditions still active and events not yet acknowledged, each with its time ("since 15 Nov 14:34"). A condition that had cleared but was never acknowledged (two old "aGate is using 4G" alerts) showed as a current alarm, once per alert and with no time (#661). See [the tour](docs/guide/tour.md).
-- **Changelog:** each release in the index links to its notes on GitHub (`docs/changelog/X.Y.Z.md`), which every release contains; the docs site can lag a release. Links inside a release's notes now work from `docs/changelog/`: 0.5.46's did not, so its docs page was never built. Its link targets are corrected; its words are unchanged.
-- **Tariff editor:** **Rate type: Dynamic (live)** did nothing when clicked. A new tariff (**+ Add tariff**) opened with every control disabled: the editor's lock for retired plans read a setting a new tariff did not have. A new tariff now opens unlocked, so Dynamic (live) can be chosen; its provider, your site's region and the Home Assistant price entities save with the tariff and come back unchanged through **Export** and **Import** (#651). See [Billing & Utilities](docs/guide/energy-and-costs.md).
-
-- **Import tariff:** the preview's `has_demand` was true for every Modbus Bridge profile, even with peak demand off (`has_peak_demand` 0, `demand_rate` 0), because it tested for a demand window, which every profile has. It now says whether the demand charge is on (#650). See [Billing & Utilities](docs/guide/energy-and-costs.md).
-### Added
-- **Audit trail:** adding, editing and deleting sites, meters, retailers and tariffs, importing a tariff and a bill's **Recalculate** are recorded in Logs → Audit trail and the bridge log, with the name, the meter and the fields an edit changed (#650). See [Control and write safety](docs/guide/control.md) and [Billing & Utilities](docs/guide/energy-and-costs.md).
-### Changed
-- **Plans & meters:** **Export** is on every saved tariff: also on tariffs under **Not on a meter** and at the foot of the tariff editor, not only the meter's plans (#650). See [Billing & Utilities](docs/guide/energy-and-costs.md).
-
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
 
 ## 2026-11-16
+
+### [0.5.47](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.47.md)
+
+Added 4 · Changed 2 · Fixed 8
+
+- Billing & Utilities: new tariffs can be entered again (+ Add tariff was all disabled…
+- Health: a weekly battery report (SoH, efficiency, cycles, the week's energy) and…
+- System view: one diagram for all gateways of a site
+- Reliability: shutdown survives a cancelled poller and aborts the right one
+- Changelog: each release links to its notes on GitHub
 
 ### [0.5.46](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.46.md)
 
