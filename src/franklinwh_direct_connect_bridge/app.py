@@ -2674,6 +2674,17 @@ def create_app() -> FastAPI:
         return {"ok": True, "utility_id": uid, "tariff_id": tid, "attached_meter": attached}
 
     # ── Energy Costs / billing view (FEAT-BILLING-SERVICE) ────────────────────
+    @app.get("/api/billing/bill")
+    def api_billing_bill(meter: str | None = Query(None)):
+        """The open period's bill for the meter (else the default), worked out by hems from
+        the plan in force and the meter's 5-minute ledger: an OUTUS bill whose lines carry
+        their formula (#613). ``{"bill": null}`` with no plan in force."""
+        from . import billing_page
+        st = _ha_store()
+        if st is None:
+            return {"bill": None}
+        return {"bill": billing_page.bill(st, meter, _dt.datetime.now(_dt.timezone.utc))}
+
     @app.get("/api/billing/page")
     def api_billing_page(meter: str | None = Query(None)):
         """The Billing & Utilities page (#613): the meters, the chosen one (else the default)

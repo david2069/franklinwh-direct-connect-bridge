@@ -246,6 +246,11 @@ The G0–G3 gate numbering is shared (§3 there, §2 of `docs/TEST_POLICY.md` he
 **Every change to user-facing behaviour updates `CHANGELOG.md` in the same commit**, under
 `[Unreleased]`, using Keep a Changelog categories — Added, Changed, Fixed, Security.
 
+`CHANGELOG.md` is an index: `[Unreleased]` in full, then one entry per release (counts and
+highlights). Full notes live in `docs/changelog/<version>.md`. A release runs
+`tools/changelog_index.py release X.Y.Z DATE`, which writes both (`docs/TEST_POLICY.md`, release
+section). Never edit a released version's notes.
+
 User-facing means: a new or changed endpoint, CLI command or UI behaviour; a bug fix that
 changes what someone sees or gets; a change to how the project is installed or built; a
 safety or dispatch change; a schema migration. Internal refactors with no visible effect,
