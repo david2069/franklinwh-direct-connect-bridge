@@ -23,6 +23,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - **Search finds gateways on any port** (owner, #416). Discover in Settings → Gateways and the setup wizard swept TCP 9000 only, and matched "already added" by IP alone, so several gateways on one address were mislabelled. It still searches 9000 by default, where every real aGate listens, and now takes a port, list or range (`9020`, `9000,9020`, `9020-9030`) to find emulators. Results are one per address and port, "already added" is matched on both, and **Add** keeps the port. A result or gateway on a port other than 9000, or with a serial starting `MOCK`, is labelled **Emulator**. Hosts × ports is capped at 1024 probes, and the Modbus TCP Server (aGate :502) is never probed.
 
 ### Fixed
+- **Open alerts squeezed the message to one word a line on a phone** (owner). A long timestamp sat in a fixed column. Each alert is now lines: severity, a short time (`15 Nov 2:30–3:32 PM`) and its state (resolved, ongoing, or how many times it fired) with **Acknowledge**; then the title; then the message.
 - **A credit showed as "$-0.01"** on Billing & Utilities; it reads −$0.01.
 - **The billing period's progress bar was empty** (Energy Costs, now Billing & Utilities): its colour was lost to a string style binding.
 - **The price entity Filter found nothing** (owner). Typing "Amber" in a buy or feed-in price picker searched only the entities exposed to the bridge. It now also searches all of Home Assistant's sensors, and says "No sensor matches" when nothing does.

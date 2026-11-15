@@ -330,7 +330,10 @@ An alert raised while no browser was open, by a schedule for example, is shown o
 visit, and a condition that came and went shows as "09:54–13:27, resolved". While an
 acknowledged condition is still active, a red bar stays under the top bar. A badge in the
 top bar counts open alerts and opens the list, where warnings are acknowledged. The
-acknowledgement applies for everyone.
+acknowledgement applies for everyone. Each alert in the list starts with a line giving its
+severity, a short time (for example `15 Nov 2:30–3:32 PM`) and its state (resolved,
+ongoing, or how many times it fired), with **Acknowledge**. The title and the message
+follow on their own lines.
 
 Once the fault has cleared but has not yet held for its "Clears when" time, the bar turns
 amber and says so: "Reconnecting — confirming (resolves in 95 s)" for an unreachable aGate.
