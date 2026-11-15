@@ -61,6 +61,12 @@ window.setupWizard = function setupWizard() {
       // window event keeps the wizard self-contained instead of wiring a second owner for
       // its open/closed state.
       window.addEventListener('fwh:open-setup-wizard', () => this.reopen());
+      // A row of the setup list in Settings → Setup: the same task, answered the same way.
+      window.addEventListener('fwh:open-setup-task', (e) => {
+        const t = e.detail || {};
+        if (t.inline) { this.history = []; this.error = ''; this.show(); this.loadTasks(); }
+        this.openTask(t);
+      });
 
       // Ask the server, never guess from local state: a second browser must not re-prompt
       // for a bridge that is already set up.

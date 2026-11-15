@@ -4,6 +4,8 @@ The behaviours here are the ones the backlog entry argues for, so they are pinne
 than left to be re-litigated: derive first, stay correctable, be re-runnable, and never
 conflate "this site does not have it" with "you may not use it".
 """
+from pathlib import Path
+
 import pytest
 
 from franklinwh_direct_connect_bridge import setup_wizard as w
@@ -102,6 +104,20 @@ def test_optional_steps_are_skippable_and_say_so():
             assert step["skippable"] is True and step["required"] is False
             assert "later" in step["note"].lower()
 
+
+
+def test_settings_setup_is_the_one_setup_list():
+    """Tariffs & costs in Settings → Setup did nothing when tapped (owner, 2026-11-15), and
+    the curated list lived only in the wizard. Settings → Setup now shows the install steps,
+    then the wizard's Essentials and Advanced tasks, each opening where it is set up."""
+    html = (Path(w.__file__).parent / "templates/tabs/settings.html").read_text()
+    assert "($store.app.setup.steps || []).filter(s => s.required)" in html
+    assert "($store.app.setup.tasks || []).filter(t => t.group === g[0])" in html
+    assert "fwh:open-setup-task" in html
+    js = (Path(w.__file__).parent / "static/js/setup_wizard.js").read_text()
+    assert "addEventListener('fwh:open-setup-task'" in js
+    ids = {t["id"] for t in w.tasks()}
+    assert set(w.OPTIONAL_STEPS) <= ids   # no optional step is lost from the list
 
 # --- derived vs overridden -------------------------------------------------------------------
 

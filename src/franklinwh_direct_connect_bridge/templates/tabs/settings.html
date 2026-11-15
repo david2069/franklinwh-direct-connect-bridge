@@ -50,7 +50,11 @@
       </div>
     </div>
 
-    <template x-for="st in ($store.app.setup.steps || [])" :key="st.id">
+    <!-- One setup list (owner, 2026-11-15): the install steps, then everything worth setting
+         up after install, as the wizard's list shows it. The optional install steps are
+         tasks below, so they are not shown twice. -->
+    <div class="text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)">Essentials</div>
+    <template x-for="st in ($store.app.setup.steps || []).filter(s => s.required)" :key="st.id">
       <div class="card p-4">
         <div class="flex items-start gap-3">
           <span class="mt-1 w-2.5 h-2.5 rounded-full shrink-0"
@@ -126,6 +130,28 @@
             </template>
           </div>
         </div>
+      </div>
+    </template>
+    <template x-for="g in [['essential', ''], ['advanced', 'Advanced']]" :key="'tg' + g[0]">
+      <div class="space-y-1.5">
+        <div x-show="g[1]" class="text-[10px] font-semibold uppercase tracking-wide pt-2"
+             style="color:var(--text-faint)" x-text="g[1]"></div>
+        <template x-for="t in ($store.app.setup.tasks || []).filter(t => t.group === g[0])" :key="t.id">
+          <button type="button" class="card w-full flex items-center gap-3 p-4 text-left" data-testid="setup-task-row"
+                  @click="window.dispatchEvent(new CustomEvent('fwh:open-setup-task', { detail: t }))">
+            <span class="w-2.5 h-2.5 rounded-full shrink-0"
+                  :style="t.satisfied ? { background: 'var(--ok,#10b981)' } : { border: '1.5px solid var(--border)' }"></span>
+            <span class="min-w-0 flex-1">
+              <span class="flex items-center gap-2 flex-wrap">
+                <span class="font-medium" style="color:var(--text-primary)" x-text="t.title"></span>
+                <span x-show="t.satisfied === true" class="chip ok" style="padding:0 6px;font-size:.6rem">DONE</span>
+              </span>
+              <span class="block text-xs mt-1" style="color:var(--text-secondary)" x-text="t.detail"></span>
+            </span>
+            <span class="btn btn-sm shrink-0" :class="t.satisfied ? 'btn-secondary' : 'btn-primary'"
+                  x-text="t.satisfied ? 'Open' : 'Set up'"></span>
+          </button>
+        </template>
       </div>
     </template>
   </div>
