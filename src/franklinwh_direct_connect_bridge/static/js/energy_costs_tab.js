@@ -7,6 +7,7 @@
 function energyCostsTab() {
   return {
     ov: null,
+    bill: null,        // the open period's OUTUS bill, worked out by hems (#613)
     history: [],
     loading: false,
     closing: false,
@@ -44,6 +45,8 @@ function energyCostsTab() {
       try {
         const pr = await fetch('api/billing/page' + (this.meterId ? '?meter=' + encodeURIComponent(this.meterId) : ''));
         if (pr.ok) { this.page = await pr.json(); this.meterId = (this.page.meter && this.page.meter.id) || ''; }
+        const mq = this.meterId ? '?meter=' + encodeURIComponent(this.meterId) : '';
+        this.bill = (await (await fetch('api/billing/bill' + mq)).json()).bill || null;
         this.ov = await (await fetch('api/billing/overview' + this.meterGwQuery('?'))).json();
         this.history = (await (await fetch('api/billing/history?limit=60' + this.meterGwQuery('&'))).json()).periods || [];
       } catch (e) {
@@ -60,12 +63,50 @@ function energyCostsTab() {
         site_id: m && m.site_id } })), 50);
     },
 
+    // This period so far: hems's bill when there is one, else the running tracker.
+    get sum() {
+      const b = this.bill, o = this.ov || {};
+      if (b && b.progress) return { net: b.net_total, projected: b.progress.projected_total,
+                                    day: b.progress.days_elapsed, days: b.progress.days };
+      return { net: o['net.period_cost'], projected: o['net.projected_cost'],
+               day: o.days_elapsed, days: o.period_days };
+    },
+
+    // The bill's lines grouped by tariff, then the plan's own charges (OUTUS order).
+    get groups() {
+      const b = this.bill;
+      if (!b) return [];
+      const names = b['x-tariffs'] || {}, out = [];
+      const add = (id, name) => {
+        const lines = b.line_items.filter(x => (x.tariff_id ?? null) === id);
+        if (lines.length) out.push({ id: id || 'plan', name, lines,
+                                     subtotal: lines.reduce((t, x) => t + Number(x.amount || 0), 0) });
+      };
+      Object.keys(names).forEach(id => add(id, names[id]));
+      add(null, 'Plan charges');
+      return out;
+    },
+
+    // Summary tiles: one per tariff and one for plan charges; the tracker's parts without a bill.
+    get tiles() {
+      if (!this.bill) return this.breakdown.filter(c => c.show);
+      return this.groups.map(g => ({ label: g.name, value: this.money(g.subtotal),
+                                     color: g.subtotal < 0 ? '#34d399' : null,
+                                     sub: g.lines.length + (g.lines.length === 1 ? ' line' : ' lines') }));
+    },
+
     // The last closed period, for comparison on the Summary.
     get lastPeriod() { return this.history.find(p => !this.inProgress(p)) || null; },
 
     // What drives the open period's lines now.
     get liveInputs() {
       const o = this.ov || {}, out = [];
+      const names = (this.bill && this.bill['x-tariffs']) || {};
+      for (const r of (this.bill && this.bill['x-now-rates']) || []) {
+        if (r.rate == null) continue;
+        out.push({ label: (names[r.tariff_id] || r.tariff_id) + ' · ' + r.label + (r.band ? ' (' + this.bandName(r.band) + ')' : ''),
+                   value: '$' + Number(r.rate).toFixed(4) + '/kWh' });
+      }
       if (o['demand.peak_kw'] != null) out.push({ label: 'Demand peak so far', value: this.fmt(o['demand.peak_kw'], 2) + ' kW' });
       if (o['demand.interval_kw'] != null) out.push({ label: 'This demand interval', value: this.fmt(o['demand.interval_kw'], 2) + ' kW' });
       if (o['tariff.export_charge_free_remaining'] != null) out.push({ label: 'Free export left this period', value: this.fmt(o['tariff.export_charge_free_remaining'], 1) + ' kWh' });
@@ -74,8 +115,10 @@ function energyCostsTab() {
       return out;
     },
 
+    bandName(b) { return ({ super_off_peak: 'Super off-peak', off_peak: 'Off-peak', mid_peak: 'Mid-peak', on_peak: 'On-peak' })[b] || b; },
+
     get progressPct() {
-      const d = this.ov && this.ov.days_elapsed, t = this.ov && this.ov.period_days;
+      const d = this.sum.day, t = this.sum.days;
       if (!d || !t) return 0;
       return Math.max(0, Math.min(100, Math.round((d / t) * 100)));
     },
@@ -161,7 +204,7 @@ function energyCostsTab() {
       ].filter((x) => x.show);
     },
 
-    money(v) { return (v == null) ? '–' : '$' + Number(v).toFixed(2); },
+    money(v) { return (v == null) ? '–' : (Number(v) < 0 ? '−$' : '$') + Math.abs(Number(v)).toFixed(2); },
     fmt(v, dp = 1) { return (v == null) ? '–' : Number(v).toFixed(dp); },
   };
 }
