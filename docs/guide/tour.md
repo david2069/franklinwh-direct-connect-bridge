@@ -22,6 +22,8 @@ records "skipped", which stops the prompt and disables nothing.
    this clock; a real aGate's clock is set on the device, and Setup names any gateway whose
    offset differs rather than pretending to correct it.
 4. **Find it** — Discover scans the LAN for aGates on TCP 9000, or you enter the address.
+   The **Ports** box takes a port, list or range to find emulators; any port but 9000 is
+   labelled **Emulator**.
    On the mock path, one mock per declared aGate is created, numbered, each with the aPower
    count you gave.
 5. **Confirm** — what the gateway reports, one line per fact (gateway model, batteries,

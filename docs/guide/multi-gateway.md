@@ -20,7 +20,13 @@ Three ways, and they coexist:
    single-gateway `FWH_HOST`.
 2. **Settings → Gateways → Add** — host and a label, from the UI.
 3. **Settings → Gateways → Scan** — probe a subnet for aGates. The subnet comes from
-   `FWH_SUBNET`, or is derived as the host's `/24` when that is blank.
+   `FWH_SUBNET`, or is derived as the host's `/24` when that is blank. The search uses
+   TCP 9000, where every real aGate listens. To find emulators, give a port, a list or a
+   range in the port box (`9020`, `9000,9020` or `9020-9030`). Each open port is confirmed
+   with a Direct Connect login and listed once per address and port, and **Add** keeps
+   that port. A result or gateway on any port but 9000, or with a serial starting `MOCK`,
+   is labelled **Emulator**. Hosts × ports is capped at 1024 probes; a bigger search asks
+   you to narrow it. The Modbus TCP Server (aGate :502) is never probed.
 
 Each gateway can be enabled or disabled, edited, given a description, and removed, all
 from its **Edit** dialog. All of those are writes. Two rules protect the default gateway
