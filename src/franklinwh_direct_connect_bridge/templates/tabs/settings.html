@@ -511,10 +511,11 @@
         <textarea rows="2" class="form-control form-control-sm w-full mt-1" x-model="utilEdit.export_note"
                   placeholder="e.g. 5 kW export limit per phase; zero-export approved sites only"></textarea></label>
       <div class="grid grid-cols-2 gap-3">
-        <label class="text-[11px]" style="color:var(--text-secondary)">Provider from
+        <label class="text-[11px] min-w-0" style="color:var(--text-secondary)">Provider from
           <input type="date" :class="{ 'date-empty': !utilEdit.effective_start }" class="form-control form-control-sm w-full mt-1" x-model="utilEdit.effective_start"></label>
-        <label class="text-[11px]" style="color:var(--text-secondary)">Provider until <span class="text-slate-600">(blank = current)</span>
-          <input type="date" :class="{ 'date-empty': !utilEdit.effective_end }" class="form-control form-control-sm w-full mt-1" x-model="utilEdit.effective_end"></label>
+        <label class="text-[11px] min-w-0" style="color:var(--text-secondary)">Provider until
+          <input type="date" :class="{ 'date-empty': !utilEdit.effective_end }" class="form-control form-control-sm w-full mt-1" x-model="utilEdit.effective_end">
+          <span class="block mt-0.5 text-[10px]" style="color:var(--text-faint)">blank = current</span></label>
       </div>
       <p class="text-[10px]" style="color:var(--text-faint)">Switched retailers? Add the new provider with a
         <span class="font-mono">from</span> date and set the old one's <span class="font-mono">until</span> —
@@ -559,10 +560,12 @@
           <input type="number" min="1" max="31" class="form-control form-control-sm w-full mt-1" x-model="tariffEdit.billing_cycle_day"></label>
       </div>
       <div class="grid grid-cols-2 gap-2">
-        <label class="text-[11px]" style="color:var(--text-secondary)">Effective from <span style="color:var(--text-faint)">(optional)</span>
-          <input type="date" :class="{ 'date-empty': !tariffEdit.effective_start }" class="form-control form-control-sm w-full mt-1" x-model="tariffEdit.effective_start"></label>
-        <label class="text-[11px]" style="color:var(--text-secondary)">Effective to <span style="color:var(--text-faint)">(blank = current)</span>
-          <input type="date" :class="{ 'date-empty': !tariffEdit.effective_end }" class="form-control form-control-sm w-full mt-1" x-model="tariffEdit.effective_end"></label>
+        <label class="text-[11px] min-w-0" style="color:var(--text-secondary)">Effective from
+          <input type="date" :class="{ 'date-empty': !tariffEdit.effective_start }" class="form-control form-control-sm w-full mt-1" x-model="tariffEdit.effective_start">
+          <span class="block mt-0.5 text-[10px]" style="color:var(--text-faint)">optional</span></label>
+        <label class="text-[11px] min-w-0" style="color:var(--text-secondary)">Effective to
+          <input type="date" :class="{ 'date-empty': !tariffEdit.effective_end }" class="form-control form-control-sm w-full mt-1" x-model="tariffEdit.effective_end">
+          <span class="block mt-0.5 text-[10px]" style="color:var(--text-faint)">blank = current</span></label>
       </div>
       </fieldset>
       <!-- Modbus-style sub-tabs (Peak demand · Export bonus · Export charge · Standing charges · Energy rates) -->
@@ -635,14 +638,14 @@
                   </button>
                   <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.bq && $refs.bq.focus()) })"
                        class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);left:0;right:0">
-                    <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="bq" x-model="q" @click.stop type="text" placeholder="Filter&#8230;" class="form-control form-control-sm w-full"></div>
+                    <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="bq" x-model="q" @input.debounce.300ms="haPriceSearch(q)" @click.stop type="text" placeholder="Filter&#8230;" class="form-control form-control-sm w-full"></div>
                     <div class="max-h-56 overflow-y-auto py-1">
                       <button type="button" class="w-full text-left px-3 py-1.5 text-xs" style="color:var(--text-faint)" @click="tariffEdit.pricing.dynamic.buy_entity=''; open=false; q=''">&#8212; Clear &#8212;</button>
                       <template x-for="it in haPriceItems(q)" :key="'b'+it.key"><div>
                         <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
                         <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="tariffEdit.pricing.dynamic.buy_entity===it.id ? { color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-primary)' }" @click="tariffEdit.pricing.dynamic.buy_entity=it.id; open=false; q=''" x-text="it.label"></button>
                       </div></template>
-                      <div x-show="!haPriceItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No exposed price entities. Expose them under HA &#8594; Browse entities.</div>
+                      <div x-show="!haPriceItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)"><span x-text="q.trim() ? 'No sensor matches “' + q.trim() + '”.' : 'Type to search Home Assistant, or expose entities under HA &#8594; Browse entities.'"></span></div>
                     </div>
                   </div>
                 </div>
@@ -658,7 +661,7 @@
                   </button>
                   <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.fq && $refs.fq.focus()) })"
                        class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);left:0;right:0">
-                    <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="fq" x-model="q" @click.stop type="text" placeholder="Filter&#8230;" class="form-control form-control-sm w-full"></div>
+                    <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="fq" x-model="q" @input.debounce.300ms="haPriceSearch(q)" @click.stop type="text" placeholder="Filter&#8230;" class="form-control form-control-sm w-full"></div>
                     <div class="max-h-56 overflow-y-auto py-1">
                       <button type="button" class="w-full text-left px-3 py-1.5 text-xs" style="color:var(--text-faint)" @click="tariffEdit.pricing.dynamic.feedin_entity=''; open=false; q=''">&#8212; None (use buy) &#8212;</button>
                       <template x-for="it in haPriceItems(q)" :key="'f'+it.key"><div>
@@ -1176,14 +1179,14 @@
             <span style="color:var(--text-faint)">&#9662;</span>
           </button>
           <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.gbq && $refs.gbq.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);left:0;right:0">
-            <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="gbq" x-model="q" @click.stop type="text" placeholder="Filter&#8230;" class="form-control form-control-sm w-full"></div>
+            <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="gbq" x-model="q" @input.debounce.300ms="haPriceSearch(q)" @click.stop type="text" placeholder="Filter&#8230;" class="form-control form-control-sm w-full"></div>
             <div class="max-h-56 overflow-y-auto py-1">
               <button type="button" class="w-full text-left px-3 py-1.5 text-xs" style="color:var(--text-faint)" @click="form.tariff_price_entity=''; saveOne({tariff_price_entity:''}); loadNemSpot(); open=false; q=''">&#8212; None &#8212;</button>
               <template x-for="it in haPriceItems(q)" :key="'gb'+it.key"><div>
                 <div x-show="it.kind==='group'" class="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="it.name"></div>
                 <button x-show="it.kind==='item'" type="button" class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5" :style="form.tariff_price_entity===it.id ? { color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-primary)' }" @click="form.tariff_price_entity=it.id; saveOne({tariff_price_entity:it.id}); loadNemSpot(); open=false; q=''" x-text="it.label"></button>
               </div></template>
-              <div x-show="!haPriceItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)">No exposed price entities (HA &#8594; Browse entities).</div>
+              <div x-show="!haPriceItems(q).length" class="px-3 py-2 text-xs" style="color:var(--text-faint)"><span x-text="q.trim() ? 'No sensor matches “' + q.trim() + '”.' : 'Type to search Home Assistant, or expose entities under HA &#8594; Browse entities.'"></span></div>
             </div>
           </div>
         </div>
@@ -1195,7 +1198,7 @@
             <span style="color:var(--text-faint)">&#9662;</span>
           </button>
           <div x-show="open" x-cloak x-init="$watch('open', v => { if (v) $nextTick(() => $refs.gfq && $refs.gfq.focus()) })" class="absolute z-40 mt-1 rounded-lg border shadow-xl" style="background:var(--surface-0);border-color:var(--border);left:0;right:0">
-            <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="gfq" x-model="q" @click.stop type="text" placeholder="Filter&#8230;" class="form-control form-control-sm w-full"></div>
+            <div class="p-1.5 border-b" style="border-color:var(--border)"><input x-ref="gfq" x-model="q" @input.debounce.300ms="haPriceSearch(q)" @click.stop type="text" placeholder="Filter&#8230;" class="form-control form-control-sm w-full"></div>
             <div class="max-h-56 overflow-y-auto py-1">
               <button type="button" class="w-full text-left px-3 py-1.5 text-xs" style="color:var(--text-faint)" @click="form.tariff_feedin_entity=''; saveOne({tariff_feedin_entity:''}); loadNemSpot(); open=false; q=''">&#8212; None &#8212;</button>
               <template x-for="it in haPriceItems(q)" :key="'gf'+it.key"><div>
