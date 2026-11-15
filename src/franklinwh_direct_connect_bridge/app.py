@@ -5275,8 +5275,11 @@ def create_app() -> FastAPI:
                 # 0 on this single-phase site, which is consistent with 0 = single but
                 # also with 0 = unset. Not used to derive ac_type until it is confirmed.
                 "phase_con": g("gridPhaseConSet"), "phase_seq": g("gridPhaseSeqSet"),
-                "service_amps": g("airSwitchCur"),
-                "electric_supply_raw": g("electricSupply"),
+                # electricSupply is the service/main amperage, airSwitchCur the aGate
+                # air-switch rating (#425; service_amps held the air switch until then).
+                "service_amps": g("electricSupply"),
+                "air_switch_amps": g("airSwitchCur"),
+                "electric_supply_raw": g("electricSupply"),   # kept for existing callers
                 # Real freq/voltage from ibg_run_status (catalogue 1707), not the 1701
                 # enum codes.
                 "nominal_freq_hz": _num(rg("dspSettingFreq")),   # configured nominal, e.g. 50

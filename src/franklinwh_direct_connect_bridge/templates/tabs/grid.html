@@ -39,11 +39,11 @@
           </div>
           <div>
             <div class="text-[10px] uppercase tracking-widest text-slate-500">Supply / service</div>
-            <div class="text-sm font-semibold tabular-nums" style="color:var(--text-primary)" x-text="grid.grid_connection.electric_supply_raw != null ? val(grid.grid_connection.electric_supply_raw, ' A') : '–'"></div>
+            <div class="text-sm font-semibold tabular-nums" style="color:var(--text-primary)" x-text="grid.grid_connection.service_amps != null ? val(grid.grid_connection.service_amps, ' A') : '–'"></div>
           </div>
           <div>
             <div class="text-[10px] uppercase tracking-widest text-slate-500">Air switch rating</div>
-            <div class="text-sm font-semibold tabular-nums" style="color:var(--text-secondary)" x-text="val(grid.grid_connection.service_amps, ' A')"></div>
+            <div class="text-sm font-semibold tabular-nums" style="color:var(--text-secondary)" x-text="val(grid.grid_connection.air_switch_amps, ' A')"></div>
           </div>
           <div>
             <div class="text-[10px] uppercase tracking-widest text-slate-500">Grid voltage
