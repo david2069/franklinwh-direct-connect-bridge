@@ -1,11 +1,13 @@
-"""Location & Solar sits under Sites & Billing, right after Sites & Meters (owner,
-2026-11-13, #582 follow-up): the location belongs to the site."""
+"""Location & Solar sits under Settings → Location & Prices (owner, 2026-11-13, #582
+follow-up; the sub-tab was Sites & Billing until sites, meters and tariffs moved to the
+Billing & Utilities page, #613). The default site's card there links to it."""
 import pathlib
 
 from franklinwh_direct_connect_bridge import scheduler
 
 PKG = pathlib.Path(__file__).resolve().parents[1] / "src" / "franklinwh_direct_connect_bridge"
 HTML = (PKG / "templates" / "tabs" / "settings.html").read_text()
+PLANS = (PKG / "templates" / "partials" / "plans_meters.html").read_text()
 
 
 def _sub_of(i):
@@ -14,16 +16,16 @@ def _sub_of(i):
     return HTML[j + len("x-show=\"sub==='"):HTML.index("'", j + len("x-show=\"sub==='"))]
 
 
-def test_location_and_solar_is_under_sites_and_billing():
+def test_location_and_solar_is_under_location_and_prices():
     i = HTML.index("<!-- ══ Location & Solar ══ -->")
     assert _sub_of(i) == "billing"
-    sites = HTML.index("Sites &amp; Meters")
-    tariffs = HTML.index("<!-- ══ Prices (#582)")   # the next section (the tariffs are on the meters now)
-    assert sites < i < tariffs, "right after Sites & Meters"
+    moved = HTML.index('data-testid="plans-moved"')     # the pointer to Plans & meters (#613)
+    prices = HTML.index("<!-- ══ Prices (#582)")
+    assert moved < i < prices
 
 
 def test_messages_point_to_the_new_place():
-    assert "Sites & Billing → Location & Solar" in scheduler._SETUP_SOLAR
+    assert "Location & Prices → Location & Solar" in scheduler._SETUP_SOLAR
     assert "Integrations → Location & Solar" not in (PKG / "app.py").read_text()
 
 
@@ -38,7 +40,7 @@ def test_the_card_and_the_solar_tab_link_each_other():
 
 
 def test_the_default_site_shows_its_location_and_links_to_it():
-    assert 'data-testid="site-location"' in HTML
-    j = HTML.index('data-testid="site-location"')
-    row = HTML[HTML.rfind("<", 0, j):HTML.index("</", j) + 200]
+    assert 'data-testid="site-location"' in PLANS
+    j = PLANS.index('data-testid="site-location"')
+    row = PLANS[PLANS.rfind("<", 0, j):PLANS.index("</", j) + 200]
     assert "s.is_default" in row and "settings-location" in row

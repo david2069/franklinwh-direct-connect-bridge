@@ -20,7 +20,13 @@ Three ways, and they coexist:
    single-gateway `FWH_HOST`.
 2. **Settings → Gateways → Add** — host and a label, from the UI.
 3. **Settings → Gateways → Scan** — probe a subnet for aGates. The subnet comes from
-   `FWH_SUBNET`, or is derived as the host's `/24` when that is blank.
+   `FWH_SUBNET`, or is derived as the host's `/24` when that is blank. The search uses
+   TCP 9000, where every real aGate listens. To find emulators, give a port, a list or a
+   range in the port box (`9020`, `9000,9020` or `9020-9030`). Each open port is confirmed
+   with a Direct Connect login and listed once per address and port, and **Add** keeps
+   that port. A result or gateway on any port but 9000, or with a serial starting `MOCK`,
+   is labelled **Emulator**. Hosts × ports is capped at 1024 probes; a bigger search asks
+   you to narrow it. The Modbus TCP Server (aGate :502) is never probed.
 
 Each gateway can be enabled or disabled, edited, given a description, and removed, all
 from its **Edit** dialog. All of those are writes. Two rules protect the default gateway
@@ -34,6 +40,12 @@ from its **Edit** dialog. All of those are writes. Two rules protect the default
 poller stops nothing else would. The dialog shows the release result. If the release fails,
 the gateway stays enabled and the dialog says why. As of 0.5.2, `allow_writes` no longer blocks them (see
 [Control](control.md#1-allow_writes-no-longer-blocks-writes)).
+
+**Disabling or removing a gateway removes its entities from Home Assistant.** Once its
+poller has stopped, the bridge removes the gateway's retained topics from the broker, as
+[Unpublish](home-assistant.md#republish-and-unpublish) does, and Home Assistant drops its
+entities. If the broker can't be reached, the gateway is still disabled or removed and the
+log says so. A restart of the bridge or of the gateway leaves its entities in place.
 
 ### Gateway identity
 
@@ -160,10 +172,10 @@ how a stale comment becomes stale documentation.
 
 ## Sites, meters, utilities and tariffs
 
-![Settings → Sites & Billing](../images/multi-gateway/05-sites-meters-tariffs.png)
+![Billing & Utilities → Plans & meters](../images/multi-gateway/05-sites-meters-tariffs.png)
 
 Above the gateway there is a small normalised model, managed from
-**Settings → Sites & Billing**:
+**Billing & Utilities → Plans & meters**:
 
 ```
 Site  →  Meter  →  (Utility  →  Tariff)
@@ -181,7 +193,7 @@ Site  →  Meter  →  (Utility  →  Tariff)
 This is what makes costs meaningful on a site with two gateways behind one meter: the
 tariff is a property of the meter, not of the gateway, so the cost is computed once for
 the billing point rather than twice: one set of fixed charges, the demand charge from the
-meter's combined peak, and one history (Energy Costs shows the same bill on each of its
+meter's combined peak, and one history (Billing & Utilities shows the same bill on each of its
 gateways). Tariffs can be exported, imported and validated individually.
 
 **The meter's readings.** Each aGate's grid CT is built in and measures its own part of

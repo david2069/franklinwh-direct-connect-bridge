@@ -1,15 +1,33 @@
 /**
- * Energy Costs tab — live period-to-date billing (/api/billing/overview) + closed-period
- * history (/api/billing/history). Data is priced by the gateway's meter's tariff; the tab
- * shows "not configured" when no tariff is attached.
+ * Billing & Utilities (#613, #629): Summary, Bill detail, History, Plans & meters, for one
+ * meter. /api/billing/page gives the meters and what is still to set up (from hems);
+ * the period and history come from /api/billing/overview and /history for the meter's
+ * gateway. Plans & meters is Settings' own editors (settingsTab, embedded).
  */
 function energyCostsTab() {
   return {
     ov: null,
+    bill: null,
+    bills: [], billsLoading: false, billOpen: {}, showSuperseded: false,
+    recalcBusy: false, recalcMsg: {},        // the open period's OUTUS bill, worked out by hems (#613)
     history: [],
     loading: false,
     closing: false,
     expanded: {},
+    page: { meters: [], meter: null, steps: [], complete: false },
+    meterId: '',
+    subTabs: [
+      { key: 'summary', label: 'Summary' },
+      { key: 'detail', label: 'Bill detail' },
+      { key: 'history', label: 'History' },
+      { key: 'plans', label: 'Plans & meters' },
+    ],
+    sub: (function () { try { return localStorage.getItem('fwh-billing-sub') || 'summary'; } catch (e) { return 'summary'; } })(),
+    setSub(k) {
+      this.sub = k;
+      try { localStorage.setItem('fwh-billing-sub', k); } catch (e) { /* per-viewer only */ }
+      if (k !== 'plans') this.load();
+    },
     modbusImport: { open: false, url: 'http://host.docker.internal:8100', user: 'admin', pass: 'admin', busy: false, preview: null, msg: null },
 
     init() {
@@ -18,20 +36,131 @@ function energyCostsTab() {
       this.$watch('$store.app.selectedGateway', () => t.reload());
     },
 
+    // The chosen meter's gateway: billing is per meter, read through any of its gateways.
+    meterGwQuery(sep) {
+      const g = this.page.meter && this.page.meter.gateway_ids[0];
+      return g ? `${sep}gateway=${encodeURIComponent(g)}` : this.$store.app.gwQuery(sep);
+    },
+
     async load() {
       this.loading = true;
       try {
-        const q = this.$store.app.gwQuery('?');
-        this.ov = await (await fetch('api/billing/overview' + q)).json();
-        const hq = this.$store.app.gwQuery('&');
-        this.history = (await (await fetch('api/billing/history?limit=60' + hq)).json()).periods || [];
+        const pr = await fetch('api/billing/page' + (this.meterId ? '?meter=' + encodeURIComponent(this.meterId) : ''));
+        if (pr.ok) { this.page = await pr.json(); this.meterId = (this.page.meter && this.page.meter.id) || ''; }
+        const mq = this.meterId ? '?meter=' + encodeURIComponent(this.meterId) : '';
+        this.bill = (await (await fetch('api/billing/bill' + mq)).json()).bill || null;
+        this.ov = await (await fetch('api/billing/overview' + this.meterGwQuery('?'))).json();
+        this.history = (await (await fetch('api/billing/history?limit=60' + this.meterGwQuery('&'))).json()).periods || [];
+        if (this.sub === 'history') this.loadBills();
       } catch (e) {
         this.$store.app.toast('Billing load failed: ' + e.message, 'error');
       } finally { this.loading = false; }
     },
 
+    // A setup step's button: the editor that does it, on Plans & meters.
+    doStep(st) {
+      this.setSub('plans');
+      const m = this.page.meter;
+      setTimeout(() => window.dispatchEvent(new CustomEvent('fwh-plans-action', { detail: {
+        action: st.key === 'tariffs' ? 'plan' : st.key, meter_id: m && m.id,
+        site_id: m && m.site_id } })), 50);
+    },
+
+    // Closed periods' bills (hems, kept). The first view works out any not yet billed.
+    async loadBills() {
+      this.billsLoading = !this.bills.length;
+      try {
+        const q = new URLSearchParams();
+        if (this.meterId) q.set('meter', this.meterId);
+        if (this.showSuperseded) q.set('superseded', 'true');
+        const r = await fetch('api/billing/bills?' + q);
+        this.bills = r.ok ? ((await r.json()).bills || []) : [];
+      } catch (e) { this.bills = []; }
+      finally { this.billsLoading = false; }
+    },
+    billPeriod(b) {
+      // In the bill's zone: the period ends at midnight there, shown as its last day.
+      const tz = b['x-timezone'] || undefined;
+      const f = (iso, back) => { const d = new Date(new Date(iso).getTime() - (back ? 1000 : 0));
+        try { return d.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric', timeZone: tz }); }
+        catch (e) { return d.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }); } };
+      return f(b.period_start, false) + ' – ' + f(b.period_end, true);
+    },
+    billGroups(b) {
+      const names = b['x-tariffs'] || {}, out = [];
+      const add = (id, name) => {
+        const lines = (b.line_items || []).filter(x => (x.tariff_id ?? null) === id);
+        if (lines.length) out.push({ id: id || 'plan', name, lines,
+                                     subtotal: lines.reduce((t, x) => t + Number(x.amount || 0), 0) });
+      };
+      Object.keys(names).forEach(id => add(id, names[id]));
+      add(null, 'Plan charges');
+      return out;
+    },
+    usageUrl(b) {
+      const q = new URLSearchParams({ start: b.period_start, end: b.period_end });
+      if (this.meterId) q.set('meter', this.meterId);
+      return 'api/billing/usage?' + q;
+    },
+    // Work a bill out again; the result shows on the bill, and the list reloads.
+    async recalcBill(b) {
+      if (!await this.$store.app.confirmDialog('Work this bill out again with today\'s plan and readings? The current bill is kept, marked superseded.', {})) return;
+      this.recalcBusy = true;
+      try {
+        const r = await fetch('api/billing/bills/' + encodeURIComponent(b.id) + '/recalculate', { method: 'POST' });
+        const d = await r.json();
+        if (!r.ok) { this.recalcMsg = { ...this.recalcMsg, [b.id]: { ok: false, text: d.detail || 'Not recalculated' } }; return; }
+        await this.loadBills();
+        this.billOpen = { ...this.billOpen, [d.id]: true };
+        this.recalcMsg = { ...this.recalcMsg, [d.id]: { ok: true, text: 'Recalculated: ' + this.money(d.net_total) + ' (was ' + this.money(b.net_total) + ')' } };
+      } catch (e) { this.recalcMsg = { ...this.recalcMsg, [b.id]: { ok: false, text: String(e) } }; }
+      finally { this.recalcBusy = false; }
+    },
+
+    // This period so far: hems's bill when there is one, else the running tracker.
+    get sum() {
+      const b = this.bill, o = this.ov || {};
+      if (b && b.progress) return { net: b.net_total, projected: b.progress.projected_total,
+                                    day: b.progress.days_elapsed, days: b.progress.days };
+      return { net: o['net.period_cost'], projected: o['net.projected_cost'],
+               day: o.days_elapsed, days: o.period_days };
+    },
+
+    // The bill's lines grouped by tariff, then the plan's own charges (OUTUS order).
+    get groups() { return this.bill ? this.billGroups(this.bill) : []; },
+
+    // Summary tiles: one per tariff and one for plan charges; the tracker's parts without a bill.
+    get tiles() {
+      if (!this.bill) return this.breakdown.filter(c => c.show);
+      return this.groups.map(g => ({ label: g.name, value: this.money(g.subtotal),
+                                     color: g.subtotal < 0 ? '#34d399' : null,
+                                     sub: g.lines.length + (g.lines.length === 1 ? ' line' : ' lines') }));
+    },
+
+    // The last closed period, for comparison on the Summary.
+    get lastPeriod() { return this.history.find(p => !this.inProgress(p)) || null; },
+
+    // What drives the open period's lines now.
+    get liveInputs() {
+      const o = this.ov || {}, out = [];
+      const names = (this.bill && this.bill['x-tariffs']) || {};
+      for (const r of (this.bill && this.bill['x-now-rates']) || []) {
+        if (r.rate == null) continue;
+        out.push({ label: (names[r.tariff_id] || r.tariff_id) + ' · ' + r.label + (r.band ? ' (' + this.bandName(r.band) + ')' : ''),
+                   value: '$' + Number(r.rate).toFixed(4) + '/kWh' });
+      }
+      if (o['demand.peak_kw'] != null) out.push({ label: 'Demand peak so far', value: this.fmt(o['demand.peak_kw'], 2) + ' kW' });
+      if (o['demand.interval_kw'] != null) out.push({ label: 'This demand interval', value: this.fmt(o['demand.interval_kw'], 2) + ' kW' });
+      if (o['tariff.export_charge_free_remaining'] != null) out.push({ label: 'Free export left this period', value: this.fmt(o['tariff.export_charge_free_remaining'], 1) + ' kWh' });
+      if (Number(o['energy.unpriced_import_kwh']) > 0) out.push({ label: 'Import with no rate', value: this.fmt(o['energy.unpriced_import_kwh'], 2) + ' kWh' });
+      if (Number(o['energy.unpriced_export_kwh']) > 0) out.push({ label: 'Export with no rate', value: this.fmt(o['energy.unpriced_export_kwh'], 2) + ' kWh' });
+      return out;
+    },
+
+    bandName(b) { return ({ super_off_peak: 'Super off-peak', off_peak: 'Off-peak', mid_peak: 'Mid-peak', on_peak: 'On-peak' })[b] || b; },
+
     get progressPct() {
-      const d = this.ov && this.ov.days_elapsed, t = this.ov && this.ov.period_days;
+      const d = this.sum.day, t = this.sum.days;
       if (!d || !t) return 0;
       return Math.max(0, Math.min(100, Math.round((d / t) * 100)));
     },
@@ -60,7 +189,7 @@ function energyCostsTab() {
       const f = (ts) => { try { return new Date(ts * 1000).toLocaleDateString([], { day: 'numeric', month: 'short' }); } catch (e) { return '?'; } };
       return f(p.period_start) + ' – ' + f(p.period_end);
     },
-    exportCsv() { window.location = 'api/billing/history?fmt=csv' + this.$store.app.gwQuery('&'); },
+    exportCsv() { window.location = 'api/billing/history?fmt=csv' + this.meterGwQuery('&'); },
 
     // One-click import of closed periods from a Modbus bridge (login → fetch → map → store).
     openModbusImport() { this.modbusImport.open = true; this.modbusImport.preview = null; this.modbusImport.msg = null; },
@@ -68,7 +197,7 @@ function energyCostsTab() {
       const m = this.modbusImport;
       m.busy = true; m.msg = null;      // results show inside the dialog (#293)
       try {
-        const r = await (await fetch('api/billing/import-modbus' + this.$store.app.gwQuery('?'), {
+        const r = await (await fetch('api/billing/import-modbus' + this.meterGwQuery('?'), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ source_url: m.url, username: m.user, password: m.pass, dry_run: dry }),
         })).json();
@@ -96,7 +225,7 @@ function energyCostsTab() {
         return;
       this.closing = true;
       try {
-        const r = await (await fetch('api/billing/close' + this.$store.app.gwQuery('?'), { method: 'POST' })).json();
+        const r = await (await fetch('api/billing/close' + this.meterGwQuery('?'), { method: 'POST' })).json();
         if (r.ok && r.closed) { this.$store.app.toast('Current period snapshotted to history', 'success'); await this.load(); }
         else { this.$store.app.toast(r.reason || 'Nothing to close yet', 'info'); }
       } catch (e) { this.$store.app.toast('Close failed: ' + e.message, 'error'); }
@@ -117,7 +246,7 @@ function energyCostsTab() {
       ].filter((x) => x.show);
     },
 
-    money(v) { return (v == null) ? '–' : '$' + Number(v).toFixed(2); },
+    money(v) { return (v == null) ? '–' : (Number(v) < 0 ? '−$' : '$') + Math.abs(Number(v)).toFixed(2); },
     fmt(v, dp = 1) { return (v == null) ? '–' : Number(v).toFixed(dp); },
   };
 }

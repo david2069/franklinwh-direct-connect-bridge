@@ -30,6 +30,7 @@ window.setupWizard = function setupWizard() {
     scan_subnet: '',
     scan_source: '',
     scan_label: '',
+    scan_ports: '',                    // blank = 9000; a port, list or range finds emulators (#416)
     manual: { host: '' },
     // The four live Home Assistant checks, and whether to publish at all.
     ha: { checks: [], publishing: false, addon: false, busy: false, msg: '' },
@@ -61,6 +62,12 @@ window.setupWizard = function setupWizard() {
       // window event keeps the wizard self-contained instead of wiring a second owner for
       // its open/closed state.
       window.addEventListener('fwh:open-setup-wizard', () => this.reopen());
+      // A row of the setup list in Settings → Setup: the same task, answered the same way.
+      window.addEventListener('fwh:open-setup-task', (e) => {
+        const t = e.detail || {};
+        if (t.inline) { this.history = []; this.error = ''; this.show(); this.loadTasks(); }
+        this.openTask(t);
+      });
 
       // Ask the server, never guess from local state: a second browser must not re-prompt
       // for a bridge that is already set up.
@@ -146,7 +153,12 @@ window.setupWizard = function setupWizard() {
       this.hide();
       if (o.overlay === 'systemview') { if (window.FWHSystemView) FWHSystemView.open(); return; }
       if (!a) return;
-      if (o.tab) { a.setActiveTab(o.tab); return; }
+      if (o.tab) {
+        a.setActiveTab(o.tab);
+        if (o.billing) setTimeout(() => window.dispatchEvent(new CustomEvent('fwh-open-billing',
+          { detail: { sub: o.billing } })), 50);
+        return;
+      }
       a.setActiveTab('settings');
       setTimeout(() => window.dispatchEvent(new CustomEvent('fwh-open-settings',
         { detail: { sub: o.sub, card: o.card } })), 50);
@@ -377,7 +389,10 @@ window.setupWizard = function setupWizard() {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           // Several subnets, comma-separated: an aGate on a VPN or a second VLAN is not
           // on the network this container can see.
-          body: JSON.stringify(this.scan_subnet ? { subnet: this.scan_subnet } : {}),
+          body: JSON.stringify({
+            ...(this.scan_subnet ? { subnet: this.scan_subnet } : {}),
+            ...(this.scan_ports.trim() ? { ports: this.scan_ports.trim() } : {}),
+          }),
         });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) { this.error = d.detail || `Scan failed (HTTP ${r.status}).`; this.found = []; return; }
@@ -386,7 +401,7 @@ window.setupWizard = function setupWizard() {
       } catch (e) { this.error = String(e); this.found = []; } finally { this.busy = false; }
     },
 
-    async addFound(c) { await this._addGateway({ host: c.host, label: c.label || '' }); },
+    async addFound(c) { await this._addGateway({ host: c.host, port: c.port, label: c.label || '' }); },
 
     async addManual() {
       if (!this.manual.host) return;

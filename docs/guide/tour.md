@@ -22,6 +22,8 @@ records "skipped", which stops the prompt and disables nothing.
    this clock; a real aGate's clock is set on the device, and Setup names any gateway whose
    offset differs rather than pretending to correct it.
 4. **Find it** — Discover scans the LAN for aGates on TCP 9000, or you enter the address.
+   The **Ports** box takes a port, list or range to find emulators; any port but 9000 is
+   labelled **Emulator**.
    On the mock path, one mock per declared aGate is created, numbered, each with the aPower
    count you gave.
 5. **Confirm** — what the gateway reports, one line per fact (gateway model, batteries,
@@ -61,6 +63,11 @@ Every change made here, and every Test, writes a line to **Logs** and a row to t
 
 **Settings → Setup** is the same content, reachable for ever: every step reports whether it
 is already satisfied, so a second pass shows current state rather than blank fields.
+Below the install steps it lists everything worth setting up after install, as the wizard's
+list does: **Essentials** (FranklinWH Cloud, MQTT, Home Assistant, utility and billing,
+default mode, automatic scheduling) and **Advanced** (notifications, security, accounts,
+System View, emulator, Modbus TCP). Each shows **Done** once set up; **Set up** / **Open** goes
+straight to where it is set up, or opens that step of the wizard.
 
 ---
 
@@ -161,12 +168,12 @@ protocol documentation.
 | Tab | For |
 |---|---|
 | **Dashboard** | The at-a-glance view, built from ten cards you can individually hide and reorder: State of Charge, Power Flow (each source with what it is doing — Charging, Exporting — and a **Now / Today** toggle for today's kWh), Battery, Energy, Energy Flow (the Sankey), Operating Mode (with the per-mode reserves and a **Set** button), Diagnostics, Solar Forecast, Power History and Live Points. While the aGate is offline, the State of Charge, Power Flow and Battery cards keep the last values read, greyed, with **Last reading HH:MM (N min ago)**, and the battery state reads **Unknown (offline)**. |
-| **Battery** | Per-aPower BMS detail — cell voltages, temperatures, pack SoC/SoH, electrical and state readings. **Record** on the live trend keeps it on the bridge from then on (at least every 5 s, up to a day, or until Stop). **Charts** lists the recordings and charts cells over time; it also starts a recording by hand, and **Scheduled recordings** start one at a time of day on the days you tick, on the site's clock. A failed read (the aGate dropped off) doesn't use up a planned sample, so a recording carries on once the aGate is back; it gives up after an hour with no good read. Each recording shows why it ended (completed, stopped by whom, or the aGate unreachable), and the Logs show who started and stopped it. |
+| **Battery** | Per-aPower BMS detail — cell voltages, temperatures, pack SoC/SoH, electrical and state readings. **Record** on the live trend keeps it on the bridge from then on (at least every 5 s, up to a day, or until Stop). **Recording** starts a recording by hand, and **Scheduled recordings** start one at a time of day on the days you tick, on the site's clock. **Charts** lists the recordings and charts cells over time; the list folds away (on a phone, once you pick one) so the chart has the width, and on a phone what to chart (Voltage, Temperature, Comparison; All cells, Average, Median) is a drop-down. A read the aGate takes over a minute to answer says so, with **Try again**; it says it is showing the last good reading only when there is one. A failed read (the aGate dropped off) doesn't use up a planned sample, so a recording carries on once the aGate is back; it gives up after an hour with no good read. Each recording shows why it ended (completed, stopped by whom, or the aGate unreachable), and the Logs show who started and stopped it. |
 | **Solar** | Solar production detail. The *forecast* is not here — it is the Solar Forecast card on the Dashboard (see [History and costs](energy-and-costs.md)). Hidden, with the Dashboard's Solar Forecast card, when there is no solar: the gateway reports no AC PV ports and no remote solar, or **System Setup** says none (DC solar is set there). Until the gateway has been read it stays. |
 | **Smart Circuits** | The aGate's controllable circuits: state now, and on/off control. |
 | **Generator** | Generator status, metrics and configuration. **Hidden entirely unless a genset is present** — the bridge would otherwise show a permanent 0 W. |
 | **Analytics** | Longer-horizon charts from the bridge's own SQLite history. |
-| **Energy Costs** | Period-to-date cost and closed-period history, priced against your tariff. |
+| **Billing & Utilities** | Billing: setup steps, this period so far, the bill's lines, closed periods, and your sites, meters, retailers and tariffs (Plans & meters). See [Billing & Utilities](energy-and-costs.md#billing-utilities). |
 | **Scheduler** | Time-based automation. See [Scheduler](scheduler/index.md). |
 | **Control** | Everything you can *do* to the selected gateway, in one place. Its audit trail is under Logs. See [Control](control.md). |
 | **Grid & Inverter** | The grid power-plane limits (import/export enables, soft and hard limits). Advanced, and the write is **unverified** — see [Control](control.md). |
@@ -176,7 +183,7 @@ protocol documentation.
 | **Device** | Device identity and raw readings — model, firmware, serial — and a browser for individual `cmdType` reads. |
 | **Health** | A per-gateway connection panel: host, online/offline, round-trip latency, `Modbus :502` as Up / Down / **Not probed** (from the Modbus client's last real connection; nothing probes :502 to show it), ping, whether the host was rediscovered, MQTT, whether writes are enabled, firmware and serials, with a Refresh that forces a fresh probe. |
 | **Logs** | The bridge's own log, stored in SQLite: searchable, paginated, filterable by level and source, with a **Live** follow mode and an export. Control actions, cloud calls and connection events all land here. |
-| **Settings** | The configuration hub. Sub-tabs: **General**, **Gateways**, **Automation**, **Sites & Billing**, **Integrations**, **Admin**. |
+| **Settings** | The configuration hub. Sub-tabs: **General**, **Gateways**, **Automation**, **Location & Prices**, **Integrations**, **Admin**. |
 
 ### Terminal
 
@@ -232,9 +239,9 @@ bridge on a trusted network.
   multiplies them. The constants themselves are *not* read
   from the aGate; you set them here and they become `const.*` sensors in the Scheduler.
   Also **System Setup**, the install profile.
-- **Sites & Billing** — sites, meters, the site's **Location & Solar** (forecast location
-  and array), utilities and tariffs, and **Prices**: the price signal for automation and the
-  price events (spike, demand window).
+- **Location & Prices** — the site's **Location & Solar** (forecast location and array) and
+  **Prices**: the price signal for automation and the price events (spike, demand window).
+  Sites, meters, retailers and tariffs are on **Billing & Utilities → Plans & meters**.
 - **Integrations** — MQTT broker, notifications, battery dispatch, the Cloud API
   credentials, and **Integration → Mapping** (below).
 - **Admin** — storage, vacuum, database backup / restore / download.

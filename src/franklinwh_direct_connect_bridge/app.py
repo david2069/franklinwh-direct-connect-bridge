@@ -660,6 +660,8 @@ class TariffValidateReq(BaseModel):
 
 class GatewayScanReq(BaseModel):
     subnet: str | None = None
+    #: Ports to search (#416): blank = 9000; a port, a list or a range ("9000,9020-9030").
+    ports: str | None = None
 
 
 class HaTestReq(BaseModel):
@@ -2145,6 +2147,12 @@ def create_app() -> FastAPI:
         except Exception:  # noqa: BLE001
             return None
 
+    def _is_emulator(port, serial) -> bool:
+        """A real aGate always listens on TCP 9000 (owner, 2026-10-31, #416): a gateway on
+        any other port is emulated, as is a serial starting MOCK (the emulator's marker)."""
+        return (int(port or 9000) != 9000
+                or str(serial or "").upper().startswith("MOCK"))
+
     def _gw_merged(row: dict) -> dict:
         """A roster row = DB config + live poller state (when the gateway is registered)."""
         gw = state.get_gateway(row["id"])
@@ -2166,6 +2174,8 @@ def create_app() -> FastAPI:
             "meter_id": row.get("meter_id"),
             "description": row.get("description") or "",
             "model": "aGate (mock)" if row.get("is_mock") else (base.get("model_detail") or "aGate"),
+            "emulator": (not row.get("is_mock")
+                         and _is_emulator(row.get("port"), base.get("serial") or row.get("serial"))),
             "running": supervisor.is_running(row["id"]),
         })
         # One poll status the All gateways view counts by (#383): stopped = disabled, no
@@ -2218,6 +2228,29 @@ def create_app() -> FastAPI:
             st.end_dispatch(d["id"], status="stopped")
         log.info("gateway '%s' disabled: force released (%s)", row["label"], result)
         return result
+
+    async def _clear_gateway_ha(row: dict, node: str | None) -> None:
+        """Remove a disabled or deleted gateway's entities from Home Assistant (#405).
+
+        Its discovery configs are retained, so stopping the publisher alone left them in
+        HA for good. Called only by disable and delete: a restart must not clear them.
+        Runs once the poller has stopped (as Unpublish does), so its last cycle can't
+        publish them back. A broker that can't be reached is logged, never an error."""
+        s = get_settings()
+        node = (node or row.get("serial") or "").strip().lower()
+        if not s.mqtt_enabled or not row.get("publish_ha") or not node or node == "agate":
+            return
+        old = supervisor._stopping.get(row["id"])
+        if old is not None and not old.done():
+            await asyncio.wait({old}, timeout=supervisor.DEFER_WAIT_S)
+        from .publish import purge as _purge
+        try:
+            res = await asyncio.to_thread(_purge.purge, s, node)
+        except Exception as e:  # noqa: BLE001 — the disable/delete itself has happened
+            log.warning("gateway '%s': could not remove its HA entities: %s", row["label"], e)
+            return
+        log.info("gateway '%s': removed %s retained HA topic(s)%s", row["label"],
+                 res.get("removed"), (f", {len(res['left'])} left" if res.get("left") else ""))
 
     async def _reconcile_gateway(row: dict) -> None:
         """Bring the live poller + mock emulator in line with a roster row's enabled/
@@ -2302,8 +2335,11 @@ def create_app() -> FastAPI:
                     f"'{before['label']}' is the default gateway and can't be disabled. "
                     "Make another gateway the default first."))
             released = _release_gateway_force(st, before)
+        live = state.get_gateway(gw_id)
         row = st.update_gateway(gw_id, **fields)
         await _reconcile_gateway(row)
+        if fields.get("enabled") is False and before.get("enabled"):
+            await _clear_gateway_ha(row, live.node if live is not None else None)
         out = _gw_merged(row)
         if released is not None:
             out["released"] = released
@@ -2339,9 +2375,11 @@ def create_app() -> FastAPI:
             raise HTTPException(404, f"no gateway '{gw_id}'")
         if row.get("enabled"):
             raise HTTPException(409, f"'{row['label']}' is enabled. Disable it first, then remove it.")
+        live = state.get_gateway(gw_id)
         await supervisor.stop_poller(gw_id)
         mockgw.stop_mock(gw_id)
         state.unregister_gateway(gw_id)
+        await _clear_gateway_ha(row, live.node if live is not None else None)
         st.delete_gateway(gw_id)
         alerts.forget_gateway(db.get_store(get_settings()), gw_id)
         # Deleting the default hands the designation to the next gateway now, not at the
@@ -2584,14 +2622,17 @@ def create_app() -> FastAPI:
 
     # ── tariff-profile interchange with the Modbus bridge (FEAT-IMPORT-AGL-SETUP) ──
     @app.get("/api/tariffs/{tid}/export")
-    def api_tariff_export(tid: str):
+    def api_tariff_export(tid: str, format: str = Query("profile")):
         """Export one tariff (+ its utility + the meter's timezone) as a Modbus-compatible
-        ``franklinwh-bridge/tariff-profile`` bundle — the exact shape the Modbus bridge reads."""
-        from . import tariff_io
+        ``franklinwh-bridge/tariff-profile`` bundle — the exact shape the Modbus bridge reads.
+        ``?format=outus`` exports it as an OUTUS plan (#613)."""
+        from . import billing_page, tariff_io
         st = _ha_store()
         tar = st.tariff(tid) if st else None
         if not tar:
             raise HTTPException(status_code=404, detail="no such tariff")
+        if format == "outus":
+            return billing_page.outus_plan(st, tid)
         util = st.utility(tar.get("utility_id")) if tar.get("utility_id") else None
         tz = ""
         try:
@@ -2671,6 +2712,80 @@ def create_app() -> FastAPI:
         return {"ok": True, "utility_id": uid, "tariff_id": tid, "attached_meter": attached}
 
     # ── Energy Costs / billing view (FEAT-BILLING-SERVICE) ────────────────────
+    @app.get("/api/billing/bill")
+    def api_billing_bill(meter: str | None = Query(None)):
+        """The open period's bill for the meter (else the default), worked out by hems from
+        the plan in force and the meter's 5-minute ledger: an OUTUS bill whose lines carry
+        their formula (#613). ``{"bill": null}`` with no plan in force."""
+        from . import billing_page
+        st = _ha_store()
+        if st is None:
+            return {"bill": None}
+        return {"bill": billing_page.bill(st, meter, _dt.datetime.now(_dt.timezone.utc))}
+
+    @app.get("/api/billing/bills")
+    def api_billing_bills(meter: str | None = Query(None), limit: int = Query(12, ge=1, le=60),
+                          superseded: bool = Query(False)):
+        """Closed periods' bills worked out by hems (OUTUS bills, final), newest first (#613).
+        A period not yet billed is worked out on first view and kept."""
+        from . import billing_page
+        st = _ha_store()
+        if st is None:
+            return {"bills": []}
+        return {"bills": billing_page.closed_bills(st, meter, _dt.datetime.now(_dt.timezone.utc),
+                                                    limit=limit, include_superseded=superseded)}
+
+    @app.get("/api/billing/bills/{bid}")
+    def api_billing_bill_export(bid: str):
+        """One kept bill as an ``outus/bill`` document, to save."""
+        st = _ha_store()
+        b = st.outus_bill(bid) if st else None
+        if b is None:
+            raise HTTPException(404, "no such bill")
+        doc = {k: v for k, v in b.items() if k not in ("x-meter-id", "x-start", "x-end")}
+        name = "outus-bill-" + bid.replace(":", "-") + ".json"
+        return JSONResponse(doc, headers={"Content-Disposition": f"attachment; filename={name}"})
+
+    @app.post("/api/billing/bills/{bid}/recalculate")
+    def api_billing_bill_recalculate(bid: str):
+        """Work a kept bill out again with today's plan and readings; the new bill supersedes
+        it and the old one stays, marked superseded."""
+        from . import billing_page
+        _guard_writes()
+        st = _ha_store()
+        new = billing_page.recalculate(st, bid, _dt.datetime.now(_dt.timezone.utc)) if st else None
+        if new is None:
+            raise HTTPException(409, "this bill can't be recalculated (superseded, or no plan in force)")
+        return new
+
+    @app.get("/api/billing/usage")
+    def api_billing_usage(start: str, end: str, meter: str | None = Query(None)):
+        """The meter's 5-minute usage for [start, end) (ISO instants, e.g. a bill's period) as
+        an ``outus/usage`` document, to save."""
+        from . import billing_page
+        st = _ha_store()
+        try:
+            s_ = _dt.datetime.fromisoformat(start.replace("Z", "+00:00"))
+            e_ = _dt.datetime.fromisoformat(end.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(422, "start and end are ISO instants")
+        if s_.tzinfo is None or e_.tzinfo is None or e_ <= s_:
+            raise HTTPException(422, "start and end need a timezone, and end after start")
+        doc = billing_page.usage(st, meter, s_, e_) if st else None
+        if doc is None:
+            raise HTTPException(404, "no such meter")
+        return JSONResponse(doc, headers={"Content-Disposition": "attachment; filename=outus-usage.json"})
+
+    @app.get("/api/billing/page")
+    def api_billing_page(meter: str | None = Query(None)):
+        """The Billing & Utilities page (#613): the meters, the chosen one (else the default)
+        with its gateways, and its setup steps from hems (site → meter → plan → tariffs)."""
+        from . import billing_page
+        st = _ha_store()
+        if st is None:
+            return {"meters": [], "meter": None, "steps": [], "complete": False}
+        return billing_page.page(st, meter, _dt.date.today())
+
     @app.get("/api/billing/overview")
     def api_billing_overview(gateway: str = Depends(_gateway_q)):
         """Live period-to-date billing for the gateway's meter's tariff: the running
@@ -2834,33 +2949,60 @@ def create_app() -> FastAPI:
 
     @app.post("/api/gateways/scan")
     async def api_gateway_scan(req: GatewayScanReq):
-        """Sweep a subnet for aGates on TCP 9000 and confirm each with a real Local-API
-        login (1101/1102). Returns candidates; the UI adds the confirmed ones."""
+        """Sweep a subnet for Direct Connect listeners and confirm each with a real
+        Local-API login (1101/1102). Returns candidates; the UI adds the confirmed ones.
+
+        Ports (#416): blank searches the Direct Connect port setting (9000, where every
+        real aGate listens); a port,
+        list or range finds emulators. One result per address and port. The Modbus TCP
+        Server (aGate :502) is never probed."""
         from franklinwh_direct_connect_api import discover as _disc
         subnet = (req.subnet or _default_scan_subnet()).strip()
         try:
             targets = _disc.expand_targets(subnet)
         except Exception as e:  # noqa: BLE001
             raise HTTPException(400, f"bad subnet '{subnet}': {e}")
-        if len(targets) > 1024:
-            raise HTTPException(400, "subnet too large (>1024 hosts) — narrow it")
+        spec = (req.ports or "").strip() or str(get_settings().fwh_port)   # 9000 by default
+        try:
+            ports = _disc.expand_ports(spec)
+        except ValueError as e:
+            raise HTTPException(400, f"bad ports '{spec}': {e}")
+        ports = [p for p in ports if p != _disc.PORT_MODBUS]
+        if not ports:
+            raise HTTPException(400, "port 502 is the Modbus TCP Server (aGate :502), which "
+                                     "search doesn't probe. Give a Direct Connect port.")
+        probes = len(targets) * len(ports)
+        if probes > 1024:
+            raise HTTPException(400, (f"too many probes: {len(targets)} host(s) × {len(ports)} "
+                                      f"port(s) = {probes} (at most 1024) — narrow the subnet "
+                                      "or the ports"))
         results = await asyncio.to_thread(
-            _disc.scan, targets, ports=(_disc.PORT_SENDMQTT,), probe=True, timeout=1.0)
+            _disc.scan_ports, targets, ports, probe=True, timeout=1.0)
         st = _gw_store()
-        existing = {r.get("host") for r in (st.gateways() if st else [])}
+        # Matched on address AND port. A running mock's port is only in its live host
+        # ("127.0.0.1:<port>"), so the registered gateways count as well as the roster.
+        existing = set()
+        addrs = [(r.get("host"), r.get("port")) for r in (st.gateways() if st else [])]
+        addrs += [(g.active_host or g.configured_host, g.port) for g in state.gateways()]
+        for host, port in addrs:
+            host, port = host or "", int(port or _disc.PORT_SENDMQTT)
+            if host.count(":") == 1:          # a host given as "address:port"
+                host, _p = host.split(":")
+                port = int(_p) if _p.isdigit() else port
+            existing.add((host, port))
         cands = []
         for r in results:
-            if not getattr(r, "sendmqtt_open", False):
-                continue
-            serial = (r.manifest or {}).get("IBG_SN") if r.manifest else None
+            serial = r.serial
             cands.append({
                 "host": r.host,
-                "confirmed": bool(getattr(r, "sendmqtt_confirmed", False)),
+                "port": r.port,
+                "confirmed": bool(r.confirmed),
                 "serial": serial,
-                "already_added": r.host in existing,
+                "already_added": (r.host, r.port) in existing,
+                "emulator": _is_emulator(r.port, serial),
             })
-        cands.sort(key=lambda c: (not c["confirmed"], c["host"]))
-        return {"subnet": subnet, "count": len(cands), "candidates": cands}
+        cands.sort(key=lambda c: (not c["confirmed"], c["host"], c["port"]))
+        return {"subnet": subnet, "ports": ports, "count": len(cands), "candidates": cands}
 
     @app.get("/api/gateways/{gw_id}/summary")
     def api_gateway_summary(gw_id: str):
@@ -5251,8 +5393,11 @@ def create_app() -> FastAPI:
                 # 0 on this single-phase site, which is consistent with 0 = single but
                 # also with 0 = unset. Not used to derive ac_type until it is confirmed.
                 "phase_con": g("gridPhaseConSet"), "phase_seq": g("gridPhaseSeqSet"),
-                "service_amps": g("airSwitchCur"),
-                "electric_supply_raw": g("electricSupply"),
+                # electricSupply is the service/main amperage, airSwitchCur the aGate
+                # air-switch rating (#425; service_amps held the air switch until then).
+                "service_amps": g("electricSupply"),
+                "air_switch_amps": g("airSwitchCur"),
+                "electric_supply_raw": g("electricSupply"),   # kept for existing callers
                 # Real freq/voltage from ibg_run_status (catalogue 1707), not the 1701
                 # enum codes.
                 "nominal_freq_hz": _num(rg("dspSettingFreq")),   # configured nominal, e.g. 50
@@ -6050,9 +6195,9 @@ def create_app() -> FastAPI:
             missing.append({"id": "capacity", "text": "Set the battery capacity (Settings → "
                             "Automation) for battery cycles and reserve sizes.", "tab": "settings"})
         if not site.get("tariff"):
-            missing.append({"id": "tariff", "text": "Add your tariff (Settings → Sites & Billing → your meter → "
-                            "+ Add tariff) for "
-                            "time-of-use advice and $ estimates.", "tab": "settings"})
+            missing.append({"id": "tariff", "text": "Add your tariff (Billing & Utilities → Plans & meters → "
+                            "your meter → + Add tariff) for "
+                            "time-of-use advice and $ estimates.", "tab": "energy_costs"})
         out.update(source=source, site=site, current=current, missing=missing,
                    objective_choices=ca.insights.OBJECTIVES)
         return out
@@ -7525,7 +7670,7 @@ def create_app() -> FastAPI:
         size = pv_size.effective(cfg)                # yours, else the gateways' (#583)
         if not size["kwp"]:
             return {"configured": False,
-                    "reason": "Please confirm your solar size in Settings → Sites & Billing → "
+                    "reason": "Please confirm your solar size in Settings → Location & Prices → "
                               "Location & Solar: the gateway hasn't reported it yet."}
         fc = solar_forecast.forecast(cfg.pv_latitude, cfg.pv_longitude, kwp=size["kwp"],
                                      tilt=cfg.pv_tilt, azimuth=cfg.pv_azimuth, force=force)

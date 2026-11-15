@@ -127,7 +127,10 @@ function batteryTab() {
       this.loading = true;
       this.error = '';
       const _ctrl = new AbortController();
-      const _to = setTimeout(() => _ctrl.abort(), 20000);   // recover from a hung read
+      // Recover from a hung read. Generous: the read is a login and five commands, and an
+      // aGate busy with VPP or a recording has taken over 20 s (owner, 2026-11-15); giving
+      // up early only queues the next read behind the one the bridge is still making.
+      const _to = setTimeout(() => _ctrl.abort(), 60000);
       try {
         const q = new URLSearchParams({ id: String(this.unitId) });
         // gateway scoping is appended by gwQuery('&') — don't double it here.
@@ -173,7 +176,9 @@ function batteryTab() {
           console.warn('[Bridge] chart render skipped:', chartErr && chartErr.message);
         }
       } catch (e) {
-        this.error = e.message;
+        // Safari says "Fetch is aborted"; say what happened.
+        this.error = e && e.name === 'AbortError'
+          ? "The aGate didn't answer within 60 s" : e.message;
         // Keep the previous reading on screen — a dropped poll on this link is
         // routine and blanking the view would lose more than it tells you.
       } finally {
@@ -603,7 +608,14 @@ function batteryTab() {
     },
 
     // ── recorded sessions (persisted) ──────────────────────────
-    view: 'telemetry',        // telemetry | charts
+    view: 'telemetry',        // telemetry | recording | charts
+    // The sessions list beside the chart; folded away, the chart takes the width.
+    sessionsOpen: (function () { try { return localStorage.getItem('fwh-bat-sessions') !== '0'; } catch (e) { return true; } })(),
+    toggleSessions() {
+      this.sessionsOpen = !this.sessionsOpen;
+      try { localStorage.setItem('fwh-bat-sessions', this.sessionsOpen ? '1' : '0'); } catch (e) { /* per viewer */ }
+      this.$nextTick(() => this.drawCells());
+    },
     sessions: [],
     sessionId: null,
     session: null,
@@ -622,9 +634,8 @@ function batteryTab() {
 
     setView(v) {
       this.view = v;
-      if (v === 'charts') {
-        this.loadSessions(); this.loadSchedules(); this.$nextTick(() => this.drawCells());
-      }
+      if (v === 'recording') { this.loadSchedules(); this.loadSessions(); }
+      if (v === 'charts') { this.loadSessions(); this.$nextTick(() => this.drawCells()); }
     },
 
     async loadSessions() {
@@ -636,6 +647,8 @@ function batteryTab() {
 
     async openSession(id) {
       this.sessionId = id;
+      // On a phone the list sits above the chart: fold it once a session is picked.
+      try { if (window.matchMedia('(max-width: 639px)').matches) this.sessionsOpen = false; } catch (e) { /* old browser */ }
       try {
         const r = await fetch(`api/battery/sessions/${id}`);
         if (!r.ok) throw new Error(`HTTP ${r.status}`);

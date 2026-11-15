@@ -107,19 +107,17 @@ def test_supervisor_start_stop_tracks_running():
 
 def test_gateway_scan_endpoint(gw_client, monkeypatch):
     """Discover: /api/gateways/scan returns confirmed/unconfirmed candidates and marks
-    already-added hosts. discover.scan is stubbed (no real network)."""
+    already-added hosts. discover.scan_ports is stubbed (no real network)."""
     c, store = gw_client
     from franklinwh_direct_connect_api import discover as _disc
 
-    class _HR:
-        def __init__(self, host, confirmed, sn):
-            self.host = host; self.sendmqtt_open = True
-            self.sendmqtt_confirmed = confirmed
-            self.manifest = {"IBG_SN": sn} if sn else None
+    def _HR(host, confirmed, sn):
+        return _disc.PortResult(host, 9000, open=True, confirmed=confirmed,
+                                manifest={"IBG_SN": sn} if sn else None)
 
     store.create_gateway(gw_id="g1", label="Home", host="10.0.0.5")
     monkeypatch.setattr(_disc, "expand_targets", lambda spec: ["10.0.0.5", "10.0.0.9", "10.0.0.20"])
-    monkeypatch.setattr(_disc, "scan", lambda targets, **k: [
+    monkeypatch.setattr(_disc, "scan_ports", lambda targets, ports, **k: [
         _HR("10.0.0.5", True, "SNHOME"), _HR("10.0.0.9", True, "SNNEW"),
         _HR("10.0.0.20", False, None)])
     r = c.post("/api/gateways/scan", json={"subnet": "10.0.0.0/24"})

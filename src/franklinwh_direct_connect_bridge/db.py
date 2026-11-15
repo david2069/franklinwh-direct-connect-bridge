@@ -88,6 +88,7 @@ class MetricsStore:
         self._migrate_version_history()
         self._migrate_notify_log()
         self._migrate_billing_periods()
+        self._migrate_outus_bills()
         self._migrate_cloud_pop()
         self._migrate_gateways()
         self._migrate_sites()
@@ -231,6 +232,18 @@ class MetricsStore:
                 row["span"] = None
             out.append(row)
         return out
+
+    def grid_readings(self, start: int, end: int, gateway_ids: list[str]) -> list[tuple]:
+        """(ts, gateway_id, grid_w) for these gateways between ``start`` and ``end``, oldest
+        first: what the billing ledger is built from (#613)."""
+        if not gateway_ids:
+            return []
+        marks = ",".join("?" * len(gateway_ids))
+        with self._lock:
+            return self._conn.execute(
+                "SELECT ts, gateway_id, grid_w FROM metrics WHERE ts BETWEEN ? AND ?"
+                f" AND gateway_id IN ({marks}) AND grid_w IS NOT NULL ORDER BY ts",
+                (int(start), int(end), *gateway_ids)).fetchall()
 
     def query(self, start: int, end: int, bucket_s: int | None,
               gateway: str | None = None, with_gateway: bool = False) -> list[dict]:
@@ -2039,6 +2052,67 @@ class MetricsStore:
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS ix_billing_periods ON billing_periods(period_start DESC)")
         self._conn.commit()
+
+    def _migrate_outus_bills(self) -> None:
+        """Closed periods' bills worked out by hems, as OUTUS bills (#613). A recalculation
+        adds a new row and marks the old one superseded; nothing is edited in place."""
+        self._conn.execute(
+            """CREATE TABLE IF NOT EXISTS outus_bills(
+                   id TEXT PRIMARY KEY, meter_id TEXT NOT NULL,
+                   period_start REAL NOT NULL, period_end REAL NOT NULL,
+                   status TEXT NOT NULL, net_total REAL, doc TEXT NOT NULL,
+                   created_at REAL NOT NULL)""")
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_outus_bills ON outus_bills(meter_id, period_start DESC)")
+        self._conn.commit()
+
+    def save_outus_bill(self, doc: dict, meter_id: str, period_start: float,
+                        period_end: float) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO outus_bills(id, meter_id, period_start, period_end, status,"
+                " net_total, doc, created_at) VALUES (?,?,?,?,?,?,?,?)",
+                (doc["id"], meter_id, float(period_start), float(period_end), doc["status"],
+                 doc.get("net_total"), json.dumps(doc), time.time()))
+            self._conn.commit()
+
+    def supersede_outus_bill(self, bid: str) -> None:
+        with self._lock:
+            row = self._conn.execute("SELECT doc FROM outus_bills WHERE id=?", (bid,)).fetchone()
+            if row:
+                doc = {**json.loads(row[0]), "status": "superseded"}
+                self._conn.execute("UPDATE outus_bills SET status='superseded', doc=? WHERE id=?",
+                                   (json.dumps(doc), bid))
+                self._conn.commit()
+
+    def outus_bills(self, meter_id: str, *, include_superseded: bool = False,
+                    period_start: float | None = None) -> list[dict]:
+        """The meter's kept bills, newest period first (and newest first within one)."""
+        q = "SELECT doc FROM outus_bills WHERE meter_id=?"
+        args: list = [meter_id]
+        if not include_superseded:
+            q += " AND status != 'superseded'"
+        if period_start is not None:
+            q += " AND period_start=?"
+            args.append(float(period_start))
+        with self._lock:
+            rows = self._conn.execute(q + " ORDER BY period_start DESC, created_at DESC", args).fetchall()
+        return [json.loads(r[0]) for r in rows]
+
+    def outus_bill(self, bid: str) -> dict | None:
+        with self._lock:
+            row = self._conn.execute("SELECT doc, meter_id, period_start, period_end FROM outus_bills"
+                                     " WHERE id=?", (bid,)).fetchone()
+        return {**json.loads(row[0]), "x-meter-id": row[1], "x-start": row[2], "x-end": row[3]} if row else None
+
+    def first_reading_ts(self, gateway_ids: list[str]) -> int | None:
+        if not gateway_ids:
+            return None
+        marks = ",".join("?" * len(gateway_ids))
+        with self._lock:
+            row = self._conn.execute(f"SELECT MIN(ts) FROM metrics WHERE gateway_id IN ({marks})"
+                                     " AND grid_w IS NOT NULL", gateway_ids).fetchone()
+        return int(row[0]) if row and row[0] is not None else None
 
     #: The columns a closed-period snapshot may set (besides the id + timestamps).
     _BILLING_PERIOD_COLS = (

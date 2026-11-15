@@ -5,12 +5,16 @@
  * A small whitelist — allow_writes / log_level / ha_notify — is live-editable and PUT
  * back to /api/settings, where it applies immediately and persists to DATA_DIR (P7).
  */
-function settingsTab() {
+// ``embedded``: the same editors on the Billing & Utilities page's Plans & meters (#613),
+// loading only what those need, when that page is shown.
+function settingsTab(opts = {}) {
   return {
+    embedded: !!opts.embedded,
     support: null, supportText: '', supportBusy: false, supportCopied: '',
     apowerSpecs: [], apowerModel: '', apowerCount: 1,
     haPriceOpts: [],   // {id:'ha:<inst>:<eid>', label:friendly, group:instance}
     haEventOpts: [],   // on/off HA entities for the price events (#582)
+    haPriceFound: {},  // filter text → matching HA sensors, exposed or not
     priceSrc: 'off',   // the price signal's source: off | nem | ha (#582)
     cfg: { connection: {}, mqtt: {}, control: {}, notifications: {},
            metrics: {}, environment: {} },
@@ -151,6 +155,31 @@ function settingsTab() {
     },
 
     init() {
+      if (this.embedded) {
+        lazyTab(this, 'energy_costs', async () => {
+          await this.reload();
+          await this.loadGateways();
+          await this.loadSitesMeters();
+          await this.loadUtilitiesTariffs();
+          this.loadHaPriceOpts();
+        });
+        setInterval(() => {
+          if (this.$store.app.activeTab !== 'energy_costs') return;
+          this.loadSitesMeters(); this.loadUtilitiesTariffs();
+        }, 15000);
+        // A setup step's button on the Summary opens the editor that does it.
+        window.addEventListener('fwh-plans-action', async (e) => {
+          const d = e.detail || {};
+          await this.loadSitesMeters();
+          if (d.action === 'site') this.newSite();
+          else if (d.action === 'meter') this.newMeter(d.site_id || (this.sites[0] || {}).id);
+          else {
+            const m = this.meters.find(x => x.id === d.meter_id);
+            if (m) this.newPlanForMeter(m);
+          }
+        });
+        return;
+      }
       // System Setup is per gateway (#352): a switch drops the form until it's re-read,
       // now if Settings is on screen, else when it's next shown.
       // init() runs twice here (Alpine's own call and the template's x-init): watch once.
@@ -205,7 +234,7 @@ function settingsTab() {
       { key: 'general', label: 'General' },
       { key: 'gateways', label: 'Gateways' },
       { key: 'automation', label: 'Automation' },
-      { key: 'billing', label: 'Sites & Billing' },
+      { key: 'billing', label: 'Location & Prices' },
       { key: 'integrations', label: 'Integrations' },
       { key: 'admin', label: 'Admin' },
     ],
@@ -402,16 +431,18 @@ function settingsTab() {
 
     canWrite() { return !!(this.cfg.control && this.cfg.control.allow_writes); },
 
-    // ── Discover (scan TCP 9000 + Local-API login) ──
+    // ── Discover (scan TCP 9000, or the ports given, + Local-API login) ──
     scanning: false,
     scanCands: null,      // null = not scanned; [] = scanned, none found
     scanSubnet: '',
+    scanPorts: '',        // blank = 9000; a port, list or range finds emulators (#416)
 
     async discoverGateways() {
       if (!this.canWrite()) { this.gwErr = 'Enable writes (ALLOW_WRITES) to scan/add.'; return; }
       this.scanning = true; this.gwErr = ''; this.scanCands = null;
       try {
         const body = this.scanSubnet.trim() ? { subnet: this.scanSubnet.trim() } : {};
+        if (this.scanPorts.trim()) body.ports = this.scanPorts.trim();
         const r = await fetch('api/gateways/scan', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body) });
@@ -428,10 +459,11 @@ function settingsTab() {
 
     async addFromScan(c) {
       try {
-        const label = c.serial ? ('aGate ' + String(c.serial).slice(-4)) : c.host;
+        const kind = c.emulator ? 'Emulator ' : 'aGate ';
+        const label = c.serial ? (kind + String(c.serial).slice(-4)) : c.host;
         const r = await fetch('api/gateways', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ label, host: c.host, port: window.FWH_BOOT.ports.dc, enabled: true }) });
+          body: JSON.stringify({ label, host: c.host, port: c.port, enabled: true }) });
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
         c.already_added = true;
         await this.loadGateways();
@@ -908,16 +940,32 @@ function settingsTab() {
       }
       await this.loadNemSpot();
     },
+    // The filter searches all of Home Assistant, not only the exposed entities
+    // (owner, 2026-11-15: "Amber" found nothing).
+    async haPriceSearch(q) {
+      const t = (q || '').toLowerCase().trim();
+      if (t.length < 2 || this.haPriceFound[t]) return;
+      try {
+        const d = await (await fetch('api/ha/entities?search=' + encodeURIComponent(t) + '&limit=200')).json();
+        this.haPriceFound = { ...this.haPriceFound, [t]: (d.entities || [])
+          .filter(e => ['sensor', 'number', 'input_number'].includes(e.domain))
+          .map(e => ({ id: `ha:${e.instance_id}:${e.entity_id}`, label: e.name || e.entity_id, group: e.instance || 'HA' })) };
+      } catch (e) { /* the exposed list still filters */ }
+    },
     haPriceLabel(id) {
       if (!id) return '';
-      const o = this.haPriceOpts.find(x => x.id === id);
+      const o = this.haPriceOpts.find(x => x.id === id)
+        || Object.values(this.haPriceFound).flat().find(x => x.id === id);
       return o ? o.label : (id.split(':').slice(2).join(':') || id);
     },
     haPriceItems(q) {
       const t = (q || '').toLowerCase().trim();
       const groups = {};
-      for (const o of this.haPriceOpts) {
+      const seen = new Set();
+      for (const o of [...this.haPriceOpts, ...(t ? this.haPriceFound[t] || [] : [])]) {
+        if (seen.has(o.id)) continue;
         if (t && !(o.label.toLowerCase().includes(t) || o.id.toLowerCase().includes(t))) continue;
+        seen.add(o.id);
         (groups[o.group] ||= []).push(o);
       }
       const out = [];

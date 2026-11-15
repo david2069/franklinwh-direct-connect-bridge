@@ -234,7 +234,7 @@ has a switch and a **Send to**; the two SoC triggers also have a threshold.
 
 | Trigger | Default | Sent when | Message |
 |---|---|---|---|
-| aGate offline / online | on | The gateway stops or starts answering polls. | "aGate is UNREACHABLE [gateway] — check network / WiFi / power." / "aGate is reachable again [gateway]." |
+| aGate offline / online | on | The gateway stops or starts answering polls. A poll the aGate refuses (its login or power-flow read answers `result 1`) counts as not answering, and the log gives the reason. | "aGate is UNREACHABLE [gateway] — check network / WiFi / power." / "aGate is reachable again [gateway]." |
 | Off-grid started / ended | on | The off-grid flag changes. The message says why, in the top bar's words: **user requested** (someone asked for off-grid) or **grid outage** (no request was made); **reason unknown** when that wasn't read. It also gives the SoC, stored kWh, home load and solar, and how long the battery will last at the **current** usage: SoC × **Battery capacity** (Automation constants) ÷ (home − solar − generator). An off-grid you requested runs only to the **Reconnect SoC**, when the aGate returns to the grid, so its time is to that. The FranklinWH app estimates from historical usage instead. Without a Battery capacity there is no estimate; when solar covers the home it says so. | "Gateway went OFF-GRID [gateway] (grid outage) — running on battery: SoC 80%, stored 10.9 kWh, home 2.0 kW — about 5 h 26 min left at current usage." / "Gateway is back ON-GRID [gateway]." |
 | Battery dispatch (VPP / force) started / ended | on | A dispatch is found active at start-up, or one starts that **this bridge did not start**. | "FranklinWH — VPP dispatch active at startup" / "FranklinWH — battery dispatch started (VPP)" |
 | Battery SoC drops below | off, 20 % | SoC crosses the threshold downward. | "Battery SoC dropped below 20% [gateway] (now N%)." |
@@ -330,7 +330,10 @@ An alert raised while no browser was open, by a schedule for example, is shown o
 visit, and a condition that came and went shows as "09:54–13:27, resolved". While an
 acknowledged condition is still active, a red bar stays under the top bar. A badge in the
 top bar counts open alerts and opens the list, where warnings are acknowledged. The
-acknowledgement applies for everyone.
+acknowledgement applies for everyone. Each alert in the list starts with a line giving its
+severity, a short time (for example `15 Nov 2:30–3:32 PM`) and its state (resolved,
+ongoing, or how many times it fired), with **Acknowledge**. The title and the message
+follow on their own lines.
 
 Once the fault has cleared but has not yet held for its "Clears when" time, the bar turns
 amber and says so: "Reconnecting — confirming (resolves in 95 s)" for an unreachable aGate.
@@ -556,7 +559,7 @@ when there is no reply. Change the thresholds, buttons and Send to as you like.
 | Off-grid (grid outage) for 30 min — notify | The grid has been out for 30 minutes | Acknowledge / Dismiss | None |
 | Cheap wholesale price — ask to charge | Wholesale price ≤ 5 c/kWh | Charge / Not now | Charge from the grid to 90 % |
 | Cheap tariff import rate — ask to charge | Import rate ≤ $0.05/kWh | Charge / Not now | Charge from the grid to 90 % |
-| Price spike — ask to export | A price spike (Sites & Billing → Prices), battery at or above the min discharge SoC | Export / Hold | Discharge, down to 20 % |
+| Price spike — ask to export | A price spike (Location & Prices → Prices), battery at or above the min discharge SoC | Export / Hold | Discharge, down to 20 % |
 | High tariff feed-in rate — ask to export | Feed-in rate ≥ $0.50/kWh, battery at or above the min discharge SoC | Export / Hold | Discharge, down to 20 % |
 | Demand charge window — ask to self-consume | The demand window opens, battery at or above the demand-charge min SoC | Self-consume / Leave it | Self-Consumption for the window, then the previous mode back |
 | Battery export bonus — ask to export | The bonus window opens | Export / Hold | Discharge, down to 30 % |

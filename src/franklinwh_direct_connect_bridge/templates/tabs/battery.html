@@ -77,12 +77,19 @@
     </div>
   </div>
 
-  <!-- sub-tabs: live telemetry vs recorded sessions -->
+  <!-- sub-tabs: live telemetry, recording, recorded sessions -->
   <div class="flex items-center gap-1 border-b overflow-x-auto" style="border-color:var(--border)">
     <button class="px-3 py-2 text-sm border-b-2 -mb-px"
             :class="view === 'telemetry' ? 'border-emerald-400 text-emerald-300' : 'border-transparent'"
             :style="view === 'telemetry' ? '' : 'color:var(--text-secondary)'"
             @click="setView('telemetry')">BMS Telemetry</button>
+    <button class="px-3 py-2 text-sm border-b-2 -mb-px whitespace-nowrap"
+            :class="view === 'recording' ? 'border-emerald-400 text-emerald-300' : 'border-transparent'"
+            :style="view === 'recording' ? '' : 'color:var(--text-secondary)'"
+            @click="setView('recording')">
+      Recording
+      <span class="ml-1 text-xs text-emerald-300" x-show="rec.active">● on</span>
+    </button>
     <button class="px-3 py-2 text-sm border-b-2 -mb-px"
             :class="view === 'charts' ? 'border-emerald-400 text-emerald-300' : 'border-transparent'"
             :style="view === 'charts' ? '' : 'color:var(--text-secondary)'"
@@ -96,7 +103,10 @@
   <div x-show="error" x-cloak class="rounded-lg px-3 py-2 text-sm"
        style="background:rgba(220,38,38,.12);color:var(--danger,#dc2626)">
     <span x-text="error"></span>
-    <span class="opacity-70"> — showing the last good reading.</span>
+    <span class="opacity-70" x-show="data"> — showing the last good reading.</span>
+    <span class="opacity-70" x-show="!data"> — no reading yet.</span>
+    <button class="underline ml-1" data-testid="bms-retry" x-show="view === 'telemetry'"
+            :disabled="loading" @click="load()" x-text="loading ? 'Reading…' : 'Try again'"></button>
   </div>
 
   <template x-if="data && view === 'telemetry'">
@@ -372,18 +382,10 @@
     </div>
   </template>
 
-  <!-- Charts: recorded sessions -->
-  <div x-show="view === 'charts'" x-cloak class="grid gap-4"
-       style="grid-template-columns:minmax(260px,340px) 1fr">
-
-    <div class="card p-4 space-y-3">
-      <div class="flex items-center justify-between">
-        <div class="card-label">Recorded sessions</div>
-        <button class="btn btn-secondary btn-sm" @click="loadSessions()">Refresh</button>
-      </div>
-
-      <div class="rounded-lg border p-3 space-y-2" style="border-color:var(--border)">
-        <div class="text-xs font-semibold" style="color:var(--text-secondary)">New recording</div>
+  <!-- Recording: start one now, and the scheduled ones (owner, 2026-11-15: its own tab). -->
+  <div x-show="view === 'recording'" x-cloak class="grid gap-4 md:grid-cols-2">
+      <div class="card p-4 space-y-2">
+        <div class="card-label">New recording</div>
         <div class="flex items-center gap-2 text-sm">
           <input type="number" min="1" max="500" class="form-control form-control-sm w-20"
                  x-model.number="recSamples" :disabled="rec.active">
@@ -409,13 +411,14 @@
         <p x-show="!rec.active && recMsg" class="text-xs"
            :style="recMsg.startsWith('Not') ? { color: '#fca5a5' } : { color: '#86efac' }"
            x-text="recMsg"></p>
+        <button class="text-xs underline" style="color:var(--accent)" x-show="sessions.length"
+                @click="setView('charts')">See the recordings</button>
       </div>
 
       <!-- Scheduled recordings (owner, 2026-11-11): the bridge starts each on the site's
            clock, once a day, on the days ticked. -->
-      <div class="rounded-lg border p-3 space-y-2" style="border-color:var(--border)"
-           data-testid="bms-schedules">
-        <div class="text-xs font-semibold" style="color:var(--text-secondary)">Scheduled recordings</div>
+      <div class="card p-4 space-y-2" data-testid="bms-schedules">
+        <div class="card-label">Scheduled recordings</div>
         <template x-for="sc in schedules" :key="sc.id">
           <div class="flex items-center gap-2 text-xs" style="color:var(--text-primary)">
             <div class="min-w-0 flex-1">
@@ -465,8 +468,26 @@
           running. Old recordings are deleted by the limits in Settings → Admin → Local history.
         </p>
       </div>
+  </div>
 
-      <div class="space-y-1 overflow-auto" style="max-height:460px">
+  <!-- Charts: recorded sessions. The list folds away so the chart gets the width. -->
+  <div x-show="view === 'charts'" x-cloak class="grid gap-4"
+       :class="sessionsOpen ? 'md:grid-cols-[minmax(260px,340px)_1fr]' : ''">
+
+    <div class="card p-4 space-y-3" :class="sessionsOpen ? '' : '!py-2'">
+      <div class="flex items-center justify-between gap-2">
+        <button type="button" class="flex items-center gap-1.5 min-w-0" data-testid="bms-sessions-toggle"
+                @click="toggleSessions()" :aria-expanded="sessionsOpen">
+          <svg class="w-3 h-3 transition-transform shrink-0" :style="sessionsOpen ? { transform: 'rotate(90deg)' } : {}"
+               style="color:var(--text-faint)" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6"/></svg>
+          <span class="card-label" style="margin-bottom:0">Recorded sessions</span>
+          <span class="text-xs truncate" style="color:var(--text-faint)" x-show="!sessionsOpen"
+                x-text="session ? '· ' + session.samples.length + ' @ ' + Math.round(session.interval_s) + 's' : '· ' + sessions.length"></span>
+        </button>
+        <button class="btn btn-secondary btn-sm" x-show="sessionsOpen" @click="loadSessions()">Refresh</button>
+      </div>
+
+      <div class="space-y-1 overflow-auto" style="max-height:460px" x-show="sessionsOpen">
         <template x-for="s in sessions" :key="s.id">
           <div class="rounded-lg border px-3 py-2 cursor-pointer flex items-start gap-2"
                :class="sessionId === s.id ? 'border-emerald-400/60 bg-emerald-500/5' : ''"
@@ -509,7 +530,22 @@
             <button class="btn btn-secondary btn-sm" @click="sessionCsv()">CSV</button>
           </div>
 
-          <div class="flex flex-wrap items-center justify-between gap-2">
+          <!-- What to chart: drop-downs on a phone, buttons on a wider screen. -->
+          <div class="grid grid-cols-2 gap-2 sm:hidden">
+            <select class="form-control form-control-sm" data-testid="bms-chart-view" aria-label="Chart"
+                    :value="chartView" @change="setChartView($event.target.value)">
+              <option value="voltage">Voltage</option>
+              <option value="temperature">Temperature</option>
+              <option value="comparison">Comparison (Δ)</option>
+            </select>
+            <select class="form-control form-control-sm" data-testid="bms-series-mode" aria-label="Cells"
+                    x-show="chartView !== 'comparison'" :value="seriesMode" @change="setSeriesMode($event.target.value)">
+              <option value="all">All cells</option>
+              <option value="average">Average</option>
+              <option value="median">Median</option>
+            </select>
+          </div>
+          <div class="hidden sm:flex flex-wrap items-center justify-between gap-2">
             <div class="flex items-center gap-1">
               <template x-for="v in ['voltage','temperature','comparison']" :key="v">
                 <button class="px-3 py-1.5 text-sm rounded-lg border"

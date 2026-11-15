@@ -23,7 +23,7 @@ to trust them.
 read for 10 days (Home Assistant's recorder keeps 10 by default too). After that, each
 gateway's samples become one row per 5 minutes: each value's average, with its min and max
 and the sample count, the last mode and the last tariff-tier counters. Energy over those 5
-minutes is unchanged, so the charts and Energy Costs read the same totals. Once an hour the
+minutes is unchanged, so the charts and Billing & Utilities read the same totals. Once an hour the
 bridge deletes what is past **Keep for**, then makes the 5-minute rows, and logs both, for
 example: `Local history: 2880 samples older than 10 days kept as 288 five-minute rows (full
 resolution for the last 10 days)`.
@@ -49,7 +49,7 @@ it grows (about 0.35–0.7 MB a day per gateway); with Forever it keeps growing.
 applies at once and is kept across restarts.
 
 Local history is **on by default everywhere**, the Home Assistant add-on included: the
-Dashboard's power history, Analytics and Energy Costs read only this store. On the add-on
+Dashboard's power history, Analytics and Billing & Utilities read only this store. On the add-on
 with MQTT on, Home Assistant's recorder also keeps the values the bridge publishes, so this
 is a second copy of them; the card says so. Turning it off asks first, because those
 charts stop getting new data; what is already stored is kept.
@@ -151,7 +151,7 @@ both.
   Time-of-Use for the peak; a reserve under 30% for **Backup ready** → 30%. Each opens the
   Control tab or the Scheduler; nothing is changed from the dialog.
 - **For a fuller answer**: what's missing, such as the battery capacity or a tariff
-  (Settings → Sites & Billing → your meter → **+ Add tariff**).
+  (Billing & Utilities → Plans & meters → your meter → **+ Add tariff**).
 
 The answers come from fixed rules over the period's totals (franklinwh-ha-cloud-analytics
 `insights`), the same each time, and the effects are estimates. The mode and reserve are
@@ -258,14 +258,41 @@ and node in kWh) as CSV or JSON.
 
 ---
 
-## Energy Costs
+## Billing & Utilities
 
-![The Energy Costs tab before a tariff is assigned](../images/energy-and-costs/05-energy-costs.png)
+![Billing & Utilities: the Summary with the setup steps](../images/energy-and-costs/05-energy-costs.png)
 
-The **Energy Costs** tab shows live period-to-date billing and closed-period history:
-net cost this period, peak kW, retailer and plan, and a table of closed periods. You can
-export the history as CSV, import history, or **import from a Modbus Bridge** if you have
-one with a longer record.
+The **Billing & Utilities** page (**Billing** in the menu; it was Energy Costs) is laid out as
+[OUTUS](https://github.com/david2069/outus) presents a bill: summary, then detail, then
+history, then the plans behind them. With more than one meter, **Meter** at the top picks
+which one.
+
+- **Summary.** While something is missing, the setup steps come first, in order: **Site →
+  Meter → Plan → Tariffs**. Each is ticked when done and has **Set up**, which opens the
+  editor that does it. Then this period: net cost so far, the projection to the period's
+  end, day *n* of *N*, the source (**Calculated**: worked out by the bridge), last period's
+  total for comparison, and a tile per part of the bill.
+- **Bill detail.** The open period's bill, worked out by hems from the meter's 5-minute
+  ledger (its gateways' grid readings, added together): lines grouped by tariff (General,
+  Export) and then the plan's own charges, each with its formula, for example
+  `0.987 kWh × $0.25` or `14.21 days × $1.10`, then the net so far and the tax it includes.
+  **Close period now** snapshots the period. **Now** shows each tariff's rate and band now,
+  the demand peak so far and this demand interval, the free export left, and any energy
+  with no rate. The Summary's figures come from the same bill. With no site timezone set
+  (Settings → Setup), the page says that time-of-use windows and the period's days are in UTC.
+- **History.** **Bills**: each closed period's bill, worked out by hems when the period
+  ends and kept, newest first. Each opens to its lines and formulas, with **Export bill**
+  (an OUTUS `outus/bill` file) and **Export usage** (the period's 5-minute intervals as
+  `outus/usage`). **Recalculate** works a bill out again with today's plan, for example after
+  you correct a tariff: the new bill supersedes the old one, which is kept (tick **Show
+  superseded** to see it). Below, **Recorded periods** are the running tracker's periods and
+  any imported from a Modbus Bridge, with **Export history CSV** and **Import from Modbus**.
+- **Plans & meters.** Sites, meters, retailers and tariffs (below), moved here from
+  Settings. A tariff's **Export** also gives it as an OUTUS plan
+  (`/api/tariffs/<id>/export?format=outus`).
+
+The setup steps come from [hems](https://github.com/david2069/hems), the OUTUS engine, so
+the page, Explain and the scheduler's messages say the same thing.
 
 The cost is computed by integrating your grid import and export against the rate in force
 at the time, plus demand charges, export charges, battery-export bonuses and standing
@@ -276,9 +303,9 @@ revenue-grade meter, and not a substitute for your bill.
 
 ## Tariffs
 
-![Settings → Sites & Billing → Sites & Meters: a meter with its tariff and an earlier plan](../images/energy-and-costs/06-tariffs.png)
+![Billing & Utilities → Plans & meters: a meter with its tariff and an earlier plan](../images/energy-and-costs/06-tariffs.png)
 
-Set up on each meter's card under **Settings → Sites & Billing → Sites & Meters**: the
+Set up on each meter's card under **Billing & Utilities → Plans & meters**: the
 tariff in force today (retailer, name, dates) with **New plan**, **Import**, **Edit** and
 **Export**, and the meter's other plans under **Show other plans**. The retailer is chosen
 (or added with **+ New retailer**) in the tariff editor. Tariffs on no meter, and retailers
@@ -296,7 +323,8 @@ The result, or why it was not accepted, is shown in the dialog.
 **One tariff in force per meter.** A tariff has **Effective from** and **Effective to**
 (blank = current). A retailer has **Provider from** and **Provider until** the same way;
 both are optional and save blank. An empty date box stays blank (Safari otherwise greys
-in today's date, which nobody set). A meter has one tariff in force on any day, and each day is priced
+in today's date, which nobody set). On a phone the two date boxes sit side by side at the
+same size. A meter has one tariff in force on any day, and each day is priced
 with the tariff in force that day (energy, fixed charges, the `tariff.*` sensors). A
 tariff dated to start tomorrow takes over at midnight by itself. The billing period it
 interrupts is closed at the switch and shows in history under the tariff that priced it,
@@ -346,7 +374,7 @@ The editor's **Rate type** toggle offers two, and only two, options:
 
   When both are configured, **the HA price entity wins over NEM.**
 
-A dynamic tariff drives two things at once: the billing figures on the Energy Costs tab,
+A dynamic tariff drives two things at once: the billing figures on Billing & Utilities,
 and the `tariff.spot_price` / `tariff.feed_in_price` sensors available to the
 [Scheduler](scheduler/conditions.md) — so a rule can charge when the price is negative without you
 wiring the price in twice. `GET /api/tariff/spot` shows both providers side by side.
@@ -356,7 +384,7 @@ between installs or shared.
 
 ### Prices
 
-**Settings → Sites & Billing → Prices** holds the rest of what prices the scheduler sees
+**Settings → Location & Prices → Prices** holds the rest of what prices the scheduler sees
 (#582). Before 0.5.42 these were under Integrations (Dynamic price, and the Wholesale
 region under Location & Solar).
 
@@ -375,7 +403,9 @@ region under Location & Solar).
       binary sensor, calendar or switch, which wins when set. Feeds
       `tariff.demand_window_active`.
 
-Only entities exposed to the bridge are listed. On the first start of 0.5.42 a saved
+The buy and feed-in pickers list the entities exposed to the bridge; typing in **Filter**
+also searches all of Home Assistant's sensors, so "Amber" finds an Amber price sensor that
+isn't exposed. The spike and demand-window pickers list exposed entities only. On the first start of 0.5.42 a saved
 wholesale region is given to any site with no region (NSW1 → AU-NSW); a site whose region
 disagrees keeps its own, and the bridge log says so.
 
@@ -383,16 +413,16 @@ disagrees keeps its own, and the bridge log says so.
 
 ## Solar forecast
 
-![Settings → Sites & Billing → Location & Solar](../images/energy-and-costs/08-solar-forecast.png)
+![Settings → Location & Prices → Location & Solar](../images/energy-and-costs/08-solar-forecast.png)
 
 Optional, and off until the bridge has a location. The forecast comes from Open-Meteo.
 
-**Location & Solar** sits with your site under **Settings → Sites & Billing**, right after
-Sites & Meters: the default site shows its location and solar size and links to it, the card
+**Location & Solar** is under **Settings → Location & Prices**. The default site on
+Billing & Utilities → Plans & meters shows its location and solar size and links to it, the card
 links to the **Solar** tab, and the Solar tab's **Location & array settings** link comes back
 here. (Before 0.5.42 it was under Integrations.)
 
-Under **Settings → Sites & Billing → Location & Solar**, press **Sync from gateway**. The
+Under **Settings → Location & Prices → Location & Solar**, press **Sync from gateway**. The
 bridge reads the location your installer configured on the aGate, over the local API
 (`cmdType 1201`), and saves it as the latitude and longitude. No cloud account is needed,
 and nothing needs typing. If the aGate has no location configured, the sync says so and

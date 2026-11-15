@@ -65,23 +65,28 @@
       {{ dialog_msg('$store.alerts.ackMsg') }}
       <div x-show="!$store.alerts.list.length" class="text-xs" style="color:var(--text-secondary)">No open alerts.</div>
       <template x-for="a in $store.alerts.list" :key="a.id">
-        <div class="flex items-start gap-3 text-xs py-1.5 border-b border-white/[0.06]">
-          <span class="shrink-0 font-mono w-40" style="color:var(--text-secondary)" x-text="$store.alerts.when(a)"></span>
-          <span class="min-w-0 flex-1">
+        <!-- Lines, not columns (owner, 2026-11-15): on a phone a fixed time column left the
+             message one word per line. -->
+        <div class="text-xs py-2 border-b border-white/[0.06] space-y-1" data-testid="alert-row">
+          <div class="flex items-center gap-2 flex-wrap">
             <span class="chip" :class="a.severity === 'critical' ? 'error' : 'warn'" style="font-size:.55rem"
                   x-text="a.severity"></span>
-            <span class="font-semibold" style="color:var(--text-primary)" x-text="a.title"></span>
-            <span style="color:var(--text-secondary)" x-text="' — ' + a.message"></span>
-            <span x-show="a.recovering" class="block font-semibold" :style="{color: 'var(--warn, #f59e0b)'}"
-                  x-text="$store.alerts.recoveryText(a)"></span>
-            <button x-show="$store.alerts.help(a).tab === 'troubleshoot' && !a.resolved_ts" class="underline text-[11px]"
-                    :style="{color: 'var(--accent, #34d399)'}" @click="$store.alerts.go(a)">Troubleshoot</button>
-            <span class="block text-[10px]" style="color:var(--text-faint)"
-                  x-text="$store.alerts.delivery(a) + (a.acked_ts ? ' · acknowledged ' + $store.alerts.at(a.acked_ts) + ' (' + a.acked_by + ')' : '')"></span>
-          </span>
-          <!-- Critical ones are acknowledged in the modal, behind "I understand". -->
-          <button x-show="!a.acked_ts && a.severity !== 'critical'" class="btn btn-secondary btn-sm shrink-0" :disabled="$store.alerts.busy"
-                  @click="$store.alerts.ackOne(a.id)">Acknowledge</button>
+            <span class="font-mono" style="color:var(--text-secondary)" x-text="$store.alerts.short(a)"
+                  :title="$store.alerts.when(a)"></span>
+            <span x-show="$store.alerts.state(a)" class="chip muted" style="font-size:.55rem"
+                  x-text="$store.alerts.state(a)"></span>
+            <!-- Critical ones are acknowledged in the modal, behind "I understand". -->
+            <button x-show="!a.acked_ts && a.severity !== 'critical'" class="btn btn-secondary btn-sm ml-auto" :disabled="$store.alerts.busy"
+                    @click="$store.alerts.ackOne(a.id)">Acknowledge</button>
+          </div>
+          <div class="text-sm font-semibold" style="color:var(--text-primary)" x-text="a.title"></div>
+          <div style="color:var(--text-secondary)" x-text="a.message"></div>
+          <div x-show="a.recovering" class="font-semibold" :style="{color: 'var(--warn, #f59e0b)'}"
+               x-text="$store.alerts.recoveryText(a)"></div>
+          <button x-show="$store.alerts.help(a).tab === 'troubleshoot' && !a.resolved_ts" class="underline text-[11px]"
+                  :style="{color: 'var(--accent, #34d399)'}" @click="$store.alerts.go(a)">Troubleshoot</button>
+          <div class="text-[10px]" style="color:var(--text-faint)"
+               x-text="$store.alerts.delivery(a) + (a.acked_ts ? ' · acknowledged ' + $store.alerts.at(a.acked_ts) + ' (' + a.acked_by + ')' : '')"></div>
         </div>
       </template>
     </div>
