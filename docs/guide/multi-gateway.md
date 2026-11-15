@@ -41,6 +41,12 @@ poller stops nothing else would. The dialog shows the release result. If the rel
 the gateway stays enabled and the dialog says why. As of 0.5.2, `allow_writes` no longer blocks them (see
 [Control](control.md#1-allow_writes-no-longer-blocks-writes)).
 
+**Disabling or removing a gateway removes its entities from Home Assistant.** Once its
+poller has stopped, the bridge removes the gateway's retained topics from the broker, as
+[Unpublish](home-assistant.md#republish-and-unpublish) does, and Home Assistant drops its
+entities. If the broker can't be reached, the gateway is still disabled or removed and the
+log says so. A restart of the bridge or of the gateway leaves its entities in place.
+
 ### Gateway identity
 
 The bridge gives each gateway its own ID when the gateway is added. You never type it, and it never changes. The name is only a label.

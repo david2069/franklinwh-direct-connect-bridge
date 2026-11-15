@@ -2229,6 +2229,29 @@ def create_app() -> FastAPI:
         log.info("gateway '%s' disabled: force released (%s)", row["label"], result)
         return result
 
+    async def _clear_gateway_ha(row: dict, node: str | None) -> None:
+        """Remove a disabled or deleted gateway's entities from Home Assistant (#405).
+
+        Its discovery configs are retained, so stopping the publisher alone left them in
+        HA for good. Called only by disable and delete: a restart must not clear them.
+        Runs once the poller has stopped (as Unpublish does), so its last cycle can't
+        publish them back. A broker that can't be reached is logged, never an error."""
+        s = get_settings()
+        node = (node or row.get("serial") or "").strip().lower()
+        if not s.mqtt_enabled or not row.get("publish_ha") or not node or node == "agate":
+            return
+        old = supervisor._stopping.get(row["id"])
+        if old is not None and not old.done():
+            await asyncio.wait({old}, timeout=supervisor.DEFER_WAIT_S)
+        from .publish import purge as _purge
+        try:
+            res = await asyncio.to_thread(_purge.purge, s, node)
+        except Exception as e:  # noqa: BLE001 — the disable/delete itself has happened
+            log.warning("gateway '%s': could not remove its HA entities: %s", row["label"], e)
+            return
+        log.info("gateway '%s': removed %s retained HA topic(s)%s", row["label"],
+                 res.get("removed"), (f", {len(res['left'])} left" if res.get("left") else ""))
+
     async def _reconcile_gateway(row: dict) -> None:
         """Bring the live poller + mock emulator in line with a roster row's enabled/
         mock/units state. Tear down first, then (re)start if it should be polling."""
@@ -2312,8 +2335,11 @@ def create_app() -> FastAPI:
                     f"'{before['label']}' is the default gateway and can't be disabled. "
                     "Make another gateway the default first."))
             released = _release_gateway_force(st, before)
+        live = state.get_gateway(gw_id)
         row = st.update_gateway(gw_id, **fields)
         await _reconcile_gateway(row)
+        if fields.get("enabled") is False and before.get("enabled"):
+            await _clear_gateway_ha(row, live.node if live is not None else None)
         out = _gw_merged(row)
         if released is not None:
             out["released"] = released
@@ -2349,9 +2375,11 @@ def create_app() -> FastAPI:
             raise HTTPException(404, f"no gateway '{gw_id}'")
         if row.get("enabled"):
             raise HTTPException(409, f"'{row['label']}' is enabled. Disable it first, then remove it.")
+        live = state.get_gateway(gw_id)
         await supervisor.stop_poller(gw_id)
         mockgw.stop_mock(gw_id)
         state.unregister_gateway(gw_id)
+        await _clear_gateway_ha(row, live.node if live is not None else None)
         st.delete_gateway(gw_id)
         alerts.forget_gateway(db.get_store(get_settings()), gw_id)
         # Deleting the default hands the designation to the next gateway now, not at the
@@ -2684,6 +2712,17 @@ def create_app() -> FastAPI:
         return {"ok": True, "utility_id": uid, "tariff_id": tid, "attached_meter": attached}
 
     # ── Energy Costs / billing view (FEAT-BILLING-SERVICE) ────────────────────
+    @app.get("/api/billing/bill")
+    def api_billing_bill(meter: str | None = Query(None)):
+        """The open period's bill for the meter (else the default), worked out by hems from
+        the plan in force and the meter's 5-minute ledger: an OUTUS bill whose lines carry
+        their formula (#613). ``{"bill": null}`` with no plan in force."""
+        from . import billing_page
+        st = _ha_store()
+        if st is None:
+            return {"bill": None}
+        return {"bill": billing_page.bill(st, meter, _dt.datetime.now(_dt.timezone.utc))}
+
     @app.get("/api/billing/page")
     def api_billing_page(meter: str | None = Query(None)):
         """The Billing & Utilities page (#613): the meters, the chosen one (else the default)
@@ -5301,8 +5340,11 @@ def create_app() -> FastAPI:
                 # 0 on this single-phase site, which is consistent with 0 = single but
                 # also with 0 = unset. Not used to derive ac_type until it is confirmed.
                 "phase_con": g("gridPhaseConSet"), "phase_seq": g("gridPhaseSeqSet"),
-                "service_amps": g("airSwitchCur"),
-                "electric_supply_raw": g("electricSupply"),
+                # electricSupply is the service/main amperage, airSwitchCur the aGate
+                # air-switch rating (#425; service_amps held the air switch until then).
+                "service_amps": g("electricSupply"),
+                "air_switch_amps": g("airSwitchCur"),
+                "electric_supply_raw": g("electricSupply"),   # kept for existing callers
                 # Real freq/voltage from ibg_run_status (catalogue 1707), not the 1701
                 # enum codes.
                 "nominal_freq_hz": _num(rg("dspSettingFreq")),   # configured nominal, e.g. 50

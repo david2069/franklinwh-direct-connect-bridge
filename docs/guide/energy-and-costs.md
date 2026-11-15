@@ -272,10 +272,14 @@ which one.
   editor that does it. Then this period: net cost so far, the projection to the period's
   end, day *n* of *N*, the source (**Calculated**: worked out by the bridge), last period's
   total for comparison, and a tile per part of the bill.
-- **Bill detail.** The open period's lines (energy import, export credit, demand, bonus,
-  export charge, fixed charges) and the net so far, with **Close period now**. **Now** shows
-  what drives them: the demand peak so far and this demand interval, the free export left,
-  and any energy with no rate.
+- **Bill detail.** The open period's bill, worked out by hems from the meter's 5-minute
+  ledger (its gateways' grid readings, added together): lines grouped by tariff (General,
+  Export) and then the plan's own charges, each with its formula, for example
+  `0.987 kWh × $0.25` or `14.21 days × $1.10`, then the net so far and the tax it includes.
+  **Close period now** snapshots the period. **Now** shows each tariff's rate and band now,
+  the demand peak so far and this demand interval, the free export left, and any energy
+  with no rate. The Summary's figures come from the same bill. With no site timezone set
+  (Settings → Setup), the page says that time-of-use windows and the period's days are in UTC.
 - **History.** Closed periods, newest first; each expands to its lines. **Export history
   CSV**, and **Import from Modbus** if a Modbus Bridge has a longer record.
 - **Plans & meters.** Sites, meters, retailers and tariffs (below), moved here from

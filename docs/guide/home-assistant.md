@@ -189,6 +189,9 @@ Nothing outside this bridge is touched. The topic list comes from the bridge's o
 for that gateway, never from a wildcard, so other gateways and other FranklinWH software
 (Modbus Bridge, FWHAI) are left alone. Every Unpublish is recorded in Control → Audit trail.
 
+Disabling or removing a gateway in Settings → Gateways removes its entities the same way
+([Multiple gateways](multi-gateway.md)).
+
 ### Why Operating Mode appears twice
 
 ![Searching the MQTT tab for Operating Mode: one sensor and one select](../images/home-assistant/09-operating-mode-twice.png)
