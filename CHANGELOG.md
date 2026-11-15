@@ -11,6 +11,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+- **System view:** the gateways of one site are one diagram (#662), as the FranklinWH emulator draws a site: the grid and the service meter on the left, then one row per aGate with its batteries, solar, smart circuits and home. Each gateway's site comes from its meter's site; the gateway chosen in the top-bar picker is highlighted, and tapping another aGate chooses that gateway. Needs franklinwh-system-view 0.4.0. See `docs/guide/tour.md`.
 ### Changed
 - **System view:** **Options** is a drop-down over the diagram (zoom, Customise diagram, the extras, Start on System view), closed until you open it; a click outside it or Esc closes it. A **Smart circuits** switch in it hides the smart circuits, and the diagram is laid out again without them (#660). `franklinwh-system-view` 0.3.2 (was 0.3.1). See [the tour](docs/guide/tour.md).
 
