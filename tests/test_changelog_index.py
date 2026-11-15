@@ -72,7 +72,7 @@ def test_counts_highlights_and_grouping(tmp_path):
     assert "- Alpha" in text and "- Beta" in text
     cut = [l for l in text.splitlines() if l.startswith("- A fix without")]
     assert len(cut) == 1 and cut[0].endswith("…") and len(cut[0]) <= 2 + ci.MAX_CLAUSE + 1
-    assert "- Billing" in text and "- Retailers" in text and "Ignored" not in text
+    assert "- Billing: one bill" in text and "- Retailers: dates save" in text and "Ignored" not in text
     assert "Removed 1" in text
     assert text.index("## 2026-02-02") < text.index("## 2026-01-01")
     assert text.index("### [1.2.0]") < text.index("### [1.1.0]")
@@ -122,3 +122,12 @@ def test_repo_index_matches_docs():
         assert f"changelog/{version}.md" in (REPO / "mkdocs.yml").read_text()
     assert text.split("## [Unreleased]")[1].count("### [") == len(files)
     assert not re.search(r"^## \[\d", text, re.M), "released notes belong in docs/changelog/"
+
+
+def test_area_lines_carry_their_text():
+    line = ("- **Billing:** two gateways on one meter share one bill; each aGate's built-in grid CT "
+            "counts as its own part, with nothing to set.")
+    assert ci.area_line(line) == "Billing: two gateways on one meter share one bill"
+    long = "- **Area:** " + "word " * 40
+    out = ci.area_line(long)
+    assert out.startswith("Area: word") and out.endswith("…") and len(out) <= ci.MAX_AREA + 1

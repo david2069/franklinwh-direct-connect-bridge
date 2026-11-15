@@ -28,6 +28,7 @@ UNRELEASED = "## [Unreleased]"
 KIND_ORDER = ["Added", "Changed", "Fixed", "Removed"]
 MAX_HIGHLIGHTS = 6
 MAX_CLAUSE = 80
+MAX_AREA = 90
 
 
 def _vkey(version: str) -> tuple[int, ...]:
@@ -97,12 +98,29 @@ def summarise(body: str) -> tuple[dict[str, int], list[str]]:
                 counts[current] += 1
                 entries[current].append(line)
     # A grouped summary paragraph ("by area") replaces the entry lead-ins.
-    area = [lead(b) for b in intro]
+    area = [area_line(b) for b in intro]
     if area:
         return counts, area[:MAX_HIGHLIGHTS]
     order = ["Added", "Fixed"] + [k for k in entries if k not in ("Added", "Fixed")]
     picks = [lead(b) for k in order for b in entries.get(k, [])]
     return counts, picks[:MAX_HIGHLIGHTS]
+
+
+def cut(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0].rstrip(",;:") + "…"
+
+
+def area_line(bullet: str) -> str:
+    """'- **Billing:** a; b.' -> 'Billing: a' (first clause, cut at MAX_AREA on a word boundary)."""
+    text = bullet[2:].strip()
+    m = re.match(r"\*\*(.+?)\*\*\s*(.*)", text)
+    if not m:
+        return lead(bullet)
+    name = m.group(1).strip().rstrip(".:").strip()
+    rest = re.split(r"(?<=[.!?])\s|;\s", m.group(2), maxsplit=1)[0].strip().rstrip(".;:")
+    return cut(f"{name}: {rest}" if rest else name, MAX_AREA)
 
 
 def lead(bullet: str) -> str:

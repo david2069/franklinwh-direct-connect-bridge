@@ -33,11 +33,11 @@ Full notes for each release are in [`docs/changelog/`](docs/changelog/), also on
 
 Added 1 · Fixed 5
 
-- Billing
-- Retailers
-- Date boxes
-- Explain
-- Battery recordings
+- Billing: two gateways on one meter share one bill (one set of fixed charges, demand from…
+- Retailers: Provider from / until dates and the export note save
+- Date boxes: an empty date box stays blank in Safari and the HA app
+- Explain: points to Settings → Sites & Billing → your meter → + Add tariff
+- Battery recordings: survive the aGate dropping off, and show why they ended and who…
 
 ## 2026-11-14
 
@@ -45,12 +45,12 @@ Added 1 · Fixed 5
 
 Added 3 · Changed 3 · Fixed 5
 
-- Connectivity
-- Offline values
-- Network tab
-- Watchdog
-- Tariffs and billing
-- Logs
+- Connectivity: Troubleshoot for an unreachable aGate or one on 4G, with Health check and…
+- Offline values: Dashboard and top bar grey out last-good values while the aGate is offline
+- Network tab: the :502 line is no longer green on a result older than the link
+- Watchdog: cloud-status back-off no longer raises `WORKER_STALLED`
+- Tariffs and billing: tariffs live on the meter, billing by date, retired tariffs locked…
+- Logs: the time range shows the range in use
 
 ## 2026-11-13
 
@@ -58,12 +58,12 @@ Added 3 · Changed 3 · Fixed 5
 
 Added 18 · Changed 13 · Fixed 6
 
-- Off-grid
-- Scheduler
-- Prices, tariffs and solar
-- Analytics
-- Setup and support
-- Battery
+- Off-grid: the notification gives stored kWh and time left at the current usage
+- Scheduler: All gateways for rules that move no battery
+- Prices, tariffs and solar: prices in one place under Sites & Billing (price spike, HA
+- Analytics: more cards on Local and Cloud, and Explain (trends and what to change)
+- Setup and support: the setup list (FranklinWH Gateway Emulator, Modbus TCP), confirm
+- Battery: Record on the live trend, scheduled recordings, recordings purged after 90
 
 ### [0.5.41](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.41/)
 
