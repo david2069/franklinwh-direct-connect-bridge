@@ -15,6 +15,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - **Daily health report** (phase 1 of the scheduled health check, as in the Modbus Bridge). At 07:00 site time the bridge checks its workers, polls, alerts, log and housekeeping over the last 24 hours against the 7 days before, and reports green, amber or red with the reason first. It is on **Health → Daily report** (with Run now and earlier reports), in one Home Assistant notification that the next replaces, and on the phones only when amber or red (new trigger: **Daily health report amber or red**). A daily snapshot of each gateway's totals is kept for good for the trends to come. Switch: **07:00 each day**. See [Daily health report](docs/guide/health-report.md).
 
 ### Changed
+- **README:** the **Add repository to Home Assistant** button is at the top of the README, not only in [INSTALL.md](INSTALL.md).
 - **Analytics → Explain:** the dialog's headings (Trends, What it shows, For your objectives, For a fuller answer) stand out, its sections are divided and spaced, and each suggestion sits in its own box, on a phone and on the desktop.
 - **Analytics → Explain:** "For a fuller answer" has an **Open Billing & Utilities (Plans & meters)** button for the missing tariff, like the suggestions' Open buttons.
 - **Analytics:** the **History** card shows the period in the chart (such as 9–15 Nov 2026), with how long the shown source has data for on its second line, on Local and Cloud and for every period.
