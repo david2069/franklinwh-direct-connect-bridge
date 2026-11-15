@@ -39,8 +39,12 @@ def to_local(profile: dict) -> tuple[dict, dict, str | None]:
         "name": profile.get("name") or "Imported tariff",
         "billing_cycle_day": int(pr.get("billing_cycle_day") or 1),
         "pricing": pr,
-        "demand_window": profile.get("demand_window") or None,
-        "bonus_window": profile.get("bonus_window") or None,
+        # A window is kept only while its charge is on (#667): the Modbus Bridge exports its
+        # last window with has_peak_demand / has_export_bonus 0, and that is off.
+        "demand_window": (profile.get("demand_window") or None)
+        if profile.get("has_peak_demand", 1) else None,
+        "bonus_window": (profile.get("bonus_window") or None)
+        if profile.get("has_export_bonus", 1) else None,
         "charge_window": charge_window,
         "fixed_charges": fixed,
         # Optional (aligned with the Modbus Bridge): the plan's dates, ISO YYYY-MM-DD.
