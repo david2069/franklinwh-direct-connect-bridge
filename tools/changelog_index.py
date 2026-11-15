@@ -22,6 +22,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SITE = "https://david2069.github.io/franklinwh-direct-connect-bridge"
+REPO_URL = "https://github.com/david2069/franklinwh-direct-connect-bridge"
 
 SECTION_RE = re.compile(r"^## \[(\d+\.\d+\.\d+)\] — (\d{4}-\d{2}-\d{2})\s*$", re.M)
 UNRELEASED = "## [Unreleased]"
@@ -176,8 +177,9 @@ def unreleased_span(text: str) -> tuple[int, int]:
     m = re.search(r"^## (?!\[Unreleased\])", text[start:], re.M)
     if m:
         ends.append(start + m.start())
-    if INTRO.strip() in text[start:]:
-        ends.append(start + text[start:].index(INTRO.strip()))
+    for intro in (INTRO, OLD_INTRO):
+        if intro.strip() in text[start:]:
+            ends.append(start + text[start:].index(intro.strip()))
     return start, min(ends)
 
 
@@ -186,8 +188,12 @@ def head_of(text: str) -> str:
     return text[: unreleased_span(text)[1]].rstrip("\n") + "\n\n"
 
 
-INTRO = ("Full notes for each release are in [`docs/changelog/`](docs/changelog/), also on the "
-         "docs site. One entry per release below: counts, then highlights.\n\n")
+# Its own heading, so HA's update dialog doesn't show the index under [Unreleased], and an
+# absolute link, since a relative one goes nowhere there.
+INTRO = ("## Releases\n\nFull notes for each release are on the "
+         f"[docs site]({SITE}) and in [`docs/changelog/`]({REPO_URL}/tree/main/docs/changelog). One entry per release below: counts, then highlights.\n\n")
+OLD_INTRO = ("Full notes for each release are in [`docs/changelog/`](docs/changelog/), also on the "
+             "docs site. One entry per release below: counts, then highlights.\n\n")
 
 
 def write_index(root: Path) -> None:

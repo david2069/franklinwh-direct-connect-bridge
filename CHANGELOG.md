@@ -11,7 +11,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
-Full notes for each release are in [`docs/changelog/`](docs/changelog/), also on the docs site. One entry per release below: counts, then highlights.
+### Fixed
+- **Changelog:** the release index has its own **Releases** heading, so Home Assistant's update dialog no longer shows it under [Unreleased], and its link to the full notes is a full web address, which works from that dialog.
+
+## Releases
+
+Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
 
 ## 2026-11-15
 

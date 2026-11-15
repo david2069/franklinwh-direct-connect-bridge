@@ -131,3 +131,28 @@ def test_area_lines_carry_their_text():
     long = "- **Area:** " + "word " * 40
     out = ci.area_line(long)
     assert out.startswith("Area: word") and out.endswith("…") and len(out) <= ci.MAX_AREA + 1
+
+
+def test_index_has_its_own_heading_and_a_link_that_works_in_ha(tmp_path):
+    """HA's update dialog showed the index under [Unreleased], and its relative link
+    went nowhere there."""
+    root = make(tmp_path)
+    ci.release(root, "1.3.0", "2026-03-03")
+    text = (root / "CHANGELOG.md").read_text()
+    unreleased = text.split("## [Unreleased]")[1].split("\n## ")[0]
+    assert unreleased.strip() == "", unreleased
+    assert "## Releases\n" in text
+    assert text.index("## Releases") < text.index("## 2026-03-03")
+    assert "](docs/changelog/)" not in text
+    assert f"]({ci.REPO_URL}/tree/main/docs/changelog)" in text.split("## 2026-03-03")[0]
+
+
+def test_old_intro_is_replaced_on_rebuild(tmp_path):
+    root = make(tmp_path)
+    old = ("Full notes for each release are in [`docs/changelog/`](docs/changelog/), also on the "
+           "docs site. One entry per release below: counts, then highlights.\n\n")
+    p = root / "CHANGELOG.md"
+    p.write_text(p.read_text().replace(ci.INTRO, old))
+    ci.write_index(root)
+    text = p.read_text()
+    assert "](docs/changelog/)" not in text and text.count("## Releases") == 1
