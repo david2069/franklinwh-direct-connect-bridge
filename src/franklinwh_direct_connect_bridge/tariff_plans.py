@@ -119,3 +119,24 @@ def repoint(store, meter_id: str | None, day: dt.date | None = None) -> None:
         return
     t = in_force(store, meter_id, day)
     store.set_meter_plan(meter_id, t.get("utility_id") if t else None, t["id"] if t else None)
+
+
+def adopt_orphans(store) -> list[str]:
+    """On a one-meter install, put each tariff that is on no meter onto that meter, when
+    its dates clash with none of the meter's plans (owner 2026-11-16, #650). Oldest start
+    first. Returns the tariffs moved; with no meter or several, nothing moves."""
+    meters = store.meters()
+    if len(meters) != 1:
+        return []
+    mid, moved = meters[0]["id"], []
+    loose = sorted((t for t in store.tariffs() if not t.get("meter_id")),
+                   key=lambda t: t.get("effective_start") or "")
+    for t in loose:
+        s, e = _d(t.get("effective_start")), _d(t.get("effective_end"))
+        if any(_overlaps(s, e, o) for o in of_meter(store, mid)):
+            continue
+        store.update_tariff(t["id"], meter_id=mid)
+        moved.append(t["id"])
+    if moved:
+        repoint(store, mid)
+    return moved

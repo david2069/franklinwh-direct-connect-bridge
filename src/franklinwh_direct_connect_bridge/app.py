@@ -1099,6 +1099,9 @@ def create_app() -> FastAPI:
             try:
                 store.seed_gateways(env_entries)
                 store.ensure_default_site_meter()   # default Home site + Meter 1; attach gateways
+                from . import tariff_plans
+                for _tid in tariff_plans.adopt_orphans(store):    # one meter: loose tariffs go on it (#650)
+                    log.info("tariff %s put on the only meter (it was on none)", _tid)
                 flagged = [r["id"] for r in store.gateways() if r.get("is_default")]
                 default_id = store.ensure_one_default()   # exactly one stored default (#182)
                 if default_id and flagged != [default_id]:
@@ -2654,6 +2657,8 @@ def create_app() -> FastAPI:
                          plan_version=body.pop("plan_version", ""), **body)
         if pl is not None:
             tariff_plans.apply(st, mid, pl)
+        else:
+            tariff_plans.adopt_orphans(st)      # one meter: it goes on it (#650)
         row = st.tariff(tid)
         _audit("tariff_add", detail=_tariff_where(row) + (f", from {row['effective_start']}"
                                                           if row.get("effective_start") else ""),
