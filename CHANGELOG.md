@@ -13,6 +13,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 - **Changelog:** each release in the index links to its notes on GitHub (`docs/changelog/X.Y.Z.md`), which every release contains; the docs site can lag a release. Links inside a release's notes now work from `docs/changelog/`: 0.5.46's did not, so its docs page was never built. Its link targets are corrected; its words are unchanged.
+- **Tariff editor:** **Rate type: Dynamic (live)** did nothing when clicked. A new tariff (**+ Add tariff**) opened with every control disabled: the editor's lock for retired plans read a setting a new tariff did not have. A new tariff now opens unlocked, so Dynamic (live) can be chosen; its provider, your site's region and the Home Assistant price entities save with the tariff and come back unchanged through **Export** and **Import** (#651). See [Billing & Utilities](docs/guide/energy-and-costs.md).
 
 ## Releases
 
