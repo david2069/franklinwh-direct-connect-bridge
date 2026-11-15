@@ -60,7 +60,7 @@ def test_deleting_a_recently_retired_plan_needs_its_name(c):
 
 def test_ui_views_locked_plans_and_warns_before_unlock_or_delete():
     js = (PKG / "static" / "js" / "settings_tab.js").read_text()
-    html = (PKG / "templates" / "tabs" / "settings.html").read_text()
+    html = (PKG / "templates" / "partials" / "plans_meters.html").read_text()   # moved there (#613)
     app = (PKG / "static" / "js" / "app.js").read_text()
     assert "confirmTyped(" in app
     assert "tariffEdit.locked" in html and 'data-testid="tariff-unlock"' in html

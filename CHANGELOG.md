@@ -11,7 +11,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+- **Billing & Utilities page** (owner, #613, #629; it replaces Energy Costs, **Billing** in the menu). Sub-tabs in the order OUTUS presents a bill: **Summary**, **Bill detail**, **History** and **Plans & meters**, with **Meter** to pick one when there are several. The Summary lists the setup steps first while one is missing (Site → Meter → Plan → Tariffs), each ticked when done with **Set up** opening the editor that does it, then this period, its projection and last period's total. Bill detail lists the open period's lines and what drives them now (demand peak so far, free export left, energy with no rate). The steps come from **hems** 0.1.0, the OUTUS engine (new dependency).
+- **A tariff exports as an OUTUS plan**: `/api/tariffs/<id>/export?format=outus`.
+
+### Changed
+- **Sites, meters, retailers and tariffs moved to Billing & Utilities → Plans & meters** (#613), with the same editors. Settings' **Sites & Billing** is now **Location & Prices** (Location & Solar and Prices). Explain, the scheduler's setup messages and the setup list's "Electricity utility, pricing & billing" point to the new place.
+
 ### Fixed
+- **The billing period's progress bar was empty** (Energy Costs, now Billing & Utilities): its colour was lost to a string style binding.
 - **The price entity Filter found nothing** (owner). Typing "Amber" in a buy or feed-in price picker searched only the entities exposed to the bridge. It now also searches all of Home Assistant's sensors, and says "No sensor matches" when nothing does.
 - **Provider from / until overlapped on a phone** (owner). The two date boxes sat at different heights and ran into each other in Safari and the Home Assistant app. They are now the same size, side by side, with "blank = current" under the box. The same applies to a tariff's Effective from / to.
 - **Tariffs & costs in Settings → Setup did nothing when tapped** (owner), and neither did Home Assistant or Notifications. Settings → Setup is now the one setup list. It shows the install steps, then the wizard's **Essentials** and **Advanced** tasks (Cloud, MQTT, Home Assistant, utility and billing, default mode, scheduling, notifications, security, accounts and more). Each task shows Done and has **Set up** or **Open**, which goes straight to where it is set up or opens that step of the wizard.

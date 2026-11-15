@@ -13,7 +13,8 @@ from franklinwh_direct_connect_bridge.db import MetricsStore
 import datetime as dt
 
 PKG = pathlib.Path(app_module.__file__).parent
-HTML = (PKG / "templates" / "tabs" / "settings.html").read_text()
+HTML = ((PKG / "templates" / "tabs" / "settings.html").read_text()   # + Plans & meters (#613)
+        + (PKG / "templates" / "partials" / "plans_meters.html").read_text())
 JS = (PKG / "static" / "js" / "settings_tab.js").read_text()
 
 

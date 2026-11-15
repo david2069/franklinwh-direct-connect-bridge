@@ -4,7 +4,8 @@ was no way to get a tariff in without a file). One dialog: paste or choose a fil
 import pathlib
 
 PKG = pathlib.Path(__file__).resolve().parents[1] / "src" / "franklinwh_direct_connect_bridge"
-HTML = (PKG / "templates" / "tabs" / "settings.html").read_text()
+HTML = ((PKG / "templates" / "tabs" / "settings.html").read_text()   # + Plans & meters (#613)
+        + (PKG / "templates" / "partials" / "plans_meters.html").read_text())
 JS = (PKG / "static" / "js" / "settings_tab.js").read_text()
 
 

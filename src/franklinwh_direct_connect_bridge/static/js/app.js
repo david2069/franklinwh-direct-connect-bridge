@@ -85,7 +85,7 @@ function powerColour(watts, type) {
  *  tests/test_guide_links.py checks each one against the Markdown source. */
 const GUIDE_PAGES = {
   dashboard: 'tour/#the-tabs', battery: 'battery-dispatch/',
-  analytics: 'energy-and-costs/#analytics', energy_costs: 'energy-and-costs/#energy-costs',
+  analytics: 'energy-and-costs/#analytics', energy_costs: 'energy-and-costs/#billing-utilities',
   solar: 'energy-and-costs/#solar-forecast', scheduler: 'scheduler/',
   circuits: 'tour/#the-tabs', generator: 'generator/', health: 'tour/#the-tabs',
   ha: 'ha-setup-and-notifications/', mqtt: 'home-assistant/', network: 'tour/#the-tabs',
@@ -151,7 +151,7 @@ document.addEventListener('alpine:init', () => {
       { key: 'dashboard', title: 'Home', icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/> <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>' },
       { key: 'battery', title: 'Battery', icon: '<rect x="2" y="7" width="18" height="10" rx="2"/><path d="M22 11v2"/><path d="M6 11v2"/>' },
       { key: 'analytics', title: 'Analytics', icon: '<path d="M3 3v18h18"/><path d="M7 14l3-4 3 3 4-6"/>' },
-      { key: 'energy_costs', title: 'Costs', icon: '<circle cx="12" cy="12" r="9"/><path d="M14.8 9.5a2.5 2.5 0 0 0-2.3-1.5c-1.4 0-2.5.9-2.5 2s1.1 2 2.5 2 2.5.9 2.5 2-1.1 2-2.5 2a2.5 2.5 0 0 1-2.3-1.5M12 6.5v11"/>' },
+      { key: 'energy_costs', title: 'Billing', icon: '<circle cx="12" cy="12" r="9"/><path d="M14.8 9.5a2.5 2.5 0 0 0-2.3-1.5c-1.4 0-2.5.9-2.5 2s1.1 2 2.5 2 2.5.9 2.5 2-1.1 2-2.5 2a2.5 2.5 0 0 1-2.3-1.5M12 6.5v11"/>' },
       { key: 'solar', title: 'Solar', icon: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>' },
       { key: 'scheduler', title: 'Schedule', icon: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>' },
       { key: 'circuits', title: 'Circuits', icon: '<path d="M9 2v6"/><path d="M15 2v6"/><path d="M6 8h12v4a6 6 0 0 1-12 0z"/><path d="M12 18v4"/>' },
@@ -366,7 +366,7 @@ document.addEventListener('alpine:init', () => {
       settings: 'Settings', health: 'Health', battery: 'Battery',
       circuits: 'Smart Circuits', generator: 'Generator', solar: 'Solar',
       ha: 'Home Assistant', scheduler: 'Scheduler',
-      device: 'Device', logs: 'Logs', analytics: 'Analytics', energy_costs: 'Energy Costs',
+      device: 'Device', logs: 'Logs', analytics: 'Analytics', energy_costs: 'Billing & Utilities',
       network: 'Network', grid: 'Grid & Inverter',
     },
     get tabTitle() {

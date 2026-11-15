@@ -5,8 +5,11 @@
  * A small whitelist — allow_writes / log_level / ha_notify — is live-editable and PUT
  * back to /api/settings, where it applies immediately and persists to DATA_DIR (P7).
  */
-function settingsTab() {
+// ``embedded``: the same editors on the Billing & Utilities page's Plans & meters (#613),
+// loading only what those need, when that page is shown.
+function settingsTab(opts = {}) {
   return {
+    embedded: !!opts.embedded,
     support: null, supportText: '', supportBusy: false, supportCopied: '',
     apowerSpecs: [], apowerModel: '', apowerCount: 1,
     haPriceOpts: [],   // {id:'ha:<inst>:<eid>', label:friendly, group:instance}
@@ -152,6 +155,31 @@ function settingsTab() {
     },
 
     init() {
+      if (this.embedded) {
+        lazyTab(this, 'energy_costs', async () => {
+          await this.reload();
+          await this.loadGateways();
+          await this.loadSitesMeters();
+          await this.loadUtilitiesTariffs();
+          this.loadHaPriceOpts();
+        });
+        setInterval(() => {
+          if (this.$store.app.activeTab !== 'energy_costs') return;
+          this.loadSitesMeters(); this.loadUtilitiesTariffs();
+        }, 15000);
+        // A setup step's button on the Summary opens the editor that does it.
+        window.addEventListener('fwh-plans-action', async (e) => {
+          const d = e.detail || {};
+          await this.loadSitesMeters();
+          if (d.action === 'site') this.newSite();
+          else if (d.action === 'meter') this.newMeter(d.site_id || (this.sites[0] || {}).id);
+          else {
+            const m = this.meters.find(x => x.id === d.meter_id);
+            if (m) this.newPlanForMeter(m);
+          }
+        });
+        return;
+      }
       // System Setup is per gateway (#352): a switch drops the form until it's re-read,
       // now if Settings is on screen, else when it's next shown.
       // init() runs twice here (Alpine's own call and the template's x-init): watch once.
@@ -206,7 +234,7 @@ function settingsTab() {
       { key: 'general', label: 'General' },
       { key: 'gateways', label: 'Gateways' },
       { key: 'automation', label: 'Automation' },
-      { key: 'billing', label: 'Sites & Billing' },
+      { key: 'billing', label: 'Location & Prices' },
       { key: 'integrations', label: 'Integrations' },
       { key: 'admin', label: 'Admin' },
     ],

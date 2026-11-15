@@ -152,7 +152,12 @@ window.setupWizard = function setupWizard() {
       this.hide();
       if (o.overlay === 'systemview') { if (window.FWHSystemView) FWHSystemView.open(); return; }
       if (!a) return;
-      if (o.tab) { a.setActiveTab(o.tab); return; }
+      if (o.tab) {
+        a.setActiveTab(o.tab);
+        if (o.billing) setTimeout(() => window.dispatchEvent(new CustomEvent('fwh-open-billing',
+          { detail: { sub: o.billing } })), 50);
+        return;
+      }
       a.setActiveTab('settings');
       setTimeout(() => window.dispatchEvent(new CustomEvent('fwh-open-settings',
         { detail: { sub: o.sub, card: o.card } })), 50);

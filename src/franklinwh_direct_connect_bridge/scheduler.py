@@ -574,7 +574,7 @@ _ASK_CHEAP = (
     ("spot", "wholesale price", "Wholesale price", "tariff.spot_price", 5, "c/kWh"),
     ("tariff", "tariff import rate", "Import rate", "tariff.buy_rate", 0.05, "$/kWh"),
 )
-#: The high-price ones (#582): the wholesale one fires on the price spike (Sites & Billing →
+#: The high-price ones (#582): the wholesale one fires on the price spike (Location & Prices →
 #: Prices), not a fixed 50 c; the tariff one on its feed-in rate. (id prefix, name, question
 #: label, sensor shown, unit, condition, when).
 _ASK_HIGH = (
@@ -2069,10 +2069,10 @@ ASK_SENSORS = [
 FEATURES = ("gateway", "modbus", "solar_forecast", "spot_price", "feed_in_price",
             "tariff", "utility", "constants", "ask")
 
-_SETUP_SOLAR = "set your location in Settings → Sites & Billing → Location & Solar"
-_SETUP_PRICE = "set it in Settings → Sites & Billing → Prices"
-_SETUP_TARIFF = "give the meter a tariff in Settings → Sites & Billing"
-_SETUP_UTILITY = "give the meter a utility in Settings → Sites & Billing"
+_SETUP_SOLAR = "set your location in Settings → Location & Prices → Location & Solar"
+_SETUP_PRICE = "set it in Settings → Location & Prices → Prices"
+_SETUP_TARIFF = "give the meter a tariff in Billing & Utilities → Plans & meters"
+_SETUP_UTILITY = "give the meter a retailer in Billing & Utilities → Plans & meters"
 
 
 def sensor_feature(sid: str) -> str:

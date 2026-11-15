@@ -1,7 +1,8 @@
 /**
- * Energy Costs tab — live period-to-date billing (/api/billing/overview) + closed-period
- * history (/api/billing/history). Data is priced by the gateway's meter's tariff; the tab
- * shows "not configured" when no tariff is attached.
+ * Billing & Utilities (#613, #629): Summary, Bill detail, History, Plans & meters, for one
+ * meter. /api/billing/page gives the meters and what is still to set up (from hems);
+ * the period and history come from /api/billing/overview and /history for the meter's
+ * gateway. Plans & meters is Settings' own editors (settingsTab, embedded).
  */
 function energyCostsTab() {
   return {
@@ -10,6 +11,20 @@ function energyCostsTab() {
     loading: false,
     closing: false,
     expanded: {},
+    page: { meters: [], meter: null, steps: [], complete: false },
+    meterId: '',
+    subTabs: [
+      { key: 'summary', label: 'Summary' },
+      { key: 'detail', label: 'Bill detail' },
+      { key: 'history', label: 'History' },
+      { key: 'plans', label: 'Plans & meters' },
+    ],
+    sub: (function () { try { return localStorage.getItem('fwh-billing-sub') || 'summary'; } catch (e) { return 'summary'; } })(),
+    setSub(k) {
+      this.sub = k;
+      try { localStorage.setItem('fwh-billing-sub', k); } catch (e) { /* per-viewer only */ }
+      if (k !== 'plans') this.load();
+    },
     modbusImport: { open: false, url: 'http://host.docker.internal:8100', user: 'admin', pass: 'admin', busy: false, preview: null, msg: null },
 
     init() {
@@ -18,16 +33,45 @@ function energyCostsTab() {
       this.$watch('$store.app.selectedGateway', () => t.reload());
     },
 
+    // The chosen meter's gateway: billing is per meter, read through any of its gateways.
+    gwq(sep) {
+      const g = this.page.meter && this.page.meter.gateway_ids[0];
+      return g ? `${sep}gateway=${encodeURIComponent(g)}` : this.$store.app.gwQuery(sep);
+    },
+
     async load() {
       this.loading = true;
       try {
-        const q = this.$store.app.gwQuery('?');
-        this.ov = await (await fetch('api/billing/overview' + q)).json();
-        const hq = this.$store.app.gwQuery('&');
-        this.history = (await (await fetch('api/billing/history?limit=60' + hq)).json()).periods || [];
+        const pr = await fetch('api/billing/page' + (this.meterId ? '?meter=' + encodeURIComponent(this.meterId) : ''));
+        if (pr.ok) { this.page = await pr.json(); this.meterId = (this.page.meter && this.page.meter.id) || ''; }
+        this.ov = await (await fetch('api/billing/overview' + this.gwq('?'))).json();
+        this.history = (await (await fetch('api/billing/history?limit=60' + this.gwq('&'))).json()).periods || [];
       } catch (e) {
         this.$store.app.toast('Billing load failed: ' + e.message, 'error');
       } finally { this.loading = false; }
+    },
+
+    // A setup step's button: the editor that does it, on Plans & meters.
+    doStep(st) {
+      this.setSub('plans');
+      const m = this.page.meter;
+      setTimeout(() => window.dispatchEvent(new CustomEvent('fwh-plans-action', { detail: {
+        action: st.key === 'tariffs' ? 'plan' : st.key, meter_id: m && m.id,
+        site_id: m && m.site_id } })), 50);
+    },
+
+    // The last closed period, for comparison on the Summary.
+    get lastPeriod() { return this.history.find(p => !this.inProgress(p)) || null; },
+
+    // What drives the open period's lines now.
+    get liveInputs() {
+      const o = this.ov || {}, out = [];
+      if (o['demand.peak_kw'] != null) out.push({ label: 'Demand peak so far', value: this.fmt(o['demand.peak_kw'], 2) + ' kW' });
+      if (o['demand.interval_kw'] != null) out.push({ label: 'This demand interval', value: this.fmt(o['demand.interval_kw'], 2) + ' kW' });
+      if (o['tariff.export_charge_free_remaining'] != null) out.push({ label: 'Free export left this period', value: this.fmt(o['tariff.export_charge_free_remaining'], 1) + ' kWh' });
+      if (Number(o['energy.unpriced_import_kwh']) > 0) out.push({ label: 'Import with no rate', value: this.fmt(o['energy.unpriced_import_kwh'], 2) + ' kWh' });
+      if (Number(o['energy.unpriced_export_kwh']) > 0) out.push({ label: 'Export with no rate', value: this.fmt(o['energy.unpriced_export_kwh'], 2) + ' kWh' });
+      return out;
     },
 
     get progressPct() {
@@ -60,7 +104,7 @@ function energyCostsTab() {
       const f = (ts) => { try { return new Date(ts * 1000).toLocaleDateString([], { day: 'numeric', month: 'short' }); } catch (e) { return '?'; } };
       return f(p.period_start) + ' – ' + f(p.period_end);
     },
-    exportCsv() { window.location = 'api/billing/history?fmt=csv' + this.$store.app.gwQuery('&'); },
+    exportCsv() { window.location = 'api/billing/history?fmt=csv' + this.gwq('&'); },
 
     // One-click import of closed periods from a Modbus bridge (login → fetch → map → store).
     openModbusImport() { this.modbusImport.open = true; this.modbusImport.preview = null; this.modbusImport.msg = null; },
@@ -68,7 +112,7 @@ function energyCostsTab() {
       const m = this.modbusImport;
       m.busy = true; m.msg = null;      // results show inside the dialog (#293)
       try {
-        const r = await (await fetch('api/billing/import-modbus' + this.$store.app.gwQuery('?'), {
+        const r = await (await fetch('api/billing/import-modbus' + this.gwq('?'), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ source_url: m.url, username: m.user, password: m.pass, dry_run: dry }),
         })).json();
@@ -96,7 +140,7 @@ function energyCostsTab() {
         return;
       this.closing = true;
       try {
-        const r = await (await fetch('api/billing/close' + this.$store.app.gwQuery('?'), { method: 'POST' })).json();
+        const r = await (await fetch('api/billing/close' + this.gwq('?'), { method: 'POST' })).json();
         if (r.ok && r.closed) { this.$store.app.toast('Current period snapshotted to history', 'success'); await this.load(); }
         else { this.$store.app.toast(r.reason || 'Nothing to close yet', 'info'); }
       } catch (e) { this.$store.app.toast('Close failed: ' + e.message, 'error'); }
