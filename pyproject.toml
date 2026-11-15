@@ -36,6 +36,7 @@ dependencies = [
     "pydantic-settings>=2.0",
     "paho-mqtt>=2.0",
     "croniter>=2.0",          # cron trigger type (lazy import; gated on availability)
+    "rainflow==3.2.0",        # weekly battery report: charge cycles by depth (MIT, no deps)
     "cryptography>=42",       # the HTTPS port's self-signed certificate (#457)
     "argon2-cffi>=23.1",      # account passwords, argon2id (#457)
 ]

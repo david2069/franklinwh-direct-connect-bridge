@@ -11,6 +11,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+- **Weekly battery report** (phase 2 of the scheduled health check). Every Monday at 07:00, per gateway, for the week just ended: state of health and its trend, round-trip efficiency, full cycles (discharge ÷ Battery capacity), cycles by depth and the week's energy. On **Health → Weekly battery report** and in one Home Assistant notification; not on the phones. SoH comes from the cell readings the alarm pass already makes, so there are no extra aGate reads. New dependency `rainflow` 3.2.0 (MIT, no dependencies). See [Health reports](docs/guide/health-report.md).
+
 ### Fixed
 - **Changelog:** each release in the index links to its notes on GitHub (`docs/changelog/X.Y.Z.md`), which every release contains; the docs site can lag a release. Links inside a release's notes now work from `docs/changelog/`: 0.5.46's did not, so its docs page was never built. Its link targets are corrected; its words are unchanged.
 

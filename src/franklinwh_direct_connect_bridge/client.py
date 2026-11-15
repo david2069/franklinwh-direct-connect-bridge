@@ -301,19 +301,27 @@ def network_bundle(s: Settings, host: str | None = None) -> dict[str, Any]:
 def device_alarms(s: Settings, host: str | None = None, *, events: bool = True) -> dict[str, Any]:
     """System view → Alarms (owner, 2026-11-11), in ONE aGate session: each aPower's
     ``alarmLevel`` from 1705 battery_cells (0 = none, as franklinwh-direct-connect-api's
-    bms.py prints it), and with ``events`` the aGate's 1829 event_block ``num``. Only the
+    bms.py prints it) and its ``batSoh`` from the same read, and with ``events`` the
+    aGate's 1829 event_block ``num``. Only the
     count: the catalogue says the entries' request shape is unknown, so they aren't read.
     A unit whose read fails is left out; the event count is left out when unread."""
-    out: dict[str, Any] = {"apower": {}}
+    out: dict[str, Any] = {"apower": {}, "soh": {}}
     with _client(s, host) as c:
         c.login()
         for dev_id in c.device_ids():
             try:
-                lvl = (c.battery_cells(dev_id) or {}).get("alarmLevel")
+                cells = c.battery_cells(dev_id) or {}
             except Exception:  # noqa: BLE001 — one unit's failed read must not hide the others
                 continue
+            lvl = cells.get("alarmLevel")
             if isinstance(lvl, int) and not isinstance(lvl, bool):
                 out["apower"][dev_id] = lvl
+            # The same read carries the unit's state of health (the weekly battery report).
+            soh = cells.get("batSoh")
+            if isinstance(soh, (int, float)) and not isinstance(soh, bool) and 0 < soh <= 100:
+                out["soh"][dev_id] = float(soh)
+        if not out["soh"]:
+            del out["soh"]                      # left out when no unit reported one
         if events:
             try:
                 num = (c.event_block() or {}).get("num")
