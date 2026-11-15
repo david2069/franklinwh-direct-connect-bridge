@@ -29,7 +29,7 @@ def test_a_day_at_five_seconds_fits():
 def test_live_trend_has_a_record_button_that_keeps_it_on_the_bridge():
     html = (ROOT / "templates/tabs/battery.html").read_text()
     js = (ROOT / "static/js/battery_tab.js").read_text()
-    card = html[html.index("sample(s) this session"):html.index("<!-- Charts: recorded sessions -->")]
+    card = html[html.index("sample(s) this session"):html.index("<!-- Recording:")]
     assert "recordLive()" in card and "stopRecording()" in card
     assert "Not persisted" not in card
     assert "recordLive()" in js
@@ -184,7 +184,7 @@ def test_purge_settings_are_shown_and_saved(api):
 
 def test_charts_tab_and_settings_show_the_new_controls():
     html = (ROOT / "templates/tabs/battery.html").read_text()
-    charts = html[html.index("<!-- Charts: recorded sessions -->"):]
+    charts = html[html.index("<!-- Recording:"):]   # Recording and Charts tabs (owner, 2026-11-15)
     assert "Scheduled recordings" in charts and "saveSchedule()" in charts
     st = (ROOT / "templates/tabs/settings.html").read_text()
     assert "bms_keep_days" in st and "bms_max_mb" in st

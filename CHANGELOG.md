@@ -18,11 +18,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - **A tariff exports as an OUTUS plan**: `/api/tariffs/<id>/export?format=outus`.
 
 ### Changed
+- **Battery: Recording has its own tab, and Charts suits a phone** (owner). Tabs are BMS Telemetry, **Recording** (start one now, and the scheduled ones) and **Charts**. In Charts the recorded sessions fold away so the chart takes the width (on a phone they fold once you pick one), and on a phone what to chart is a drop-down.
 - **The changelog is a short index, with full notes per version** (owner). `CHANGELOG.md` keeps `[Unreleased]` and one entry per release (counts and highlights); each version's full notes, word for word, are `docs/changelog/<version>.md` and a Changelog section on the docs site. A release writes both with `tools/changelog_index.py release`; the layout is in `docs/TEST_POLICY.md`.
 - **Sites, meters, retailers and tariffs moved to Billing & Utilities → Plans & meters** (#613), with the same editors. Settings' **Sites & Billing** is now **Location & Prices** (Location & Solar and Prices). Explain, the scheduler's setup messages and the setup list's "Electricity utility, pricing & billing" point to the new place.
 - **Search finds gateways on any port** (owner, #416). Discover in Settings → Gateways and the setup wizard swept TCP 9000 only, and matched "already added" by IP alone, so several gateways on one address were mislabelled. It still searches 9000 by default, where every real aGate listens, and now takes a port, list or range (`9020`, `9000,9020`, `9020-9030`) to find emulators. Results are one per address and port, "already added" is matched on both, and **Add** keeps the port. A result or gateway on a port other than 9000, or with a serial starting `MOCK`, is labelled **Emulator**. Hosts × ports is capped at 1024 probes, and the Modbus TCP Server (aGate :502) is never probed.
 
 ### Fixed
+- **Battery: "Fetch is aborted — showing the last good reading" with no reading** (owner). The browser gave up on a BMS read after 20 s (the read is a login and five commands, and a busy aGate took longer), Safari called it "Fetch is aborted", and the banner claimed a reading it didn't have. It now waits 60 s, says "The aGate didn't answer within 60 s", says "no reading yet" when there is none, and has **Try again**.
+
 - **Open alerts squeezed the message to one word a line on a phone** (owner). A long timestamp sat in a fixed column. Each alert is now lines: severity, a short time (`15 Nov 2:30–3:32 PM`) and its state (resolved, ongoing, or how many times it fired) with **Acknowledge**; then the title; then the message.
 - **A credit showed as "$-0.01"** on Billing & Utilities; it reads −$0.01.
 - **The billing period's progress bar was empty** (Energy Costs, now Billing & Utilities): its colour was lost to a string style binding.
