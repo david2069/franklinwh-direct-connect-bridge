@@ -13,6 +13,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 - **Changelog:** each release in the index links to its notes on GitHub (`docs/changelog/X.Y.Z.md`), which every release contains; the docs site can lag a release. Links inside a release's notes now work from `docs/changelog/`: 0.5.46's did not, so its docs page was never built. Its link targets are corrected; its words are unchanged.
+- **Import tariff:** the preview's `has_demand` was true for every Modbus Bridge profile, even with peak demand off (`has_peak_demand` 0, `demand_rate` 0), because it tested for a demand window, which every profile has. It now says whether the demand charge is on (#650). See [Billing & Utilities](docs/guide/energy-and-costs.md).
+
+### Added
+- **Audit trail:** adding, editing and deleting sites, meters, retailers and tariffs, importing a tariff and a bill's **Recalculate** are recorded in Logs → Audit trail and the bridge log, with the name, the meter and the fields an edit changed (#650). See [Control and write safety](docs/guide/control.md) and [Billing & Utilities](docs/guide/energy-and-costs.md).
+
+### Changed
+- **Plans & meters:** **Export** is on every saved tariff: also on tariffs under **Not on a meter** and at the foot of the tariff editor, not only the meter's plans (#650). See [Billing & Utilities](docs/guide/energy-and-costs.md).
 
 ## Releases
 
