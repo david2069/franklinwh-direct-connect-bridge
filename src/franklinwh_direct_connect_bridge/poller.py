@@ -402,6 +402,7 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                             gw.active_host or gw.configured_host, events=want_events),
                             timeout=_poll_timeout)
                         gw.apower_alarms = da.get("apower") or None
+                        gw.apower_soh = da.get("soh") or None
                         if want_events:
                             events_last = time.time()
                             gw.agate_events = da.get("events")

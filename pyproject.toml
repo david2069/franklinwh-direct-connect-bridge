@@ -26,7 +26,7 @@ dependencies = [
     "franklinwh-modbus==0.13.0",      # direct-Modbus WSet force control (Battery Control widget)
     # The System view overlay (#428), shared with the Modbus Bridge. Pinned like the other
     # shared packages; move it only after G0 + G1.
-    "franklinwh-system-view==0.3.1",
+    "franklinwh-system-view==0.4.0",
     "franklinwh-ha-notify==0.1.4",    # actionable HA notifications (#374)
     "hems==0.1.2",                    # the OUTUS engine: setup steps, OUTUS plans, bills (#613)
     "fastapi>=0.111",
@@ -36,6 +36,7 @@ dependencies = [
     "pydantic-settings>=2.0",
     "paho-mqtt>=2.0",
     "croniter>=2.0",          # cron trigger type (lazy import; gated on availability)
+    "rainflow==3.2.0",        # weekly battery report: charge cycles by depth (MIT, no deps)
     "cryptography>=42",       # the HTTPS port's self-signed certificate (#457)
     "argon2-cffi>=23.1",      # account passwords, argon2id (#457)
 ]

@@ -133,12 +133,16 @@ reordered, from **Topbar cog → Customise → Top bar** (Centre indicators / Ri
 
 **System view** (its top-bar button, or System view in the sidebar) opens a picture of the
 site over the page: grid, aGate,
-home, solar, batteries and circuits, with the power flowing between them. Under **Options**,
-four extras each have their own switch, off until you turn them on and remembered in that
-browser: **Voltage & frequency** under the grid, **Today's energy** in kWh under each
+home, solar, batteries and circuits, with the power flowing between them. **Options** is a
+drop-down over the diagram (zoom, Customise diagram, the switches below and Start on System
+view); a click outside it or Esc closes it. Four extras each have their own switch, off until
+you turn them on and remembered in that browser: **Voltage & frequency** under the grid, **Today's energy** in kWh under each
 picture (grid in and out, solar, home, battery charged and discharged), **Power on wires**
 (the kW on each wire, with an arrow the way it goes) and **Alarms** (a count on the device;
 tap it to list them).
+
+**Smart circuits** is the other way round: shown until you switch it off, and the diagram is
+laid out again without them.
 
 Smart circuits show the names saved on the aGate (set in the FranklinWH app), as the Smart
 Circuits tab does. **Options → Customise diagram** changes a name or picks a picture for
@@ -161,8 +165,10 @@ or with no meter, is drawn on its own as before.
   0 shows on that battery ("aPower 2: alarm level 3"). Read every 5 minutes.
 - **The aGate's event log**: only how many events it holds can be read locally, so more
   than none shows on the aGate as a count. Read every 15 minutes.
-- **The bridge's own open alerts** (aGate unreachable, a refused command), the ones the
-  alert list shows, on the aGate.
+- **The bridge's own alerts that matter now**, on the aGate: a condition still active
+  ("aGate unreachable (since 15 Nov 14:34)") and an event not yet acknowledged ("Command
+  refused (15 Nov 09:02)"). A condition that has cleared stays in the alert list until it is
+  acknowledged, but isn't shown on the diagram, which is the system now.
 
 ## The tabs
 

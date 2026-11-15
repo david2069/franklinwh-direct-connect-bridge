@@ -50,6 +50,20 @@ def to_local(profile: dict) -> tuple[dict, dict, str | None]:
     return utility, tariff, profile.get("timezone")
 
 
+def demand_on(profile: dict) -> bool:
+    """Whether a tariff-profile's peak demand charge is on (#650). Every Modbus Bridge
+    profile carries a ``demand_window``, on or off; ``has_peak_demand`` says which, and a
+    zero ``demand_rate`` charges nothing. An older profile with no flag: the rate decides."""
+    if not (profile.get("demand_window") or {}).get("start"):
+        return False
+    if "has_peak_demand" in profile and not profile.get("has_peak_demand"):
+        return False
+    try:
+        return float((profile.get("pricing") or {}).get("demand_rate") or 0) != 0
+    except (TypeError, ValueError):
+        return False
+
+
 def from_local(utility: dict | None, tariff: dict, timezone: str | None = None) -> dict:
     """Our utility + tariff → a ``franklinwh-bridge/tariff-profile`` bundle (inverse of to_local)."""
     u = utility or {}
