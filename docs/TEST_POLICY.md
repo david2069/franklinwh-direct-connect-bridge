@@ -33,10 +33,22 @@ Reviewed by the franklinwh-modbus-bridge session on 2026-10-16. Its review is fo
   - scheduler/dispatch
   - packaging
 - **A hotfix contains the fix and nothing else.** No feature rides along with a fix.
-- **A release PR contains only the version bump and the CHANGELOG section.** The changes it releases
+- **A release PR contains only the version bump and the changelog move** (`python tools/changelog_index.py release X.Y.Z YYYY-MM-DD`, below). The changes it releases
   were merged and gated before it. A version bump touches every place the version lives, together:
   - Direct Connect: `config.yaml`, `pyproject.toml`
   - Modbus bridge: `pyproject.toml`, `__init__.py`, `addon/config.yaml`, `addon/Dockerfile` `BRIDGE_REF`, `addon/CHANGELOG.md`
+- **Changelog layout: a short index plus full notes per version.** `CHANGELOG.md` holds the preamble,
+  `## [Unreleased]` in full (the working area every change writes into) and then an index, newest first,
+  with one `## YYYY-MM-DD` heading per release day. Each release under it is `### [X.Y.Z](docs-site link)`,
+  a counts line (`Added n · Changed n · Fixed n · Removed n`, non-zero kinds only, top-level bullets per
+  subsection, other subsections such as Security under their own name) and 3 to 6 highlights: the bold
+  lead-ins of its entries (Added and Fixed first), or the area lines when the notes open with a grouped
+  summary. The full notes are `docs/changelog/X.Y.Z.md`: a `# X.Y.Z — date` heading, then the section
+  exactly as written. Released notes are never reworded or reordered. **Every release writes both**:
+  `tools/changelog_index.py release X.Y.Z YYYY-MM-DD` moves `[Unreleased]` into its docs file, adds the
+  index entry, updates the docs-site nav and leaves an empty `[Unreleased]`. `tools/changelog_index.py
+  rebuild` regenerates the index and nav from `docs/changelog/`. `tests/test_changelog_index.py` checks
+  the layout.
 - **Anything that changes how HA identifies things** (device identifiers, `unique_id`, device or entity
   naming, MQTT topics, add-on slug) is **released alone**. Its notes say exactly what users will see change.
 - **Up to two releases a day** (owner, 2026-10-31; it was one). Each passes its own gates, G1

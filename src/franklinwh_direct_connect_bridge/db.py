@@ -232,6 +232,18 @@ class MetricsStore:
             out.append(row)
         return out
 
+    def grid_readings(self, start: int, end: int, gateway_ids: list[str]) -> list[tuple]:
+        """(ts, gateway_id, grid_w) for these gateways between ``start`` and ``end``, oldest
+        first: what the billing ledger is built from (#613)."""
+        if not gateway_ids:
+            return []
+        marks = ",".join("?" * len(gateway_ids))
+        with self._lock:
+            return self._conn.execute(
+                "SELECT ts, gateway_id, grid_w FROM metrics WHERE ts BETWEEN ? AND ?"
+                f" AND gateway_id IN ({marks}) AND grid_w IS NOT NULL ORDER BY ts",
+                (int(start), int(end), *gateway_ids)).fetchall()
+
     def query(self, start: int, end: int, bucket_s: int | None,
               gateway: str | None = None, with_gateway: bool = False) -> list[dict]:
         """Return samples between ``start`` and ``end`` (inclusive).
