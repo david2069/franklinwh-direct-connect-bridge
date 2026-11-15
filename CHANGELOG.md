@@ -17,6 +17,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - **System view:** **Options** is a drop-down over the diagram (zoom, Customise diagram, the extras, Start on System view), closed until you open it; a click outside it or Esc closes it. A **Smart circuits** switch in it hides the smart circuits, and the diagram is laid out again without them (#660). `franklinwh-system-view` 0.3.2 (was 0.3.1). See [the tour](docs/guide/tour.md).
 
 ### Added
+- **Unusual changes in the daily report** (phase 3 of the scheduled health check). Yesterday against the median of the 28 days before (at least 7): a drop in state of health or efficiency turns the report amber; unusual daily energy or counts of warnings, errors and alerts are listed under **Unusual yesterday** on Health and in the notifications, without changing the colour. See [Health reports](docs/guide/health-report.md).
 - **Weekly battery report** (phase 2 of the scheduled health check). Every Monday at 07:00, per gateway, for the week just ended: state of health and its trend, round-trip efficiency, full cycles (discharge ÷ Battery capacity), cycles by depth and the week's energy. On **Health → Weekly battery report** and in one Home Assistant notification; not on the phones. SoH comes from the cell readings the alarm pass already makes, so there are no extra aGate reads. New dependency `rainflow` 3.2.0 (MIT, no dependencies). See [Health reports](docs/guide/health-report.md).
 
 ### Fixed

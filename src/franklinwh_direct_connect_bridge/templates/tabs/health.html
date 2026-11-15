@@ -34,6 +34,14 @@
             <template x-for="t in r.reasons" :key="t"><li style="overflow-wrap:anywhere" x-text="t"></li></template>
           </ul>
         </div>
+        <div x-show="(r.unusual?.flags || []).length">
+          <div class="text-xs font-semibold uppercase tracking-wider mb-1" style="color:var(--text-secondary)">Unusual yesterday</div>
+          <ul class="list-disc pl-5 space-y-1 text-xs" data-testid="health-report-unusual">
+            <template x-for="f in (r.unusual?.flags || [])" :key="f.gateway + f.metric">
+              <li style="overflow-wrap:anywhere" :style="{ color: f.grades ? 'var(--warn)' : 'var(--text-primary)' }" x-text="f.text"></li>
+            </template>
+          </ul>
+        </div>
         <div>
           <div class="text-xs font-semibold uppercase tracking-wider mb-1" style="color:var(--text-secondary)">Last 24 hours</div>
           <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">

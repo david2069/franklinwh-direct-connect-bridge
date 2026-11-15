@@ -30,6 +30,22 @@ Over the last 24 hours, against the 7 days before:
   polls failed (of at least 100).
 - **Green:** none of those.
 
+## Unusual changes
+
+The daily report also compares **yesterday** with the median of the 28 days before (once
+there are at least 7), from the daily snapshot, and lists what stands out under **Unusual
+yesterday**:
+
+- **State of health** down 1 point or more, or **efficiency** (over the 7 days to
+  yesterday) down 5 points or more. These two turn the report **amber**, so they reach
+  the phones.
+- **Daily energy** (battery charged and discharged, solar, grid import and export) twice
+  the usual or more, or half or less, and at least 2 kWh away.
+- **Counts** (alerts per gateway; the bridge's warnings, errors and alerts) twice the usual
+  or more, and well above it.
+
+The energy and count flags are listed only; they never change the colour.
+
 ## Where it goes
 
 - **Home Assistant:** one notification, which the next report replaces.
