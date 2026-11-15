@@ -11,7 +11,20 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
-Full notes for each release are in [`docs/changelog/`](docs/changelog/), also on the docs site. One entry per release below: counts, then highlights.
+## Releases
+
+Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
+
+## 2026-11-16
+
+### [0.5.46](https://david2069.github.io/franklinwh-direct-connect-bridge/changelog/0.5.46/)
+
+Added 1 · Changed 5 · Fixed 4
+
+- Health: a daily health report at 07:00: green, amber or red with the reason, on Health →…
+- Analytics: Explain reads clearly, links to Billing & Utilities and gives the grid effect…
+- Billing & Utilities: Import tariff says what it added and has Done
+- Changelog and README: the release index has its own heading in HA's update dialog
 
 ## 2026-11-15
 

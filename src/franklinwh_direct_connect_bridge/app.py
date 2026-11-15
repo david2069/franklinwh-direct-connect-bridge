@@ -58,6 +58,7 @@ def _log_disclaimer_once() -> None:
         logging.getLogger("franklinwh_direct_connect_bridge").info(DISCLAIMER_LINE)
         _disclaimer_logged = True
 from . import bms_record
+from . import health_report
 from . import providers
 from . import energy_flow as _eflow
 from . import state
@@ -214,6 +215,10 @@ def _dispatch_kind(gw) -> tuple:
     if getattr(gw, "vpp_active", None):
         return "remote", None
     return None, None
+
+
+class HealthReportSettingsReq(BaseModel):
+    daily: bool
 
 
 class ModeReq(BaseModel):
@@ -1381,6 +1386,13 @@ def create_app() -> FastAPI:
             get_settings(), store_fn=lambda: db.get_store(get_settings()),
             notifier=Notifier(get_settings())).run(_alert_stop))
 
+        # ── scheduled health check: daily snapshot and the 07:00 report ──────
+        _health_stop = asyncio.Event()
+        _health_task = asyncio.create_task(health_report.HealthReporter(
+            store_fn=lambda: db.get_store(get_settings()),
+            notifier=Notifier(get_settings()),
+            backups_fn=lambda: _list_backups()).run(_health_stop))
+
         _sup_task = asyncio.create_task(_supervisor_loop())
         _sup_worker._task = _sup_task
         log.info("worker supervision active (%d workers registered)",
@@ -1390,6 +1402,7 @@ def create_app() -> FastAPI:
         finally:
             _sched_stop.set()
             _alert_stop.set()
+            _health_stop.set()
             _sup_stop.set()
             _sup_task.cancel()
             # Release any dispatch WE are holding before the bridge stops — a running
@@ -1849,6 +1862,52 @@ def create_app() -> FastAPI:
     @app.get("/api/health")
     def api_health(gateway: str = Depends(_gateway_q)):
         return client.health(get_settings(), host=_gw_host(gateway))
+
+    # -- Scheduled health check (owner 2026-11-15): the daily bridge-health report --
+    def _health_row(row: dict | None) -> dict | None:
+        if row is None:
+            return None
+        out = {k: row[k] for k in ("id", "kind", "period", "ts", "level", "headline")}
+        out["report"] = _json.loads(row["body"])
+        return out
+
+    @app.get("/api/health/report")
+    def api_health_report(id: int | None = Query(None)):
+        """The latest daily report (or the one with ``id``) and whether it is switched on."""
+        store = db.get_store(get_settings())
+        if store is None:
+            raise HTTPException(status_code=503, detail="metrics store is off")
+        row = store.health_report(id) if id is not None else store.latest_health_report("daily")
+        if id is not None and row is None:
+            raise HTTPException(status_code=404, detail="no such report")
+        return {"report": _health_row(row), "daily": health_report.daily_on(store)}
+
+    @app.get("/api/health/reports")
+    def api_health_reports(limit: int = Query(60, ge=1, le=400)):
+        """Past reports, newest first: id, period, time, colour and headline."""
+        store = db.get_store(get_settings())
+        if store is None:
+            raise HTTPException(status_code=503, detail="metrics store is off")
+        return {"reports": store.health_reports("daily", limit)}
+
+    @app.post("/api/health/report/run")
+    def api_health_report_run():
+        """Build and keep today's report now. Not sent: the 07:00 one is."""
+        store = db.get_store(get_settings())
+        if store is None:
+            raise HTTPException(status_code=503, detail="metrics store is off")
+        out = health_report.run(store, time.time(),
+                                gateways=health_report.enabled_gateways(store),
+                                backups_fn=lambda: _list_backups())
+        return {k: out[k] for k in ("id", "ts", "period", "level", "headline")}
+
+    @app.put("/api/health/report/settings")
+    def api_health_report_settings(req: HealthReportSettingsReq):
+        store = db.get_store(get_settings())
+        if store is None:
+            raise HTTPException(status_code=503, detail="metrics store is off")
+        health_report.set_daily(store, req.daily)
+        return {"daily": health_report.daily_on(store)}
 
     @app.get("/api/health/link")
     def api_health_link(gateway: str = Depends(_gateway_q), limit: int = Query(20, ge=1, le=200)):
@@ -6197,7 +6256,9 @@ def create_app() -> FastAPI:
         if not site.get("tariff"):
             missing.append({"id": "tariff", "text": "Add your tariff (Billing & Utilities → Plans & meters → "
                             "your meter → + Add tariff) for "
-                            "time-of-use advice and $ estimates.", "tab": "energy_costs"})
+                            "time-of-use advice and $ estimates.", "tab": "energy_costs",
+                            "open": {"tab": "energy_costs", "billing": "plans"},
+                            "link": "Open Billing & Utilities (Plans & meters)"})
         out.update(source=source, site=site, current=current, missing=missing,
                    objective_choices=ca.insights.OBJECTIVES)
         return out

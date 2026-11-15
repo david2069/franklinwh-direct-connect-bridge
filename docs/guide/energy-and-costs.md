@@ -116,9 +116,11 @@ left empty. The cards under the chart, on Local and Cloud alike, show the period
 - **Battery cycles**: kWh discharged ÷ the battery capacity in Settings → Automation
   constants; not shown while the capacity is unset.
 - **Avg SoC**, where the source has SoC.
-- **History**: how long the shown source has data for, such as "1 year 23 days". Local
-  counts from the bridge's oldest sample; Cloud from the day the aGate was activated on the
-  FranklinWH cloud.
+- **History**: the period in the chart, such as "9–15 Nov 2026" for a week (with the From
+  and To times on a Day view or Custom range, and the first day to today for Lifetime), and
+  under it how long the shown source has data for, such as "1 year 23 days, cloud, since
+  22 Jul 2024". Local counts from the bridge's oldest sample; Cloud from the day the aGate
+  was activated on the FranklinWH cloud.
 
 A day of power (Day, 5-min) shows the peak solar, home load and grid import instead of
 the kWh totals. A period older than the
@@ -126,8 +128,12 @@ stored history is shown empty. The chips
 under the chart (SoC, Grid, Solar, Battery, Home load, Generator for a day; Cloud's series for
 the kWh periods) show or hide each series;
 **Line | Area | Bars** at the top picks the style (SoC, on its own % axis, stays a line, and a
-value with nothing either side of it, such as Lifetime's one year, is drawn as a dot);
-until one is picked, a day draws lines and the kWh periods bars, as Cloud does. Dates are in
+value with nothing either side of it is drawn as a dot);
+until one is picked, a day draws lines and the kWh periods bars, as Cloud does. The SoC %
+axis shows only when a SoC line is drawn: Cloud has no SoC for Week, Month, Year and
+Lifetime, so those have no SoC axis. **Lifetime** is one total a year, so Line and Area are
+greyed in the Chart menu with the reason and Lifetime shows bars; the style you picked
+comes back on the other periods. Dates are in
 your browser's own format. Local and Cloud charts are the same height, and Local's kW or kWh axis
 is scaled as Cloud's (zero always shown, four even steps), so the same data looks the same in
 both.
@@ -146,12 +152,18 @@ both.
 - **What it shows**: self-sufficiency, how much solar went to the grid, how hard the
   battery works, and the mode the gateway runs in now.
 - **For your objectives**: what to change, why, with the numbers, and an estimated effect a
-  month in kWh and, with a tariff set, $. For example, Emergency Backup with an idle battery
+  month in kWh ("less from the grid" or "more from the grid") and, with a tariff set, $
+  ("saved" or "more on the bill"). For example, Emergency Backup with an idle battery
   → Self-Consumption with a 20% reserve; a time-of-use tariff run in Self-Consumption →
   Time-of-Use for the peak; a reserve under 30% for **Backup ready** → 30%. Each opens the
   Control tab or the Scheduler; nothing is changed from the dialog.
 - **For a fuller answer**: what's missing, such as the battery capacity or a tariff
-  (Billing & Utilities → Plans & meters → your meter → **+ Add tariff**).
+  (Billing & Utilities → Plans & meters → your meter → **+ Add tariff**). A missing tariff
+  has an **Open Billing & Utilities (Plans & meters)** button that closes the dialog and
+  opens that page.
+
+Each part has its own heading, with a divider between parts and each suggestion in its own
+box, so the dialog reads the same on a phone and on the desktop.
 
 The answers come from fixed rules over the period's totals (franklinwh-ha-cloud-analytics
 `insights`), the same each time, and the effects are estimates. The mode and reserve are
@@ -198,8 +210,8 @@ than read as a total. **(inferred)** marks a value the cloud's field is only nam
 never checked. A generator that never ran is left out.
 
 Under the chart, a chip per series shows or hides it, and the chart rescales to what is
-shown. **Line | Area | Bars** at the top picks the style for any period (a day starts as lines, the
-longer periods as bars). Hover, or tap on a phone, anywhere on the chart for every shown
+shown. **Line | Area | Bars** at the top picks the style for any period but Lifetime, which is bars
+(a day starts as lines, the longer periods as bars). Hover, or tap on a phone, anywhere on the chart for every shown
 value at that time. Dates are shown in your browser's own format (5 Nov in
 Australia, Nov 5 in the US); times are 24-hour, on the site's clock. With Bars, the
 **stacked** button (at the end of the chips) draws one column per bar instead of one per
@@ -318,7 +330,9 @@ than the gateway.)
 format a tariff's Export writes and the Modbus Bridge uses): paste it into the box or
 choose a file. **Check** shows what it contains (retailer, network, plan, seasons, fixed
 charges); **Import** adds it as a plan of the default meter (rules below).
-The result, or why it was not accepted, is shown in the dialog.
+Why a tariff was not accepted is shown in the dialog. After **Import** the dialog says what
+was added and to which meter (and which plan it ended, if any); **Done** closes it. To import
+another, open Import again.
 
 **One tariff in force per meter.** A tariff has **Effective from** and **Effective to**
 (blank = current). A retailer has **Provider from** and **Provider until** the same way;

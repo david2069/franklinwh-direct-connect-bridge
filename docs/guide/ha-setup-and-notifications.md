@@ -240,6 +240,7 @@ has a switch and a **Send to**; the two SoC triggers also have a threshold.
 | Battery SoC drops below | off, 20 % | SoC crosses the threshold downward. | "Battery SoC dropped below 20% [gateway] (now N%)." |
 | Battery SoC reaches | off, 100 % | SoC crosses the threshold upward. | "Battery SoC reached 100% [gateway] (now N%)." |
 | Bridge started / restarted / stopped | on | The bridge starts or stops. A start after a clean stop is a **restart**: it says how long the bridge was down and, after an update, the version it came from. A start with no clean stop before it (first run, or a crash or power cut) is **started**. | "Bridge started (v0.5.36)." / "Bridge restarted (v0.5.36, updated from 0.5.35) after 1 min 35 s down." / "Bridge stopping (v0.5.36) — no polling or notifications until it starts again." |
+| Daily health report amber or red | on | The 07:00 [health report](health-report.md) is amber or red. | "FranklinWH bridge: health amber" and the reasons. |
 
 A trigger fires on a **change** between one poll and the next, not on every poll. There
 is no other rate limit.

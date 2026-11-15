@@ -135,6 +135,7 @@ nav:
       - guide/phone-and-remote-access.md
       - guide/security.md
       - guide/multi-gateway.md
+      - guide/health-report.md
       - guide/energy-and-costs.md
       - USER_GUIDE.md
   - Developers Guide:
@@ -177,6 +178,7 @@ nav:
       - VALUE_SOURCES_DESIGN.md
       - WHAT_THE_ENGINE_IS.md
   - Changelog:
+      - 0.5.46: changelog/0.5.46.md
       - 0.5.45: changelog/0.5.45.md
       - 0.5.44: changelog/0.5.44.md
       - 0.5.43: changelog/0.5.43.md
