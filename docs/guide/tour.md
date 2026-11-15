@@ -60,9 +60,12 @@ Every change made here, and every Test, writes a line to **Logs** and a row to t
 **Audit trail** (Logs → Audit trail), saying whether it worked. None of them needs a restart.
 
 **Settings → Setup** is the same content, reachable for ever: every step reports whether it
-is already satisfied, so a second pass shows current state rather than blank fields. The
-optional steps (Home Assistant, Notifications, Tariffs & costs) have **Set up** (or **Open**
-once done), which goes straight to where each is set up.
+is already satisfied, so a second pass shows current state rather than blank fields.
+Below the install steps it lists everything worth setting up after install, as the wizard's
+list does: **Essentials** (FranklinWH Cloud, MQTT, Home Assistant, utility and billing,
+default mode, automatic scheduling) and **Advanced** (notifications, security, accounts,
+System View, emulator, Modbus TCP). Each shows **Done** once set up; **Set up** / **Open** goes
+straight to where it is set up, or opens that step of the wizard.
 
 ---
 

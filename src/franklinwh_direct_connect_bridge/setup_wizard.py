@@ -289,8 +289,6 @@ def _optional_step(step_id: str, title: str, satisfied: bool, detail: str) -> di
         "id": step_id, "title": title, "required": False, "satisfied": satisfied,
         "detail": detail, "skippable": True,
         "note": "You can set this up later.",
-        # Where it is set up: the setup list's task of the same id (owner, 2026-11-15).
-        "open": next((way.get("open") for tid, *_, way in _TASKS if tid == step_id), None),
     }
 
 

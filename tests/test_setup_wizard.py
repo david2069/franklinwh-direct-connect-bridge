@@ -106,16 +106,18 @@ def test_optional_steps_are_skippable_and_say_so():
 
 
 
-def test_every_optional_step_opens_where_it_is_set_up():
-    """Tariffs & costs said "set this up later" and did nothing when tapped (owner,
-    2026-11-15). Each optional step opens the same place as the setup list's task."""
-    s = w.summary(_Store(), **_kw())
-    tasks = {t["id"]: t for t in w.tasks()}
-    for step in s["steps"]:
-        if step["id"] in w.OPTIONAL_STEPS:
-            assert step["open"] == tasks[step["id"]]["open"], step["id"]
+def test_settings_setup_is_the_one_setup_list():
+    """Tariffs & costs in Settings → Setup did nothing when tapped (owner, 2026-11-15), and
+    the curated list lived only in the wizard. Settings → Setup now shows the install steps,
+    then the wizard's Essentials and Advanced tasks, each opening where it is set up."""
     html = (Path(w.__file__).parent / "templates/tabs/settings.html").read_text()
-    assert 'data-testid="setup-step-open"' in html
+    assert "($store.app.setup.steps || []).filter(s => s.required)" in html
+    assert "($store.app.setup.tasks || []).filter(t => t.group === g[0])" in html
+    assert "fwh:open-setup-task" in html
+    js = (Path(w.__file__).parent / "static/js/setup_wizard.js").read_text()
+    assert "addEventListener('fwh:open-setup-task'" in js
+    ids = {t["id"] for t in w.tasks()}
+    assert set(w.OPTIONAL_STEPS) <= ids   # no optional step is lost from the list
 
 # --- derived vs overridden -------------------------------------------------------------------
 

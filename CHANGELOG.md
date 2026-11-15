@@ -12,7 +12,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Fixed
-- **Tariffs & costs in Settings → Setup did nothing when tapped** (owner), and neither did Home Assistant or Notifications. Each optional step now has **Set up** (**Open** once done), which goes to where it is set up: Tariffs & costs to the meter's tariff under Sites & Billing.
+- **Tariffs & costs in Settings → Setup did nothing when tapped** (owner), and neither did Home Assistant or Notifications. Settings → Setup is now the one setup list. It shows the install steps, then the wizard's **Essentials** and **Advanced** tasks (Cloud, MQTT, Home Assistant, utility and billing, default mode, scheduling, notifications, security, accounts and more). Each task shows Done and has **Set up** or **Open**, which goes straight to where it is set up or opens that step of the wizard.
 
 ## [0.5.44] — 2026-11-15
 
