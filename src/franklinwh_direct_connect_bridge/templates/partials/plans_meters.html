@@ -759,7 +759,20 @@
         <div class="text-sm font-semibold" style="color:var(--text-primary)">Import tariff</div>
         <button class="text-slate-400 hover:text-slate-200" @click="tariffImp.open=false"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
-      <div class="px-5 py-4 space-y-3">
+      <!-- Imported (#654): the result stays in the dialog until Done. -->
+      <div x-show="tariffImp.done && tariffImp.result" class="px-5 py-4 space-y-3" data-testid="tariff-import-done">
+        <div class="text-sm font-semibold" :style="{ color: 'var(--success,#34d399)' }">Imported</div>
+        <div class="text-sm" style="color:var(--text-primary)"
+             x-text="`&quot;${tariffImp.result?.name}&quot; (${tariffImp.result?.retailer}${tariffImp.result?.network ? ' · ' + tariffImp.result.network : ''}) is now the tariff`
+                     + (tariffImp.result?.meter ? ` on ${tariffImp.result.meter}` : '')
+                     + (tariffImp.result?.start ? `, in force from ${tariffImp.result.start}.` : '.')"></div>
+        <div x-show="tariffImp.result?.replaced" class="text-xs" style="color:var(--text-secondary)"
+             x-text="`&quot;${tariffImp.result?.replaced}&quot; ended on ${tariffImp.result?.replacedEnd}.`"></div>
+        <div class="flex justify-end">
+          <button data-testid="tariff-import-done-close" class="btn btn-primary btn-sm" @click="tariffImp.open=false">Done</button>
+        </div>
+      </div>
+      <div x-show="!tariffImp.done" class="px-5 py-4 space-y-3" data-testid="tariff-import-form">
         <div class="text-xs text-slate-500">Paste a tariff (franklinwh-bridge/tariff-profile JSON), or choose a file.</div>
         <label x-show="meters.length > 1" class="text-[11px] block" style="color:var(--text-secondary)">For meter
           <select class="form-control form-control-sm w-full mt-1" x-model="tariffImp.meter_id" @change="tariffImp.preview = null">

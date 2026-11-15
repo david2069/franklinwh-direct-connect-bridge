@@ -40,7 +40,7 @@ function settingsTab(opts = {}) {
     // ── Sites + Meters ──
     sites: [], meters: [], siteEdit: null, meterEdit: null,
     utilities: [], tariffs: [], utilEdit: null, tariffEdit: null, tariffMsg: null,
-    tariffImp: { open: false, text: '', preview: null, msg: null, busy: false, done: false, meter_id: '' },
+    tariffImp: { open: false, text: '', preview: null, msg: null, busy: false, done: false, result: null, meter_id: '' },
     planHist: {},
     // ── Automation constants (const.* sensors) ──
     constants: {}, constSpec: {}, constModes: [], constSaving: false,
@@ -768,7 +768,7 @@ function settingsTab(opts = {}) {
     // no file to hand. Check is the dry-run preview; results stay in the dialog.
     openTariffImport(meterId) {
       const m = this.meters.find(x => x.id === meterId) || this.meters.find(x => x.is_default) || this.meters[0];
-      this.tariffImp = { open: true, text: '', preview: null, msg: null, busy: false, done: false, meter_id: m ? m.id : '' };
+      this.tariffImp = { open: true, text: '', preview: null, msg: null, busy: false, done: false, result: null, meter_id: m ? m.id : '' };
     },
     async tariffImportFile(ev) {
       const file = ev.target.files[0]; ev.target.value = '';
@@ -785,7 +785,8 @@ function settingsTab(opts = {}) {
     },
     async tariffImportCheck() {
       const t = this.tariffImp;
-      Object.assign(t, { preview: null, msg: null, done: false });
+      if (t.done) return;                 // imported: Done closes; a new import starts afresh
+      Object.assign(t, { preview: null, msg: null });
       const bundle = this._tariffBundle();
       if (!bundle) return;
       t.busy = true;
@@ -817,7 +818,12 @@ function settingsTab(opts = {}) {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bundle) });
         const d = await r.json().catch(() => ({}));
         if (r.ok && d.ok) {
-          t.msg = { kind: 'ok', text: `Imported ${t.preview.retailer} — ${t.preview.tariff_name}.` };
+          // The result replaces the form (#654): what was added, to which meter, from when.
+          const p = t.preview, m = this.meters.find(x => x.id === (d.attached_meter || t.meter_id));
+          t.result = { name: p.tariff_name, retailer: p.retailer, network: p.network,
+                       meter: m ? m.name : '', start: p.effective_start || '',
+                       replaced: p.replaces || '', replacedEnd: p.replaces_end || '' };
+          t.preview = null; t.msg = null;
           t.done = true;
           await this.loadUtilitiesTariffs(); await this.loadSitesMeters();
         } else t.msg = { kind: 'err', text: 'Import failed: ' + (d.detail || r.statusText) };

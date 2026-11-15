@@ -330,7 +330,9 @@ than the gateway.)
 format a tariff's Export writes and the Modbus Bridge uses): paste it into the box or
 choose a file. **Check** shows what it contains (retailer, network, plan, seasons, fixed
 charges); **Import** adds it as a plan of the default meter (rules below).
-The result, or why it was not accepted, is shown in the dialog.
+Why a tariff was not accepted is shown in the dialog. After **Import** the dialog says what
+was added and to which meter (and which plan it ended, if any); **Done** closes it. To import
+another, open Import again.
 
 **One tariff in force per meter.** A tariff has **Effective from** and **Effective to**
 (blank = current). A retailer has **Provider from** and **Provider until** the same way;
