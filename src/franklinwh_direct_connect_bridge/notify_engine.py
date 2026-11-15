@@ -32,6 +32,7 @@ DEFAULT_TRIGGERS: dict = {
     "soc_low": {"enabled": False, "label": "Battery SoC drops below", "threshold": 20},
     "soc_full": {"enabled": False, "label": "Battery SoC reaches", "threshold": 100},
     "bridge": {"enabled": True, "label": "Bridge started / restarted / stopped"},
+    "health_report": {"enabled": True, "label": "Daily health report amber or red"},
     # The scheduler's own (#581). Failed is the SCHEDULE_FAILED critical alert's push.
     "schedule_failed": {"enabled": True, "label": "Run failed", "group": "Scheduler"},
     "schedule_missed": {"enabled": True, "label": "Run missed", "group": "Scheduler"},
@@ -200,6 +201,7 @@ EVENTS = (
     Event("bridge_stopped", "FranklinWH bridge",
           "Bridge stopping (v{version}) — no polling or notifications until it starts again.",
           ("version",)),
+    Event("health_report", "{title}", "{message}", ("title", "message")),
     Event("test", "FranklinWH — test", "This is a test notification from the trigger engine."),
 )
 actionable.templates().register(*EVENTS)

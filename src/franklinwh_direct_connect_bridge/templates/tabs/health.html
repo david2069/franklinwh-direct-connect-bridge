@@ -1,6 +1,84 @@
 <!-- ── Health Tab ─────────────────────────────────────────── -->
 <div x-data="healthTab" class="space-y-6 max-w-2xl">
 
+  <!-- Daily report (owner 2026-11-15): the 07:00 bridge-health report, its colour and why.
+       Bridge-wide, not per gateway. Read-only; Run now only builds and keeps one. -->
+  <div class="card" style="padding:0;overflow:hidden" x-data="healthReport" data-testid="health-report">
+    <div class="px-5 py-3 flex items-center justify-between gap-3" style="border-bottom:1px solid var(--border)">
+      <div class="card-label" style="margin-bottom:0">Daily report</div>
+      <div class="flex items-center gap-2">
+        <label class="text-xs flex items-center gap-1" style="color:var(--text-secondary)">
+          <input type="checkbox" :checked="daily" @change="setDaily($event.target.checked)"
+                 data-testid="health-report-daily"> 07:00 each day
+        </label>
+        <button class="btn-secondary text-xs" @click="runNow()" :disabled="busy"
+                data-testid="health-report-run" x-text="busy ? 'Working…' : 'Run now'"></button>
+      </div>
+    </div>
+    <div class="px-5 py-3 text-xs" x-show="err" :style="{color: 'var(--danger)'}" x-text="err"></div>
+    <div class="px-5 py-4 text-xs" x-show="!cur && !err" :style="{color: 'var(--text-secondary)'}">
+      No report yet. The first one comes at 07:00 site time, or use Run now.
+    </div>
+    <template x-if="cur">
+      <div class="px-5 py-4 space-y-4 text-sm">
+        <div class="flex items-start gap-3">
+          <span class="chip" :class="chipClass(cur.level)" x-text="cur.level"></span>
+          <div class="min-w-0">
+            <div class="font-medium" style="overflow-wrap:anywhere" x-text="cur.headline"></div>
+            <div class="text-xs mt-1" style="color:var(--text-secondary)" x-text="when(cur.ts)"></div>
+          </div>
+        </div>
+        <div x-show="r.reasons.length > 1">
+          <div class="text-xs font-semibold uppercase tracking-wider mb-1" style="color:var(--text-secondary)">Why</div>
+          <ul class="list-disc pl-5 space-y-1 text-xs">
+            <template x-for="t in r.reasons" :key="t"><li style="overflow-wrap:anywhere" x-text="t"></li></template>
+          </ul>
+        </div>
+        <div>
+          <div class="text-xs font-semibold uppercase tracking-wider mb-1" style="color:var(--text-secondary)">Last 24 hours</div>
+          <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+            <span style="color:var(--text-secondary)">Workers</span>
+            <span x-text="`${r.workers.count} running · ${r.workers.broken.length + r.workers.stale.length} in trouble · ${r.workers.restarts} restarts`"></span>
+            <template x-for="g in r.link" :key="g.gateway">
+              <div class="contents">
+                <span style="color:var(--text-secondary)" x-text="`Polls, ${g.name}`"></span>
+                <span x-text="g.probes ? `${g.ok} ok · ${g.failed} failed of ${g.probes}` : 'none recorded'"></span>
+              </div>
+            </template>
+            <span style="color:var(--text-secondary)">Alerts</span>
+            <span x-text="`${r.alerts.open.length} active · ${r.alerts.raised.length} kinds raised`"></span>
+            <span style="color:var(--text-secondary)">Log</span>
+            <span x-text="`${r.logs.errors} errors · ${r.logs.warnings} warnings`"></span>
+            <span style="color:var(--text-secondary)">Database</span>
+            <span x-text="size(r.housekeeping.db_bytes) + ' · ' + (r.housekeeping.log_rows ?? 0) + ' log rows'"></span>
+            <span style="color:var(--text-secondary)">Last backup</span>
+            <span x-text="r.housekeeping.last_backup_ts ? when(r.housekeeping.last_backup_ts) : 'none'"></span>
+          </div>
+        </div>
+        <div x-show="r.logs.patterns.length">
+          <div class="text-xs font-semibold uppercase tracking-wider mb-1" style="color:var(--text-secondary)">Log patterns</div>
+          <template x-for="p in r.logs.patterns" :key="p.level + p.pattern">
+            <div class="text-xs py-1" style="border-top:1px solid var(--border)">
+              <span class="font-mono" x-text="`${p.count} ×`"></span>
+              <span :style="{color: p.level === 'ERROR' ? 'var(--danger)' : 'var(--text-secondary)'}" x-text="p.level.toLowerCase()"></span>
+              <span x-show="p.flags.length" x-text="'(' + p.flags.join(', ') + ')'"></span>
+              <div style="overflow-wrap:anywhere" x-text="p.example"></div>
+            </div>
+          </template>
+        </div>
+        <div x-show="past.length > 1">
+          <label class="text-xs" style="color:var(--text-secondary)">Earlier reports
+            <select class="ml-2" @change="open($event.target.value)" data-testid="health-report-past">
+              <template x-for="p in past" :key="p.id">
+                <option :value="p.id" :selected="cur && p.id === cur.id" x-text="`${p.period} · ${p.level}`"></option>
+              </template>
+            </select>
+          </label>
+        </div>
+      </div>
+    </template>
+  </div>
+
   <!-- Connection -->
   <div class="card" style="padding:0;overflow:hidden">
     <div class="px-5 py-3 border-b border-white/[0.06]">

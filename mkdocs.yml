@@ -135,6 +135,7 @@ nav:
       - guide/phone-and-remote-access.md
       - guide/security.md
       - guide/multi-gateway.md
+      - guide/health-report.md
       - guide/energy-and-costs.md
       - USER_GUIDE.md
   - Developers Guide:

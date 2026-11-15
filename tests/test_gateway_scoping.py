@@ -31,6 +31,7 @@ NOT_DEVICE_BOUND = {
     "api/utilities",               # utility roster — global config, not per-gateway
     "api/tariffs",                 # tariff roster — global config, not per-gateway
     "api/billing/page",            # meters + setup steps (#613) — global config, not per-gateway
+    "api/health/report",         # the bridge-health report (owner 2026-11-15): bridge-wide, not per-gateway
     "api/constants",               # automation constants — global config, not per-gateway
     "api/mqtt/groups",             # MQTT publish-group preference — global, not per-gateway
     "api/admin",                   # DB storage/backup/restore/vacuum/export — bridge-wide DB (rows gateway-tagged inside), not a device read
