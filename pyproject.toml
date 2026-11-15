@@ -28,7 +28,7 @@ dependencies = [
     # shared packages; move it only after G0 + G1.
     "franklinwh-system-view==0.3.1",
     "franklinwh-ha-notify==0.1.4",    # actionable HA notifications (#374)
-    "hems==0.1.1",                    # the OUTUS engine: setup steps, OUTUS plans, the bill (#613)
+    "hems==0.1.2",                    # the OUTUS engine: setup steps, OUTUS plans, bills (#613)
     "fastapi>=0.111",
     "uvicorn>=0.29",
     "jinja2>=3.1",

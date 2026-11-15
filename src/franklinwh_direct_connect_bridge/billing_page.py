@@ -139,3 +139,106 @@ def bill(store, meter_id: str | None, now: dt.datetime) -> dict[str, Any] | None
     if no_zone:                       # TOU windows and the period's days are then in UTC
         out["x-timezone-missing"] = True
     return out
+
+
+def _readings_ledger(store, meter_id: str, gateway_ids: list[str], start: dt.datetime,
+                     end: dt.datetime) -> list[dict]:
+    """5-minute intervals for [start, end) from the readings, not kept (a closed period)."""
+    state = ledger.new_state(meter_id)
+    out: list[dict] = []
+    for ts, gw, w in store.grid_readings(int(start.timestamp()), int(end.timestamp()) - 1, gateway_ids):
+        out += ledger.add_reading(state, gw, ts, w)
+    cur = ledger.open_interval(state)
+    return out + ([cur] if cur else [])
+
+
+def _final_bill(store, meter: dict, plan: dict, tz: ZoneInfo, start: dt.datetime,
+                end: dt.datetime, n: int = 1) -> dict:
+    ivs = _readings_ledger(store, meter["id"], meter["gateway_ids"], start, end)
+    out = hbilling.bill({**plan, "timezone": str(tz)}, {"general": ivs}, start, end)
+    out["id"] = f"{meter['id']}:{start.date().isoformat()}" + (f":{n}" if n > 1 else "")
+    out["meter"] = {"ref": meter["id"], "commodity": "electricity", "unit": "kWh"}
+    out["x-tariffs"] = {t["id"]: t.get("name") or t["id"] for t in plan.get("tariffs") or []}
+    out["x-timezone"] = str(tz)                       # the period's dates are in this zone
+    return out
+
+
+def _context(store, meter_id: str | None):
+    meters = _meters(store)
+    meter = next((m for m in meters if m["id"] == meter_id), None) or (meters[0] if meters else None)
+    if meter is None:
+        return None, [], None
+    return meter, _plans(store, meter["id"]), store.meter(meter["id"]) or {}
+
+
+def closed_bills(store, meter_id: str | None, now: dt.datetime, limit: int = 12,
+                 include_superseded: bool = False) -> list[dict]:
+    """The meter's closed periods' bills, newest first. A period not yet billed is worked out
+    now by hems (final) and kept; a kept one is never recalculated here. Periods before the
+    first reading, or with no plan in force, have no bill."""
+    meter, plans, row = _context(store, meter_id)
+    if meter is None or not plans:
+        return []
+    first = store.first_reading_ts(meter["gateway_ids"])
+    if first is None:
+        return []
+    probe = plans[0]
+    tz = _zone(store, probe, row) or ZoneInfo("UTC")
+    local = now.astimezone(tz)
+    cyc = (hbilling.plan_in_force(plans, local.date()) or probe).get("billing") or {}
+    cur_start, _ = periods.bounds(local, cyc.get("cycle", "monthly"), cyc.get("cycle_day", 1))
+    end, out = cur_start, []
+    while len(out) < limit and end.timestamp() > first:
+        p_local = end - dt.timedelta(seconds=1)
+        plan = hbilling.plan_in_force(plans, p_local.date())
+        c = (plan or {}).get("billing") or cyc
+        start, _ = periods.bounds(p_local, c.get("cycle", "monthly"), c.get("cycle_day", 1))
+        if plan is not None:
+            kept = store.outus_bills(meter["id"], include_superseded=include_superseded,
+                                     period_start=start.timestamp())
+            if not kept:
+                b = _final_bill(store, meter, plan, tz, start, end)
+                store.save_outus_bill(b, meter["id"], start.timestamp(), end.timestamp())
+                kept = [b]
+            out += kept
+        end = start
+    return out
+
+
+def recalculate(store, bill_id: str, now: dt.datetime) -> dict | None:
+    """Work a kept bill out again with today's plan and readings: a new bill that supersedes
+    it (OUTUS §6). The old one stays, marked superseded."""
+    old = store.outus_bill(bill_id)
+    if old is None or old.get("status") == "superseded":
+        return None
+    meter, plans, row = _context(store, old["x-meter-id"])
+    if meter is None or not plans:
+        return None
+    tz = _zone(store, plans[0], row) or ZoneInfo("UTC")
+    start = dt.datetime.fromtimestamp(old["x-start"], tz)
+    end = dt.datetime.fromtimestamp(old["x-end"], tz)
+    plan = hbilling.plan_in_force(plans, (end - dt.timedelta(seconds=1)).date())
+    if plan is None:
+        return None
+    n = len(store.outus_bills(meter["id"], include_superseded=True, period_start=start.timestamp())) + 1
+    new = _final_bill(store, meter, plan, tz, start, end, n)
+    new["supersedes"] = bill_id
+    store.supersede_outus_bill(bill_id)
+    store.save_outus_bill(new, meter["id"], start.timestamp(), end.timestamp())
+    return new
+
+
+def usage(store, meter_id: str | None, start: dt.datetime, end: dt.datetime) -> dict | None:
+    """The meter's 5-minute usage for [start, end) as an OUTUS usage document."""
+    meter, _plans_, _row = _context(store, meter_id)
+    if meter is None:
+        return None
+    ivs = _readings_ledger(store, meter["id"], meter["gateway_ids"], start, end)
+
+    def iso(ts):
+        return dt.datetime.fromtimestamp(ts, dt.timezone.utc).isoformat().replace("+00:00", "Z")
+    return {"type": "outus/usage", "version": 1,
+            "meter": {"ref": meter["id"], "commodity": "electricity", "unit": "kWh"},
+            "channels": [{"channel": "general", "intervals": [
+                {**{k: v for k, v in iv.items() if k != "start"}, "start": iso(iv["start"])}
+                for iv in ivs]}]}
