@@ -19,6 +19,11 @@ full cycles (discharged ÷ the Battery capacity setting), the week's energy, and
 cycles by depth (rainflow, from the SoC readings). Its level is ``info``: it goes to Home
 Assistant, not the phones. Switch: ``health.weekly``.
 
+Phase 3: **unusual-change flags** in the daily report: yesterday's figures from the snapshot
+against the median of the 28 days before (at least 7 needed), per gateway and for the bridge.
+Only a drop in SoH or efficiency turns the report amber (and so reaches the phones); the
+others are listed and leave the colour alone. Rules in :func:`unusual`.
+
 Where it goes: ``GET /api/health/report``, the Health tab, one Home Assistant notification
 that replaces the last (``fwh_dc_health_daily``), and the phones only when it is amber or
 red. Both follow the Push notifications switch; the phones also follow their trigger
@@ -79,6 +84,27 @@ ALL_DAY_HOURS = 20
 LINK_FAIL_SHARE = 0.05
 LINK_MIN_PROBES = 100
 TOP_PATTERNS = 15
+#: Unusual changes: yesterday against the median of up to this many days before it, with at
+#: least ``UNUSUAL_MIN_DAYS`` of them.
+UNUSUAL_DAYS = 28
+UNUSUAL_MIN_DAYS = 7
+#: A daily total is unusual at twice the median or more, or half or less, and at least its
+#: floor away from it (so 0.1 kWh against 0.04 kWh is not news).
+UNUSUAL_FACTOR = 2.0
+#: SoH and efficiency: a drop of this many points below the median. These two grade.
+SOH_DROP = 1.0
+EFFICIENCY_DROP = 5.0
+#: A day's efficiency is over the 7 days to its end (one day's ends rarely match).
+EFFICIENCY_WINDOW_DAYS = 7
+# (column, label, floor Wh): daily totals; a rise or a fall.
+_UNUSUAL_ENERGY = (("battery_charged_wh", "battery charged", 2000.0),
+                   ("battery_discharged_wh", "battery discharged", 2000.0),
+                   ("solar_wh", "solar", 2000.0), ("grid_import_wh", "grid import", 2000.0),
+                   ("grid_export_wh", "grid export", 2000.0))
+# (column, label, floor): counts a day; only a rise is unusual. Log counts are the bridge's.
+_UNUSUAL_COUNTS = (("log_warnings", "warnings", 20), ("log_errors", "errors", 5),
+                   ("alerts", "alerts raised", 3))
+
 #: An example log line is cut to this.
 EXAMPLE_MAX = 300
 
@@ -273,7 +299,8 @@ def grade(report: dict) -> tuple[str, list[str]]:
       (one that cleared but nobody acknowledged doesn't count).
     - **Amber:** a warning condition still active; any error in the log; a warning
       pattern seen at least ``PATTERN_MIN`` times that is new, growing or all day; a
-      gateway with 5 % or more of its polls failed (of at least 100).
+      gateway with 5 % or more of its polls failed (of at least 100); a flagged drop in SoH
+      or efficiency (:func:`unusual`). Other unusual-change flags never change the colour.
     - **Green:** none of those.
     """
     found: list[tuple[str, str]] = []
@@ -293,6 +320,9 @@ def grade(report: dict) -> tuple[str, list[str]]:
         elif p["flags"] and p["count"] >= PATTERN_MIN:
             found.append((AMBER, f"{p['count']} × warning ({', '.join(p['flags'])}): "
                                  f"{p['example'][:120]}"))
+    for f in report.get("unusual", {}).get("flags", []):
+        if f["grades"]:
+            found.append((AMBER, f["text"]))
     for g in report["link"]:
         share = g.get("failed_share")
         if share is not None and g["probes"] >= LINK_MIN_PROBES and share >= LINK_FAIL_SHARE:
@@ -358,10 +388,98 @@ def build_daily(store, now: float, *, registry=None, gateways: list[dict],
                  "errors": sum(p["count"] for p in patterns if p["level"] == "ERROR"),
                  "pattern_count": len(patterns), "patterns": patterns[:TOP_PATTERNS]},
         "housekeeping": house,
+        "unusual": unusual(store, gateways, _day(_midnight(_local(store, now)) - dt.timedelta(days=1))),
     }
     level, reasons = grade(report)
     report.update(level=level, reasons=reasons, headline=_headline(level, reasons, report))
     return report
+
+
+# ── unusual changes (phase 3) ────────────────────────────────────────────────
+def _flag(value: float, med: float, floor: float, both: bool) -> str | None:
+    if value >= med * UNUSUAL_FACTOR and value - med >= floor:
+        return "high"
+    if both and value <= med / UNUSUAL_FACTOR and med - value >= floor:
+        return "low"
+    return None
+
+
+def unusual_text(f: dict) -> str:
+    """One line, e.g. ``Home: SoH down, 94.5% (usual 96%)``."""
+    if f["unit"] == "kWh":
+        v, m = f"{f['value'] / 1000:.1f} kWh", f"{f['median'] / 1000:.1f} kWh"
+    elif f["unit"] == "%":
+        v, m = f"{f['value']:g}%", f"{f['median']:g}%"
+    else:
+        v, m = f"{f['value']:g}", f"{f['median']:g}"
+    word = {"high": "high", "low": "low", "drop": "down"}[f["direction"]]
+    return f"{f['name']}: {f['label']} {word}, {v} (usual {m})"
+
+
+def _window_efficiency(rows: list[dict]) -> dict[str, float]:
+    """``{day: efficiency over the EFFICIENCY_WINDOW_DAYS to the end of that day}``."""
+    out = {}
+    for b in rows:
+        span = [r for r in rows if 0 <= _days_between(r["day"], b["day"]) <= EFFICIENCY_WINDOW_DAYS]
+        e = efficiency(span)
+        if e and e["to"] == b["day"]:
+            out[b["day"]] = e["pct"]
+    return out
+
+
+def unusual(store, gateways: list[dict], day: str) -> dict:
+    """Flags for ``day`` (yesterday) against the median of the ``UNUSUAL_DAYS`` before it,
+    from the daily snapshot. A figure with fewer than ``UNUSUAL_MIN_DAYS`` days to compare
+    with is skipped.
+
+    - **SoH** down ``SOH_DROP`` points or more. Grades (amber).
+    - **Efficiency** (over the 7 days to the day's end) down ``EFFICIENCY_DROP`` points or
+      more. Grades (amber).
+    - **Daily energy** (battery charged and discharged, solar, grid import and export):
+      twice the median or more, or half or less, and at least 2 kWh away.
+    - **Counts a day** (alerts per gateway; the bridge's warnings, errors and alerts):
+      twice the median or more, and at least the floor above it.
+    """
+    first = _day(dt.datetime.strptime(day, "%Y-%m-%d")
+                 - dt.timedelta(days=UNUSUAL_DAYS + 1 + EFFICIENCY_WINDOW_DAYS))
+    flags: list[dict] = []
+    checked = 0
+    for gw, name in [(g["id"], g["name"]) for g in gateways] + [("", "Bridge")]:
+        rows = sorted((r for r in store.health_snapshots(gw, days=UNUSUAL_DAYS + 40)
+                       if first <= r["day"] <= day), key=lambda r: r["day"])
+        if not rows or rows[-1]["day"] != day:
+            continue
+        series: list[tuple] = []
+        if gw:
+            series.append(("soh", "SoH", "%", {r["day"]: r["soh"] for r in rows if r.get("soh") is not None},
+                           "drop", SOH_DROP))
+            series.append(("efficiency", "efficiency", "%", _window_efficiency(rows), "drop",
+                           EFFICIENCY_DROP))
+            for col, label, floor in _UNUSUAL_ENERGY:
+                series.append((col, label, "kWh", {r["day"]: r[col] for r in rows if r.get(col) is not None},
+                               "both", floor))
+        for col, label, floor in _UNUSUAL_COUNTS:
+            if gw and col != "alerts":
+                continue                           # the log isn't kept per gateway
+            series.append((col, label, "", {r["day"]: r[col] for r in rows if r.get(col) is not None},
+                           "up", floor))
+        for col, label, unit, values, how, floor in series:
+            prior = [v for d, v in values.items() if 1 <= _days_between(d, day) <= UNUSUAL_DAYS]
+            if day not in values or len(prior) < UNUSUAL_MIN_DAYS:
+                continue
+            checked += 1
+            value, med = float(values[day]), float(statistics.median(prior))
+            if how == "drop":
+                direction = "drop" if med - value >= floor else None
+            else:
+                direction = _flag(value, med, floor, how == "both")
+            if direction:
+                f = {"gateway": gw, "name": name, "metric": col, "label": label, "unit": unit,
+                     "value": round(value, 2), "median": round(med, 2), "direction": direction,
+                     "days": len(prior), "grades": how == "drop"}
+                f["text"] = unusual_text(f)
+                flags.append(f)
+    return {"day": day, "checked": checked, "flags": flags}
 
 
 # ── the weekly battery report (phase 2) ──────────────────────────────────────
@@ -497,6 +615,12 @@ def notification_text(report: dict) -> tuple[str, str]:
     lines += [f"- {r}" for r in report["reasons"][1:6]]
     if len(report["reasons"]) > 6:
         lines.append(f"- and {len(report['reasons']) - 6} more")
+    other = [f for f in report.get("unusual", {}).get("flags", []) if not f["grades"]]
+    if other:
+        lines.append("Unusual yesterday:")
+        lines += [f"- {f['text']}" for f in other[:5]]
+        if len(other) > 5:
+            lines.append(f"- and {len(other) - 5} more")
     lines.append("Open the bridge → Health for the full report.")
     return title, "\n".join(lines)
 
