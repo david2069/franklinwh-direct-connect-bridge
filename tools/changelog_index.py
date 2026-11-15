@@ -61,6 +61,23 @@ def tidy(body: str) -> str:
     return body.strip("\n") + "\n"
 
 
+_LINK = re.compile(r"\]\(([^)\s]+)\)")
+
+
+def relink(body: str) -> str:
+    """Links written for CHANGELOG.md at the repo root, made to work from
+    docs/changelog/<version>.md: ``docs/x`` becomes ``../x`` (the docs site and GitHub
+    both resolve it), any other repo path a GitHub link. Web links and anchors stay."""
+    def fix(m):
+        url = m.group(1)
+        if re.match(r"[a-z][a-z0-9+.-]*:", url, re.I) or url.startswith(("#", "/", "../")):
+            return m.group(0)
+        if url.startswith("docs/"):
+            return f"](../{url[len('docs/'):]})"
+        return f"]({REPO_URL}/blob/main/{url})"
+    return _LINK.sub(fix, body)
+
+
 def doc_text(version: str, date: str, body: str) -> str:
     return f"# {version} — {date}\n\n{tidy(body)}"
 
@@ -145,7 +162,7 @@ def count_line(counts: dict[str, int]) -> str:
 
 def index_entry(version: str, body: str) -> str:
     counts, highlights = summarise(body)
-    out = [f"### [{version}]({SITE}/changelog/{version}/)", ""]
+    out = [f"### [{version}]({REPO_URL}/blob/main/docs/changelog/{version}.md)", ""]
     line = count_line(counts)
     if line:
         out += [line, ""]
@@ -249,7 +266,7 @@ def release(root: Path, version: str, date: str) -> None:
     if not body.strip():
         raise SystemExit("[Unreleased] is empty; nothing to release")
     docs.mkdir(parents=True, exist_ok=True)
-    target.write_text(doc_text(version, date, body))
+    target.write_text(doc_text(version, date, relink(body)))
     changelog.write_text(text[:start] + "\n" + text[end:])
     write_index(root)
 
