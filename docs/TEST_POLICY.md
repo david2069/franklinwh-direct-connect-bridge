@@ -39,7 +39,7 @@ Reviewed by the franklinwh-modbus-bridge session on 2026-10-16. Its review is fo
   - Modbus bridge: `pyproject.toml`, `__init__.py`, `addon/config.yaml`, `addon/Dockerfile` `BRIDGE_REF`, `addon/CHANGELOG.md`
 - **Changelog layout: a short index plus full notes per version.** `CHANGELOG.md` holds the preamble,
   `## [Unreleased]` in full (the working area every change writes into) and then the index under its own `## Releases` heading (so HA's update dialog doesn't show it under
-  [Unreleased]; its links are full web addresses), newest first, with one `## YYYY-MM-DD` heading per release day. Each release under it is `### [X.Y.Z](docs-site link)`,
+  [Unreleased]; its links are full web addresses), newest first, with one `## YYYY-MM-DD` heading per release day. Each release under it is `### [X.Y.Z](link to docs/changelog/X.Y.Z.md on GitHub)`,
   a counts line (`Added n · Changed n · Fixed n · Removed n`, non-zero kinds only, top-level bullets per
   subsection, other subsections such as Security under their own name) and 3 to 6 highlights: the bold
   lead-ins of its entries (Added and Fixed first), or the area lines when the notes open with a grouped

@@ -156,3 +156,28 @@ def test_old_intro_is_replaced_on_rebuild(tmp_path):
     ci.write_index(root)
     text = p.read_text()
     assert "](docs/changelog/)" not in text and text.count("## Releases") == 1
+
+
+def test_index_links_go_to_the_notes_on_github(tmp_path):
+    """Owner 2026-11-16: the docs site can lag a release (its deploy is separate), so the
+    index links to the notes file in the repo, which a release always contains."""
+    root = make(tmp_path)
+    text = (root / "CHANGELOG.md").read_text()
+    assert f"### [1.2.0]({ci.REPO_URL}/blob/main/docs/changelog/1.2.0.md)" in text
+
+
+def test_release_rewrites_repo_links_so_the_notes_work_from_docs_changelog(tmp_path):
+    """0.5.46's docs deploy failed: links written for CHANGELOG.md at the repo root
+    (docs/guide/x.md, INSTALL.md) are broken from docs/changelog/, and the strict build
+    stops. Moved notes get links that work from there, on GitHub and on the docs site."""
+    root = make(tmp_path)
+    text = (root / "CHANGELOG.md").read_text().replace(
+        "- **Shiny thing** (#1). Does it.",
+        "- **Shiny thing** (#1). See [the guide](docs/guide/x.md#how), [install](INSTALL.md), "
+        "[web](https://example.com/a.md) and [here](#top).")
+    (root / "CHANGELOG.md").write_text(text)
+    ci.release(root, "1.3.0", "2026-03-03")
+    doc = (root / "docs" / "changelog" / "1.3.0.md").read_text()
+    assert "[the guide](../guide/x.md#how)" in doc
+    assert f"[install]({ci.REPO_URL}/blob/main/INSTALL.md)" in doc
+    assert "[web](https://example.com/a.md)" in doc and "[here](#top)" in doc

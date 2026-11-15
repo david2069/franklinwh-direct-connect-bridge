@@ -70,9 +70,10 @@ document.addEventListener('alpine:init', () => {
     },
   }));
 
-  // The daily bridge-health report (owner 2026-11-15). Bridge-wide: no gateway.
-  Alpine.data('healthReport', () => ({
-    cur: null, past: [], daily: true, busy: false, err: '',
+  // The daily bridge-health report and the weekly battery report (owner 2026-11-15).
+  // Bridge-wide: no gateway. ``kind`` is 'daily' or 'weekly'.
+  Alpine.data('healthReport', (kind = 'daily') => ({
+    kind, cur: null, past: [], on: true, busy: false, err: '',
 
     init() {
       this.$watch('$store.app.activeTab', (t) => { if (t === 'health') this.load(); });
@@ -84,10 +85,10 @@ document.addEventListener('alpine:init', () => {
     async load(id) {
       this.err = '';
       try {
-        const q = id ? `?id=${encodeURIComponent(id)}` : '';
+        const q = id ? `?id=${encodeURIComponent(id)}` : `?kind=${this.kind}`;
         const d = await (await fetch('api/health/report' + q)).json();
-        this.cur = d.report; this.daily = d.daily;
-        this.past = (await (await fetch('api/health/reports')).json()).reports || [];
+        this.cur = d.report; this.on = d[this.kind];
+        this.past = (await (await fetch(`api/health/reports?kind=${this.kind}`)).json()).reports || [];
       } catch (e) { this.err = String(e); }
     },
 
@@ -96,24 +97,25 @@ document.addEventListener('alpine:init', () => {
     async runNow() {
       this.busy = true; this.err = '';
       try {
-        const r = await fetch('api/health/report/run', { method: 'POST' });
+        const r = await fetch(`api/health/report/run?kind=${this.kind}`, { method: 'POST' });
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
         await this.load((await r.json()).id);
       } catch (e) { this.err = e.message; }
       finally { this.busy = false; }
     },
 
-    async setDaily(on) {
+    async setOn(on) {
       this.err = '';
       try {
         const r = await fetch('api/health/report/settings', {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ daily: on }) });
+          body: JSON.stringify({ [this.kind]: on }) });
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
-        this.daily = (await r.json()).daily;
+        this.on = (await r.json())[this.kind];
       } catch (e) { this.err = e.message; }
     },
 
+    num(v, unit = '') { return v == null ? '–' : `${Math.round(v * 100) / 100}${unit}`; },
     chipClass(level) { return level === 'red' ? 'error' : level === 'amber' ? 'warn' : 'ok'; },
     when(ts) { return ts ? new Date(ts * 1000).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''; },
     size(b) { return b == null ? '–' : b < 1048576 ? `${(b / 1024).toFixed(0)} KB` : `${(b / 1048576).toFixed(1)} MB`; },

@@ -58,6 +58,7 @@ class GatewayState:
     cloud_alarms: list | None = None
     cloud_alarms_ts: float = 0.0
     apower_alarms: dict | None = None   # aPower id -> alarmLevel (0 = none)
+    apower_soh: dict | None = None      # aPower id -> state of health % (same read)
     agate_events: int | None = None     # 1829 event_block num
     device_alarms_ts: float = 0.0
     published_entities: int | None = None  # count actually published to HA via MQTT discovery

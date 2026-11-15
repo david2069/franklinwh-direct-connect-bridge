@@ -218,7 +218,8 @@ def _dispatch_kind(gw) -> tuple:
 
 
 class HealthReportSettingsReq(BaseModel):
-    daily: bool
+    daily: bool | None = None
+    weekly: bool | None = None
 
 
 class ModeReq(BaseModel):
@@ -1098,6 +1099,9 @@ def create_app() -> FastAPI:
             try:
                 store.seed_gateways(env_entries)
                 store.ensure_default_site_meter()   # default Home site + Meter 1; attach gateways
+                from . import tariff_plans
+                for _tid in tariff_plans.adopt_orphans(store):    # one meter: loose tariffs go on it (#650)
+                    log.info("tariff %s put on the only meter (it was on none)", _tid)
                 flagged = [r["id"] for r in store.gateways() if r.get("is_default")]
                 default_id = store.ensure_one_default()   # exactly one stored default (#182)
                 if default_id and flagged != [default_id]:
@@ -1871,34 +1875,39 @@ def create_app() -> FastAPI:
         out["report"] = _json.loads(row["body"])
         return out
 
+    _HEALTH_KIND = Query("daily", pattern="^(daily|weekly)$")
+
     @app.get("/api/health/report")
-    def api_health_report(id: int | None = Query(None)):
-        """The latest daily report (or the one with ``id``) and whether it is switched on."""
+    def api_health_report(id: int | None = Query(None), kind: str = _HEALTH_KIND):
+        """The latest daily or weekly report (or the one with ``id``), and whether each is
+        switched on."""
         store = db.get_store(get_settings())
         if store is None:
             raise HTTPException(status_code=503, detail="metrics store is off")
-        row = store.health_report(id) if id is not None else store.latest_health_report("daily")
+        row = store.health_report(id) if id is not None else store.latest_health_report(kind)
         if id is not None and row is None:
             raise HTTPException(status_code=404, detail="no such report")
-        return {"report": _health_row(row), "daily": health_report.daily_on(store)}
+        return {"report": _health_row(row), "daily": health_report.daily_on(store),
+                "weekly": health_report.weekly_on(store)}
 
     @app.get("/api/health/reports")
-    def api_health_reports(limit: int = Query(60, ge=1, le=400)):
+    def api_health_reports(limit: int = Query(60, ge=1, le=400), kind: str = _HEALTH_KIND):
         """Past reports, newest first: id, period, time, colour and headline."""
         store = db.get_store(get_settings())
         if store is None:
             raise HTTPException(status_code=503, detail="metrics store is off")
-        return {"reports": store.health_reports("daily", limit)}
+        return {"reports": store.health_reports(kind, limit)}
 
     @app.post("/api/health/report/run")
-    def api_health_report_run():
-        """Build and keep today's report now. Not sent: the 07:00 one is."""
+    def api_health_report_run(kind: str = _HEALTH_KIND):
+        """Build and keep a report now: today's daily one, or last week's battery report.
+        Not sent: the scheduled ones are."""
         store = db.get_store(get_settings())
         if store is None:
             raise HTTPException(status_code=503, detail="metrics store is off")
         out = health_report.run(store, time.time(),
                                 gateways=health_report.enabled_gateways(store),
-                                backups_fn=lambda: _list_backups())
+                                backups_fn=lambda: _list_backups(), kind=kind)
         return {k: out[k] for k in ("id", "ts", "period", "level", "headline")}
 
     @app.put("/api/health/report/settings")
@@ -1906,8 +1915,11 @@ def create_app() -> FastAPI:
         store = db.get_store(get_settings())
         if store is None:
             raise HTTPException(status_code=503, detail="metrics store is off")
-        health_report.set_daily(store, req.daily)
-        return {"daily": health_report.daily_on(store)}
+        if req.daily is not None:
+            health_report.set_daily(store, req.daily)
+        if req.weekly is not None:
+            health_report.set_weekly(store, req.weekly)
+        return {"daily": health_report.daily_on(store), "weekly": health_report.weekly_on(store)}
 
     @app.get("/api/health/link")
     def api_health_link(gateway: str = Depends(_gateway_q), limit: int = Query(20, ge=1, le=200)):
@@ -2450,6 +2462,14 @@ def create_app() -> FastAPI:
     # ── sites + meters (Phase 1: multi-site / multi-meter roster) ─────────────
     _AC_TYPES = ("single", "split", "three")
 
+    def _changed(cur: dict | None, body: dict) -> str:
+        """The fields an edit changes, for the Audit Trail (#650)."""
+        keys = [k for k, v in body.items() if (cur or {}).get(k) != v and k != "unlock"]
+        return ", ".join(keys) or "no change"
+
+    def _named(row: dict | None, fallback: str) -> str:
+        return f"\"{(row or {}).get('name') or fallback}\""
+
     @app.get("/api/sites")
     def api_sites():
         st = _gw_store()
@@ -2464,25 +2484,33 @@ def create_app() -> FastAPI:
         if st is None:
             raise HTTPException(503, "metrics store is disabled")
         import uuid
-        return st.create_site(sid="site_" + uuid.uuid4().hex[:8], **req.model_dump())
+        row = st.create_site(sid="site_" + uuid.uuid4().hex[:8], **req.model_dump())
+        _audit("site_add", detail=f"site {_named(row, row['id'])}", result="added", ok=True)
+        return row
 
     @app.patch("/api/sites/{sid}")
     def api_site_update(sid: str, req: SiteUpdate):
         _guard_writes()
         st = _gw_store()
-        if st is None or st.site(sid) is None:
+        cur = st.site(sid) if st is not None else None
+        if cur is None:
             raise HTTPException(404, f"no site '{sid}'")
-        return st.update_site(sid, **req.model_dump(exclude_unset=True))
+        body = req.model_dump(exclude_unset=True)
+        out = st.update_site(sid, **body)
+        _audit("site_edit", detail=f"site {_named(cur, sid)}: {_changed(cur, body)}", result="saved", ok=True)
+        return out
 
     @app.delete("/api/sites/{sid}")
     def api_site_delete(sid: str):
         _guard_writes()
         st = _gw_store()
-        if st is None or st.site(sid) is None:
+        cur = st.site(sid) if st is not None else None
+        if cur is None:
             raise HTTPException(404, f"no site '{sid}'")
         if st.meters(site_id=sid):
             raise HTTPException(409, "site has meters — move or delete them first")
         st.delete_site(sid)
+        _audit("site_delete", detail=f"site {_named(cur, sid)}", result="deleted", ok=True)
         return {"ok": True, "id": sid}
 
     @app.get("/api/meters")
@@ -2503,13 +2531,17 @@ def create_app() -> FastAPI:
         if req.ac_type not in _AC_TYPES:
             raise HTTPException(422, f"ac_type must be one of {', '.join(_AC_TYPES)}")
         import uuid
-        return st.create_meter(mid="meter_" + uuid.uuid4().hex[:8], **req.model_dump())
+        row = st.create_meter(mid="meter_" + uuid.uuid4().hex[:8], **req.model_dump())
+        _audit("meter_add", detail=f"meter {_named(row, row['id'])} on site {_named(st.site(req.site_id), req.site_id)}",
+               result="added", ok=True)
+        return row
 
     @app.patch("/api/meters/{mid}")
     def api_meter_update(mid: str, req: MeterUpdate):
         _guard_writes()
         st = _gw_store()
-        if st is None or st.meter(mid) is None:
+        cur = st.meter(mid) if st is not None else None
+        if cur is None:
             raise HTTPException(404, f"no meter '{mid}'")
         body = req.model_dump(exclude_unset=True)
         if body.get("ac_type") and body["ac_type"] not in _AC_TYPES:
@@ -2517,19 +2549,23 @@ def create_app() -> FastAPI:
         tid = body.get("tariff_id")
         if tid and st.tariff(tid) is not None and not st.tariff(tid).get("meter_id"):
             st.update_tariff(tid, meter_id=mid)      # the tariff now prices this meter
-        return st.update_meter(mid, **body)
+        out = st.update_meter(mid, **body)
+        _audit("meter_edit", detail=f"meter {_named(cur, mid)}: {_changed(cur, body)}", result="saved", ok=True)
+        return out
 
     @app.delete("/api/meters/{mid}")
     def api_meter_delete(mid: str):
         _guard_writes()
         st = _gw_store()
-        if st is None or st.meter(mid) is None:
+        cur = st.meter(mid) if st is not None else None
+        if cur is None:
             raise HTTPException(404, f"no meter '{mid}'")
         attached = [g for g in st.gateways() if g.get("meter_id") == mid]
         if attached:
             raise HTTPException(409, f"{len(attached)} gateway(s) connect to this meter — "
                                      "reassign them first")
         st.delete_meter(mid)
+        _audit("meter_delete", detail=f"meter {_named(cur, mid)}", result="deleted", ok=True)
         return {"ok": True, "id": mid}
 
     # ── utilities + tariffs ────────────────────────────────────────────────────
@@ -2548,26 +2584,44 @@ def create_app() -> FastAPI:
             raise HTTPException(503, "metrics store is disabled")
         import uuid
         body = req.model_dump()
-        return st.create_utility(uid="util_" + uuid.uuid4().hex[:8], name=body.pop("name", ""), **body)
+        row = st.create_utility(uid="util_" + uuid.uuid4().hex[:8], name=body.pop("name", ""), **body)
+        _audit("retailer_add", detail=f"retailer {_named(row, row['id'])}"
+               + (f" · {row['network_dnsp']}" if row.get("network_dnsp") else ""), result="added", ok=True)
+        return row
 
     @app.patch("/api/utilities/{uid}")
     def api_utility_update(uid: str, req: UtilityUpdate):
         _guard_writes()
         st = _gw_store()
-        if st is None or st.utility(uid) is None:
+        cur = st.utility(uid) if st is not None else None
+        if cur is None:
             raise HTTPException(404, f"no utility '{uid}'")
-        return st.update_utility(uid, **req.model_dump(exclude_unset=True))
+        body = req.model_dump(exclude_unset=True)
+        out = st.update_utility(uid, **body)
+        _audit("retailer_edit", detail=f"retailer {_named(cur, uid)}: {_changed(cur, body)}", result="saved", ok=True)
+        return out
 
     @app.delete("/api/utilities/{uid}")
     def api_utility_delete(uid: str):
         _guard_writes()
         st = _gw_store()
-        if st is None or st.utility(uid) is None:
+        cur = st.utility(uid) if st is not None else None
+        if cur is None:
             raise HTTPException(404, f"no utility '{uid}'")
         if st.tariffs(utility_id=uid):
             raise HTTPException(409, "utility has tariffs — delete them first")
         st.delete_utility(uid)
+        _audit("retailer_delete", detail=f"retailer {_named(cur, uid)}", result="deleted", ok=True)
         return {"ok": True, "id": uid}
+
+    def _tariff_where(t: dict | None) -> str:
+        """'"AGL Home" (AGL Energy) on "Meter 1"' for the Audit Trail (#650)."""
+        st = _gw_store()
+        t = t or {}
+        u = st.utility(t.get("utility_id")) if st is not None and t.get("utility_id") else None
+        m = st.meter(t.get("meter_id")) if st is not None and t.get("meter_id") else None
+        return (f"tariff {_named(t, t.get('id') or '')}" + (f" ({u.get('name')})" if u and u.get("name") else "")
+                + (f" on meter {_named(m, t.get('meter_id'))}" if m else " on no meter"))
 
     @app.get("/api/tariffs")
     def api_tariffs(utility: str | None = Query(None)):
@@ -2603,7 +2657,13 @@ def create_app() -> FastAPI:
                          plan_version=body.pop("plan_version", ""), **body)
         if pl is not None:
             tariff_plans.apply(st, mid, pl)
-        return st.tariff(tid)
+        else:
+            tariff_plans.adopt_orphans(st)      # one meter: it goes on it (#650)
+        row = st.tariff(tid)
+        _audit("tariff_add", detail=_tariff_where(row) + (f", from {row['effective_start']}"
+                                                          if row.get("effective_start") else ""),
+               result="added", ok=True)
+        return row
 
     @app.patch("/api/tariffs/{tid}")
     def api_tariff_update(tid: str, req: TariffUpdate):
@@ -2639,7 +2699,9 @@ def create_app() -> FastAPI:
                                        if k not in ("effective_start", "effective_end")})
         for m in {old_mid, mid} - {None}:
             tariff_plans.repoint(st, m)
-        return st.tariff(tid) or out
+        row = st.tariff(tid) or out
+        _audit("tariff_edit", detail=f"{_tariff_where(row)}: {_changed(cur, body)}", result="saved", ok=True)
+        return row
 
     @app.delete("/api/tariffs/{tid}")
     def api_tariff_delete(tid: str, confirm_name: str | None = Query(None)):
@@ -2653,8 +2715,10 @@ def create_app() -> FastAPI:
             raise HTTPException(409, f"\"{t.get('name') or tid}\" ended on {t['effective_end']}, under "
                                      f"{tariff_plans.RECONCILE_MONTHS} months ago: past bills may still "
                                      "need it. Confirm with its exact name to delete it.")
+        where = _tariff_where(t)
         st.delete_tariff(tid)
         tariff_plans.repoint(st, t.get("meter_id"))
+        _audit("tariff_delete", detail=where, result="deleted", ok=True)
         return {"ok": True, "id": tid}
 
     @app.post("/api/tariffs/validate")
@@ -2742,7 +2806,7 @@ def create_app() -> FastAPI:
                 "billing_cycle_day": tar_f["billing_cycle_day"], "timezone": tz,
                 "seasons": len(pr.get("seasons") or []),
                 "fixed_charges": len(tar_f.get("fixed_charges") or []),
-                "has_demand": bool(tar_f.get("demand_window")),
+                "has_demand": tariff_io.demand_on(req.profile or {}),
                 "has_export_bonus": bool(tar_f.get("bonus_window")),
                 "has_export_charge": bool(tar_f.get("charge_window")),
                 "effective_start": tar_f.get("effective_start"),
@@ -2768,6 +2832,10 @@ def create_app() -> FastAPI:
             if tz:
                 st.update_meter(mid, timezone=tz)
             attached = mid
+        close = (pl or {}).get("close") or {}
+        _audit("tariff_import", detail=_tariff_where(st.tariff(tid))
+               + (f", ends \"{close.get('name')}\" on {close.get('end')}" if close.get("name") else ""),
+               result="imported", ok=True)
         return {"ok": True, "utility_id": uid, "tariff_id": tid, "attached_meter": attached}
 
     # ── Energy Costs / billing view (FEAT-BILLING-SERVICE) ────────────────────
@@ -2812,9 +2880,17 @@ def create_app() -> FastAPI:
         from . import billing_page
         _guard_writes()
         st = _ha_store()
+        old = st.outus_bill(bid) if st else None
         new = billing_page.recalculate(st, bid, _dt.datetime.now(_dt.timezone.utc)) if st else None
         if new is None:
             raise HTTPException(409, "this bill can't be recalculated (superseded, or no plan in force)")
+        m = st.meter((old or {}).get("x-meter-id")) if (old or {}).get("x-meter-id") else None
+
+        def _day(ts):
+            return _dt.datetime.fromtimestamp(ts, _dt.timezone.utc).date().isoformat() if ts else "?"
+        _audit("bill_recalculate", detail=f"bill {bid} on meter {_named(m, (old or {}).get('x-meter-id') or '?')}, "
+               f"{_day((old or {}).get('x-start'))} to {_day((old or {}).get('x-end'))}",
+               result=f"new bill {new.get('id')}", ok=True)
         return new
 
     @app.get("/api/billing/usage")
