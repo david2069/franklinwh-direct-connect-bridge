@@ -296,7 +296,8 @@ The result, or why it was not accepted, is shown in the dialog.
 **One tariff in force per meter.** A tariff has **Effective from** and **Effective to**
 (blank = current). A retailer has **Provider from** and **Provider until** the same way;
 both are optional and save blank. An empty date box stays blank (Safari otherwise greys
-in today's date, which nobody set). A meter has one tariff in force on any day, and each day is priced
+in today's date, which nobody set). On a phone the two date boxes sit side by side at the
+same size. A meter has one tariff in force on any day, and each day is priced
 with the tariff in force that day (energy, fixed charges, the `tariff.*` sensors). A
 tariff dated to start tomorrow takes over at midnight by itself. The billing period it
 interrupts is closed at the switch and shows in history under the tariff that priced it,
@@ -375,7 +376,9 @@ region under Location & Solar).
       binary sensor, calendar or switch, which wins when set. Feeds
       `tariff.demand_window_active`.
 
-Only entities exposed to the bridge are listed. On the first start of 0.5.42 a saved
+The buy and feed-in pickers list the entities exposed to the bridge; typing in **Filter**
+also searches all of Home Assistant's sensors, so "Amber" finds an Amber price sensor that
+isn't exposed. The spike and demand-window pickers list exposed entities only. On the first start of 0.5.42 a saved
 wholesale region is given to any site with no region (NSW1 → AU-NSW); a site whose region
 disagrees keeps its own, and the bridge log says so.
 

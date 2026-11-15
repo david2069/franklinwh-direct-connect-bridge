@@ -11,6 +11,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+- **The price entity Filter found nothing** (owner). Typing "Amber" in a buy or feed-in price picker searched only the entities exposed to the bridge. It now also searches all of Home Assistant's sensors, and says "No sensor matches" when nothing does.
+- **Provider from / until overlapped on a phone** (owner). The two date boxes sat at different heights and ran into each other in Safari and the Home Assistant app. They are now the same size, side by side, with "blank = current" under the box. The same applies to a tariff's Effective from / to.
+
 ## [0.5.44] — 2026-11-15
 
 Everything merged since 0.5.43, by area:

@@ -128,3 +128,19 @@ def test_prices_sit_under_billing_and_leave_integrations():
         assert f'data-testid="{tid}"' in HTML, tid
     i = HTML.index('data-testid="prices-section"')
     assert HTML.rfind("x-show=\"sub==='billing'\"", 0, i) > HTML.rfind("x-show=\"sub==='integrations'\"", 0, i)
+
+
+def test_the_price_filter_searches_all_of_home_assistant():
+    """Typing "Amber" found nothing: the pickers listed exposed entities only (owner,
+    2026-11-15 screenshot). The filter now searches Home Assistant's sensors too."""
+    js = (PKG / "static" / "js" / "settings_tab.js").read_text()
+    fn = js[js.index("async haPriceSearch("):]
+    fn = fn[:fn.index("\n    },")]
+    assert "api/ha/entities?search=" in fn and "exposed=" not in fn
+    items = js[js.index("haPriceItems(q) {"):]
+    assert "haPriceFound" in items[:items.index("\n    },")]
+    filters = [l for l in HTML.splitlines() if 'x-model="q"' in l and "Filter" in l]
+    assert len(filters) == 4
+    for l in filters:
+        assert "haPriceSearch(q)" in l, l
+    assert "No exposed price entities" not in HTML
