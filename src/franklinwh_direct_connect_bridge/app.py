@@ -2584,14 +2584,17 @@ def create_app() -> FastAPI:
 
     # ── tariff-profile interchange with the Modbus bridge (FEAT-IMPORT-AGL-SETUP) ──
     @app.get("/api/tariffs/{tid}/export")
-    def api_tariff_export(tid: str):
+    def api_tariff_export(tid: str, format: str = Query("profile")):
         """Export one tariff (+ its utility + the meter's timezone) as a Modbus-compatible
-        ``franklinwh-bridge/tariff-profile`` bundle — the exact shape the Modbus bridge reads."""
-        from . import tariff_io
+        ``franklinwh-bridge/tariff-profile`` bundle — the exact shape the Modbus bridge reads.
+        ``?format=outus`` exports it as an OUTUS plan (#613)."""
+        from . import billing_page, tariff_io
         st = _ha_store()
         tar = st.tariff(tid) if st else None
         if not tar:
             raise HTTPException(status_code=404, detail="no such tariff")
+        if format == "outus":
+            return billing_page.outus_plan(st, tid)
         util = st.utility(tar.get("utility_id")) if tar.get("utility_id") else None
         tz = ""
         try:
@@ -2671,6 +2674,16 @@ def create_app() -> FastAPI:
         return {"ok": True, "utility_id": uid, "tariff_id": tid, "attached_meter": attached}
 
     # ── Energy Costs / billing view (FEAT-BILLING-SERVICE) ────────────────────
+    @app.get("/api/billing/page")
+    def api_billing_page(meter: str | None = Query(None)):
+        """The Billing & Utilities page (#613): the meters, the chosen one (else the default)
+        with its gateways, and its setup steps from hems (site → meter → plan → tariffs)."""
+        from . import billing_page
+        st = _ha_store()
+        if st is None:
+            return {"meters": [], "meter": None, "steps": [], "complete": False}
+        return billing_page.page(st, meter, _dt.date.today())
+
     @app.get("/api/billing/overview")
     def api_billing_overview(gateway: str = Depends(_gateway_q)):
         """Live period-to-date billing for the gateway's meter's tariff: the running
@@ -6050,9 +6063,9 @@ def create_app() -> FastAPI:
             missing.append({"id": "capacity", "text": "Set the battery capacity (Settings → "
                             "Automation) for battery cycles and reserve sizes.", "tab": "settings"})
         if not site.get("tariff"):
-            missing.append({"id": "tariff", "text": "Add your tariff (Settings → Sites & Billing → your meter → "
-                            "+ Add tariff) for "
-                            "time-of-use advice and $ estimates.", "tab": "settings"})
+            missing.append({"id": "tariff", "text": "Add your tariff (Billing & Utilities → Plans & meters → "
+                            "your meter → + Add tariff) for "
+                            "time-of-use advice and $ estimates.", "tab": "energy_costs"})
         out.update(source=source, site=site, current=current, missing=missing,
                    objective_choices=ca.insights.OBJECTIVES)
         return out
@@ -7525,7 +7538,7 @@ def create_app() -> FastAPI:
         size = pv_size.effective(cfg)                # yours, else the gateways' (#583)
         if not size["kwp"]:
             return {"configured": False,
-                    "reason": "Please confirm your solar size in Settings → Sites & Billing → "
+                    "reason": "Please confirm your solar size in Settings → Location & Prices → "
                               "Location & Solar: the gateway hasn't reported it yet."}
         fc = solar_forecast.forecast(cfg.pv_latitude, cfg.pv_longitude, kwp=size["kwp"],
                                      tilt=cfg.pv_tilt, azimuth=cfg.pv_azimuth, force=force)

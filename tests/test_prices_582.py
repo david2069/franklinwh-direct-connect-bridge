@@ -14,7 +14,8 @@ from franklinwh_direct_connect_bridge import client as client_module
 from franklinwh_direct_connect_bridge.db import MetricsStore
 
 PKG = pathlib.Path(__file__).resolve().parents[1] / "src" / "franklinwh_direct_connect_bridge"
-HTML = (PKG / "templates" / "tabs" / "settings.html").read_text()
+HTML = ((PKG / "templates" / "tabs" / "settings.html").read_text()   # + Plans & meters (#613)
+        + (PKG / "templates" / "partials" / "plans_meters.html").read_text())
 
 
 @pytest.mark.parametrize("site,nem", [("AU-NSW", "NSW1"), ("au-act", "NSW1"), ("VIC", "VIC1"),

@@ -1,35 +1,60 @@
 {% from "partials/dialog_msg.html" import dialog_msg %}
-<div x-data="energyCostsTab()" class="space-y-4 max-w-5xl">
+<div x-data="energyCostsTab()" class="space-y-4 max-w-5xl"
+     @fwh-open-billing.window="setSub($event.detail.sub || 'summary')">
 
+  <!-- Billing & Utilities (#613, #629), in the order OUTUS presents it (spec §9): Summary,
+       Bill detail, History, then Plans & meters. -->
   <div class="flex items-center justify-between gap-3 flex-wrap">
     <div>
-      <h1 class="text-xl font-semibold" style="color:var(--text-primary)">Energy Costs <a :href="$store.app.guideUrl('energy-and-costs/#energy-costs')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></h1>
-      <p class="text-sm text-slate-500">Live period-to-date billing + closed-period history.</p>
+      <h1 class="text-xl font-semibold" style="color:var(--text-primary)">Billing &amp; Utilities <a :href="$store.app.guideUrl('energy-and-costs/#billing-utilities')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></h1>
+      <p class="text-sm text-slate-500">This period so far, the bill's lines, past bills, and your plans.</p>
     </div>
     <div class="flex items-center gap-2">
-      <button class="btn btn-secondary btn-sm" x-show="ov && ov.configured" @click="closePeriod()" :disabled="closing"
-              title="Snapshot the current period into history now; it finalises automatically at rollover">
-        <span x-text="closing ? '…' : 'Close period now'"></span>
-      </button>
-      <button class="btn btn-secondary btn-sm" @click="openModbusImport()">Import from Modbus</button>
-      <button class="btn btn-secondary btn-sm" @click="exportCsv()" :disabled="!history.length">Export history CSV</button>
+      <label x-show="page.meters.length > 1" class="text-xs" style="color:var(--text-secondary)">Meter
+        <select class="form-control form-control-sm ml-1 inline-block w-auto" data-testid="billing-meter"
+                :value="meterId" @change="meterId = $event.target.value; load()">
+          <template x-for="m in page.meters" :key="m.id"><option :value="m.id" x-text="m.name" :selected="m.id === meterId"></option></template>
+        </select></label>
+      <span x-show="page.meters.length === 1" class="text-xs" style="color:var(--text-secondary)" x-text="page.meter && page.meter.name"></span>
       <button class="btn btn-secondary btn-sm" @click="load()" :disabled="loading">
         <span x-text="loading ? '…' : 'Refresh'"></span>
       </button>
     </div>
   </div>
 
-  <!-- Not configured -->
-  <div class="card" x-show="ov && ov.configured === false" x-cloak>
-    <div class="text-sm text-slate-400">
-      No tariff is assigned to this gateway's meter yet. Set a utility + tariff and attach it to the
-      meter in <span class="font-mono">Settings → Sites &amp; Billing</span> to see live costs.
-    </div>
+  <div class="flex flex-wrap gap-1.5" data-testid="billing-subtabs">
+    <template x-for="t in subTabs" :key="t.key">
+      <button class="px-3 py-1.5 rounded-lg text-xs font-medium transition"
+              :class="sub === t.key ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'"
+              @click="setSub(t.key)" x-text="t.label"></button>
+    </template>
   </div>
 
-  <template x-if="ov && ov.configured">
-    <div class="space-y-4">
-      <!-- Live period card -->
+  <!-- ══ Summary ══ -->
+  <div x-show="sub === 'summary'" class="space-y-4">
+    <!-- What is still to set up, in the model's order (from hems), while anything is missing. -->
+    <div class="card space-y-2" x-show="page.steps.length && !page.complete" data-testid="billing-setup">
+      <div class="card-label" style="margin-bottom:0">Set up billing</div>
+      <p class="text-xs" style="color:var(--text-faint)">Costs need these, in this order.</p>
+      <template x-for="(st, i) in page.steps" :key="st.key">
+        <div class="flex items-center gap-3 py-1" data-testid="billing-setup-step">
+          <span class="w-5 h-5 rounded-full shrink-0 flex items-center justify-center text-[10px] font-semibold"
+                :style="st.done ? { background: 'var(--ok,#10b981)', color: '#fff' } : { border: '1.5px solid var(--border)', color: 'var(--text-faint)' }"
+                x-text="st.done ? '✓' : (i + 1)"></span>
+          <span class="flex-1 min-w-0 text-sm">
+            <span style="color:var(--text-primary)" x-text="st.label"></span>
+            <span x-show="st.detail" class="text-xs" style="color:var(--text-faint)" x-text="' · ' + st.detail"></span>
+            <span x-show="!st.done" class="block text-xs" style="color:var(--text-secondary)" x-text="st.todo"></span>
+          </span>
+          <button x-show="!st.done" class="btn btn-sm shrink-0" :class="st.blocked ? 'btn-secondary' : 'btn-primary'"
+                  :disabled="st.blocked" @click="doStep(st)" x-text="st.blocked ? 'After step ' + i : 'Set up'"></button>
+        </div>
+      </template>
+    </div>
+
+    <template x-if="ov && ov.configured">
+      <div class="space-y-4">
+        <!-- This period so far -->
       <div class="card space-y-4">
         <div class="flex items-start justify-between gap-3 flex-wrap">
           <div>
@@ -49,31 +74,79 @@
         <div>
           <div class="h-2 rounded-full overflow-hidden" style="background:var(--surface-2)">
             <div class="h-full rounded-full transition-all" style="background:var(--accent,#34d399)"
-                 :style="'width:' + progressPct + '%'"></div>
+                 :style="{ width: progressPct + '%' }"></div>
           </div>
         </div>
       </div>
 
+        <div class="flex items-center gap-2 text-[11px]" style="color:var(--text-faint)">
+          <span class="chip muted" style="padding:0 6px;font-size:.6rem" title="Worked out by the bridge from your tariff and the gateways' grid readings">CALCULATED</span>
+          <span x-show="lastPeriod" x-text="lastPeriod ? 'Last period ' + periodLabel(lastPeriod) + ': ' + money(lastPeriod.net_total) : ''"></span>
+        </div>
       <!-- Cost breakdown -->
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <template x-for="c in breakdown" :key="c.label">
           <div class="card" style="padding:14px 16px" x-show="c.show">
             <div class="text-[10px] uppercase tracking-widest text-slate-500" x-text="c.label"></div>
-            <div class="text-lg font-semibold tabular-nums" :style="'color:' + (c.color || 'var(--text-primary)')"
+            <div class="text-lg font-semibold tabular-nums" :style="{ color: c.color || 'var(--text-primary)' }"
                  x-text="c.value"></div>
             <div class="text-[11px] text-slate-500" x-show="c.sub" x-text="c.sub"></div>
           </div>
         </template>
       </div>
 
-    </div>
-  </template>
+      </div>
+    </template>
+  </div>
 
-  <!-- History — shown whenever there are closed periods, even after a provider/tariff switch. -->
-  <div class="card" x-show="history.length || (ov && ov.configured)">
-    <div class="flex items-center justify-between mb-3">
-      <div class="card-label" style="margin-bottom:0">Closed periods</div>
-      <span class="text-xs text-slate-500" x-text="history.length + ' period(s)'"></span>
+  <!-- ══ Bill detail ══ The open period's lines, and what is driving them now. -->
+  <div x-show="sub === 'detail'" x-cloak class="space-y-4">
+    <div class="card text-sm text-slate-400" x-show="ov && ov.configured === false">
+      No tariff in force on this meter yet. <button class="underline" style="color:var(--accent)" @click="setSub('summary')">See what to set up</button>
+    </div>
+    <template x-if="ov && ov.configured">
+      <div class="space-y-4">
+        <div class="card space-y-2" data-testid="billing-lines">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <div class="card-label" style="margin-bottom:0" x-text="'This period · day ' + fmt(ov.days_elapsed,0) + ' of ' + fmt(ov.period_days,0)"></div>
+            <button class="btn btn-secondary btn-sm" @click="closePeriod()" :disabled="closing"
+                    title="Snapshot the current period into history now; it finalises automatically at rollover">
+              <span x-text="closing ? '…' : 'Close period now'"></span>
+            </button>
+          </div>
+          <template x-for="c in breakdown.filter(c => c.show)" :key="c.label">
+            <div class="flex items-baseline justify-between gap-3 py-1 border-t border-white/[0.05] text-sm">
+              <span><span style="color:var(--text-primary)" x-text="c.label"></span>
+                <span x-show="c.sub" class="text-xs text-slate-500" x-text="' · ' + c.sub"></span></span>
+              <span class="font-mono tabular-nums" :style="{ color: c.color || 'var(--text-primary)' }" x-text="c.value"></span>
+            </div>
+          </template>
+          <div class="flex items-baseline justify-between gap-3 pt-2 border-t text-sm font-semibold" style="border-color:var(--border)">
+            <span style="color:var(--text-primary)">Net so far</span>
+            <span class="font-mono tabular-nums" style="color:var(--text-primary)" x-text="money(ov['net.period_cost'])"></span>
+          </div>
+        </div>
+        <div class="card space-y-1.5 text-sm" x-show="liveInputs.length" data-testid="billing-live">
+          <div class="card-label" style="margin-bottom:.25rem">Now</div>
+          <template x-for="x in liveInputs" :key="x.label">
+            <div class="flex items-baseline justify-between gap-3">
+              <span style="color:var(--text-secondary)" x-text="x.label"></span>
+              <span class="font-mono tabular-nums" style="color:var(--text-primary)" x-text="x.value"></span>
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- ══ History ══ Closed bills, newest first; each expands to its lines. -->
+  <div x-show="sub === 'history'" x-cloak class="card">
+    <div class="flex items-center justify-between gap-2 flex-wrap mb-3">
+      <div class="card-label" style="margin-bottom:0">Closed periods <span class="text-xs text-slate-500 normal-case tracking-normal font-normal" x-text="'· ' + history.length"></span></div>
+      <div class="flex items-center gap-2">
+        <button class="btn btn-secondary btn-sm" @click="openModbusImport()">Import from Modbus</button>
+        <button class="btn btn-secondary btn-sm" @click="exportCsv()" :disabled="!history.length">Export history CSV</button>
+      </div>
     </div>
     <div x-show="!history.length" class="text-sm text-slate-500 py-4 text-center">
       No closed billing periods yet — the first appears when this billing cycle rolls over.
@@ -111,7 +184,7 @@
                   <template x-for="c in rowBreakdown(p)" :key="c.label">
                     <div class="rounded border border-white/[0.06] px-3 py-2">
                       <div class="text-[10px] uppercase tracking-widest text-slate-500" x-text="c.label"></div>
-                      <div class="text-sm font-semibold tabular-nums" :style="'color:' + (c.color || 'var(--text-primary)')" x-text="c.value"></div>
+                      <div class="text-sm font-semibold tabular-nums" :style="{ color: c.color || 'var(--text-primary)' }" x-text="c.value"></div>
                       <div class="text-[11px] text-slate-500" x-show="c.sub" x-text="c.sub"></div>
                     </div>
                   </template>
@@ -126,6 +199,15 @@
           </tbody>
         </template>
       </table>
+    </div>
+  </div>
+
+  <!-- ══ Plans & meters ══ Site → meter → plan in force → its tariffs, retailers, import /
+       export: the editors Settings had, unchanged (#613). -->
+  <!-- x-show stays on the outer div: settingsTab() has its own `sub`. -->
+  <div x-show="sub === 'plans'" x-cloak data-testid="billing-plans">
+    <div class="space-y-6" x-data="settingsTab({ embedded: true })">
+      {% include "partials/plans_meters.html" %}
     </div>
   </div>
 

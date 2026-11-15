@@ -132,7 +132,7 @@ def test_ui_saves_against_a_meter_and_keeps_errors_in_the_form():
     import pathlib
     pkg = pathlib.Path(app_module.__file__).parent
     js = (pkg / "static" / "js" / "settings_tab.js").read_text()
-    html = (pkg / "templates" / "tabs" / "settings.html").read_text()
+    html = (pkg / "templates" / "partials" / "plans_meters.html").read_text()   # moved there (#613)
     save = js[js.index("async saveTariff()"):js.index("async deleteTariff(t)")]
     assert "meter_id" in save and "toast(" not in save
     assert "tariffMsg" in save and "saveTariffAsNew" in js

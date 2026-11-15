@@ -38,8 +38,8 @@ def test_a_cleared_provider_date_is_cleared(tmp_path):
 
 def test_every_date_box_is_blank_when_empty():
     """Safari draws today's date, greyed, in an empty date box: a date nobody set."""
-    for tab in ("settings.html", "scheduler.html"):
-        html = (ROOT / "templates/tabs" / tab).read_text()
+    for tab in ("tabs/settings.html", "tabs/scheduler.html", "partials/plans_meters.html"):
+        html = (ROOT / "templates" / tab).read_text()
         for tag in re.findall(r"<input[^>]*type=\"date\"[^>]*>", html, re.S):
             assert "date-empty" in tag, f"{tab}: {tag[:80]}"
     css = (ROOT / "static/css/design-system.css").read_text()
@@ -49,7 +49,7 @@ def test_every_date_box_is_blank_when_empty():
 def test_explain_says_where_the_tariff_goes():
     app = (ROOT / "app.py").read_text()
     assert "Settings → Billing" not in app
-    assert "Settings → Sites & Billing → your meter" in app
+    assert "Billing & Utilities → Plans & meters" in app      # #613: tariffs moved there
 
 
 @pytest.fixture
@@ -85,7 +85,7 @@ def test_date_boxes_line_up_on_a_phone():
     rule = rule[:rule.index("}")]
     for k in ("appearance: none", "min-width: 0", "min-height"):
         assert k in rule, k
-    html = (ROOT / "templates/tabs/settings.html").read_text()
+    html = (ROOT / "templates/partials/plans_meters.html").read_text()   # moved there (#613)
     for label in ("Provider until", "Effective to", "Effective from"):
         line = next(l for l in html.splitlines() if label in l)
         assert "(blank = current)" not in line and "(optional)" not in line, line

@@ -273,7 +273,7 @@ instance, after the bridge's own groups.
     check its History for runs while Home Assistant had lost the entity.
 
 **Direct Connect only.** A Home Assistant price entity can feed `tariff.spot_price` and
-`tariff.feed_in_price` (**Settings → Sites & Billing → Prices**). A `$/kWh` unit is scaled to c/kWh;
+`tariff.feed_in_price` (**Settings → Location & Prices → Prices**). A `$/kWh` unit is scaled to c/kWh;
 `c/kWh`, `¢/kWh` and a unitless value are taken as they are. A configured entity wins over
 the AEMO NEM price for the same sensor.
 <!-- @b CND-37 ;; src: scheduler.py:1203-1248, scheduler.py:1307-1327, scheduler.py:1952-1953 ;; tested: tests/test_aemo_nem.py::test_ha_price_snapshot_units_and_mapping ;; write: yes ;; b: tariff_price_entity and tariff_feedin_entity map to tariff.spot_price and feed_in_price in c/kWh with $ units scaled x100, applied after NEM so they win ;; test: — -->
@@ -386,7 +386,7 @@ calculators, and `tariff.spot_price` / `tariff.feed_in_price` (c/kWh).
   <!-- @b SEN-09 ;; src: scheduler.py:1507-1515 ;; untested ;; write: yes ;; b: tariff.import_billable is int(billable) from rate_model.resolve, None when billable is None ;; test: unit: a free window and a priced window -->
 - `tariff.price_spike` is 1 during a price spike and 0 otherwise: the Home Assistant spike
   sensor when one is set, else the price at or above the spike threshold; no value with
-  neither. `tariff.spike_threshold` is that threshold in c/kWh (**Sites & Billing →
+  neither. `tariff.spike_threshold` is that threshold in c/kWh (**Location & Prices →
   Prices**, #582). A Home Assistant demand-window entity there wins over the tariff's
   window for `tariff.demand_window_active`.
 - `tariff.spot_price` is the AEMO NEM 5-minute price for your site's region, cached about
@@ -428,7 +428,7 @@ from its meter's tariff. There are no lifetime or today/week/month energy totals
 ### Weather
 
 `weather.temp_c` and `weather.condition` (Weather & Solar group), the **current** weather from
-Open-Meteo. They need a location under **Settings → Sites & Billing → Location & Solar**
+Open-Meteo. They need a location under **Settings → Location & Prices → Location & Solar**
 (**Sync from gateway** reads it from the aGate).
 <!-- @b SEN-13 ;; src: scheduler.py:1185-1198, solar_forecast.py:111-140 ;; untested ;; write: yes ;; b: weather.* and solar_forecast.* come from the cached Open-Meteo forecast and are absent without a latitude and longitude ;; test: unit: solar_snapshot with no location returns {} -->
 
@@ -478,7 +478,7 @@ grouped by `GET /api/schedules`. *Needs* and *without it* are per group.
 |---|---|---|
 | Gateway | a fresh poll of that gateway | None |
 | Derived Battery | the poll, the battery capacity constant, the SoC constants; at-max-rate ETAs also a rate (Model 702 or the max power constant); the tracker also the solar forecast | None |
-| Weather & Solar | a location (**Settings → Sites & Billing → Location & Solar**, synced from the aGate or typed in); `solar.today_kwh` the poll | None |
+| Weather & Solar | a location (**Settings → Location & Prices → Location & Solar**, synced from the aGate or typed in); `solar.today_kwh` the poll | None |
 | Tariff & Utility | a meter with a utility and tariff; spot/feed-in a NEM region, an HA price entity or a dynamic tariff | None |
 | Demand / Tariff, Energy, Fixed Charges | a tariff with those charges or windows | None |
 | System Setup | nothing (defaults), better with Setup filled in | a default |

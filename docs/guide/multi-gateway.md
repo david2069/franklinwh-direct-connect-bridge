@@ -160,10 +160,10 @@ how a stale comment becomes stale documentation.
 
 ## Sites, meters, utilities and tariffs
 
-![Settings → Sites & Billing](../images/multi-gateway/05-sites-meters-tariffs.png)
+![Billing & Utilities → Plans & meters](../images/multi-gateway/05-sites-meters-tariffs.png)
 
 Above the gateway there is a small normalised model, managed from
-**Settings → Sites & Billing**:
+**Billing & Utilities → Plans & meters**:
 
 ```
 Site  →  Meter  →  (Utility  →  Tariff)
@@ -181,7 +181,7 @@ Site  →  Meter  →  (Utility  →  Tariff)
 This is what makes costs meaningful on a site with two gateways behind one meter: the
 tariff is a property of the meter, not of the gateway, so the cost is computed once for
 the billing point rather than twice: one set of fixed charges, the demand charge from the
-meter's combined peak, and one history (Energy Costs shows the same bill on each of its
+meter's combined peak, and one history (Billing & Utilities shows the same bill on each of its
 gateways). Tariffs can be exported, imported and validated individually.
 
 **The meter's readings.** Each aGate's grid CT is built in and measures its own part of

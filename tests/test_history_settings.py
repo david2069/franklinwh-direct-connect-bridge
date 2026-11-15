@@ -94,7 +94,7 @@ def test_settings_card_offers_the_choice_confirms_off_and_explains_the_overlap()
     for label in ("90 days", "1 year", "2 years", "Forever"):
         assert label in card
     assert "history.confirmOff" in card and "Turn off" in card            # asks first
-    assert "Dashboard power history, Analytics and Energy Costs" in card
+    assert "Dashboard power history, Analytics and Billing &amp; Utilities" in card
     assert "recorder" in card and "history.info.is_ha_addon" in card      # the add-on overlap
     assert "dialog_msg('history.msg')" in card                            # result in the card
     assert "api/metrics/settings" in js and "api/metrics/info" in js

@@ -346,7 +346,7 @@ _TASKS = (
      {"open": {"sub": "integrations", "card": "settings-ha-instances"}}),
     ("billing", "essential", "Electricity utility, pricing & billing",
      "Your tariff, so costs and tariff conditions work.",
-     {"open": {"sub": "billing", "card": "settings-billing"}}),
+     {"open": {"tab": "energy_costs", "billing": "summary"}}),
     ("default_mode", "essential", "Default operating mode",
      "The mode you treat as normal; schedules go back to it.",
      {"inline": "mode"}),
