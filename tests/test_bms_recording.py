@@ -89,6 +89,24 @@ def test_a_finished_recording_runs_the_purge(monkeypatch):
     s.close()
 
 
+def test_a_recording_is_not_done_until_its_purge_has_run():
+    """#648: under load the purge test failed now and then. The recorder said the session
+    had ended before its purge ran, so a caller (or a new recording) saw it as done early."""
+    s, r = MetricsStore(":memory:"), Recorder()
+    old = _session(s, int(time.time()) - 200 * 86400)
+    real = s.prune_bms
+
+    def slow(*a):
+        time.sleep(0.3)
+        return real(*a)
+    s.prune_bms = slow
+    r.start(s, cells, samples=1, interval_s=5, purge=(90, 200))
+    while r.status()["active"]:
+        time.sleep(0.01)
+    assert s.bms_session(old) is None
+    s.close()
+
+
 # -- schedules ---------------------------------------------------------------
 def test_schedule_roundtrip_and_due():
     s = MetricsStore(":memory:")

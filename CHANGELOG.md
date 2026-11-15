@@ -12,6 +12,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Fixed
+- **Battery recordings:** a recording is finished only once its purge has run. It used to say it had ended first, so for a moment a new recording could start, or a caller could see old recordings not yet purged (#648).
 - **Changelog:** each release in the index links to its notes on GitHub (`docs/changelog/X.Y.Z.md`), which every release contains; the docs site can lag a release. Links inside a release's notes now work from `docs/changelog/`: 0.5.46's did not, so its docs page was never built. Its link targets are corrected; its words are unchanged.
 
 ## Releases
