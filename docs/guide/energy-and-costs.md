@@ -388,6 +388,10 @@ The editor's **Rate type** toggle offers two, and only two, options:
 
   When both are configured, **the HA price entity wins over NEM.**
 
+  The provider, the region and the HA entities are saved with the tariff
+  (`pricing.kind: "dynamic"` and `pricing.dynamic` in the tariff profile, as the Modbus
+  Bridge's), so **Export** and **Import** carry them unchanged.
+
 A dynamic tariff drives two things at once: the billing figures on Billing & Utilities,
 and the `tariff.spot_price` / `tariff.feed_in_price` sensors available to the
 [Scheduler](scheduler/conditions.md) — so a rule can charge when the price is negative without you

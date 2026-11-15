@@ -242,7 +242,7 @@
         <span x-text="'Retired ' + tariffEdit.effective_end + ': locked, view only. Its rates and charges are kept so bills from then can be reconciled.'"></span>
         <button type="button" data-testid="tariff-unlock" class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="unlockTariff()">Unlock to edit</button>
       </div>
-      <fieldset :disabled="tariffEdit.locked" class="space-y-2">
+      <fieldset :disabled="!!tariffEdit.locked" class="space-y-2">
       <div class="flex items-end gap-2 flex-wrap">
         <label class="text-[11px] flex-1 min-w-[10rem]" style="color:var(--text-secondary)">Retailer
           <select data-testid="tariff-retailer" class="form-control form-control-sm w-full mt-1" x-model="tariffEdit.utility_id"
@@ -289,7 +289,7 @@
       </div>
 
       <!-- Energy rates tab (cloned from the Modbus bridge) -->
-      <fieldset :disabled="tariffEdit.locked" class="space-y-2">
+      <fieldset :disabled="!!tariffEdit.locked" class="space-y-2">
       <div x-show="tariffTab==='rates'" x-cloak class="space-y-2">
         <!-- Rate type: Static vs Wholesale (live) — per-tariff dynamic pricing -->
         <div class="flex items-center gap-2 text-xs">
