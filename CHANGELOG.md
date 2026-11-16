@@ -21,40 +21,21 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   ([#676](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/676);
   [guide](docs/guide/energy-and-costs.md)).
 
-### Added
-
-- Scheduler: a **FranklinWH TOU** view. The bridge keeps a dated copy of the TOU schedule
-  from the FranklinWH cloud (read-only), taken at start-up, when TOU mode is set, or on
-  **Sync now**; shows today's blocks and the schedules that clash with them while TOU mode
-  is on; and can import the schedule as bridge schedules (created disabled), which it
-  recommends instead of FranklinWH TOU ([guide](docs/guide/scheduler/index.md)).
-- Location & Solar per site: each site has its own location and solar array, picked with
-  **Site** on the card; the default site keeps the values it had. A gateway's forecast,
-  solar-forecast sensors and Analytics use its site's. **Gateways on this site** shows
-  where each gateway reports it is and flags one more than 1 km from its site, rather than
-  assuming they are all at the same place ([#675](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/675);
-  [guide](docs/guide/energy-and-costs.md)).
-
-### Fixed
-
-- Gateways: a shutdown just after a gateway edit no longer spins the poller restart (the
-  log filled with "still winding down" and the bridge stopped); no poller starts during
-  shutdown ([#681](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/681);
-  [guide](docs/guide/multi-gateway.md)).
-
-- Settings: the **Billing & Utilities** sub-tab is back, with the sites, meters, retailers
-  and tariffs editors; 0.5.45 had replaced it with a link to the Billing & Utilities page
-  ([#674](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/674);
-  [guide](docs/guide/tour.md)).
-- Analytics: **Line** and **Area** can be picked again in every period except Lifetime;
-  0.5.47 greyed them in all periods (a "not blocked" answer was read as blocked)
-  ([guide](docs/guide/energy-and-costs.md)).
-
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
 
 ## 2026-11-16
+
+### [0.5.48](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.48.md)
+
+Added 2 · Fixed 3
+
+- Scheduler: a FranklinWH TOU view: a dated copy of the TOU schedule from the cloud, the…
+- Location & Solar: each site has its own location and solar array
+- Settings: the Billing & Utilities sub-tab is back
+- Analytics: Line and Area can be picked again
+- Reliability: a shutdown just after a gateway edit no longer floods the log and stops the…
 
 ### [0.5.47](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.47.md)
 
