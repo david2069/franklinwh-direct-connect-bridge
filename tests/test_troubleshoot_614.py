@@ -371,7 +371,9 @@ def test_the_panel_has_verdict_health_network_steps_and_app_fallback():
     for step in ("Settings", "Network", "Wifi", "Configure", "choose your network",
                  "enter the password", "5 minutes"):
         assert step in js, step
-    assert "confirmTyped(" in js                      # typed confirmation
+    # Owner 2026-11-17: no typed confirmation; Reconnect runs when pressed.
+    fn = js[js.index("async reconnect()"):js.index("async _job()")]
+    assert "confirmTyped(" not in fn and "confirm(" not in fn.replace("confirm: true", "")
     # The request names the stored network only: no password is ever sent.
     assert "JSON.stringify({ ssid: d.stored_ssid, confirm: true })" in js
     assert "wifi_password" not in js and "password:" not in js

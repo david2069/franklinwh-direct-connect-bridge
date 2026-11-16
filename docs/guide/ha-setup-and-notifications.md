@@ -395,8 +395,8 @@ together:
   link (1118 `awsStatus`) and the last good poll, each pass or fail. It does not touch the
   Modbus TCP Server (aGate :502).
 - **Open Network** — the Network tab, for the full picture.
-- **Reconnect to Wi-Fi** — shown when the cloud says the aGate is on 4G. Admins only, behind
-  a typed confirmation (`RECONNECT`). The FranklinWH cloud puts the aGate back on the Wi-Fi
+- **Reconnect to Wi-Fi** — shown when the cloud says the aGate is on 4G. Admins only; it runs
+  when pressed (before 0.5.50 it asked you to type `RECONNECT`). The FranklinWH cloud puts the aGate back on the Wi-Fi
   network it already stores, with the password it already stores (franklinwh-cloud
   `switch_to_wifi(ssid, password=None)`). It refuses first when no other connection would
   remain, then waits up to 3 minutes for the link and is not retried. The result stays in

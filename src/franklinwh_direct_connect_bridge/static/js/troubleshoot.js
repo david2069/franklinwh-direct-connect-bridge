@@ -64,13 +64,7 @@ document.addEventListener('alpine:init', () => {
     async reconnect() {
       const d = this.data || {};
       if (!d.can_reconnect || !d.admin || this.job.state === 'running') return;
-      const ok = await Alpine.store('app').confirmTyped(
-        `The FranklinWH cloud puts the aGate back on its stored Wi-Fi network "${d.stored_ssid}", `
-        + 'with the credentials the aGate already holds. It first checks that 4G stays as a '
-        + 'fallback, then waits up to 3 minutes for the Wi-Fi link to come up. It is not retried.'
-        + '\n\nType RECONNECT to go ahead.',
-        'RECONNECT', { title: 'Reconnect to Wi-Fi', danger: true });
-      if (!ok) return;
+      // Runs when pressed (owner 2026-11-17: no typed confirmation); the result stays here.
       this.reconnectMsg = null;
       try {
         const r = await fetch('api/troubleshoot/reconnect-wifi' + this._q(), {
