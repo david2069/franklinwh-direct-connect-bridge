@@ -78,10 +78,9 @@ def test_leftover_entities_are_counted_and_explained(ctx, monkeypatch):
     gw.serial = "SNLIVE"
     monkeypatch.setattr(ha_instances, "probe", lambda u, t: {"ok": True})
     monkeypatch.setattr(ha_instances, "components", lambda u, t: ["mqtt"])
-    monkeypatch.setattr(ha_instances, "bridge_entities", lambda u, t: [
-        ("sensor.franklinwh_direct_snlive_soc", ["franklinwh_snlive"]),
-        ("sensor.franklinwh_direct_snlive_grid_w", ["franklinwh_snlive"]),
-        ("sensor.franklinwh_direct_oldnode_soc", ["franklinwh_oldnode"]),   # a gateway that is gone
+    monkeypatch.setattr(ha_instances, "bridge_entity_counts", lambda u, t: [
+        (["franklinwh_snlive"], 2),
+        (["franklinwh_oldnode"], 1),   # a gateway that is gone
     ])
     c = _checks(TestClient(app_module.create_app()))
     assert c["entities"]["ok"] is True
@@ -187,11 +186,9 @@ def test_entities_named_after_the_last_8_of_the_serial_are_ours(ctx, monkeypatch
     gw = state.register_gateway("g1", "192.0.2.110", "aGate")
     gw.serial = "10060006A0000000AB12CD34"
     full = "franklinwh_10060006a0000000ab12cd34"
-    monkeypatch.setattr(ha_instances, "bridge_entities", lambda u, t: [
-        ("sensor.franklinwh_direct_ab12cd34_state_of_charge", [full]),
-        ("sensor.franklinwh_direct_ab12cd34_grid_power", [full]),
-        ("sensor.franklinwh_agate_local_bridge_soc", [full]),   # pre-0.4.0 id, same device
-    ])
+    # entity ids with the tail of the serial and a pre-0.4.0 id: one device, so counted
+    # by that device's identifier, whatever the ids say
+    monkeypatch.setattr(ha_instances, "bridge_entity_counts", lambda u, t: [([full], 3)])
     c = _checks(TestClient(app_module.create_app()))
     assert c["entities"]["ok"] is True
     assert c["entities"]["state"] == "3 entities"
@@ -203,15 +200,15 @@ def test_registry_unreadable_is_could_not_be_checked(ctx, monkeypatch):
     state.register_gateway("g1", "192.0.2.110", "aGate").serial = "SN1"
     def boom(u, t):
         raise OSError("template endpoint unavailable")
-    monkeypatch.setattr(ha_instances, "bridge_entities", boom)
+    monkeypatch.setattr(ha_instances, "bridge_entity_counts", boom)
     c = _checks(TestClient(app_module.create_app()))
     assert c["entities"]["ok"] is None and c["entities"]["state"] == "Could not be checked"
 
 
-def test_bridge_entities_parses_the_template_answer(monkeypatch):
+def test_bridge_entity_counts_parses_the_template_answer(monkeypatch):
     import io, json as _json
-    body = _json.dumps([["sensor.x", [["mqtt", "franklinwh_sn1"]]],
-                        ["switch.y", [["mqtt", "franklinwh_sn1"], ["bad"]]]]).encode()
+    body = _json.dumps([[[["mqtt", "franklinwh_sn1"]], 41],
+                        [[["mqtt", "franklinwh_old"], ["bad"]], 7]]).encode()
     seen = {}
     def fake_urlopen(req, timeout=0):
         seen["url"], seen["method"] = req.full_url, req.get_method()
@@ -221,10 +218,19 @@ def test_bridge_entities_parses_the_template_answer(monkeypatch):
             def __exit__(self, *a): return False
         return R(body)
     monkeypatch.setattr(ha_instances.urllib.request, "urlopen", fake_urlopen)
-    rows = ha_instances.bridge_entities("http://supervisor/core", "t")
+    rows = ha_instances.bridge_entity_counts("http://supervisor/core", "t")
     assert seen["url"].endswith("/api/template") and seen["method"] == "POST"
     assert "Direct Connect Bridge" in seen["template"]       # owned by sw_version
-    assert rows == [("sensor.x", ["franklinwh_sn1"]), ("switch.y", ["franklinwh_sn1"])]
+    assert rows == [(["franklinwh_sn1"], 41), (["franklinwh_old"], 7)]
+
+
+def test_the_count_stays_small_however_many_entities_ha_holds():
+    """#445: HA refuses template output over 256 KiB. One row per ENTITY crossed it at
+    about 2,600 leftovers on the HAOS test VM, and the check said "Could not be checked"
+    exactly where it matters most. One row per DEVICE, with its count, stays small."""
+    tpl = ha_instances.BRIDGE_ENTITY_COUNTS_TEMPLATE
+    assert "device_entities(d) | length" in tpl
+    assert "[e," not in tpl                       # no entity id in the output
 
 
 def test_a_gateway_that_is_actually_publishing_counts_whatever_its_flag_says(ctx, monkeypatch):

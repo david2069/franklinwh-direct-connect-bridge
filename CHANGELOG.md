@@ -19,6 +19,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   only when it answers nowhere, not while it is on your LAN or online via 4G; with the
   aGate online there are no steps ([guide](docs/guide/ha-setup-and-notifications.md)).
 
+### Fixed
+
+- Setup check **Bridge entities in Home Assistant** said "Could not be checked" when Home
+  Assistant held many leftover entities (about 2,600): the answer was over Home Assistant's
+  256 KiB template limit. It now counts per device, so it works however many there are
+  (#445, [guide](docs/guide/ha-setup-and-notifications.md#the-four-setup-checks)).
+
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
