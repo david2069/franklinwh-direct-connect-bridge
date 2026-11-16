@@ -4208,12 +4208,14 @@ def create_app() -> FastAPI:
                 # Owned by DEVICE identity, not by entity_id text (#83): since 0.4.0 the
                 # entity_ids carry the serial's last 8 characters, older ones carry the old
                 # device name, and other integrations also use "franklinwh_".
-                rows = ha_instances.bridge_entities(inst["base_url"], inst.get("token"))
+                # One row per device with its count, so HA's 256 KiB template limit is
+                # not reached however many leftovers there are (#445).
+                rows = ha_instances.bridge_entity_counts(inst["base_url"], inst.get("token"))
                 current = {f"franklinwh_{(g.serial or '').lower()}"
                            for g in (get_gateways() or []) if g.serial}
                 if current:
-                    ours = sum(1 for _e, idents in rows if current & set(idents))
-                    leftovers = len(rows) - ours
+                    ours = sum(n for idents, n in rows if current & set(idents))
+                    leftovers = sum(n for _i, n in rows) - ours
             except Exception:  # noqa: BLE001 — a count is not worth failing the page for
                 ours = leftovers = None
         checks.append({

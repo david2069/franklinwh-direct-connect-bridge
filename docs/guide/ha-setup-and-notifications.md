@@ -135,7 +135,7 @@ is not shown as a failure. **Check again** runs them again.
 | MQTT broker connected | Publishing is on, and at least one gateway that publishes is connected to the broker. With no publishing gateway yet: "No gateway publishing yet", undetermined. | Turn publishing on from the **MQTT** tab, or install the Mosquitto broker add-on. |
 | Home Assistant connected to the bridge | The first enabled instance answers with its token. Shows "This Home Assistant" for the add-on's own instance. | Add one under **Home Assistant → Instances**. |
 | Home Assistant's MQTT integration set up | Home Assistant has the MQTT integration loaded. | In Home Assistant: **Settings → Devices & services → Add integration → MQTT**. |
-| Bridge entities in Home Assistant | How many of this bridge's entities Home Assistant has, plus any left over from removed gateways. | Remove leftover devices in Home Assistant. |
+| Bridge entities in Home Assistant | How many of this bridge's entities Home Assistant has, plus any left over from removed gateways. Counted per device, so it works however many leftovers there are. | Remove leftover devices in Home Assistant. |
 
 ![The setup wizard's Home Assistant step: the publish question and the four setup checks, all passing](../images/ha-setup-and-notifications/03-wizard-ha-checks.png)
 
