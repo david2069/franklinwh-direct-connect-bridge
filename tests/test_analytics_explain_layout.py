@@ -123,5 +123,7 @@ def test_line_and_area_not_offered_for_lifetime():
     assert "chartBlocked(" in ct
     for t in ("line", "area"):
         btn = HTML[HTML.index(f":aria-checked=\"chartType === '{t}'\"") - 200:][:900]
-        assert f":disabled=\"chartBlocked('{t}')\"" in btn and f"chartBlocked('{t}')" in btn
+        # A reason ('' when offered) bound as is kept them disabled in every period: Alpine
+        # drops a boolean attribute only for false, null or undefined, not ''.
+        assert f":disabled=\"!!chartBlocked('{t}')\"" in btn and f"chartBlocked('{t}')" in btn
     assert "this._cloud.setStyle(this.cloudStyle)" in JS and "style: this.cloudStyle" in JS
