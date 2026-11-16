@@ -405,7 +405,10 @@ together:
   refused, not confirmed, or the stored network has changed. The steps are for iOS or
   Android, one at a time: Settings → Network → Wifi → Configure, choose your network, enter
   the password, and wait up to 5 minutes.
-- **Steps** — power, router (the aGate joins 2.4 GHz Wi-Fi only) and Wi-Fi.
+- **Steps** — only those that fit what the bridge sees: **power** only when the aGate
+  answers nowhere (not on your LAN and not via the cloud); **router** (the aGate joins
+  2.4 GHz Wi-Fi only) when it has no internet; **Wi-Fi** when it is on 4G. With the aGate
+  online there are none, and the section isn't shown.
 
 The bridge also watches for 4G by itself: every 10 minutes its network read asks the aGate
 which link it uses (1118 `currentNetType`), and raises `AGATE_ON_4G` when that is 4G while

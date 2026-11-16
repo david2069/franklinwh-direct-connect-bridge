@@ -15,6 +15,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 - Troubleshoot: **Reconnect to Wi-Fi** runs when pressed; it no longer asks you to type
   RECONNECT first ([guide](docs/guide/ha-setup-and-notifications.md)).
+- Troubleshoot: the **Steps** fit what the bridge sees. "Check the aGate is powered" shows
+  only when it answers nowhere, not while it is on your LAN or online via 4G; with the
+  aGate online there are no steps ([guide](docs/guide/ha-setup-and-notifications.md)).
 
 ## Releases
 

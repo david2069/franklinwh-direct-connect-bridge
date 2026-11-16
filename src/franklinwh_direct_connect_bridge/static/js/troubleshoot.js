@@ -3,10 +3,28 @@
  * alert. It shows the verdict (the bridge's LAN link plus what the FranklinWH cloud says the
  * aGate is connected through), a Health check (LAN, :9000, the aGate's cloud link, the last
  * good poll — never the Modbus TCP Server (aGate :502)), a link to Network, the steps, and,
- * when the cloud says 4G, Reconnect to Wi-Fi (admin, typed confirmation). Every result stays
+ * when the cloud says 4G, Reconnect to Wi-Fi (admin; runs when pressed). Every result stays
  * inside the panel. The bridge never sends, holds or shows a Wi-Fi password; the library
  * reuses the one the aGate stores.
  */
+// Troubleshoot steps per verdict (troubleshoot.verdict codes). Power only when the aGate
+// answers nowhere: on the LAN or via the cloud it is plainly on.
+const STEP_TEXT = {
+  power: 'Power: check the aGate is powered and its light is on.',
+  router: 'Router: if other devices have lost internet too, restart the router. The aGate joins 2.4 GHz Wi-Fi only.',
+  wifi: 'Wi-Fi: the aGate is on 4G; put it back on Wi-Fi — above, or with the FranklinWH app.',
+};
+const STEP_FOR = {
+  offline: ['power', 'router'],
+  unreachable: ['power', 'router'],
+  on_4g: ['router', 'wifi'],
+  left_wifi: ['router', 'wifi'],
+  no_cloud: ['router'],
+  lan_only: [],
+  online: [],
+  online_lan: [],
+};
+
 document.addEventListener('alpine:init', () => {
   Alpine.store('troubleshoot', {
     isOpen: false,
@@ -143,11 +161,12 @@ document.addEventListener('alpine:init', () => {
         'Wait up to 5 minutes for the aGate to join. The app then shows Wi-Fi → Internet, Connected.',
       ];
     },
-    steps: [
-      'Power: check the aGate is powered and its light is on.',
-      'Router: if other devices have lost internet too, restart the router. The aGate joins 2.4 GHz Wi-Fi only.',
-      'Wi-Fi: if the aGate is on 4G, put it back on Wi-Fi — below, or with the FranklinWH app.',
-    ],
+    /** The steps that fit what the bridge sees (owner 2026-11-17): no "check its power"
+     *  while it answers on the LAN or the cloud; none when it is fine. */
+    get steps() {
+      const code = this.data && this.data.verdict && this.data.verdict.code;
+      return (STEP_FOR[code] || []).map(k => STEP_TEXT[k]);
+    },
     checkColor(ok) {
       return ok === true ? 'var(--ok, #10b981)' : ok === false ? 'var(--danger, #dc2626)'
         : 'var(--text-muted, #64748b)';
