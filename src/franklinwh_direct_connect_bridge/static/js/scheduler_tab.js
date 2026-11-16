@@ -115,10 +115,9 @@ document.addEventListener('alpine:init', () => {
     },
 
     // ─── FranklinWH TOU ───
-    _touQ() { return '?gateway=' + encodeURIComponent(this.$store.app.selectedGateway || ''); },
     async loadTou() {
       try {
-        const r = await fetch('api/cloud/tou/schedule' + this._touQ());
+        const r = await fetch('api/cloud/tou/schedule' + this.$store.app.gwQuery());
         const d = await r.json();
         if (!r.ok) throw new Error(d.detail || r.statusText);
         this.tou = d;
@@ -127,7 +126,7 @@ document.addEventListener('alpine:init', () => {
     async syncTou() {
       this.touBusy = true; this.touMsg = null;
       try {
-        const r = await fetch('api/cloud/tou/schedule/sync' + this._touQ(), { method: 'POST' });
+        const r = await fetch('api/cloud/tou/schedule/sync' + this.$store.app.gwQuery(), { method: 'POST' });
         const d = await r.json();
         if (!r.ok) throw new Error(d.detail || r.statusText);
         this.tou = d;
@@ -152,7 +151,7 @@ document.addEventListener('alpine:init', () => {
     },
     async loadTouPlan() {
       try {
-        const r = await fetch('api/cloud/tou/schedule/import' + this._touQ() + '&power_pct=' + Number(this.touImp.power || 100));
+        const r = await fetch('api/cloud/tou/schedule/import?power_pct=' + Number(this.touImp.power || 100) + this.$store.app.gwQuery('&'));
         const d = await r.json();
         if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : r.statusText);
         this.touImp.plan = d;
@@ -161,7 +160,7 @@ document.addEventListener('alpine:init', () => {
     async doTouImport() {
       this.touBusy = true; this.touImp.msg = null;
       try {
-        const r = await fetch('api/cloud/tou/schedule/import' + this._touQ(), {
+        const r = await fetch('api/cloud/tou/schedule/import' + this.$store.app.gwQuery(), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ power_pct: Number(this.touImp.power || 100) }) });
         const d = await r.json();
