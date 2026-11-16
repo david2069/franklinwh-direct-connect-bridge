@@ -6098,6 +6098,7 @@ def create_app() -> FastAPI:
         rows = ha_dashboard.rows_for_node(node, entities.enabled_from_store(store))
 
         seen: set[str] = set()
+        device_ids: set[str] = set()
         errors: dict[str, str] = {}
         for inst in (store.ha_instances() if store else []):
             if not inst.get("enabled"):
@@ -6111,6 +6112,14 @@ def create_app() -> FastAPI:
                         seen.add(eid)
             except Exception as e:  # noqa: BLE001 — one unreachable HA must not hide the rest
                 errors[inst.get("name") or inst["id"]] = str(e)
+                continue
+            try:
+                # The ids HA gave this gateway's device (#689): it names entities after
+                # the device and entity name, not after the object_id we publish.
+                device_ids.update(ha_instances.device_entity_ids(
+                    inst["base_url"], inst.get("token"), f"franklinwh_{node}"))
+            except Exception:  # noqa: BLE001 — then object_id ids are all we can confirm
+                pass
 
         if not seen:
             # No ids to confirm against. Returning YAML here would mean composing ids from
@@ -6123,17 +6132,15 @@ def create_app() -> FastAPI:
                         + ("Errors: " + "; ".join(f"{k}: {v}" for k, v in errors.items())
                            if errors else "")).strip())
 
-        found, missing = ha_dashboard.resolve_ids(rows, seen)
-        # Every entity missing, with a Home Assistant that answered, is almost always one
-        # thing: the HA we can read is not the HA subscribed to our broker. Say so, because
-        # "0 found" on its own reads as a bug in the card.
+        found, missing = ha_dashboard.resolve_ids(rows, seen, device_ids)
+        # Nothing found with a Home Assistant that answered: say what that means and what
+        # to check, in plain words (#689).
         hint = ""
         if rows and not found:
-            hint = (f"None of the {len(rows)} entities this bridge publishes were found in "
-                    f"the Home Assistant(s) configured here. They are published to the MQTT "
-                    f"prefix '{s.mqtt_prefix}' with discovery prefix "
-                    f"'{s.ha_discovery_prefix}' — check that the Home Assistant you added "
-                    f"under Instances is the one subscribed to that broker.")
+            hint = ("Home Assistant has no entities from this gateway yet, so there is "
+                    "nothing to put in the card. Check that publishing is on (MQTT tab) "
+                    "and that the Home Assistant under Home Assistant \u2192 Instances is "
+                    "the one that uses this bridge's MQTT broker.")
         return {
             "yaml": ha_dashboard.build_yaml(found, layout=layout, diagnostics=diagnostics),
             "node": node,

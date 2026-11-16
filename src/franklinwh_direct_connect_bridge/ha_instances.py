@@ -11,6 +11,7 @@ probe a connection. Tokens are passed to HA and never returned to a caller.
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.request
 from typing import Any
@@ -268,3 +269,33 @@ def send_notification(base_url: str, token: str | None, service: str,
         return {"ok": False, "error": hint}
     except Exception as e:                                       # noqa: BLE001
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+
+#: The entity ids of the MQTT device with this discovery identifier (#689): the ids HA
+#: actually gave, whatever it named them. ``@ID@`` is the identifier.
+DEVICE_ENTITIES_TEMPLATE = (
+    "{% set ns = namespace(o=[]) %}"
+    "{% for d in integration_entities('mqtt') | map('device_id') | reject('none') | unique %}"
+    "{% if ['mqtt', '@ID@'] in (device_attr(d, 'identifiers') | list | map('list') | list) %}"
+    "{% set ns.o = ns.o + device_entities(d) %}"
+    "{% endif %}{% endfor %}{{ ns.o | tojson }}"
+)
+
+
+def device_entity_ids(base_url: str, token: str | None, identifier: str) -> list[str]:
+    """Entity ids of this bridge's device ``identifier`` (``franklinwh_<node>``) in HA.
+
+    Rendered by HA's template engine, as :func:`bridge_entities`. Raises on any failure."""
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", identifier or ""):
+        raise ValueError(f"not a device identifier: {identifier!r}")
+    if not token:
+        raise PermissionError("no token configured for this instance")
+    req = urllib.request.Request(
+        base_url.rstrip("/") + "/api/template",
+        data=json.dumps(
+            {"template": DEVICE_ENTITIES_TEMPLATE.replace("@ID@", identifier)}).encode(),
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method="POST")
+    with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
+        rows = json.loads(resp.read().decode() or "[]")
+    return [str(e) for e in rows if isinstance(e, str)]
