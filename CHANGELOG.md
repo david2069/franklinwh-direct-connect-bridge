@@ -19,6 +19,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   only when it answers nowhere, not while it is on your LAN or online via 4G; with the
   aGate online there are no steps ([guide](docs/guide/ha-setup-and-notifications.md)).
 
+### Fixed
+
+- Dashboard: the **Battery State of Charge** and **Energy** cards cut text off or ran past
+  their edge when narrow, such as a window about 1024–1200 px wide with the sidebar open (#370). State
+  of Charge now puts Reserved, Mode, Battery and Run status under the ring, and wraps rather
+  than truncating; Energy shows one column when two don't fit
+  ([guide](docs/guide/tour.md)).
+
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
