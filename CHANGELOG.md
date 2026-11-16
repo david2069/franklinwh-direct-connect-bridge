@@ -11,6 +11,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+
+- Troubleshoot: **Reconnect to Wi-Fi** runs when pressed; it no longer asks you to type
+  RECONNECT first ([guide](docs/guide/ha-setup-and-notifications.md)).
+- Troubleshoot: the **Steps** fit what the bridge sees. "Check the aGate is powered" shows
+  only when it answers nowhere, not while it is on your LAN or online via 4G; with the
+  aGate online there are no steps ([guide](docs/guide/ha-setup-and-notifications.md)).
+
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.

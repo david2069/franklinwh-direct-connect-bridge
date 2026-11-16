@@ -371,7 +371,9 @@ def test_the_panel_has_verdict_health_network_steps_and_app_fallback():
     for step in ("Settings", "Network", "Wifi", "Configure", "choose your network",
                  "enter the password", "5 minutes"):
         assert step in js, step
-    assert "confirmTyped(" in js                      # typed confirmation
+    # Owner 2026-11-17: no typed confirmation; Reconnect runs when pressed.
+    fn = js[js.index("async reconnect()"):js.index("async _job()")]
+    assert "confirmTyped(" not in fn and "confirm(" not in fn.replace("confirm: true", "")
     # The request names the stored network only: no password is ever sent.
     assert "JSON.stringify({ ssid: d.stored_ssid, confirm: true })" in js
     assert "wifi_password" not in js and "password:" not in js
@@ -408,3 +410,26 @@ def test_never_a_deep_scan_that_probes_502(env):
     _lan(env["store"], "ok")
     env["c"].get("/api/troubleshoot/connectivity?" + G)
     assert all(c.get("overview_deep_scan", False) is False for c in env["cloud"].calls)
+
+
+def test_the_steps_fit_what_the_bridge_sees():
+    """Owner 2026-11-17: "Check the aGate is frigging on!!! You wouldn't see this if it
+    wasn't on." The power step only when the aGate can't be reached anywhere; none when
+    it is fine."""
+    js = (PKG / "static" / "js" / "troubleshoot.js").read_text()
+    fn = js[js.index("get steps()"):]
+    fn = fn[:fn.index("\n    },")]
+    assert "STEP_FOR" in js and "STEP_FOR[" in fn
+    table = js[js.index("const STEP_FOR"):]
+    table = table[:table.index("};")]
+    def row(code):
+        line = next(l for l in table.splitlines() if l.strip().startswith(code + ":"))
+        return line
+    for code in ("offline", "unreachable"):
+        assert "power" in row(code)
+    for code in ("on_4g", "left_wifi", "no_cloud", "lan_only", "online", "online_lan"):
+        assert "power" not in row(code), code
+    assert "wifi" in row("on_4g") and "wifi" in row("left_wifi")
+    assert row("online").split(":", 1)[1].strip().startswith("[]")
+    html = (PKG / "templates" / "partials" / "troubleshoot.html").read_text()
+    assert 'x-show="$store.troubleshoot.steps.length"' in html
