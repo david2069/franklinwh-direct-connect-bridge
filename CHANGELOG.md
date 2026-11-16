@@ -11,6 +11,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+
+- Scheduler: no schedule ran on a gateway whose meter has a tariff. Every tick failed with
+  "can't subtract offset-naive and offset-aware datetimes" (thousands of warnings a day,
+  shown in the daily health report): the billing period was worked out on a different
+  clock from the scheduler's site clock. Both now use the site clock, and so does the
+  demand window's interval check ([guide](docs/guide/scheduler/restarts-and-clock.md)).
+
 ### Changed
 
 - Scheduler → FranklinWH TOU: a clash is now only a Force schedule whose battery dispatch
