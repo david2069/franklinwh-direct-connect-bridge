@@ -13,6 +13,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- Settings: the **Billing & Utilities** sub-tab is back, with the sites, meters, retailers
+  and tariffs editors; 0.5.45 had replaced it with a link to the Billing & Utilities page
+  ([#674](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/674);
+  [guide](docs/guide/tour.md)).
+
+### Added
+- Scheduler: a **FranklinWH TOU** view. The bridge keeps a dated copy of the TOU schedule
+  from the FranklinWH cloud (read-only), taken at start-up, when TOU mode is set, or on
+  **Sync now**; shows today's blocks and the schedules that clash with them while TOU mode
+  is on; and can import the schedule as bridge schedules (created disabled), which it
+  recommends instead of FranklinWH TOU ([guide](docs/guide/scheduler/index.md)).
+
 - Analytics: **Line** and **Area** can be picked again in every period except Lifetime;
   0.5.47 greyed them in all periods (a "not blocked" answer was read as blocked)
   ([guide](docs/guide/energy-and-costs.md)).
