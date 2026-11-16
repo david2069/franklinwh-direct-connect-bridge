@@ -1,6 +1,6 @@
 """Location & Solar sits under Settings → Location & Prices (owner, 2026-11-13, #582
 follow-up; the sub-tab was Sites & Billing until sites, meters and tariffs moved to the
-Billing & Utilities page, #613). The default site's card there links to it."""
+Billing & Utilities page, #613; restored as Billing & Utilities, #674). The default site's card there links to it."""
 import pathlib
 
 from franklinwh_direct_connect_bridge import scheduler
@@ -19,9 +19,8 @@ def _sub_of(i):
 def test_location_and_solar_is_under_location_and_prices():
     i = HTML.index("<!-- ══ Location & Solar ══ -->")
     assert _sub_of(i) == "billing"
-    moved = HTML.index('data-testid="plans-moved"')     # the pointer to Plans & meters (#613)
     prices = HTML.index("<!-- ══ Prices (#582)")
-    assert moved < i < prices
+    assert i < prices
 
 
 def test_messages_point_to_the_new_place():
