@@ -53,6 +53,12 @@ def _period_end(ps: dt.datetime, cycle_day: int) -> dt.datetime:
     return ps.replace(year=y, month=m, day=min(int(cycle_day or 1), calendar.monthrange(y, m)[1]))
 
 
+def _at(ts: float, now: dt.datetime) -> dt.datetime:
+    """A stored timestamp as a datetime on ``now``'s clock: aware in its zone when ``now``
+    is (the scheduler's site clock, #43), naive local otherwise, so the two subtract."""
+    return dt.datetime.fromtimestamp(ts, now.tzinfo)
+
+
 def _in_window(win: Any, now: dt.datetime) -> bool:
     from . import scheduler
     return scheduler._in_window(win, now)
@@ -193,7 +199,7 @@ class BillingTracker:
         elif slot != st:
             prev_kwh = self._s["interval_import_wh"] / 1000.0
             dwin = (cfg.get("demand") or {}).get("window")
-            if _in_window(dwin, dt.datetime.fromtimestamp(st)):
+            if _in_window(dwin, _at(st, now)):          # the slot on the site clock too
                 self._s["peak_kwh"] = max(self._s["peak_kwh"], prev_kwh)
             self._s["interval_import_wh"] = 0.0
             self._s["interval_start"] = slot
@@ -240,7 +246,7 @@ class BillingTracker:
         }
         ps_ts, days, period_days = s["period_start"], 0.0, 0.0
         if ps_ts is not None:
-            ps = dt.datetime.fromtimestamp(ps_ts)
+            ps = _at(ps_ts, now)
             days = round(max(0.0, (now - ps).total_seconds() / 86400.0), 3)
             period_days = round((_period_end(ps, int(cfg.get("cycle_day", 1) or 1)) - ps).total_seconds() / 86400.0, 3)
 
@@ -292,7 +298,7 @@ class BillingTracker:
             pts = self.as_points(cfg, now)
             gwid = getattr(self, "primary", None) or gw
             tar = store.tariff(s["tariff_id"]) if s.get("tariff_id") else None
-            ps = dt.datetime.fromtimestamp(ps_ts)
+            ps = _at(ps_ts, now)
             pe = now if switch else _period_end(ps, int(cfg.get("cycle_day", 1) or 1))
             fixed_total = 0.0
             try:

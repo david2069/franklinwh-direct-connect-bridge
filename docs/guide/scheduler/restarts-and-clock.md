@@ -77,6 +77,10 @@ If the gateway cannot be read, the bridge falls back to the container's clock fo
 - A gateway clock that is impossible (an offset outside UTC−12 to UTC+14) is ignored; the
   base offset it reports is used instead, or the container's clock.
   <!-- @b CLK-06 ;; src: site_time.py:27-69 ;; tested: tests/test_site_clock_scheduler.py::test_an_impossible_offset_is_refused_outright ;; write: yes ;; b: An implausible aGate clock is not used as an offset; the base offset or the container clock is used ;; test: -->
+- The tick's billing sensors (the period's import, cost and credit, the demand peak) use
+  the same site clock, so the billing period starts at midnight site time on the cycle day.
+  (Before 0.5.49 a meter with a tariff made every tick fail with "can't subtract
+  offset-naive and offset-aware datetimes", and no schedule ran.)
 - **Where is this site?** in Setup sets the site timezone. It sets the clock of **mock**
   gateways, and clears the cached offsets; a real gateway's clock comes from the aGate.
   <!-- @b CLK-03 ;; src: site_time.py:110-113 ;; tested: tests/test_setup_timezone_api.py::test_setting_the_zone_drops_the_cached_offsets ;; write: no ;; b: Setting the site timezone drops the cached clock offsets ;; test: -->
