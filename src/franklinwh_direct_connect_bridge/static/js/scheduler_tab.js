@@ -1333,7 +1333,8 @@ document.addEventListener('alpine:init', () => {
      *  kept as it is; it only warns. */
     condFeatureWarning(c) {
       const s = c && this.sensors.find(x => x.id === c.sensor);
-      return s && s.inactive ? `${s.inactive} — this condition can't be met` : '';
+      const why = s && this.sensorInactive(s);
+      return why ? `${why} — this condition can't be met` : '';
     },
     condRingClass(c) {
       if (!this.condTested(c)) return '';
@@ -1361,6 +1362,14 @@ document.addEventListener('alpine:init', () => {
       const s = this.sensors.find(x => x.id === id);
       return s ? s.label : id;
     },
+    /** Why a value can't be picked: its feature (#471), or an accessory the schedule's
+     *  gateway doesn't have (#698). Under All gateways only when no gateway has it. */
+    sensorInactive(x) {
+      if (x.inactive) return x.inactive;
+      if (this.form && this.form.gateway_scope !== 'all' && x.inactive_gw)
+        return x.inactive_gw[this.form.gateway_id] || '';
+      return '';
+    },
     /** Flat, filtered list for the styled sensor dropdown: interleaved group headers
      *  and sensors, matched against the filter text on label OR id. One x-for, so no
      *  nested-x-for fragility. */
@@ -1372,7 +1381,7 @@ document.addEventListener('alpine:init', () => {
           || (x.label || '').toLowerCase().includes(t) || (x.id || '').toLowerCase().includes(t));
         if (!ss.length) continue;
         out.push({ kind: 'group', name: g.name, key: 'g:' + g.name });
-        for (const x of ss) out.push({ kind: 'sensor', id: x.id, label: x.label, inactive: x.inactive, key: 's:' + x.id });
+        for (const x of ss) out.push({ kind: 'sensor', id: x.id, label: x.label, inactive: this.sensorInactive(x), key: 's:' + x.id });
       }
       return out;
     },

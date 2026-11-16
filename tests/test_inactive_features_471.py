@@ -182,7 +182,9 @@ def test_picker_rows_are_disabled_with_the_reason():
     for r in rows:
         assert ':disabled="!!it.inactive"' in r, r[:200]
         assert "it.inactive" in r and "'(' + it.inactive + ')'" in r, r[:200]
-    assert "inactive: x.inactive" in _js()
+    # the feature's reason first; an accessory the gateway lacks after it (#698)
+    assert "inactive: this.sensorInactive(x)" in _js()
+    assert "if (x.inactive) return x.inactive;" in _js()
 
 
 def test_variable_picker_rows_are_disabled_with_the_reason():
