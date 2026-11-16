@@ -11,6 +11,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+
+- Scheduler: a **FranklinWH TOU** view. The bridge keeps a dated copy of the TOU schedule
+  from the FranklinWH cloud (read-only), taken at start-up, when TOU mode is set, or on
+  **Sync now**; shows today's blocks and the schedules that clash with them while TOU mode
+  is on; and can import the schedule as bridge schedules (created disabled), which it
+  recommends instead of FranklinWH TOU ([guide](docs/guide/scheduler/index.md)).
+
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.

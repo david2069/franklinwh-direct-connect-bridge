@@ -37,7 +37,10 @@ document.addEventListener('alpine:init', () => {
     presets: [],
     presetOpen: false,
     importReport: null,
-    view: 'schedules',       // schedules | timeline | history
+    view: 'schedules',       // schedules | timeline | history | tou
+    // FranklinWH TOU (owner 2026-11-16): the cloud schedule's copy, and its import dialog.
+    tou: null, touBusy: false, touMsg: null,
+    touImp: { open: false, power: 100, plan: null, msg: null, done: false },
     timeline: null,
     timelineGw: '',          // a gateway's id, or '*' for every gateway (#579)
     logEvents: null,
@@ -93,6 +96,7 @@ document.addEventListener('alpine:init', () => {
     async setView(v) {
       this.view = v;
       if (v === 'timeline') await this.loadTimeline();
+      if (v === 'tou') await this.loadTou();
       if (v === 'history') this.logEvents = (await (await fetch('api/schedules/log?limit=200')).json()).events;
     },
 
@@ -108,6 +112,71 @@ document.addEventListener('alpine:init', () => {
         return `${seg.blocks.length}× from ${this.hhmm(seg.start_min)}`;
       return this.hhmm(seg.start_min) + (seg.end_min !== seg.start_min ? '–' + this.hhmm(seg.end_min) : '')
         + (seg.wraps_midnight ? ' (+1d)' : '');
+    },
+
+    // ─── FranklinWH TOU ───
+    _touQ() { return '?gateway=' + encodeURIComponent(this.$store.app.selectedGateway || ''); },
+    async loadTou() {
+      try {
+        const r = await fetch('api/cloud/tou/schedule' + this._touQ());
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || r.statusText);
+        this.tou = d;
+      } catch (e) { this.touMsg = { kind: 'danger', text: "Couldn't load the TOU schedule: " + e.message }; }
+    },
+    async syncTou() {
+      this.touBusy = true; this.touMsg = null;
+      try {
+        const r = await fetch('api/cloud/tou/schedule/sync' + this._touQ(), { method: 'POST' });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || r.statusText);
+        this.tou = d;
+        this.touMsg = { kind: 'ok', text: 'Read from the FranklinWH cloud ' + this.when(d.latest.checked_ts) + '.' };
+      } catch (e) { this.touMsg = { kind: 'danger', text: e.message }; }
+      finally { this.touBusy = false; }
+    },
+    touReason(r) { return { start: 'at start-up', 'tou-mode': 'TOU mode set', manual: 'Sync now' }[r] || r; },
+    touPct(hhmm) { const [h, m] = String(hhmm).split(':').map(Number); return Math.min(100, (h * 60 + m) / 14.4); },
+    touColour(id) {
+      return { 8: '#3b82f6', 7: '#f59e0b', 2: '#64748b', 3: '#eab308', 1: '#10b981', 6: '#10b981' }[id] || '#94a3b8';
+    },
+    touWhen(e) {
+      const D = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return `${e.fire_at} for ${e.duration_min} min · ${e.days.length ? e.days.map(d => D[d]).join(' ') : 'every day'}`
+        + ` · ${e.months.length ? e.months.map(m => M[m - 1]).join(' ') : 'all year'}`;
+    },
+    async openTouImport() {
+      this.touImp = { open: true, power: 100, plan: null, msg: null, done: false };
+      await this.loadTouPlan();
+    },
+    async loadTouPlan() {
+      try {
+        const r = await fetch('api/cloud/tou/schedule/import' + this._touQ() + '&power_pct=' + Number(this.touImp.power || 100));
+        const d = await r.json();
+        if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : r.statusText);
+        this.touImp.plan = d;
+      } catch (e) { this.touImp.msg = { kind: 'danger', text: e.message }; }
+    },
+    async doTouImport() {
+      this.touBusy = true; this.touImp.msg = null;
+      try {
+        const r = await fetch('api/cloud/tou/schedule/import' + this._touQ(), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ power_pct: Number(this.touImp.power || 100) }) });
+        const d = await r.json();
+        if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : r.statusText);
+        this.touImp.done = true;
+        this.touImp.msg = { kind: 'ok', text: `Created ${d.created.length} schedule(s), disabled: `
+          + d.created.map(c => c.name).join('; ') + '. Enable them on Schedules and set Self-Consumption when ready.' };
+        await this.load();
+        await this.loadTou();
+      } catch (e) { this.touImp.msg = { kind: 'danger', text: "Couldn't import: " + e.message }; }
+      finally { this.touBusy = false; }
+    },
+    editById(id) {
+      const s = this.schedules.find(x => x.id === id);
+      if (s) this.editEntry(s);
     },
 
     hhmm(min) {
