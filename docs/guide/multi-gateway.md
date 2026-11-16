@@ -127,7 +127,9 @@ The page always shows and controls **one gateway**, the one named in the top bar
 **All gateways…** in the gateway selector opens a read-only view of every gateway (#383):
 counts (Registered, Polling active, Unavailable, Stopped), one row per gateway (name and
 serial, model, health, grid, mode or command, SoC, poll status, last poll, and battery,
-grid, solar and load power) and a site total. Click a row to show that gateway. It has no
+grid, solar and load power) and a site total. The site total's SoC is weighted by each
+gateway's battery capacity (aPower count × usable kWh); until a gateway's aPowers have been
+read it is the plain average, marked *avg* (#358). Click a row to show that gateway. It has no
 controls. (It replaces Site view, *Site · All Gateways*.)
 
 The **reserve SoC** is set through the FranklinWH cloud on the serial of the gateway on

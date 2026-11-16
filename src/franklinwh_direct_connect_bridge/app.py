@@ -3252,11 +3252,16 @@ def create_app() -> FastAPI:
     def api_site_status():
         """Whole-site aggregation across every registered gateway, from their poller
         caches (no device I/O). Never 500s — cold caches contribute zeros / ok:false.
-        ``totals`` sums the power fields over the OK gateways only."""
+        ``totals`` sums the power fields over the OK gateways only. ``soc`` is the site's
+        SoC weighted by each gateway's battery capacity, or their plain mean when a
+        capacity isn't known yet (``soc_weighted`` false) (#358)."""
+        from . import system_setup
         gws = state.gateways()      # none registered ⇒ an empty site, never the default (#383)
         keys = ("grid_w", "solar_w", "battery_w", "load_w", "generator_w")
         totals = {k: 0 for k in keys}
         ok_count = 0
+        socs: list[tuple[float, float | None]] = []
+        st = _gw_store()
         for gw in gws:
             summ = gw.last_summary or {}
             if not summ.get("ok"):
@@ -3267,7 +3272,16 @@ def create_app() -> FastAPI:
                 v = power.get(k)
                 if isinstance(v, (int, float)):
                     totals[k] += v
+            if isinstance(power.get("soc"), (int, float)):
+                socs.append((float(power["soc"]), system_setup.cached_capacity_kwh(
+                    st, gw.id, gw.active_host or gw.configured_host)))
+        weighted = bool(socs) and all(cap for _, cap in socs)
+        if weighted:
+            soc = round(sum(s * cap for s, cap in socs) / sum(cap for _, cap in socs), 1)
+        else:
+            soc = round(sum(s for s, _ in socs) / len(socs), 1) if socs else None
         return {"count": len(gws), "ok_count": ok_count, "totals": totals,
+                "soc": soc, "soc_weighted": weighted,
                 "gateways": [_roster_entry(gw) for gw in gws]}
 
     @app.get("/api/system")
@@ -4194,12 +4208,14 @@ def create_app() -> FastAPI:
                 # Owned by DEVICE identity, not by entity_id text (#83): since 0.4.0 the
                 # entity_ids carry the serial's last 8 characters, older ones carry the old
                 # device name, and other integrations also use "franklinwh_".
-                rows = ha_instances.bridge_entities(inst["base_url"], inst.get("token"))
+                # One row per device with its count, so HA's 256 KiB template limit is
+                # not reached however many leftovers there are (#445).
+                rows = ha_instances.bridge_entity_counts(inst["base_url"], inst.get("token"))
                 current = {f"franklinwh_{(g.serial or '').lower()}"
                            for g in (get_gateways() or []) if g.serial}
                 if current:
-                    ours = sum(1 for _e, idents in rows if current & set(idents))
-                    leftovers = len(rows) - ours
+                    ours = sum(n for idents, n in rows if current & set(idents))
+                    leftovers = sum(n for _i, n in rows) - ours
             except Exception:  # noqa: BLE001 — a count is not worth failing the page for
                 ours = leftovers = None
         checks.append({
