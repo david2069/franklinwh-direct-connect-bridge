@@ -11,52 +11,20 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
-### Added
-
-- Prices: the generic dynamic-pricing attributes for any price source: buy and feed-in
-  price, their forecasts and descriptors, renewables on the grid, price spike and demand
-  window, each a scheduler sensor (`tariff.price_forecast`, `tariff.feed_in_forecast`,
-  `tariff.price_descriptor`, `tariff.feed_in_descriptor`, `tariff.renewables_pct` are new).
-  A source without one (AEMO NEM, many utilities) leaves it empty, never 0 or NaN. **Fill
-  from the same integration** finds the rest of the Amber Electric integration's sensors
-  from its price sensor, for you to confirm. The Prices card is on Billing & Utilities →
-  Plans & meters too ([guide](docs/guide/energy-and-costs.md)).
-
-### Fixed
-
-- Prices: a price spike or demand-window sensor that isn't exposed to the bridge now works;
-  it read nothing before ([guide](docs/guide/energy-and-costs.md)).
-
-### Fixed
-
-- Scheduler: no schedule ran on a gateway whose meter has a tariff. Every tick failed with
-  "can't subtract offset-naive and offset-aware datetimes" (thousands of warnings a day,
-  shown in the daily health report): the billing period was worked out on a different
-  clock from the scheduler's site clock. Both now use the site clock, and so does the
-  demand window's interval check ([guide](docs/guide/scheduler/restarts-and-clock.md)).
-
-### Changed
-
-- Scheduler → FranklinWH TOU: a clash is now only a Force schedule whose battery dispatch
-  contradicts the TOU block it runs in (a mode, reserve or off-grid schedule no longer
-  counts), shown as a table with one row per schedule and block instead of a line per run
-  ([guide](docs/guide/scheduler/index.md)).
-
-### Added
-
-- Solar Forecast card in the Energipays Bridge's layout: one chart over today and
-  tomorrow with kW and °C axes, a NOW line, today's actual solar and the temperature
-  (today's and the forecast) drawn over the bars with **Actual** / **Temp** toggles, and a
-  hover tip. When the solar left today won't fill the battery, the card says so, and a new
-  notification **Today's solar won't fill the battery** goes out once a day
-  ([#676](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/676);
-  [guide](docs/guide/energy-and-costs.md)).
-
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
 
 ## 2026-11-16
+
+### [0.5.49](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.49.md)
+
+Added 2 · Changed 1 · Fixed 2
+
+- Scheduler: schedules run again on a gateway whose meter has a tariff (every tick had…
+- Prices: generic dynamic-pricing attributes (forecasts, descriptors, renewables, spike…
+- Solar Forecast: the Energipays Bridge layout with actual solar and temperature, and a…
+- FranklinWH TOU: a clash is only a Force that contradicts the TOU block, shown as a table
 
 ### [0.5.48](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.48.md)
 
