@@ -299,8 +299,8 @@ which one.
   you correct a tariff: the new bill supersedes the old one, which is kept (tick **Show
   superseded** to see it). Below, **Recorded periods** are the running tracker's periods and
   any imported from a Modbus Bridge, with **Export history CSV** and **Import from Modbus**.
-- **Plans & meters.** Sites, meters, retailers and tariffs (below), moved here from
-  Settings. A tariff's **Export** also gives it as an OUTUS plan
+- **Plans & meters.** Sites, meters, retailers and tariffs (below). The same editors are
+  also in **Settings → Billing & Utilities**. A tariff's **Export** also gives it as an OUTUS plan
   (`/api/tariffs/<id>/export?format=outus`).
 
 The setup steps come from [hems](https://github.com/david2069/hems), the OUTUS engine, so
@@ -459,10 +459,29 @@ bridge reads the location your installer configured on the aGate, over the local
 and nothing needs typing. If the aGate has no location configured, the sync says so and
 leaves the fields as they were. Only then type the coordinates in yourself.
 
+### One location per site
+
+Each site has its own location and solar array (#675). The **Site** picker at the top of
+the card chooses which site's you are looking at. The default site's are the ones this card
+always had, so a one-site install sees no change. A gateway uses its site's: gateway →
+meter → site, and a gateway with no meter is on the default site. Its Solar Forecast card,
+its weather and solar-forecast sensors in the Scheduler, and Analytics all use its site's
+location and size. Each site on Billing & Utilities → Plans & meters shows its own
+**Location & Solar** line, which opens this card on that site.
+
+**Gateways on this site** lists each of the site's gateways with the location the gateway
+itself reports (1201). The bridge no longer assumes they are all at the same place. A
+gateway within 1 km of the site's location shows **✓ same place**. One further away shows
+how far, and asks whether it belongs on another site: give it a meter on that site
+(gateway Edit), then pick that site here and press **Sync from gateway**.
+
+**Sync from gateway** reads a gateway on the picked site (the active one when it is on the
+site, else the site's first) and saves its location into that site.
+
 Then set the array: tilt and azimuth, and check the size.
 
 **Size (kWp)** comes from your gateways by default (#583): their rated PV inputs (1903),
-added up over the site's gateways, shown as "Gateway 6.6 kWp". Leave the field blank to
+added up over the site's gateways (each site's own), shown as "Gateway 6.6 kWp". Leave the field blank to
 use it. Enter a number of your own when the gateway's is not the whole story: DC panels
 larger than the inverter's AC rating (common in Australia, such as 8 kWp on a 6.6 kW
 inverter), or remote or third-party solar the aGate doesn't rate. The field then shows both

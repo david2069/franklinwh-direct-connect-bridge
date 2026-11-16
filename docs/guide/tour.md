@@ -196,7 +196,7 @@ protocol documentation.
 | **Device** | Device identity and raw readings — model, firmware, serial — and a browser for individual `cmdType` reads. |
 | **Health** | A per-gateway connection panel: host, online/offline, round-trip latency, `Modbus :502` as Up / Down / **Not probed** (from the Modbus client's last real connection; nothing probes :502 to show it), ping, whether the host was rediscovered, MQTT, whether writes are enabled, firmware and serials, with a Refresh that forces a fresh probe. |
 | **Logs** | The bridge's own log, stored in SQLite: searchable, paginated, filterable by level and source, with a **Live** follow mode and an export. Control actions, cloud calls and connection events all land here. |
-| **Settings** | The configuration hub. Sub-tabs: **General**, **Gateways**, **Automation**, **Location & Prices**, **Integrations**, **Admin**. |
+| **Settings** | The configuration hub. Sub-tabs: **General**, **Gateways**, **Automation**, **Billing & Utilities**, **Location & Prices**, **Integrations**, **Admin**. |
 
 ### Terminal
 
@@ -252,9 +252,10 @@ bridge on a trusted network.
   multiplies them. The constants themselves are *not* read
   from the aGate; you set them here and they become `const.*` sensors in the Scheduler.
   Also **System Setup**, the install profile.
+- **Billing & Utilities** — sites, meters, retailers and tariffs: the same editors as the
+  **Billing & Utilities** page's **Plans & meters**.
 - **Location & Prices** — the site's **Location & Solar** (forecast location and array) and
   **Prices**: the price signal for automation and the price events (spike, demand window).
-  Sites, meters, retailers and tariffs are on **Billing & Utilities → Plans & meters**.
 - **Integrations** — MQTT broker, notifications, battery dispatch, the Cloud API
   credentials, and **Integration → Mapping** (below).
 - **Admin** — storage, vacuum, database backup / restore / download.

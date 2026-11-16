@@ -17,6 +17,16 @@ Full notes for each release are on the [docs site](https://david2069.github.io/f
 
 ## 2026-11-16
 
+### [0.5.48](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.48.md)
+
+Added 2 · Fixed 3
+
+- Scheduler: a FranklinWH TOU view: a dated copy of the TOU schedule from the cloud, the…
+- Location & Solar: each site has its own location and solar array
+- Settings: the Billing & Utilities sub-tab is back
+- Analytics: Line and Area can be picked again
+- Reliability: a shutdown just after a gateway edit no longer floods the log and stops the…
+
 ### [0.5.47](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.47.md)
 
 Added 4 · Changed 2 · Fixed 8

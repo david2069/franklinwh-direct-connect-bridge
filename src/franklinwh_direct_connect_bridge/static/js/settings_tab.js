@@ -197,6 +197,7 @@ function settingsTab(opts = {}) {
         await this.reload();
         await this.loadGateways();
         await this.loadSitesMeters();
+        if (this.sub === 'billing') this.loadLoc();
         await this.loadUtilitiesTariffs();
         await this.loadConstants();
         await this.loadSystemSetup();
@@ -234,6 +235,7 @@ function settingsTab(opts = {}) {
       { key: 'general', label: 'General' },
       { key: 'gateways', label: 'Gateways' },
       { key: 'automation', label: 'Automation' },
+      { key: 'sites', label: 'Billing & Utilities' },
       { key: 'billing', label: 'Location & Prices' },
       { key: 'integrations', label: 'Integrations' },
       { key: 'admin', label: 'Admin' },
@@ -241,6 +243,7 @@ function settingsTab(opts = {}) {
     sub: (function () { try { return localStorage.getItem('fwh-settings-sub') || 'general'; } catch (e) { return 'general'; } })(),
     setSub(k) {
       this.sub = k;
+      if (k === 'billing' && !this.embedded) this.loadLoc();   // Location & Solar (#675)
       try { localStorage.setItem('fwh-settings-sub', k); } catch (e) { /**/ }
     },
 
@@ -1317,6 +1320,8 @@ function settingsTab(opts = {}) {
       this.form.price_spike_entity = pr.price_spike_entity || '';
       this.form.demand_window_entity = pr.demand_window_entity || '';
       const loc = this.cfg.location || {};
+      if (this.locView && !this.locView.is_default) loc.skip = true;   // another site is shown (#675)
+      if (!loc.skip) {
       this.form.pv_latitude = loc.latitude ?? '';
       this.form.pv_longitude = loc.longitude ?? '';
       this.form.pv_kwp = loc.pv_kwp ?? '';
@@ -1324,6 +1329,7 @@ function settingsTab(opts = {}) {
       this.form.pv_azimuth = loc.pv_azimuth ?? '';
       this.derivedPvKwp = (typeof loc.derived_pv_kwp === 'number' && loc.derived_pv_kwp > 0)
         ? loc.derived_pv_kwp : null;
+      }
       this.loadNemSpot();
       this.form.dispatch_interrupt_policy =
         (this.cfg.scheduler && this.cfg.scheduler.dispatch_interrupt_policy) || 'release';
@@ -1485,12 +1491,55 @@ function settingsTab(opts = {}) {
 
     /** Persist ONE whitelisted setting immediately (auto-save). Everything the
      *  user can change here now applies on change — no separate Save step. */
+    // ── Location & Solar per site (#675): the picked site's location and PV array, and
+    //    each of its gateways' own location. The default site's are the settings pv_*.
+    locSite: '', locView: null,
+    async loadLoc(sid) {
+      if (sid) this.locSite = sid;
+      if (!this.locSite || !(this.sites || []).some(x => x.id === this.locSite))
+        this.locSite = ((this.sites || []).find(x => x.is_default) || (this.sites || [])[0] || {}).id || '';
+      if (!this.locSite) return;
+      try {
+        const r = await fetch('api/sites/' + encodeURIComponent(this.locSite) + '/location');
+        if (!r.ok) return;
+        const v = await r.json();
+        this.locView = v;
+        this.form.pv_latitude = v.latitude ?? ''; this.form.pv_longitude = v.longitude ?? '';
+        this.form.pv_kwp = v.pv_kwp ?? ''; this.form.pv_tilt = v.pv_tilt ?? '';
+        this.form.pv_azimuth = v.pv_azimuth ?? '';
+        // The default site's gateway size is the one Settings read (it asks the gateways).
+        const d = v.is_default ? ((this.cfg.location || {}).derived_pv_kwp) : v.derived;
+        this.derivedPvKwp = (typeof d === 'number' && d > 0) ? d : null;
+      } catch (e) { /* keep what is shown */ }
+    },
+    /** Save one of the picked site's fields; latitude/longitude re-check its gateways. */
+    async saveLoc(patch) {
+      if (!this.locSite) return this.saveOne(patch);
+      const body = {};
+      for (const [k, v] of Object.entries(patch)) body[k.replace(/^pv_(latitude|longitude)$/, '$1')] = v;
+      try {
+        const r = await fetch('api/sites/' + encodeURIComponent(this.locSite) + '/location', { method: 'PUT',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+        Alpine.store('app').toast('Saved', 'success');
+        if ('latitude' in body || 'longitude' in body) this.loadLoc();
+      } catch (e) { Alpine.store('app').toast('Save failed: ' + e.message, 'error'); }
+    },
+    /** The gateway Sync from gateway reads: the active one when it is on the picked site,
+     *  else the site's first. */
+    get locSyncGateway() {
+      const ids = ((this.locView || {}).gateways || []).map(g => g.gateway_id);
+      const active = this.$store.app.selectedGateway;
+      return ids.includes(active) ? active : (ids[0] || active || '');
+    },
     async syncLocation() {
       try {
-        const r = await fetch('api/solar/sync-location' + this.$store.app.gwQuery(), { method: 'POST' });
+        const gw = this.locSyncGateway;
+        const r = await fetch('api/solar/sync-location' + (gw ? '?gateway=' + encodeURIComponent(gw) : this.$store.app.gwQuery()), { method: 'POST' });
         const d = await r.json();
         if (r.ok) {
           this.form.pv_latitude = d.latitude; this.form.pv_longitude = d.longitude;
+          this.loadLoc(d.site_id || undefined);
           Alpine.store('app').toast('Location synced from gateway' + (d.postcode ? ' (postcode ' + d.postcode + ')' : ''), 'success');
         } else Alpine.store('app').toast('Sync failed: ' + (d.detail || r.status), 'error');
       } catch (e) { Alpine.store('app').toast('Sync failed: ' + e.message, 'error'); }

@@ -28,10 +28,10 @@
              style="background:var(--surface-1);border-color:var(--border)">
             <!-- a type that can't draw the shown period is greyed with its reason (owner, 2026-11-15) -->
             <button role="menuitemradio" :aria-checked="chartType === 'line'" class="w-full text-left px-3 py-2 text-xs hover:bg-white/[0.06] transition flex items-start gap-2 disabled:opacity-50 disabled:cursor-not-allowed" style="color:var(--text-primary)"
-                    :disabled="chartBlocked('line')" :title="chartBlocked('line')" @click="open = false; setChartType('line')">
+                    :disabled="!!chartBlocked('line')" :title="chartBlocked('line')" @click="open = false; setChartType('line')">
               <span class="w-3 text-emerald-400" x-text="chartType === 'line' ? '✓' : ''"></span><span>Line<span x-show="chartBlocked('line')" class="block text-[10px]" style="color:var(--text-secondary)" x-text="chartBlocked('line')"></span></span></button>
             <button role="menuitemradio" :aria-checked="chartType === 'area'" class="w-full text-left px-3 py-2 text-xs hover:bg-white/[0.06] transition flex items-start gap-2 disabled:opacity-50 disabled:cursor-not-allowed" style="color:var(--text-primary)"
-                    :disabled="chartBlocked('area')" :title="chartBlocked('area') || 'Fill each line down to zero'" @click="open = false; setChartType('area')">
+                    :disabled="!!chartBlocked('area')" :title="chartBlocked('area') || 'Fill each line down to zero'" @click="open = false; setChartType('area')">
               <span class="w-3 text-emerald-400" x-text="chartType === 'area' ? '✓' : ''"></span><span>Area<span x-show="chartBlocked('area')" class="block text-[10px]" style="color:var(--text-secondary)" x-text="chartBlocked('area')"></span></span></button>
             <button role="menuitemradio" :aria-checked="chartType === 'bars' && !stacked" class="w-full text-left px-3 py-2 text-xs hover:bg-white/[0.06] transition flex items-center gap-2" style="color:var(--text-primary)" @click="open = false; setBars(false)">
               <span class="w-3 text-emerald-400" x-text="chartType === 'bars' && !stacked ? '✓' : ''"></span>Bars</button>

@@ -1796,20 +1796,17 @@ def nem_snapshot(settings, store=None, gateway_id=None) -> dict[str, Any]:
         return {}
 
 
-def solar_snapshot(settings) -> dict[str, Any]:
-    """Weather/solar-forecast values for the gate snapshot. Empty when the location
-    is not configured or the fetch fails; cached ~15min, so cheap to call per tick."""
+def solar_snapshot(settings, store=None, gateway_id: str | None = None) -> dict[str, Any]:
+    """Weather/solar-forecast values for the gate snapshot, for the gateway's site (#675).
+    Empty when the site's location is not configured or the fetch fails; cached ~15min,
+    so cheap to call per tick."""
     try:
-        lat = getattr(settings, "pv_latitude", None)
-        lon = getattr(settings, "pv_longitude", None)
-        if lat is None or lon is None:
+        from . import site_location, solar_forecast
+        loc = site_location.for_gateway(settings, store, gateway_id)
+        if not site_location.configured(loc) or not loc["kwp"]:
             return {}
-        from . import pv_size, solar_forecast
-        kwp = pv_size.kwp(settings)                  # yours, else the gateways' (#583)
-        if not kwp:
-            return {}
-        fc = solar_forecast.forecast(lat, lon, kwp=kwp,
-                                     tilt=settings.pv_tilt, azimuth=settings.pv_azimuth)
+        fc = solar_forecast.forecast(loc["latitude"], loc["longitude"], kwp=loc["kwp"],
+                                     tilt=loc["pv_tilt"], azimuth=loc["pv_azimuth"])
         return solar_forecast.sensors(fc)
     except Exception:                                           # noqa: BLE001
         return {}
@@ -2111,7 +2108,13 @@ def feature_states(settings, store, gateway_id=None) -> dict[str, dict[str, str]
     if not ok:
         out["modbus"] = (_feature("error", why) if "not installed" in why
                          else _feature("off", "Modbus client off"))
-    if getattr(settings, "pv_latitude", None) is None or getattr(settings, "pv_longitude", None) is None:
+    from . import site_location
+    try:                                    # the gateway's site's location (#675)
+        _loc = site_location.values(settings, store, site_location.site_of_gateway(store, gateway_id))
+    except Exception:                                           # noqa: BLE001
+        _loc = {"latitude": getattr(settings, "pv_latitude", None),
+                "longitude": getattr(settings, "pv_longitude", None)}
+    if not site_location.configured(_loc):
         out["solar_forecast"] = _feature("not_set_up", "solar forecast — " + _SETUP_SOLAR)
     try:
         instances = {i["id"]: i for i in (store.ha_instances() if store is not None else [])}
@@ -2749,7 +2752,7 @@ def build_snapshot(settings, store, state: dict, *, host: str | None, gateway_id
     snapshot = snapshot_from_state(state)
     snapshot["grid.offgrid_min"] = offgrid_min(state, now.timestamp())   # on the tick's clock
     snapshot.update(ha_snapshot(store))     # exposed HA entities are conditions too
-    snapshot.update(solar_snapshot(settings))   # weather + solar-forecast sensors
+    snapshot.update(solar_snapshot(settings, store, gateway_id))   # weather + solar forecast, the site's
     snapshot.update(nem_snapshot(settings, store, gateway_id))   # tariff.spot_price (AEMO NEM, the site's region)
     snapshot.update(ha_price_snapshot(settings, store))   # HA price entity -> tariff.spot_price/feed_in_price (wins over NEM)
     snapshot.update(tariff_snapshot(store, gateway_id, now))   # tariff.* + service.*

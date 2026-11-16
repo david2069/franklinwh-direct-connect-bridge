@@ -67,6 +67,11 @@ registered first, and editing the default gateway quietly made another one the d
 #182.) On update, the gateway that was the default at start-up is marked, so nothing
 changes.
 
+Saving a gateway's Edit restarts its poller: the old one finishes the read it is in, then
+the new one starts, and the log says "still winding down" once. If the bridge shuts down
+before that, the new one isn't started. (Before 0.5.48 a shutdown at that moment could
+repeat that log line hundreds of thousands of times and stop the bridge; #681.)
+
 The default is a designation and nothing more (#383). It is always listed first, and the
 page opens with it on screen. Any gateway can be removed; if the default is removed, the
 next gateway becomes the default straight away.

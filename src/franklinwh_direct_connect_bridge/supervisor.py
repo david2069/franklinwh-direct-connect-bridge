@@ -29,6 +29,8 @@ _deferred: dict[str, asyncio.Task] = {}
 DEFER_WAIT_S = 40.0
 #: How long shutdown waits for each poller before aborting it.
 STOP_GRACE_S = 35.0
+#: Set while stop_all runs: no poller starts during shutdown, deferred or not (#681).
+_shutting_down = False
 
 
 def is_running(gw_id: str) -> bool:
@@ -54,6 +56,9 @@ def worker_name(gw_id: str) -> str:
 
 async def start_poller(settings: Settings, gw: GatewayState) -> None:
     """Start one gateway's poller (idempotent — a running gateway is left alone)."""
+    if _shutting_down:
+        log.debug("not starting the poller for %s: the bridge is shutting down", gw.id)
+        return
     if is_running(gw.id):
         prev = registry.name_in_use(worker_name(gw.id))
         if prev is not None and prev.state is WorkerState.STOPPING:
@@ -89,6 +94,12 @@ def _defer_start(settings: Settings, gw: GatewayState) -> None:
     if pending is not None and not pending.done():
         return
     old = _stopping.get(gw.id)
+    if old is None:
+        # Stopped without being listed as winding down (stop_all does that): wait on the
+        # worker's own task, never on nothing. Waiting on nothing re-deferred at once,
+        # forever (#681).
+        w = registry.get(worker_name(gw.id))
+        old = w._task if w is not None else None
 
     async def _later() -> None:
         try:
@@ -105,6 +116,12 @@ def _defer_start(settings: Settings, gw: GatewayState) -> None:
                     else:
                         old.cancel()
             await asyncio.sleep(0)            # let the reaper free the worker name first
+            # The old task is over, so its name is free whatever the reaper has done:
+            # a STOPPING record left behind would send start_poller straight back here.
+            w = registry.get(worker_name(gw.id))
+            if w is not None and w.state is WorkerState.STOPPING and (w._task is None or w._task.done()):
+                w.mark_stopped()
+                registry.unregister(w.name)
             _deferred.pop(gw.id, None)
             await start_poller(settings, gw)
         except asyncio.CancelledError:
@@ -153,7 +170,23 @@ async def stop_poller(gw_id: str) -> None:
 
 
 async def stop_all() -> None:
-    """Shutdown: signal all pollers and await a clean exit (cancel if one overruns)."""
+    """Shutdown: signal all pollers and await a clean exit (cancel if one overruns).
+    Starts waiting on an old poller are dropped, and none begin until it returns (#681)."""
+    global _shutting_down
+    _shutting_down = True
+    try:
+        for t in list(_deferred.values()):
+            try:
+                t.cancel()
+            except RuntimeError:          # a start left over from a loop already closed
+                pass
+        _deferred.clear()
+        await _stop_all()
+    finally:
+        _shutting_down = False
+
+
+async def _stop_all() -> None:
     ents = list(_pollers.items())
     _pollers.clear()
     for gw_id, (_task, stop) in ents:

@@ -8,14 +8,15 @@ is assumed (it used to be 5.0 kWp)."""
 from __future__ import annotations
 
 
-def derived_kwp(read: bool = False) -> float | None:
+def derived_kwp(read: bool = False, gateway_ids: list[str] | None = None) -> float | None:
     """The gateways' reported solar size, summed; None when none reports one. Mock
     gateways count only when there is no real one. Without ``read`` only what System
     Setup last read is used, so the scheduler tick never waits on a gateway; the
-    Settings page reads (``read=True``), as it always has."""
+    Settings page reads (``read=True``), as it always has. ``gateway_ids``: only those
+    gateways, one site's (#675)."""
     from . import db, state, system_setup
     from .config import get_settings
-    gws = list(state.gateways())
+    gws = [g for g in state.gateways() if gateway_ids is None or g.id in gateway_ids]
     real = [g for g in gws if not getattr(g, "is_mock", False)]
     total, seen = 0.0, False
     s = get_settings()

@@ -2,7 +2,7 @@
 {% from "partials/device_multiselect.html" import device_multiselect %}
 <!-- ── Settings Tab (read-only) ───────────────────────────── -->
 <div class="space-y-6 max-w-5xl" x-data="settingsTab()"
-     @fwh-open-settings.window="setSub($event.detail.sub); setTimeout(() => { const el = document.getElementById($event.detail.card); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50)">
+     @fwh-open-settings.window="if ($event.detail.site) locSite = $event.detail.site; setSub($event.detail.sub); setTimeout(() => { const el = document.getElementById($event.detail.card); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50)">
 
   <!-- Settings sub-tabs -->
   <div class="flex flex-wrap gap-1.5">
@@ -298,12 +298,12 @@
   </div>
 
   </div>
-  <div x-show="sub==='billing'" x-cloak class="space-y-6" id="settings-billing">
-  <!-- Sites, meters, retailers and tariffs moved to Billing & Utilities → Plans & meters (#613). -->
-  <div class="card text-xs flex flex-wrap items-center justify-between gap-2" data-testid="plans-moved">
-    <span style="color:var(--text-secondary)">Sites, meters, retailers and tariffs are on the <b>Billing &amp; Utilities</b> page.</span>
-    <button class="btn btn-secondary btn-sm" @click="$store.app.setActiveTab('energy_costs'); setTimeout(() => window.dispatchEvent(new CustomEvent('fwh-open-billing', { detail: { sub: 'plans' } })), 50)">Plans &amp; meters</button>
+  <!-- Billing & Utilities (#674): the same sites, meters, retailers and tariffs editors as
+       the Billing & Utilities page's Plans & meters (one partial). -->
+  <div x-show="sub==='sites'" x-cloak class="space-y-6" id="settings-sites">
+  {% include "partials/plans_meters.html" %}
   </div>
+  <div x-show="sub==='billing'" x-cloak class="space-y-6" id="settings-billing">
 
   <!-- ══ Location & Solar ══ -->
   <div class="flex items-center gap-3">
@@ -312,22 +312,30 @@
   </div>
   <div class="card space-y-3" id="settings-location">
     <div class="flex items-center justify-between gap-2">
-      <span class="text-xs" style="color:var(--text-faint)">Your site's location and solar array. Set from your gateway, or enter manually.
+      <span class="text-xs" style="color:var(--text-faint)">Each site's location and solar array. Set from a gateway on the site, or enter manually.
         <button type="button" class="underline ml-1" style="color:var(--accent)" data-testid="location-solar-link"
                 @click="$store.app.setActiveTab('solar')">Solar tab</button></span>
       <button @click="syncLocation()" class="btn btn-secondary btn-sm">⟳ Sync from gateway</button>
     </div>
+    <!-- Each site has its own location and PV array (#675); the default site's are the ones
+         this card always had. -->
+    <label class="text-xs text-slate-500 block" data-testid="location-site">Site
+      <select class="form-control form-control-sm mt-1" x-model="locSite" @change="loadLoc(locSite)">
+        <template x-for="st in (sites || [])" :key="st.id">
+          <option :value="st.id" :selected="st.id === locSite" x-text="st.name + (st.is_default ? ' (default)' : '')"></option>
+        </template>
+      </select></label>
     <p class="text-xs" style="color:var(--text-faint)">
       Powers the Solar Forecast card + weather/solar sensors (Open-Meteo, free). Auto-saves on change.
     </p>
     <div class="grid grid-cols-2 gap-3">
       <label class="text-xs text-slate-500">Latitude
         <input type="number" step="0.0001" class="form-control form-control-sm w-full mt-1" x-model="form.pv_latitude"
-               @change="saveOne({pv_latitude: form.pv_latitude === '' ? null : Number(form.pv_latitude)})"
+               @change="saveLoc({pv_latitude: form.pv_latitude === '' ? null : Number(form.pv_latitude)})"
                placeholder="-33.8688"></label>
       <label class="text-xs text-slate-500">Longitude
         <input type="number" step="0.0001" class="form-control form-control-sm w-full mt-1" x-model="form.pv_longitude"
-               @change="saveOne({pv_longitude: form.pv_longitude === '' ? null : Number(form.pv_longitude)})"
+               @change="saveLoc({pv_longitude: form.pv_longitude === '' ? null : Number(form.pv_longitude)})"
                placeholder="151.2093"></label>
     </div>
     <div class="grid grid-cols-3 gap-3">
@@ -335,13 +343,13 @@
         <!-- Derived by default (#583): blank = the gateways' own size. A larger number is
              for DC panels above the AC rating or remote solar; smaller is allowed. -->
         <input type="number" step="0.1" min="0" class="form-control form-control-sm w-full mt-1" x-model="form.pv_kwp"
-               @change="saveOne({pv_kwp: Number(form.pv_kwp) > 0 ? Number(form.pv_kwp) : null})"
+               @change="saveLoc({pv_kwp: Number(form.pv_kwp) > 0 ? Number(form.pv_kwp) : null})"
                :placeholder="derivedPvKwp ? derivedPvKwp + ' from the gateway' : 'Please confirm'">
         <span class="block mt-1 text-[10px]" style="color:var(--text-faint)">
           <span x-show="derivedPvKwp" x-text="'Gateway ' + derivedPvKwp + ' kWp'"></span><span
                 x-show="derivedPvKwp && Number(form.pv_kwp) > 0" x-text="' · You ' + Number(form.pv_kwp) + ' kWp'"></span>
           <button type="button" x-show="derivedPvKwp && Number(form.pv_kwp) > 0" class="underline ml-1" style="color:var(--accent)"
-                  @click="form.pv_kwp = ''; saveOne({pv_kwp: null})">Use gateway</button>
+                  @click="form.pv_kwp = ''; saveLoc({pv_kwp: null})">Use gateway</button>
           <span x-show="!derivedPvKwp && !(Number(form.pv_kwp) > 0)">Please confirm: the gateway hasn't reported its size. Enter yours.</span>
         </span>
         <span x-show="derivedPvKwp && Number(form.pv_kwp) > 0 && Number(form.pv_kwp) < derivedPvKwp" x-cloak
@@ -349,10 +357,22 @@
           Smaller than the gateway's: fine for shading or clipping; the forecast uses yours.</span></label>
       <label class="text-xs text-slate-500">Tilt°
         <input type="number" step="1" class="form-control form-control-sm w-full mt-1" x-model="form.pv_tilt"
-               @change="saveOne({pv_tilt: Number(form.pv_tilt) || 0})" placeholder="22"></label>
+               @change="saveLoc({pv_tilt: Number(form.pv_tilt) || 0})" placeholder="22"></label>
       <label class="text-xs text-slate-500">Azimuth°
         <input type="number" step="1" class="form-control form-control-sm w-full mt-1" x-model="form.pv_azimuth"
-               @change="saveOne({pv_azimuth: Number(form.pv_azimuth) || 0})" placeholder="180"></label>
+               @change="saveLoc({pv_azimuth: Number(form.pv_azimuth) || 0})" placeholder="180"></label>
+    </div>
+    <div data-testid="location-gateways" x-show="locView && locView.gateways.length" x-cloak class="space-y-1">
+      <div class="text-[10px] uppercase tracking-wide" style="color:var(--text-secondary)">Gateways on this site</div>
+      <template x-for="g in (locView ? locView.gateways : [])" :key="g.gateway_id">
+        <div class="text-xs flex flex-wrap items-center gap-x-2" style="color:var(--text-secondary)">
+          <span style="color:var(--text-primary)" x-text="g.name"></span>
+          <span class="font-mono" x-text="g.latitude != null ? Number(g.latitude).toFixed(3) + ', ' + Number(g.longitude).toFixed(3) : 'location not reported'"></span>
+          <span x-show="g.same_place === true" style="color:var(--ok)">✓ same place</span>
+          <span x-show="g.same_place === false" style="color:var(--warn)"
+                x-text="'⚠ ' + g.distance_km + ' km away: is it on another site?'"></span>
+        </div>
+      </template>
     </div>
     <p class="text-[11px]" style="color:var(--text-faint)">
       Azimuth (Open-Meteo convention): 0=south · −90=east · 90=west · ±180=north. Tilt = degrees
