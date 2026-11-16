@@ -299,8 +299,8 @@ which one.
   you correct a tariff: the new bill supersedes the old one, which is kept (tick **Show
   superseded** to see it). Below, **Recorded periods** are the running tracker's periods and
   any imported from a Modbus Bridge, with **Export history CSV** and **Import from Modbus**.
-- **Plans & meters.** Sites, meters, retailers and tariffs (below), moved here from
-  Settings. A tariff's **Export** also gives it as an OUTUS plan
+- **Plans & meters.** Sites, meters, retailers and tariffs (below). The same editors are
+  also in **Settings → Billing & Utilities**. A tariff's **Export** also gives it as an OUTUS plan
   (`/api/tariffs/<id>/export?format=outus`).
 
 The setup steps come from [hems](https://github.com/david2069/hems), the OUTUS engine, so

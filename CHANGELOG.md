@@ -11,6 +11,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+
+- Settings: the **Billing & Utilities** sub-tab is back, with the sites, meters, retailers
+  and tariffs editors; 0.5.45 had replaced it with a link to the Billing & Utilities page
+  ([#674](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/674);
+  [guide](docs/guide/tour.md)).
+
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
