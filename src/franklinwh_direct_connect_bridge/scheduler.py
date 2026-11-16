@@ -1530,17 +1530,30 @@ def _by_circuit(d: dict | None, n: int) -> Any:
     return d.get(n, d.get(str(n)))
 
 
-def device_snapshot(summary: dict | None) -> dict[str, Any]:
-    """Smart circuits and V2L from the poll's own 1409 read (#698): no extra aGate
-    traffic. Not read is no reading (None), never 0 or off."""
-    s = summary or {}
+def device_snapshot(summary: dict | None, extras: dict | None = None) -> dict[str, Any]:
+    """Smart circuits, V2L and the generator (#698): on/off and names from the poll's
+    own 1409 read; watts, energy and the generator from the 60 s read (``extras``). Not
+    read is no reading (None), never 0 or off."""
+    s, ex = summary or {}, extras or {}
+    meter, car, gen = ex.get("meter") or {}, ex.get("carsw") or {}, ex.get("generator") or {}
     snap: dict[str, Any] = {}
     for n in CIRCUIT_IDS:
         on = _by_circuit(s.get("circuits_on"), n)
         snap[f"circuit.{n}.on"] = None if on is None else int(bool(on))
         snap[f"circuit.{n}.name"] = str(_by_circuit(s.get("circuit_names"), n) or "").strip() or None
-    car = s.get("carsw_enabled")
-    snap["v2l.enabled"] = None if car is None else int(bool(car))
+        snap[f"circuit.{n}.power_w"] = (_by_circuit(meter, n) or {}).get("watts")
+        snap[f"circuit.{n}.today_kwh"] = _by_circuit(ex.get("today_kwh"), n)
+    snap["circuit.count"] = ex.get("circuit_count")
+    en = s.get("carsw_enabled")
+    snap["v2l.enabled"] = None if en is None else int(bool(en))
+    snap["v2l.power_w"] = car.get("watts")
+    snap["v2l.export_kwh"] = car.get("export_lifetime_kwh")
+    snap["v2l.import_kwh"] = car.get("import_lifetime_kwh")
+    snap["generator.enabled"] = None if not gen else int(bool(gen.get("enabled")))
+    snap["generator.state"] = gen.get("state") if gen else None
+    snap["generator.state_desc"] = gen.get("state_name") if gen else None
+    rated = gen.get("rated_power_w")
+    snap["generator.rated_kw"] = round(rated / 1000, 2) if isinstance(rated, (int, float)) else None
     return snap
 
 
@@ -2078,14 +2091,26 @@ SYSTEM_SENSORS = [
 CIRCUIT_IDS = (1, 2, 3)
 CIRCUIT_SENSORS = ([(f"circuit.{n}.on", f"Smart circuit {n}: on") for n in CIRCUIT_IDS]
                    + [(f"circuit.{n}.name", f"Smart circuit {n}: name (text)")
-                      for n in CIRCUIT_IDS])
+                      for n in CIRCUIT_IDS]
+                   + [(f"circuit.{n}.power_w", f"Smart circuit {n}: power (W)")
+                      for n in CIRCUIT_IDS]
+                   + [(f"circuit.{n}.today_kwh", f"Smart circuit {n}: energy today (kWh)")
+                      for n in CIRCUIT_IDS]
+                   + [("circuit.count", "Smart circuits: installed count")])
 GENERATOR_SENSORS = [
     ("generator.today_kwh", "Generator: energy today (kWh)"),
     ("generator.installed", "Generator: installed (System Setup)"),
+    ("generator.enabled", "Generator: enabled"),
+    ("generator.state", "Generator: state (number: 0 Standby, 1 Running, 2 Cooldown, 3 Fault)"),
+    ("generator.state_desc", "Generator: state (text: \"Running / ON\", …)"),
+    ("generator.rated_kw", "Generator: rated power (kW)"),
 ]
 V2L_SENSORS = [
     ("v2l.installed", "V2L: installed (System Setup)"),
     ("v2l.enabled", "V2L: car switch enabled"),
+    ("v2l.power_w", "V2L: power (W)"),
+    ("v2l.export_kwh", "V2L: export energy, lifetime (kWh)"),
+    ("v2l.import_kwh", "V2L: import energy, lifetime (kWh)"),
 ]
 
 
@@ -2131,7 +2156,8 @@ def device_sensor_rows(names: dict[int, list[str]] | None = None) -> list[dict[s
     names = names or {}
     rows = []
     for sid, label in CIRCUIT_SENSORS:
-        n = int(sid.split(".")[1])
+        part = sid.split(".")[1]
+        n = int(part) if part.isdigit() else 0
         known = [x for x in (names.get(n) or []) if x]
         if known:
             label = label.replace(f"Smart circuit {n}:",
@@ -2859,7 +2885,8 @@ def build_snapshot(settings, store, state: dict, *, host: str | None, gateway_id
     from . import billing
     snapshot = snapshot_from_state(state)
     _gw = _state.get_gateway(gateway_id) if gateway_id else None
-    snapshot.update(device_snapshot(getattr(_gw, "last_summary", None)))   # circuits, V2L (#698)
+    snapshot.update(device_snapshot(getattr(_gw, "last_summary", None),
+                                    getattr(_gw, "device_extras", None)))   # circuits, V2L, generator (#698)
     snapshot["grid.offgrid_min"] = offgrid_min(state, now.timestamp())   # on the tick's clock
     snapshot.update(ha_snapshot(store))     # exposed HA entities are conditions too
     snapshot.update(solar_snapshot(settings, store, gateway_id))   # weather + solar forecast, the site's

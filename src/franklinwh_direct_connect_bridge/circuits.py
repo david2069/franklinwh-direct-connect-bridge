@@ -204,6 +204,23 @@ def build(cfg: dict, meter_payload: dict | None = None,
     }
 
 
+def today_kwh(baseline: dict | None, day: str,
+              lifetime: dict[str, float | None]) -> tuple[dict, dict[str, float | None]]:
+    """Energy today from lifetime counters (#698): each counter's first reading of the
+    site ``day`` is the baseline. A new day, or a counter that went backwards, starts
+    again. Returns the baseline to keep and today's kWh per key (None when not read)."""
+    base = dict((baseline or {}).get("base") or {}) if (baseline or {}).get("day") == day else {}
+    today: dict[str, float | None] = {}
+    for k, v in lifetime.items():
+        if not isinstance(v, (int, float)):
+            today[k] = None
+            continue
+        if not isinstance(base.get(k), (int, float)) or v < base[k]:
+            base[k] = v
+        today[k] = round(v - base[k], 3)
+    return {"day": day, "base": base}, today
+
+
 # ── schedule writing ─────────────────────────────────────────────────────────
 # The four slots are two on/off PAIRS (TimeSet [1,0,1,0] — slot 0 opens, slot 1
 # closes, slot 2 opens, slot 3 closes). FranklinWH's own Smart Circuits page

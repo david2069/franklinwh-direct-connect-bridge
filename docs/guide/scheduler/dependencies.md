@@ -19,7 +19,7 @@ depends on something you have not set up makes its condition fail. The sensors a
 | Sensors | Gateway poll | Modbus client (this bridge) | Constants | Meter + utility + tariff | NEM region / HA price entity | PV location | HA instance + exposed entity |
 |---|---|---|---|---|---|---|---|
 | `battery.soc_pct`, `battery.power_w`, `grid.*`, `solar.power_w`, `load.power_w`, `generator.power_w`, `mode.name`, `status.*`, `bridge.latency_ms` | ✔ | | | | | | |
-| `circuit.*`, `generator.today_kwh`, `v2l.enabled` (#698) | ✔ | | | | | | |
+| `circuit.*`, `generator.*`, `v2l.enabled`, `v2l.power_w`, `v2l.*_kwh` (#698) | ✔ (watts, energy and the generator from the 60-second read) | | | | | | |
 | `generator.installed`, `v2l.installed` | ◐ (System Setup, derived from the aGate) | | | | | | |
 | `battery.status` | ✔ | | | | | | |
 | `battery.capacity_kwh`, `stored_kwh`, `remaining_kwh` | ✔ | | ✔ (battery capacity; 0 = unset) | | | | |

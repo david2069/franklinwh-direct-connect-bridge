@@ -22,6 +22,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   An accessory the schedule's gateway doesn't have stays listed but is greyed out, marked
   *(not installed)*
   ([guide](docs/guide/scheduler/conditions.md#smart-circuits-generator-and-v2l)).
+- Scheduler: **smart circuit, V2L and generator readings** (#698). Every 60 seconds the
+  poll also reads the smart-circuit and V2L meter and the generator in the same aGate
+  session: each circuit's power and energy today, the installed circuit count, the V2L
+  power and lifetime energy, and the generator's enabled flag, state (Standby, Running,
+  Cooldown, Fault) and rated power. A read that fails leaves them without a value; the
+  poll carries on ([guide](docs/guide/scheduler/conditions.md#smart-circuits-generator-and-v2l)).
 
 ### Changed
 
