@@ -88,6 +88,19 @@ def reported_solar_kwp(host) -> float | None:
     return float(kwp) if isinstance(kwp, (int, float)) and kwp > 0 else None
 
 
+def cached_capacity_kwh(store, gateway_id, host) -> float | None:
+    """This gateway's usable battery kWh (aPower count × the model's usable kWh), from the
+    derive cache and the user's aPower model: no read (#358). None until both are known."""
+    hit = _derive_cache.get(host) if host else None
+    derived = hit[1] if hit else {}
+    units = derived.get("_apower_models")
+    model = _overrides(store, gateway_id).get("apower_model") or derived.get("apower_model")
+    spec = APOWER_SPECS.get(model or "")
+    if not spec or not isinstance(units, list) or not units:
+        return None
+    return round(len(units) * spec["usable_kwh"], 2)
+
+
 def _derive(settings, host) -> dict:
     """Best-effort derive from the aGate (solar 1903 + generator 1901), cached ~1 h.
     Returns {} when there's no host or the reads fail (stale cache re-used if present).

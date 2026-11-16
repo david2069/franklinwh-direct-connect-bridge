@@ -497,7 +497,8 @@ how far, and asks whether it belongs on another site: give it a meter on that si
 (gateway Edit), then pick that site here and press **Sync from gateway**.
 
 **Sync from gateway** reads a gateway on the picked site (the active one when it is on the
-site, else the site's first) and saves its location into that site.
+site, else the site's first) and saves its location into that site. The button names that
+gateway (*Sync from gateway: House*) (#362).
 
 Then set the array: tilt and azimuth, and check the size.
 
