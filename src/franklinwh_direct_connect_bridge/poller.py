@@ -21,6 +21,7 @@ from .config import Settings, metrics_active
 from .db import get_store, maybe_maintain
 from .notify import Notifier, transitions
 from . import notify_engine
+from . import solar_fill
 from . import workers as _workers
 from .publish import entities
 from .publish.mqtt_publisher import MqttPublisher
@@ -520,6 +521,11 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                                                                capacity_kwh=_cap):
                             await asyncio.to_thread(notify_engine.fire, _st, ev,
                                                     gateway=gw.label or gw.id, cfg=_cfg, **vals)
+                        # Today's solar won't fill the battery (#676): once a day.
+                        if summ.get("ok"):
+                            await asyncio.to_thread(
+                                solar_fill.check_gateway, _st, settings, gw.id, gw.label or gw.id,
+                                (summ.get("power") or {}).get("soc"), time.time())
                 except Exception as e:  # noqa: BLE001 — never let notifications break the poll
                     log.debug("notify engine pass failed: %s", e)
                 prev = summ

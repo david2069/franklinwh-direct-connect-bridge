@@ -13,6 +13,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- Solar Forecast card in the Energipays Bridge's layout: one chart over today and
+  tomorrow with kW and °C axes, a NOW line, today's actual solar and the temperature
+  (today's and the forecast) drawn over the bars with **Actual** / **Temp** toggles, and a
+  hover tip. When the solar left today won't fill the battery, the card says so, and a new
+  notification **Today's solar won't fill the battery** goes out once a day
+  ([#676](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/676);
+  [guide](docs/guide/energy-and-costs.md)).
+
+### Added
+
 - Scheduler: a **FranklinWH TOU** view. The bridge keeps a dated copy of the TOU schedule
   from the FranklinWH cloud (read-only), taken at start-up, when TOU mode is set, or on
   **Sync now**; shows today's blocks and the schedules that clash with them while TOU mode

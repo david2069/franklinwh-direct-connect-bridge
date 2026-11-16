@@ -7990,7 +7990,17 @@ def create_app() -> FastAPI:
                               "Location & Solar: the gateway hasn't reported it yet."}
         fc = solar_forecast.forecast(loc["latitude"], loc["longitude"], kwp=loc["kwp"],
                                      tilt=loc["pv_tilt"], azimuth=loc["pv_azimuth"], force=force)
-        return {"configured": True, **fc,
+        fill = None                    # will today's solar fill the battery? (#676)
+        gw = state.get_gateway(gateway) if gateway else None
+        if gw is not None:
+            from . import constants, solar_fill
+            try:
+                soc = ((gw.last_summary or {}).get("power") or {}).get("soc")
+                cap = constants.values(_gw_store()).get("battery_capacity_kwh")
+                fill = solar_fill.assess(fc, soc=soc, capacity_kwh=cap, now_ts=time.time())
+            except Exception:  # noqa: BLE001 — the forecast shows without it
+                fill = None
+        return {"configured": True, **fc, "fill": fill,
                 "pv": {"kwp": loc["kwp"], "kwp_source": loc["kwp_source"],
                        "tilt": loc["pv_tilt"], "azimuth": loc["pv_azimuth"],
                        "lat": loc["latitude"], "lon": loc["longitude"],

@@ -503,6 +503,25 @@ now. Hours are shown in the PV location's local time, aligned to now by the fore
 offset, so it reads correctly from any timezone. The server caches the forecast for about
 15 minutes.
 
+The card is laid out as the Energipays Bridge's (#676): today's and tomorrow's totals side
+by side, then one chart over both days with kW on the left and a red **NOW** line. Two
+toggles in the header draw lines over the bars, and the browser remembers them:
+
+- **Actual**: the solar actually generated today, hour by hour (orange), from the bridge's
+  own history.
+- **Temp**: the temperature for today and tomorrow (dashed blue), from the same Open-Meteo
+  forecast, with °C on the right.
+
+Hover over a bar for the hour's forecast kW, the actual kW and the temperature. The battery
+strip under the chart and the legend stay as before.
+
+**Won't fill the battery.** While solar is still forecast today, the Today box says when the
+solar left today won't take the battery to 100 %: about how many kWh are left, and how many
+the battery needs (Battery capacity × (100 − SoC), with the capacity from Settings →
+Automation). Home use is not taken off, so if it says the battery won't fill, it won't. The
+same goes out as a notification once a day per gateway: the trigger **Today's solar won't
+fill the battery** in [notifications](ha-setup-and-notifications.md), on by default.
+
 The same data becomes scheduler sensors: today's forecast kWh, today's peak kW, remaining
 kWh today, tomorrow's kWh, and two solar-*tracker* sensors comparing actual generation
 against the forecast (percentage of today's forecast reached, and percentage versus

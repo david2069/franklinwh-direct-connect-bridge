@@ -241,6 +241,7 @@ has a switch and a **Send to**; the two SoC triggers also have a threshold.
 | Battery SoC reaches | off, 100 % | SoC crosses the threshold upward. | "Battery SoC reached 100% [gateway] (now N%)." |
 | Bridge started / restarted / stopped | on | The bridge starts or stops. A start after a clean stop is a **restart**: it says how long the bridge was down and, after an update, the version it came from. A start with no clean stop before it (first run, or a crash or power cut) is **started**. | "Bridge started (v0.5.36)." / "Bridge restarted (v0.5.36, updated from 0.5.35) after 1 min 35 s down." / "Bridge stopping (v0.5.36) — no polling or notifications until it starts again." |
 | Daily health report amber or red | on | The 07:00 [health report](health-report.md) is amber or red. | "FranklinWH bridge: health amber" and the reasons. |
+| Today's solar won't fill the battery | on | While solar is still forecast today, the solar left won't take the battery to 100 % ([Solar forecast](energy-and-costs.md#solar-forecast)). Once a day per gateway. | "Today's solar won't fill the battery [Home]: about 3.5 kWh left, and it needs 10.9 kWh to reach 100% (now 20%)." |
 
 A trigger fires on a **change** between one poll and the next, not on every poll. There
 is no other rate limit.
