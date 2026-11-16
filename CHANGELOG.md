@@ -32,8 +32,6 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   shutdown ([#681](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/681);
   [guide](docs/guide/multi-gateway.md)).
 
-### Fixed
-
 - Settings: the **Billing & Utilities** sub-tab is back, with the sites, meters, retailers
   and tariffs editors; 0.5.45 had replaced it with a link to the Billing & Utilities page
   ([#674](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/674);
