@@ -9,6 +9,7 @@ against the default gateway and behaves exactly as before.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 
@@ -90,8 +91,35 @@ NET_EVERY_S = 600
 #: System view → Alarms: how often each aPower's 1705 alarmLevel and the aGate's 1829
 #: event count are read. Slow on purpose: the aGate is sensitive to load (#123).
 APOWER_ALARM_EVERY_S = 300
+#: Smart-circuit/V2L metering (1411) and the generator (1901) for the scheduler (#698,
+#: owner 2026-11-17: every 60 s), in the poll's own session.
+DEVICE_EXTRAS_EVERY_S = 60
 EVENTS_EVERY_S = 900
 
+
+
+def _with_today(settings, gw, extras: dict | None) -> dict | None:
+    """Each circuit's energy today from its lifetime counter, counted from the first
+    reading of the site day; the baseline is kept in the store, so a restart keeps it
+    (#698). Never raises."""
+    if not extras:
+        return extras
+    try:
+        from . import circuits as _circuits, site_time
+        from .db import get_store
+        st = get_store(settings)
+        key = f"circuit_kwh_day:{gw.id}"
+        day = site_time.now_known(gw.active_host or gw.configured_host).date().isoformat()
+        life = {str(n): (m or {}).get("energy_lifetime_kwh")
+                for n, m in (extras.get("meter") or {}).items()}
+        raw = st.get_config(key) if st is not None else None
+        base, today = _circuits.today_kwh(json.loads(raw) if raw else None, day, life)
+        if st is not None and life:
+            st.set_config(key, json.dumps(base))
+        extras["today_kwh"] = today
+    except Exception as e:  # noqa: BLE001 — never break the poll loop
+        log.debug("[%s] circuit energy today not worked out: %s", gw.id, e)
+    return extras
 
 async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event) -> None:
     """Resolve THIS gateway from its firmware manifest, (optionally) connect MQTT, then
@@ -248,6 +276,7 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
     net_state: dict = {}
     net_last = 0.0
     alarm_last = events_last = 0.0   # System view → Alarms (slow device reads)
+    extras_last = 0.0                # scheduler's circuit/V2L/generator read (#698)
     next_sweep = 0.0
     sweep_gap = SWEEP_GAP_MIN_S
     prev: dict | None = None
@@ -346,14 +375,19 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                 # probes+login+~6 reads, ~70s against an unreachable aGate. Cap it so the loop
                 # keeps cadence; a timeout is just a failed poll (ok:False), not a crash.
                 _poll_timeout = max(10, min(settings.poll_interval, 30))
+                _extras = time.time() - extras_last >= DEVICE_EXTRAS_EVERY_S
                 try:
                     summ = await asyncio.wait_for(
                         asyncio.to_thread(client.summary, settings,
                                           gw.active_host or gw.configured_host,
-                                          mock=bool(getattr(gw, 'is_mock', False))),
+                                          mock=bool(getattr(gw, 'is_mock', False)),
+                                          extras=_extras),
                         timeout=_poll_timeout)
                 except asyncio.TimeoutError:
                     summ = {"ok": False, "error": f"poll timed out after {_poll_timeout}s"}
+                if _extras:
+                    extras_last = time.time()
+                    gw.device_extras = _with_today(settings, gw, summ.get("device_extras"))
                 if summ.get("ok") and not await _identity_ok(
                         str((summ.get("firmware") or {}).get("IBG_SN") or "")):
                     break

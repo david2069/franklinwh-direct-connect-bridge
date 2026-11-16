@@ -159,9 +159,16 @@
         <div>
           <div class="card-label" style="margin-bottom:.25rem">Dashboard card <a :href="$store.app.guideUrl('home-assistant/#dashboard-card')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></div>
           <p class="text-xs" style="color:var(--text-secondary)">
-            Paste into Home Assistant: any dashboard &rarr; Edit &rarr; Add card &rarr;
-            Manual.
+            A ready-made Home Assistant card with this gateway's entities. The bridge reads
+            Home Assistant to put in the entity ids Home Assistant gave them.
           </p>
+          <ol class="text-xs list-decimal ml-4" style="color:var(--text-secondary)"
+              data-testid="dash-steps">
+            <li><b>Build</b>, then <b>Copy</b>.</li>
+            <li>In Home Assistant, open a dashboard &rarr; &#8942; (top right) &rarr; <b>Edit dashboard</b>.</li>
+            <li><b>+ Add card</b> &rarr; <b>Manual</b>.</li>
+            <li>Replace the example with the copied card &rarr; <b>Save</b>, then <b>Done</b>.</li>
+          </ol>
         </div>
         <div class="flex items-center gap-2 flex-wrap">
           <label class="text-xs flex items-center gap-1" style="color:var(--text-secondary)">
@@ -194,8 +201,7 @@
               <span style="color:#fbbf24">
                 <span x-text="dashMissing.length"></span> published but not found in Home
                 Assistant, so left out:
-                <span class="font-mono"
-                      x-text="dashMissing.map(m => m.expected).join(', ')"></span>
+                <span x-text="dashMissing.map(m => m.name).join(', ')"></span>
               </span>
             </template>
           </div>

@@ -135,7 +135,7 @@ is not shown as a failure. **Check again** runs them again.
 | MQTT broker connected | Publishing is on, and at least one gateway that publishes is connected to the broker. With no publishing gateway yet: "No gateway publishing yet", undetermined. | Turn publishing on from the **MQTT** tab, or install the Mosquitto broker add-on. |
 | Home Assistant connected to the bridge | The first enabled instance answers with its token. Shows "This Home Assistant" for the add-on's own instance. | Add one under **Home Assistant → Instances**. |
 | Home Assistant's MQTT integration set up | Home Assistant has the MQTT integration loaded. | In Home Assistant: **Settings → Devices & services → Add integration → MQTT**. |
-| Bridge entities in Home Assistant | How many of this bridge's entities Home Assistant has, plus any left over from removed gateways. | Remove leftover devices in Home Assistant. |
+| Bridge entities in Home Assistant | How many of this bridge's entities Home Assistant has, plus any left over from removed gateways. Counted per device, so it works however many leftovers there are. | Remove leftover devices in Home Assistant. |
 
 ![The setup wizard's Home Assistant step: the publish question and the four setup checks, all passing](../images/ha-setup-and-notifications/03-wizard-ha-checks.png)
 
@@ -395,8 +395,8 @@ together:
   link (1118 `awsStatus`) and the last good poll, each pass or fail. It does not touch the
   Modbus TCP Server (aGate :502).
 - **Open Network** — the Network tab, for the full picture.
-- **Reconnect to Wi-Fi** — shown when the cloud says the aGate is on 4G. Admins only, behind
-  a typed confirmation (`RECONNECT`). The FranklinWH cloud puts the aGate back on the Wi-Fi
+- **Reconnect to Wi-Fi** — shown when the cloud says the aGate is on 4G. Admins only; it runs
+  when pressed (before 0.5.50 it asked you to type `RECONNECT`). The FranklinWH cloud puts the aGate back on the Wi-Fi
   network it already stores, with the password it already stores (franklinwh-cloud
   `switch_to_wifi(ssid, password=None)`). It refuses first when no other connection would
   remain, then waits up to 3 minutes for the link and is not retried. The result stays in
@@ -405,7 +405,10 @@ together:
   refused, not confirmed, or the stored network has changed. The steps are for iOS or
   Android, one at a time: Settings → Network → Wifi → Configure, choose your network, enter
   the password, and wait up to 5 minutes.
-- **Steps** — power, router (the aGate joins 2.4 GHz Wi-Fi only) and Wi-Fi.
+- **Steps** — only those that fit what the bridge sees: **power** only when the aGate
+  answers nowhere (not on your LAN and not via the cloud); **router** (the aGate joins
+  2.4 GHz Wi-Fi only) when it has no internet; **Wi-Fi** when it is on 4G. With the aGate
+  online there are none, and the section isn't shown.
 
 The bridge also watches for 4G by itself: every 10 minutes its network read asks the aGate
 which link it uses (1118 `currentNetType`), and raises `AGATE_ON_4G` when that is 4G while

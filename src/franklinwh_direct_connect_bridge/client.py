@@ -1075,7 +1075,32 @@ def _refusal(reply: Any) -> str | None:
     return f"result {reply.get('result')}, reason {reply.get('reason')}"
 
 
-def summary(s: Settings, host: str | None = None, *, mock: bool = False) -> dict[str, Any]:
+def device_extras(c, s: Settings, manifest: dict | None, cfg: dict | None) -> dict[str, Any]:
+    """Smart-circuit and V2L metering (1411) and the generator (1901), for the scheduler
+    (#698), on an open session. Best-effort: a read that fails is None, never raised."""
+    from . import circuits as _circuits, devicedb, generator as _gen
+    out: dict[str, Any] = {"meter": None, "carsw": None, "circuit_count": None,
+                           "generator": None}
+    try:
+        mtr = c.smart_circuit_meter() or {}
+    except (OSError, TransportError, TimeoutError, ValueError):
+        mtr = None
+    if mtr is not None:
+        out["meter"] = {n: _circuits.meter(mtr, n) for n in (1, 2, 3)}
+        out["carsw"] = _circuits.carsw(mtr, cfg)
+        if cfg is not None:
+            out["circuit_count"] = _circuits.build(
+                cfg, mtr, override=getattr(s, "smart_circuit_count", "auto"),
+                expected=devicedb.describe(manifest or {}).get("expected_circuits"))["count"]
+    try:
+        out["generator"] = _gen.build(c.generator() or {})
+    except (OSError, TransportError, TimeoutError, ValueError):
+        pass
+    return out
+
+
+def summary(s: Settings, host: str | None = None, *, mock: bool = False,
+            extras: bool = False) -> dict[str, Any]:
     """Everything the dashboard needs in ONE aGate session (one login) — efficient on the
     flaky local link vs. five separate connect/login round-trips. Reads ``host`` when given
     (multi-gateway); the caller (poller) stores serial/firmware/caches on its gateway — this
@@ -1202,6 +1227,7 @@ def summary(s: Settings, host: str | None = None, *, mock: bool = False) -> dict
             # docs/MQTT_CONTROLS_PLAN.md). Same reading the Smart Circuits tab uses
             # (circuits.build: Sw{n}Mode == 1). Best-effort: a failed read leaves the
             # switches as they were rather than failing the poll.
+            sw = None
             try:
                 sw = c.smart_circuits() or {}
                 out["circuits_on"] = {n: sw.get(f"Sw{n}Mode") == 1
@@ -1209,8 +1235,18 @@ def summary(s: Settings, host: str | None = None, *, mock: bool = False) -> dict
                 # and the names saved on the aGate (the app's), for the System view
                 out["circuit_names"] = {n: str(sw.get(f"Sw{n}Name") or "").strip()
                                         for n in out["circuits_on"]}
+                # the gateway model's circuit count, for the scheduler picker (#698)
+                from . import devicedb as _ddb
+                out["circuits_expected"] = _ddb.describe(manifest).get("expected_circuits")
+                # the V2L car switch's enable flag rides in the same block (#698)
+                if "CarSwConsSupEnable" in sw:
+                    out["carsw_enabled"] = bool(sw.get("CarSwConsSupEnable"))
             except (OSError, TransportError, TimeoutError):
                 pass
+            # Metering and the generator for the scheduler, when the poller asks (every
+            # 60 s), in the SAME session (#698). Never fails the poll.
+            if extras:
+                out["device_extras"] = device_extras(c, s, manifest, sw)
             # Grid voltage + frequency, inside the SAME session — one extra read, no
             # extra login. `gridLineVol` is the SERVICE voltage in tenths (2409 ->
             # 240.9 V): one reading of the thing itself, not gridVol1 + gridVol2,

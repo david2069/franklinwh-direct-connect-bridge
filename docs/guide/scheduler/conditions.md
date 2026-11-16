@@ -294,7 +294,10 @@ group **per Home Assistant instance**:
 | Derived Battery | 10 | computed from the poll, the constants and a rate |
 | Energy | 5 | the gateway's meter tariff, fed each tick |
 | Fixed Charges | 5 | the meter tariff's fixed charges |
+| Generator | 6 | the gateway's last poll and its 60-second generator read; *installed* from **Settings → Setup** (#698) |
+| Smart Circuits | 13 | the gateway's last poll, and its 60-second metering read (#698) |
 | System Setup | 8 | **Settings → Setup**, derived from the aGate where possible |
+| V2L | 5 | the gateway's last poll and its 60-second metering read; *installed* from **Settings → Setup** (#698) |
 | Tariff & Utility | 23 | the meter's utility and tariff, AEMO NEM, a Home Assistant price entity |
 | Weather & Solar | 7 | Open-Meteo, from the PV location |
 | *one per HA instance* | your exposed entities | Home Assistant |
@@ -341,6 +344,48 @@ after the restart; it does not guess an earlier start.
 ### Load
 
 `load.power_w` and `generator.power_w` (Gateway).
+
+### Smart Circuits, Generator and V2L
+
+From the gateway's poll, with no extra aGate reads (#698):
+
+- `circuit.1.on`, `circuit.2.on`, `circuit.3.on`: 1 when the smart circuit is on, 0 when
+  off. The picker names each circuit as your aGate does, e.g. *Smart circuit 1 (Pool
+  pump): on*, so typing *Circ* finds them. `circuit.N.name` is that name, for messages
+  (`%circuit.1.name%`).
+- `generator.today_kwh`: the generator's energy today. `generator.power_w` stays under
+  Gateway.
+- `v2l.enabled`: 1 when the V2L car switch is enabled on the aGate.
+- `generator.installed`, `v2l.installed`: 1 or 0 as **Settings → Setup** has them (read
+  from the aGate, or your choice).
+
+Every 60 seconds the poll also reads the smart-circuit and V2L meter and the generator, in
+the same aGate session:
+
+- `circuit.N.power_w` and `circuit.N.today_kwh`: each circuit's power, and its energy
+  today, counted from its lifetime meter's first reading of the site's day (a bridge that
+  was off at midnight counts from its first reading after). The aGate has meter channels for
+  circuits 1 and 2; circuit 3 may have none, and then has no value.
+- `circuit.count`: how many smart circuits are installed, as the Smart Circuits page works
+  it out.
+- `v2l.power_w`, `v2l.export_kwh`, `v2l.import_kwh`: the V2L car switch's power and its
+  lifetime export and import energy.
+- `generator.enabled`, `generator.state` (0 Standby, 1 Running, 2 Cooldown, 3 Fault),
+  `generator.state_desc` (the same as text) and `generator.rated_kw`.
+
+A read that fails leaves these without a value until the next one; the poll carries on. The
+V2L run state is not offered: the aGate's local API doesn't report it.
+
+An accessory the schedule's gateway doesn't have is greyed out in the picker, marked *(not
+installed)*: a circuit above the installed count (the **Smart Circuits** count setting, else
+the gateway model's), and the Generator or V2L values when System Setup says there is none.
+Under **All gateways** a value is greyed only when no gateway has it. The installed flags
+stay pickable, and a schedule that already uses a greyed value keeps it, with a warning on
+its row. Not known yet is never greyed.
+
+A value the aGate hasn't reported has no value, so its condition is false. To act when a
+circuit turns on, use the [Always (sensor-driven)](triggers.md#always-evaluate) trigger
+with a condition such as `circuit.1.on == 1`: it fires when the condition becomes true.
 
 ### Mode
 
@@ -486,7 +531,7 @@ grouped by `GET /api/schedules`. *Needs* and *without it* are per group.
 | Actionable notification (`ask.answer`) | the schedule's Actionable notification, answered in this run; read by exit conditions and HA action guards | None |
 | an HA instance | the instance enabled and the entity exposed | None (also while the entity is `unavailable` or `unknown`, since 0.5.4, #167) |
 
-??? example "All sensor ids (84 + your Home Assistant entities)"
+??? example "All sensor ids (118 + your Home Assistant entities)"
 
     **Gateway**
 
@@ -607,6 +652,45 @@ grouped by `GET /api/schedules`. *Needs* and *without it* are per group.
     | System: load shedding | `system.load_shedding` |
     | System: non-backup loads panel | `system.non_backup_loads` |
     | System: battery label | `system.battery_label` |
+
+    **Smart Circuits** (labels name your aGate's circuits)
+
+    | Picker label | Sensor id |
+    |---|---|
+    | Smart circuit 1: on | `circuit.1.on` |
+    | Smart circuit 2: on | `circuit.2.on` |
+    | Smart circuit 3: on | `circuit.3.on` |
+    | Smart circuit 1: name (text) | `circuit.1.name` |
+    | Smart circuit 2: name (text) | `circuit.2.name` |
+    | Smart circuit 3: name (text) | `circuit.3.name` |
+    | Smart circuit 1: power (W) | `circuit.1.power_w` |
+    | Smart circuit 2: power (W) | `circuit.2.power_w` |
+    | Smart circuit 3: power (W) | `circuit.3.power_w` |
+    | Smart circuit 1: energy today (kWh) | `circuit.1.today_kwh` |
+    | Smart circuit 2: energy today (kWh) | `circuit.2.today_kwh` |
+    | Smart circuit 3: energy today (kWh) | `circuit.3.today_kwh` |
+    | Smart circuits: installed count | `circuit.count` |
+
+    **Generator**
+
+    | Picker label | Sensor id |
+    |---|---|
+    | Generator: energy today (kWh) | `generator.today_kwh` |
+    | Generator: installed (System Setup) | `generator.installed` |
+    | Generator: enabled | `generator.enabled` |
+    | Generator: state (number: 0 Standby, 1 Running, 2 Cooldown, 3 Fault) | `generator.state` |
+    | Generator: state (text: "Running / ON", …) | `generator.state_desc` |
+    | Generator: rated power (kW) | `generator.rated_kw` |
+
+    **V2L**
+
+    | Picker label | Sensor id |
+    |---|---|
+    | V2L: installed (System Setup) | `v2l.installed` |
+    | V2L: car switch enabled | `v2l.enabled` |
+    | V2L: power (W) | `v2l.power_w` |
+    | V2L: export energy, lifetime (kWh) | `v2l.export_kwh` |
+    | V2L: import energy, lifetime (kWh) | `v2l.import_kwh` |
 
     **Automation Constants**
 

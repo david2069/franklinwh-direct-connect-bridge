@@ -332,6 +332,17 @@ Step by step, with what each event sends and what is not yet available:
 
 ![Published by bridge → Dashboard card, after Build](../images/home-assistant/16-dashboard-card.png)
 
-**Build** generates Lovelace YAML for the published entities — grouped or as a single
-card, with or without the diagnostic entities — and **Copy** puts it on your clipboard.
-Paste it into a dashboard in YAML mode.
+A ready-made Home Assistant card with this gateway's entities. The bridge reads Home
+Assistant to put in the entity ids Home Assistant gave them, so the card works whatever
+Home Assistant named them. Choose **Grouped** or **Single card**, and whether to include
+the **Diagnostics**.
+
+1. **Build**, then **Copy**.
+2. In Home Assistant, open a dashboard → **⋮** (top right) → **Edit dashboard**.
+3. **+ Add card** → **Manual**.
+4. Replace the example with the copied card → **Save**, then **Done**.
+
+Entities this gateway publishes that Home Assistant doesn't have are listed by name under
+the card and left out of it. If none are found, the card says so: check that publishing is
+on (**MQTT** tab) and that the Home Assistant under **Home Assistant → Instances** is the
+one that uses this bridge's MQTT broker.

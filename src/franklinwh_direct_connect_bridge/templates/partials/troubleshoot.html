@@ -103,8 +103,8 @@
         </ol>
       </section>
 
-      <!-- Steps -->
-      <section class="space-y-1.5">
+      <!-- Steps: only those that fit what the bridge sees -->
+      <section class="space-y-1.5" x-show="$store.troubleshoot.steps.length">
         <div class="text-xs font-semibold uppercase tracking-wide" style="color:var(--text-secondary)">Steps</div>
         <ul class="list-disc pl-5 space-y-0.5 text-xs" style="color:var(--text-primary)">
           <template x-for="s in $store.troubleshoot.steps" :key="s"><li x-text="s"></li></template>

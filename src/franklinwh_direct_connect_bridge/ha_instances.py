@@ -11,6 +11,7 @@ probe a connection. Tokens are passed to HA and never returned to a caller.
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.request
 from typing import Any
@@ -211,6 +212,39 @@ def bridge_entities(base_url: str, token: str | None) -> list[tuple[str, list[st
             for e, ids in rows]
 
 
+#: The same devices, one row per DEVICE: its identifiers and how many entities it has
+#: (#445). HA refuses template output over 256 KiB, and one row per entity crossed that at
+#: about 2,600 leftover entities, so the setup check could not count exactly where the
+#: leftovers count matters most.
+BRIDGE_ENTITY_COUNTS_TEMPLATE = (
+    "{% set ns = namespace(o=[]) %}"
+    "{% for d in integration_entities('mqtt') | map('device_id') | reject('none') | unique %}"
+    "{% set sw = device_attr(d, 'sw_version') or '' %}"
+    "{% if sw.startswith('Direct Connect Bridge') or sw.startswith('Local Bridge') %}"
+    "{% set ns.o = ns.o + [[(device_attr(d, 'identifiers') | list | map('list') | list),"
+    " device_entities(d) | length]] %}"
+    "{% endif %}{% endfor %}{{ ns.o | tojson }}"
+)
+
+
+def bridge_entity_counts(base_url: str, token: str | None) -> list[tuple[list[str], int]]:
+    """``[([device identifier, ...], entity count), ...]`` for this bridge's devices in HA.
+
+    Like :func:`bridge_entities`, rendered by HA's template engine, and it raises on any
+    failure; the answer stays small however many entities HA holds (#445)."""
+    if not token:
+        raise PermissionError("no token configured for this instance")
+    req = urllib.request.Request(
+        base_url.rstrip("/") + "/api/template",
+        data=json.dumps({"template": BRIDGE_ENTITY_COUNTS_TEMPLATE}).encode(),
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method="POST")
+    with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
+        rows = json.loads(resp.read().decode() or "[]")
+    return [([str(i[1]) for i in ids if isinstance(i, list) and len(i) == 2], int(n))
+            for ids, n in rows]
+
+
 def call_service(base_url: str, token: str | None, domain: str, service: str,
                  data: dict | None = None) -> dict[str, Any]:
     """Call any Home Assistant service (``domain.service``) with a data payload.
@@ -268,3 +302,33 @@ def send_notification(base_url: str, token: str | None, service: str,
         return {"ok": False, "error": hint}
     except Exception as e:                                       # noqa: BLE001
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+
+#: The entity ids of the MQTT device with this discovery identifier (#689): the ids HA
+#: actually gave, whatever it named them. ``@ID@`` is the identifier.
+DEVICE_ENTITIES_TEMPLATE = (
+    "{% set ns = namespace(o=[]) %}"
+    "{% for d in integration_entities('mqtt') | map('device_id') | reject('none') | unique %}"
+    "{% if ['mqtt', '@ID@'] in (device_attr(d, 'identifiers') | list | map('list') | list) %}"
+    "{% set ns.o = ns.o + device_entities(d) %}"
+    "{% endif %}{% endfor %}{{ ns.o | tojson }}"
+)
+
+
+def device_entity_ids(base_url: str, token: str | None, identifier: str) -> list[str]:
+    """Entity ids of this bridge's device ``identifier`` (``franklinwh_<node>``) in HA.
+
+    Rendered by HA's template engine, as :func:`bridge_entities`. Raises on any failure."""
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", identifier or ""):
+        raise ValueError(f"not a device identifier: {identifier!r}")
+    if not token:
+        raise PermissionError("no token configured for this instance")
+    req = urllib.request.Request(
+        base_url.rstrip("/") + "/api/template",
+        data=json.dumps(
+            {"template": DEVICE_ENTITIES_TEMPLATE.replace("@ID@", identifier)}).encode(),
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method="POST")
+    with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
+        rows = json.loads(resp.read().decode() or "[]")
+    return [str(e) for e in rows if isinstance(e, str)]

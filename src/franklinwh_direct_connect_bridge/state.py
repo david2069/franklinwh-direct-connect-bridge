@@ -39,6 +39,9 @@ class GatewayState:
                                         # reads this snapshot, so its AGE decides whether
                                         # a schedule may be evaluated against it at all
     last_summary: dict = field(default_factory=dict) # last-good full /api/summary (poller-cached)
+    #: Smart-circuit/V2L metering and the generator, read every 60 s for the scheduler
+    #: (#698); None until read, or when the last read failed.
+    device_extras: dict | None = None
     republish_requested: bool = False   # UI → poller: re-publish HA discovery
     unpublish_requested: bool = False   # UI → poller: clear entities from HA
     rediscover_requested: bool = False  # Re-discover button → poller: sweep on the next failure

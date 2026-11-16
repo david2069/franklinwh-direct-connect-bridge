@@ -3252,11 +3252,16 @@ def create_app() -> FastAPI:
     def api_site_status():
         """Whole-site aggregation across every registered gateway, from their poller
         caches (no device I/O). Never 500s — cold caches contribute zeros / ok:false.
-        ``totals`` sums the power fields over the OK gateways only."""
+        ``totals`` sums the power fields over the OK gateways only. ``soc`` is the site's
+        SoC weighted by each gateway's battery capacity, or their plain mean when a
+        capacity isn't known yet (``soc_weighted`` false) (#358)."""
+        from . import system_setup
         gws = state.gateways()      # none registered ⇒ an empty site, never the default (#383)
         keys = ("grid_w", "solar_w", "battery_w", "load_w", "generator_w")
         totals = {k: 0 for k in keys}
         ok_count = 0
+        socs: list[tuple[float, float | None]] = []
+        st = _gw_store()
         for gw in gws:
             summ = gw.last_summary or {}
             if not summ.get("ok"):
@@ -3267,7 +3272,16 @@ def create_app() -> FastAPI:
                 v = power.get(k)
                 if isinstance(v, (int, float)):
                     totals[k] += v
+            if isinstance(power.get("soc"), (int, float)):
+                socs.append((float(power["soc"]), system_setup.cached_capacity_kwh(
+                    st, gw.id, gw.active_host or gw.configured_host)))
+        weighted = bool(socs) and all(cap for _, cap in socs)
+        if weighted:
+            soc = round(sum(s * cap for s, cap in socs) / sum(cap for _, cap in socs), 1)
+        else:
+            soc = round(sum(s for s, _ in socs) / len(socs), 1) if socs else None
         return {"count": len(gws), "ok_count": ok_count, "totals": totals,
+                "soc": soc, "soc_weighted": weighted,
                 "gateways": [_roster_entry(gw) for gw in gws]}
 
     @app.get("/api/system")
@@ -4194,12 +4208,14 @@ def create_app() -> FastAPI:
                 # Owned by DEVICE identity, not by entity_id text (#83): since 0.4.0 the
                 # entity_ids carry the serial's last 8 characters, older ones carry the old
                 # device name, and other integrations also use "franklinwh_".
-                rows = ha_instances.bridge_entities(inst["base_url"], inst.get("token"))
+                # One row per device with its count, so HA's 256 KiB template limit is
+                # not reached however many leftovers there are (#445).
+                rows = ha_instances.bridge_entity_counts(inst["base_url"], inst.get("token"))
                 current = {f"franklinwh_{(g.serial or '').lower()}"
                            for g in (get_gateways() or []) if g.serial}
                 if current:
-                    ours = sum(1 for _e, idents in rows if current & set(idents))
-                    leftovers = len(rows) - ours
+                    ours = sum(n for idents, n in rows if current & set(idents))
+                    leftovers = sum(n for _i, n in rows) - ours
             except Exception:  # noqa: BLE001 — a count is not worth failing the page for
                 ours = leftovers = None
         checks.append({
@@ -4402,6 +4418,16 @@ def create_app() -> FastAPI:
         host = (gw.active_host or gw.configured_host) if gw is not None else None
         return site_time.now_known(host)
 
+    def _circuit_names() -> dict[int, list[str]]:
+        """Each smart circuit's names as the gateways' aGates call them (#698)."""
+        out: dict[int, list[str]] = {}
+        for g in get_gateways():
+            for k, v in ((g.last_summary or {}).get("circuit_names") or {}).items():
+                v = str(v or "").strip()
+                if v and v not in out.setdefault(int(k), []):
+                    out[int(k)].append(v)
+        return out
+
     @app.get("/api/schedules")
     def api_schedules():
         """Schedules plus the action catalogue — including what is NOT available
@@ -4415,6 +4441,49 @@ def create_app() -> FastAPI:
             _lfd = _e.get("last_fired_day")
             _e["next_fire"] = scheduler.next_fire_ts(_e, _now, _lfd)
             _e["active_now"] = scheduler.active_now(_e, _now, _lfd)
+        _sensors = [
+            {**row, "inactive": scheduler.sensor_inactive(row["id"], _features)}
+            for row in [{"id": i, "label": l, "group": "Gateway"}
+             for i, l in scheduler.SENSORS]
+            + [{"id": i, "label": l, "group": "Weather & Solar"}
+               for i, l in scheduler.SOLAR_SENSORS]
+            + [{"id": i, "label": l, "group": "Tariff & Utility"}
+               for i, l in scheduler.TARIFF_SENSORS]
+            + [{"id": i, "label": l, "group": "Tariff & Utility"}
+               for i, l in scheduler.BILLING_WINDOW_SENSORS]
+            + [{"id": i, "label": l, "group": "Demand / Tariff"}
+               for i, l in scheduler.DEMAND_SENSORS]
+            + [{"id": i, "label": l, "group": "Energy"}
+               for i, l in scheduler.ENERGY_SENSORS]
+            + [{"id": i, "label": l, "group": "Demand / Tariff"}
+               for i, l in scheduler.BONUS_SENSORS]
+            + [{"id": i, "label": l, "group": "Tariff & Utility"}
+               for i, l in scheduler.EXPORT_CHARGE_SENSORS]
+            + [{"id": i, "label": l, "group": "Fixed Charges"}
+               for i, l in scheduler.FIXED_SENSORS]
+            + [{"id": i, "label": l, "group": "System Setup"}
+               for i, l in scheduler.SYSTEM_SENSORS]
+            + [{"id": i, "label": l, "group": "Automation Constants"}
+               for i, l in scheduler.CONST_SENSORS]
+            + [{"id": i, "label": l, "group": "Derived Battery"}
+               for i, l in scheduler.DERIVED_SENSORS]
+            + [{"id": i, "label": l, "group": "Ask before continuing"}
+               for i, l in scheduler.ASK_SENSORS]
+            + scheduler.device_sensor_rows(_circuit_names())
+            + scheduler.ha_sensor_options(_ha_store())
+        ]
+        # An accessory a gateway doesn't have is greyed out for it (#698, owner
+        # 2026-11-17); for every gateway when none has it. Still listed, so a schedule
+        # that uses one keeps it.
+        _acc = {g.id: scheduler.accessories(_ha_store(), get_settings(), g)
+                for g in get_gateways()}
+        for _row in _sensors:
+            _gw_why = {gid: why for gid, a in _acc.items()
+                       if (why := scheduler.device_inactive(_row["id"], a))}
+            if _gw_why:
+                _row["inactive_gw"] = _gw_why
+                if not _row["inactive"] and len(_gw_why) == len(_acc):
+                    _row["inactive"] = next(iter(_gw_why.values()))
         return {
             "schedules": _scheds,
             "actions": scheduler.ACTIONS,
@@ -4423,36 +4492,7 @@ def create_app() -> FastAPI:
             "force_reason": _force_why,
             "trigger_types": list(scheduler.TRIGGER_TYPES),
             "cron_available": scheduler.cron_available(),
-            "sensors": [
-                {**row, "inactive": scheduler.sensor_inactive(row["id"], _features)}
-                for row in [{"id": i, "label": l, "group": "Gateway"}
-                 for i, l in scheduler.SENSORS]
-                + [{"id": i, "label": l, "group": "Weather & Solar"}
-                   for i, l in scheduler.SOLAR_SENSORS]
-                + [{"id": i, "label": l, "group": "Tariff & Utility"}
-                   for i, l in scheduler.TARIFF_SENSORS]
-                + [{"id": i, "label": l, "group": "Tariff & Utility"}
-                   for i, l in scheduler.BILLING_WINDOW_SENSORS]
-                + [{"id": i, "label": l, "group": "Demand / Tariff"}
-                   for i, l in scheduler.DEMAND_SENSORS]
-                + [{"id": i, "label": l, "group": "Energy"}
-                   for i, l in scheduler.ENERGY_SENSORS]
-                + [{"id": i, "label": l, "group": "Demand / Tariff"}
-                   for i, l in scheduler.BONUS_SENSORS]
-                + [{"id": i, "label": l, "group": "Tariff & Utility"}
-                   for i, l in scheduler.EXPORT_CHARGE_SENSORS]
-                + [{"id": i, "label": l, "group": "Fixed Charges"}
-                   for i, l in scheduler.FIXED_SENSORS]
-                + [{"id": i, "label": l, "group": "System Setup"}
-                   for i, l in scheduler.SYSTEM_SENSORS]
-                + [{"id": i, "label": l, "group": "Automation Constants"}
-                   for i, l in scheduler.CONST_SENSORS]
-                + [{"id": i, "label": l, "group": "Derived Battery"}
-                   for i, l in scheduler.DERIVED_SENSORS]
-                + [{"id": i, "label": l, "group": "Ask before continuing"}
-                   for i, l in scheduler.ASK_SENSORS]
-                + scheduler.ha_sensor_options(_ha_store())
-            ],
+            "sensors": _sensors,
             "gateways": [{"id": g.id, "name": g.label or g.serial or g.id,
                           "host": g.active_host or g.configured_host}
                          for g in get_gateways()],
@@ -6098,6 +6138,7 @@ def create_app() -> FastAPI:
         rows = ha_dashboard.rows_for_node(node, entities.enabled_from_store(store))
 
         seen: set[str] = set()
+        device_ids: set[str] = set()
         errors: dict[str, str] = {}
         for inst in (store.ha_instances() if store else []):
             if not inst.get("enabled"):
@@ -6111,6 +6152,14 @@ def create_app() -> FastAPI:
                         seen.add(eid)
             except Exception as e:  # noqa: BLE001 — one unreachable HA must not hide the rest
                 errors[inst.get("name") or inst["id"]] = str(e)
+                continue
+            try:
+                # The ids HA gave this gateway's device (#689): it names entities after
+                # the device and entity name, not after the object_id we publish.
+                device_ids.update(ha_instances.device_entity_ids(
+                    inst["base_url"], inst.get("token"), f"franklinwh_{node}"))
+            except Exception:  # noqa: BLE001 — then object_id ids are all we can confirm
+                pass
 
         if not seen:
             # No ids to confirm against. Returning YAML here would mean composing ids from
@@ -6123,17 +6172,15 @@ def create_app() -> FastAPI:
                         + ("Errors: " + "; ".join(f"{k}: {v}" for k, v in errors.items())
                            if errors else "")).strip())
 
-        found, missing = ha_dashboard.resolve_ids(rows, seen)
-        # Every entity missing, with a Home Assistant that answered, is almost always one
-        # thing: the HA we can read is not the HA subscribed to our broker. Say so, because
-        # "0 found" on its own reads as a bug in the card.
+        found, missing = ha_dashboard.resolve_ids(rows, seen, device_ids)
+        # Nothing found with a Home Assistant that answered: say what that means and what
+        # to check, in plain words (#689).
         hint = ""
         if rows and not found:
-            hint = (f"None of the {len(rows)} entities this bridge publishes were found in "
-                    f"the Home Assistant(s) configured here. They are published to the MQTT "
-                    f"prefix '{s.mqtt_prefix}' with discovery prefix "
-                    f"'{s.ha_discovery_prefix}' — check that the Home Assistant you added "
-                    f"under Instances is the one subscribed to that broker.")
+            hint = ("Home Assistant has no entities from this gateway yet, so there is "
+                    "nothing to put in the card. Check that publishing is on (MQTT tab) "
+                    "and that the Home Assistant under Home Assistant \u2192 Instances is "
+                    "the one that uses this bridge's MQTT broker.")
         return {
             "yaml": ha_dashboard.build_yaml(found, layout=layout, diagnostics=diagnostics),
             "node": node,
