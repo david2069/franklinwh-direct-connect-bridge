@@ -75,11 +75,16 @@
             </div>
             <div class="text-[11px] mt-0.5" style="color:var(--text-faint)"
                  x-text="[s.region, s.postcode, s.timezone].filter(Boolean).join(' · ') || (s.is_default ? '' : 'No location set')"></div>
-            <!-- The site's location is Location & Solar's, in Settings → Location & Prices (owner, 2026-11-13). -->
+            <!-- The site's location is Location & Solar's, in Settings → Location & Prices (owner, 2026-11-13);
+                 each site has its own (#675). -->
             <button type="button" x-show="s.is_default" class="text-[11px] underline text-left" style="color:var(--accent)"
                     data-testid="site-location"
-                    @click="$store.app.setActiveTab('settings'); setTimeout(() => window.dispatchEvent(new CustomEvent('fwh-open-settings', { detail: { sub: 'billing', card: 'settings-location' } })), 50)"
+                    @click="$store.app.setActiveTab('settings'); setTimeout(() => window.dispatchEvent(new CustomEvent('fwh-open-settings', { detail: { sub: 'billing', card: 'settings-location', site: s.id } })), 50)"
                     x-text="'Location & Solar: ' + ((form.pv_latitude !== '' && form.pv_latitude != null) ? (Number(form.pv_latitude).toFixed(3) + ', ' + Number(form.pv_longitude).toFixed(3)) : 'not set') + (Number(form.pv_kwp) > 0 ? ' · ' + Number(form.pv_kwp) + ' kWp' : (derivedPvKwp ? ' · ' + derivedPvKwp + ' kWp from the gateway' : ''))"></button>
+            <button type="button" x-show="!s.is_default" class="text-[11px] underline text-left" style="color:var(--accent)"
+                    data-testid="site-location-other"
+                    @click="$store.app.setActiveTab('settings'); setTimeout(() => window.dispatchEvent(new CustomEvent('fwh-open-settings', { detail: { sub: 'billing', card: 'settings-location', site: s.id } })), 50)"
+                    x-text="'Location & Solar: ' + (s.latitude != null ? Number(s.latitude).toFixed(3) + ', ' + Number(s.longitude).toFixed(3) : 'not set') + (Number(s.pv_kwp) > 0 ? ' · ' + Number(s.pv_kwp) + ' kWp' : '')"></button>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
             <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="editSite(s)">Edit</button>

@@ -11,6 +11,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+
+- Location & Solar per site: each site has its own location and solar array, picked with
+  **Site** on the card; the default site keeps the values it had. A gateway's forecast,
+  solar-forecast sensors and Analytics use its site's. **Gateways on this site** shows
+  where each gateway reports it is and flags one more than 1 km from its site, rather than
+  assuming they are all at the same place ([#675](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/675);
+  [guide](docs/guide/energy-and-costs.md)).
+
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.

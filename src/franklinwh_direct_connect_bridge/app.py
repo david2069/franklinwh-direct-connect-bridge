@@ -484,6 +484,16 @@ class SiteUpdate(BaseModel):
     is_default: bool | None = None
 
 
+class SiteLocation(BaseModel):
+    """A site's location and PV array (#675); null clears a field."""
+    model_config = ConfigDict(extra="forbid")
+    latitude: float | None = Field(None, ge=-90, le=90)
+    longitude: float | None = Field(None, ge=-180, le=180)
+    pv_kwp: float | None = Field(None, ge=0)
+    pv_tilt: float | None = None
+    pv_azimuth: float | None = None
+
+
 class MeterCreate(BaseModel):
     site_id: str
     name: str = "Meter 1"
@@ -932,7 +942,7 @@ def _grid_status_value(status) -> int:
     raise ValueError(f"unknown grid status {status!r}; expected NORMAL/DOWN/OFF (or 0/1/2)")
 
 
-def _derived_pv_kwp(gateway: str | None = None) -> float | None:
+def _derived_pv_kwp(gateway_ids: list[str] | None = None) -> float | None:
     """The array size the site's gateways report (1903 ``solar_pv``), summed, or None if
     none can say (#583).
 
@@ -941,8 +951,18 @@ def _derived_pv_kwp(gateway: str | None = None) -> float | None:
     """
     from . import pv_size
     try:                         # the site's gateways, summed (#583)
-        return pv_size.derived_kwp(read=True)
+        return pv_size.derived_kwp(read=True, gateway_ids=gateway_ids)
     except Exception:  # noqa: BLE001 — a settings page must not fail on an unread gateway
+        return None
+
+
+def _default_site_gateways() -> list[str] | None:
+    """The default site's gateways (#675): Location & Solar is the default site's."""
+    from . import site_location
+    try:
+        st = db.get_store(get_settings())
+        return site_location.gateway_ids(st, site_location.default_site(st))
+    except Exception:  # noqa: BLE001
         return None
 
 
@@ -2498,6 +2518,58 @@ def create_app() -> FastAPI:
         body = req.model_dump(exclude_unset=True)
         out = st.update_site(sid, **body)
         _audit("site_edit", detail=f"site {_named(cur, sid)}: {_changed(cur, body)}", result="saved", ok=True)
+        return out
+
+    def _site_or_404(sid: str) -> dict:
+        st = _gw_store()
+        cur = st.site(sid) if st is not None else None
+        if cur is None:
+            raise HTTPException(404, f"no site '{sid}'")
+        return cur
+
+    def _reported_location(gid: str) -> dict | None:
+        """The location the gateway itself reports (1201 time_location; latitude is
+        spelled 'laitude'), or None when it can't be read."""
+        try:
+            tl = client.read(get_settings(), "time_location", host=_gw_host(gid))
+        except Exception:  # noqa: BLE001 — an unreachable gateway just has no answer
+            return None
+        lat, lon = tl.get("laitude", tl.get("latitude")), tl.get("longitude")
+        try:
+            return {"latitude": float(lat), "longitude": float(lon)} if lat and lon else None
+        except (TypeError, ValueError):
+            return None
+
+    @app.get("/api/sites/{sid}/location")
+    def api_site_location(sid: str):
+        """The site's location and PV array (#675) — the default site's are Location &
+        Solar's — and each of its gateways' own reported location, with how far it is
+        from the site's (``same_place`` within 1 km). Reads each gateway (read-only)."""
+        from . import site_location
+        site, st = _site_or_404(sid), _gw_store()
+        # The gateways' size as last read (no wait on a gateway); the default site's card
+        # keeps the size Settings reads.
+        loc = site_location.effective(get_settings(), st, site)
+        ids = site_location.gateway_ids(st, site)
+        names = {g["id"]: g.get("label") or g["id"] for g in st.gateways()}
+        rows = site_location.check(loc, {gid: _reported_location(gid) for gid in ids
+                                         if state.get_gateway(gid) is not None})
+        for r in rows:
+            r["name"] = names.get(r["gateway_id"], r["gateway_id"])
+        return {**loc, "site_id": sid, "name": site.get("name") or "",
+                "is_default": site_location.is_default(st, site), "gateways": rows,
+                "same_place_km": site_location.SAME_PLACE_KM}
+
+    @app.put("/api/sites/{sid}/location")
+    def api_site_location_save(sid: str, req: SiteLocation):
+        """Save some of the site's location and PV array (null clears one); the default
+        site's are Location & Solar's settings, as before."""
+        from . import site_location
+        site, st = _site_or_404(sid), _gw_store()
+        body = req.model_dump(exclude_unset=True)
+        out = site_location.save(get_settings(), st, site, body)
+        _audit("site_location", detail=f"site {_named(site, sid)}: "
+               + ", ".join(f"{k} {v}" for k, v in body.items()), result="saved", ok=True)
         return out
 
     @app.delete("/api/sites/{sid}")
@@ -5068,9 +5140,11 @@ def create_app() -> FastAPI:
             out = client.solar(get_settings(), host=host)
         except (OSError, TransportError, TimeoutError) as e:
             raise HTTPException(status_code=502, detail=str(e))
-        from . import pv_size
+        from . import site_location
         try:                                     # what the forecast uses (#583)
-            out = {**out, "forecast_size": pv_size.effective(get_settings())}
+            _l = site_location.for_gateway(get_settings(), _gw_store(), gateway)   # #675
+            out = {**out, "forecast_size": {"kwp": _l["kwp"], "source": _l["kwp_source"],
+                                            "derived": _l["derived"]}}
         except Exception:  # noqa: BLE001
             pass
         return out
@@ -7254,7 +7328,7 @@ def create_app() -> FastAPI:
                 # kWp can be taken from the installation instead of typed from memory.
                 # Offered, not applied: an owner who deliberately set a different number
                 # (a partly shaded array, a clipped inverter) must not have it overwritten.
-                "derived_pv_kwp": _derived_pv_kwp(),
+                "derived_pv_kwp": _derived_pv_kwp(_default_site_gateways()),   # #675
             },
             "scheduler": {
                 "dispatch_interrupt_policy": s.dispatch_interrupt_policy,
@@ -7794,27 +7868,27 @@ def create_app() -> FastAPI:
         return out
 
     @app.get("/api/solar/forecast")
-    def api_solar_forecast(force: bool = Query(False)):
-        """Weather + PV production forecast from Open-Meteo, scaled to the configured
-        PV array. Needs latitude/longitude set in Settings; otherwise reports so."""
-        from . import solar_forecast
-        cfg = get_settings()
-        if cfg.pv_latitude is None or cfg.pv_longitude is None:
+    def api_solar_forecast(force: bool = Query(False), gateway: str | None = Depends(_gateway_opt)):
+        """Weather + PV production forecast from Open-Meteo, scaled to the PV array of the
+        gateway's site (#675; the default site without a gateway). Needs the site's
+        latitude/longitude; otherwise reports so."""
+        from . import site_location, solar_forecast
+        loc = site_location.for_gateway(get_settings(), _gw_store(), gateway)
+        if not site_location.configured(loc):
             return {"configured": False,
                     "reason": "Set your location (latitude & longitude) in Settings "
                               "to enable the solar forecast."}
-        from . import pv_size
-        size = pv_size.effective(cfg)                # yours, else the gateways' (#583)
-        if not size["kwp"]:
+        if not loc["kwp"]:
             return {"configured": False,
                     "reason": "Please confirm your solar size in Settings → Location & Prices → "
                               "Location & Solar: the gateway hasn't reported it yet."}
-        fc = solar_forecast.forecast(cfg.pv_latitude, cfg.pv_longitude, kwp=size["kwp"],
-                                     tilt=cfg.pv_tilt, azimuth=cfg.pv_azimuth, force=force)
+        fc = solar_forecast.forecast(loc["latitude"], loc["longitude"], kwp=loc["kwp"],
+                                     tilt=loc["pv_tilt"], azimuth=loc["pv_azimuth"], force=force)
         return {"configured": True, **fc,
-                "pv": {"kwp": size["kwp"], "kwp_source": size["source"],
-                       "tilt": cfg.pv_tilt, "azimuth": cfg.pv_azimuth,
-                       "lat": cfg.pv_latitude, "lon": cfg.pv_longitude}}
+                "pv": {"kwp": loc["kwp"], "kwp_source": loc["kwp_source"],
+                       "tilt": loc["pv_tilt"], "azimuth": loc["pv_azimuth"],
+                       "lat": loc["latitude"], "lon": loc["longitude"],
+                       "site_id": loc["site_id"]}}
 
     @app.post("/api/solar/sync-location")
     def api_solar_sync_location(gateway: str = Depends(_gateway_q)):
@@ -7830,9 +7904,13 @@ def create_app() -> FastAPI:
         lon = tl.get("longitude")
         if not lat or not lon:
             raise HTTPException(status_code=422, detail="the gateway did not report a location")
-        save_override("pv_latitude", float(lat)); save_override("pv_longitude", float(lon))
-        cfg = get_settings(); cfg.pv_latitude = float(lat); cfg.pv_longitude = float(lon)
+        from . import site_location           # into the gateway's site (#675)
+        st = _gw_store()
+        site = site_location.site_of_gateway(st, gateway)
+        site_location.save(get_settings(), st, site,
+                           {"latitude": float(lat), "longitude": float(lon)})
         return {"latitude": float(lat), "longitude": float(lon),
+                "site_id": site["id"] if site else None,
                 "postcode": tl.get("postcode"), "timezone": tl.get("timezone")}
 
     @app.get("/api/metrics/raw")

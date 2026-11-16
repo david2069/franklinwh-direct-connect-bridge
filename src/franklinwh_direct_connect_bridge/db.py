@@ -710,6 +710,12 @@ class MetricsStore:
                    currency TEXT NOT NULL DEFAULT '', region TEXT NOT NULL DEFAULT '',
                    is_default INTEGER NOT NULL DEFAULT 0,
                    created_at REAL NOT NULL DEFAULT 0, updated_at REAL NOT NULL DEFAULT 0)""")
+        # Each site's PV array (#675), beside its latitude/longitude. The default site's
+        # stay in Location & Solar's settings (pv_*); these are the other sites'.
+        cols = [r[1] for r in self._conn.execute("PRAGMA table_info(sites)").fetchall()]
+        for c in ("pv_kwp", "pv_tilt", "pv_azimuth"):
+            if c not in cols:
+                self._conn.execute(f"ALTER TABLE sites ADD COLUMN {c} REAL")
         self._conn.commit()
 
     def _migrate_meters(self) -> None:
@@ -809,6 +815,20 @@ class MetricsStore:
             self._conn.execute(f"UPDATE sites SET {cols}, updated_at=? WHERE id=?",
                                (*sets.values(), time.time(), sid))
             self._conn.commit()
+        return self.site(sid)
+
+    #: A site's location and PV array (#675); None clears one (the PV size then comes
+    #: from the site's gateways).
+    SITE_LOCATION = ("latitude", "longitude", "pv_kwp", "pv_tilt", "pv_azimuth")
+
+    def set_site_location(self, sid: str, **fields) -> dict | None:
+        sets = {k: v for k, v in fields.items() if k in self.SITE_LOCATION}
+        if sets:
+            with self._lock:
+                cols = ", ".join(f"{k}=?" for k in sets)
+                self._conn.execute(f"UPDATE sites SET {cols}, updated_at=? WHERE id=?",
+                                   (*sets.values(), time.time(), sid))
+                self._conn.commit()
         return self.site(sid)
 
     def delete_site(self, sid: str) -> bool:
