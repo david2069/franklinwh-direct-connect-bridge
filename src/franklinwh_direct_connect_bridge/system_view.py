@@ -185,10 +185,14 @@ def _forecast(cfg) -> dict | None:
     """The solar page's cached forecast for this location; a stale or missing one is
     refreshed in the background, so a request never waits on Open-Meteo."""
     from . import solar_forecast
-    from . import pv_size
+    from . import db, pv_size, site_location
     if cfg is None or cfg.pv_latitude is None or cfg.pv_longitude is None:
         return None
-    kwp = pv_size.kwp(cfg)                           # yours, else the gateways' (#583)
+    try:                                             # the default site's gateways (#675)
+        st = db.get_store(cfg)
+        kwp = site_location.effective(cfg, st, site_location.default_site(st))["kwp"]
+    except Exception:  # noqa: BLE001
+        kwp = pv_size.kwp(cfg)                       # yours, else the gateways' (#583)
     if not kwp:
         return None
     key = f"{cfg.pv_latitude},{cfg.pv_longitude},{cfg.pv_tilt},{cfg.pv_azimuth},{kwp}"

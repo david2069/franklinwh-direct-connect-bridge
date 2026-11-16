@@ -129,15 +129,15 @@ def site(store, settings, gw, host, month: int) -> dict:
     except Exception:  # noqa: BLE001
         cfg = None
     return {"mode": mode, "reserve_pct": reserve, "capacity_kwh": cap or None,
-            "solar_kwp": _pv_kwp(settings),
+            "solar_kwp": _pv_kwp(settings, store, gw.id),
             "tariff": tariff_summary((cfg or {}).get("pricing"), month) if cfg else None}
 
 
-def _pv_kwp(settings) -> float | None:
-    """The solar size: yours, else the gateways' (#583)."""
-    from . import pv_size
+def _pv_kwp(settings, store=None, gateway_id: str | None = None) -> float | None:
+    """The solar size of the gateway's site: yours, else its gateways' (#583, #675)."""
+    from . import site_location
     try:
-        return pv_size.kwp(settings)
+        return site_location.for_gateway(settings, store, gateway_id)["kwp"]
     except Exception:  # noqa: BLE001
         return None
 
