@@ -117,7 +117,8 @@ def test_each_gateway_is_checked_against_its_site():
 
 # ── the page ─────────────────────────────────────────────────────────────────
 def test_location_and_solar_has_a_site_picker_and_the_gateways_check():
-    html = (PKG / "templates" / "tabs" / "settings.html").read_text()
+    html = (PKG / "templates" / "tabs" / "settings.html").read_text().replace(   # the Prices card inlined, as it renders
+        '{% include "partials/prices.html" %}', (PKG / "templates" / "partials" / "prices.html").read_text())
     i = html.index("<!-- ══ Location & Solar ══ -->")
     card = html[i:html.index("<!-- ══ Prices (#582)")]
     for tid in ("location-site", "location-gateways"):

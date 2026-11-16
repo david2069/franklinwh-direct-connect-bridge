@@ -14,7 +14,8 @@ from franklinwh_direct_connect_bridge import client as client_module
 from franklinwh_direct_connect_bridge.db import MetricsStore
 
 PKG = pathlib.Path(__file__).resolve().parents[1] / "src" / "franklinwh_direct_connect_bridge"
-HTML = ((PKG / "templates" / "tabs" / "settings.html").read_text()   # + Plans & meters (#613)
+HTML = ((PKG / "templates" / "tabs" / "settings.html").read_text().replace(   # the Prices card inlined, as it renders
+           '{% include "partials/prices.html" %}', (PKG / "templates" / "partials" / "prices.html").read_text())   # + Plans & meters (#613)
         + (PKG / "templates" / "partials" / "plans_meters.html").read_text())
 
 
@@ -141,7 +142,7 @@ def test_the_price_filter_searches_all_of_home_assistant():
     items = js[js.index("haPriceItems(q) {"):]
     assert "haPriceFound" in items[:items.index("\n    },")]
     filters = [l for l in HTML.splitlines() if 'x-model="q"' in l and "Filter" in l]
-    assert len(filters) == 4
+    assert len(filters) == 5        # buy, feed-in, the attribute picker macro (#582) + Plans & meters' two
     for l in filters:
         assert "haPriceSearch(q)" in l, l
     assert "No exposed price entities" not in HTML

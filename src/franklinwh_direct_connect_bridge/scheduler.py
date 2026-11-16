@@ -1950,22 +1950,20 @@ def ha_price_snapshot(settings, store) -> dict[str, Any]:
     can unit-detect), bounded to the involved instances. Never raises; an absent or
     unreachable entity is simply absent, and applied AFTER nem_snapshot so a
     configured HA entity wins over NEM for the same sensor."""
-    price_id = (getattr(settings, "tariff_price_entity", "") or "").strip()
-    feed_id = (getattr(settings, "tariff_feedin_entity", "") or "").strip()
-    if not price_id and not feed_id:
-        return {}
-    resolved = _ha_prices_c(store, [price_id, feed_id])
-    out: dict[str, Any] = {}
-    if price_id in resolved:
-        out["tariff.spot_price"] = resolved[price_id]
-    if feed_id in resolved:
-        out["tariff.feed_in_price"] = resolved[feed_id]
-    return out
+    # The buy and feed-in price, and the other generic dynamic-pricing attributes whose
+    # entity is set: forecasts, descriptors, renewables (dynamic_price, owner 2026-11-16).
+    from . import dynamic_price
+    return dynamic_price.read(settings, store)
 
 
 TARIFF_SENSORS = [
     ("tariff.spot_price", "Wholesale spot price (AEMO NEM or HA entity, c/kWh)"),
     ("tariff.feed_in_price", "Dynamic feed-in price (HA entity, c/kWh)"),
+    ("tariff.price_forecast", "Buy price forecast (HA entity, c/kWh; none when the source has none)"),
+    ("tariff.feed_in_forecast", "Feed-in price forecast (HA entity, c/kWh)"),
+    ("tariff.price_descriptor", "Buy price descriptor (HA entity, e.g. very_low … spike)"),
+    ("tariff.feed_in_descriptor", "Feed-in price descriptor (HA entity)"),
+    ("tariff.renewables_pct", "Renewables on the grid (HA entity, %)"),
     ("tariff.price_spike", "Price spike (1 at or above the spike threshold, or the HA spike sensor on)"),
     ("tariff.spike_threshold", "Price spike threshold (c/kWh)"),
     ("tariff.buy_rate", "Tariff: import rate ($/kWh)"),
@@ -2064,7 +2062,19 @@ ASK_SENSORS = [
 #: The features a value or template can depend on. HA entities depend on their
 #: instance, keyed ``ha:<instance>`` on top of these.
 FEATURES = ("gateway", "modbus", "solar_forecast", "spot_price", "feed_in_price",
-            "tariff", "utility", "constants", "ask")
+            "price_forecast", "feed_in_forecast", "price_descriptor", "feed_in_descriptor",
+            "renewables", "tariff", "utility", "constants", "ask")
+#: The generic dynamic-pricing sensors (dynamic_price) -> (their feature, their setting).
+_DYN_FEATURE = {"tariff.price_forecast": "price_forecast",
+                "tariff.feed_in_forecast": "feed_in_forecast",
+                "tariff.price_descriptor": "price_descriptor",
+                "tariff.feed_in_descriptor": "feed_in_descriptor",
+                "tariff.renewables_pct": "renewables"}
+_DYN_SETTING = {"price_forecast": "tariff_price_forecast_entity",
+                "feed_in_forecast": "tariff_feedin_forecast_entity",
+                "price_descriptor": "tariff_price_descriptor_entity",
+                "feed_in_descriptor": "tariff_feedin_descriptor_entity",
+                "renewables": "tariff_renewables_entity"}
 
 _SETUP_SOLAR = "set your location in Settings → Location & Prices → Location & Solar"
 _SETUP_PRICE = "set it in Settings → Location & Prices → Prices"
@@ -2081,6 +2091,8 @@ def sensor_feature(sid: str) -> str:
         return sid.split(".", 1)[1]
     if sid in ("tariff.price_spike", "tariff.spike_threshold"):    # from the price (#582)
         return "spot_price"
+    if sid in _DYN_FEATURE:                                       # generic attributes
+        return _DYN_FEATURE[sid]
     if sid.startswith(("weather.", "solar_forecast.")):
         return "solar_forecast"
     if sid.startswith("service."):
@@ -2137,6 +2149,10 @@ def feature_states(settings, store, gateway_id=None) -> dict[str, dict[str, str]
     feed = (getattr(settings, "tariff_feedin_entity", "") or "").strip()
     out["feed_in_price"] = (_entity(feed) if feed
                             else _feature("not_set_up", "feed-in price — " + _SETUP_PRICE))
+    for feat, key in _DYN_SETTING.items():          # the other generic attributes
+        eid = (getattr(settings, key, "") or "").strip()
+        out[feat] = (_entity(eid) if eid else _feature(
+            "not_set_up", feat.replace("_", " ") + " — " + _SETUP_PRICE + " (not every price source has one)"))
     meter = _meter_for_gateway(store, gateway_id) or {}
     from . import tariff_plans
     if not tariff_plans.tariff_for(store, meter or None):
@@ -2759,6 +2775,8 @@ def build_snapshot(settings, store, state: dict, *, host: str | None, gateway_id
     snapshot.update(billing_snapshot(store, gateway_id, now))   # tariff.*_window_active
     _dyn = apply_dynamic_pricing(snapshot, settings, store, gateway_id)   # per-tariff wholesale override
     price_events(snapshot, settings)            # tariff.price_spike, HA demand window (#582)
+    from . import dynamic_price
+    dynamic_price.fill_missing(snapshot)        # every dynamic-pricing attribute; None if none
     if tick:
         snapshot.update(billing.billing_tick(store, gateway_id, snapshot.get("grid.power_w"),
                                              now, dynamic_rate=_dyn))   # demand/energy/bonus/charge
