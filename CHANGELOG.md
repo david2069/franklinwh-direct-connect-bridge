@@ -45,6 +45,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   256 KiB template limit. It now counts per device, so it works however many there are
   (#445, [guide](docs/guide/ha-setup-and-notifications.md#the-four-setup-checks)).
 
+### Fixed
+
+- Home Assistant → Published by bridge → **Dashboard card** found none of the bridge's
+  entities: Home Assistant names them after the device (`sensor.franklinwh_direct_<last 8
+  of serial>_state_of_charge`), and the card looked for ids built from what the bridge
+  publishes. It now asks Home Assistant for the ids of this gateway's device, so the card
+  uses the real ones. The four binary sensors are looked up as binary sensors (#689,
+  [guide](docs/guide/home-assistant.md#dashboard-card)).
+- Dashboard card: says in one line what it is, numbers the steps to paste it, and a
+  failure says in plain words what to check; entities left out are listed by name (#689,
+  [guide](docs/guide/home-assistant.md#dashboard-card)).
+
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.

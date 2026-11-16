@@ -3,18 +3,17 @@
 Shape agreed across the FranklinWH integrations (``fwhai`` shipped first, commit 92991e3):
 plain core cards only, no custom cards, no theme line, and **never a guessed entity id**.
 
-The id rule matters. We publish by MQTT discovery and set ``object_id``, so Home Assistant
-builds ``<domain>.<object_id>`` — deterministic, *until* it collides with an existing entity
-and HA appends ``_2``. So every id in the output is one HA actually reports: we look for the
-candidate, accept a numeric suffix of it, and anything we cannot find is reported as missing
-rather than guessed into the YAML.
+The id rule matters. We publish by MQTT discovery with an ``object_id``, but Home Assistant
+names the entity after the DEVICE and the entity name (``sensor.franklinwh_direct_<last 8
+of serial>_state_of_charge``), and appends ``_2`` on a collision. Composing ids from
+``object_id`` found none of them (#689). So we ask HA for the entity ids of this gateway's
+own device (by its discovery identifier) and match each published entity by its name;
+installs whose ids still follow ``object_id`` match that way. Anything we cannot find is
+reported as missing rather than guessed into the YAML.
 
-``fwhai`` reads HA's entity registry over the websocket to do this. We do not, for one
-reason: the registry is websocket-only and there is no websocket client in this image, while
-``object_id`` gives us an exact candidate to confirm against the REST ``/api/states`` we
-already use. The trade-off is renames — an entity the user renamed in HA keeps its id, so
-this still finds it, but one whose *entity id* was changed by hand will be reported missing.
-That is the correct failure: visible, and not a wrong id.
+``fwhai`` reads HA's entity registry over the websocket. We use HA's template engine on
+the REST API instead (there is no websocket client in this image). An entity whose id
+was changed by hand in HA is reported missing: visible, and not a wrong id.
 """
 from __future__ import annotations
 
@@ -51,7 +50,8 @@ def rows_for_node(node: str, groups=None) -> list[dict[str, Any]]:
         g = e.get("group", "core")
         if g not in enabled:
             continue
-        rows.append({"domain": "sensor", "object_id": f"franklinwh_{node}_{e['key']}",
+        rows.append({"domain": e.get("ha_type", "sensor"),
+                     "object_id": f"franklinwh_{node}_{e['key']}",
                      "name": e["name"], "group": g})
     if "controls" in enabled:
         for c in ents.CONTROLS:
@@ -61,24 +61,56 @@ def rows_for_node(node: str, groups=None) -> list[dict[str, Any]]:
     return rows
 
 
-def resolve_ids(rows: list[dict], ha_entity_ids: set[str]) -> tuple[list[dict], list[dict]]:
+def slug(text: str) -> str:
+    """Home Assistant's slugify for an entity id: lower case, anything else becomes ``_``."""
+    return re.sub(r"[^a-z0-9]+", "_", (text or "").lower()).strip("_")
+
+
+def _with_suffix(want: str, ids: set[str]) -> str | None:
+    """``want`` itself, or that with HA's numeric collision suffix; nothing else."""
+    if want in ids:
+        return want
+    suffixed = sorted(e for e in ids
+                      if e.startswith(want + "_") and e[len(want) + 1:].isdigit())
+    return suffixed[0] if suffixed else None
+
+
+def _device_prefix(rows: list[dict], device_ids: set[str]) -> str | None:
+    """The part HA put before the entity name in this device's ids (the device name when
+    the entity was created): the prefix most of the device's ids share with a row name."""
+    tails = [(r["domain"], "_" + slug(r["name"])) for r in rows]
+    votes: dict[str, int] = {}
+    for eid in device_ids:
+        domain, _, obj = eid.partition(".")
+        if not any(obj.endswith(t) for _d, t in tails):
+            obj = re.sub(r"_\d+$", "", obj)          # HA's collision suffix, e.g. _2
+        for d, tail in tails:
+            if d == domain and obj.endswith(tail) and len(obj) > len(tail):
+                p = obj[:-len(tail)]
+                votes[p] = votes.get(p, 0) + 1
+    return max(votes, key=lambda p: (votes[p], -len(p))) if votes else None
+
+
+def resolve_ids(rows: list[dict], ha_entity_ids: set[str],
+                device_ids: set[str] | None = None) -> tuple[list[dict], list[dict]]:
     """Split rows into (found, missing), attaching the REAL entity id to each found row.
 
-    A row matches ``<domain>.<object_id>`` exactly, or that with a numeric suffix, which is
-    how HA disambiguates a collision. Nothing else is accepted — a near miss is a miss.
+    With ``device_ids`` (this gateway's device's entity ids, from HA), a row matches
+    ``<domain>.<device prefix>_<slug of its name>`` among them (#689). Otherwise, or when
+    that finds nothing, ``<domain>.<object_id>``. Either may carry HA's numeric collision
+    suffix. Only ids HA reports a state for are used — a near miss is a miss.
     """
+    own = (set(device_ids) & ha_entity_ids) if device_ids else set()
+    prefix = _device_prefix(rows, own) if own else None
     found, missing = [], []
     for r in rows:
-        want = f"{r['domain']}.{r['object_id']}"
-        if want in ha_entity_ids:
-            found.append({**r, "entity_id": want})
-            continue
-        suffixed = sorted(
-            e for e in ha_entity_ids
-            if e.startswith(want + "_") and e[len(want) + 1:].isdigit()
-        )
-        if suffixed:
-            found.append({**r, "entity_id": suffixed[0]})
+        eid = None
+        if prefix:
+            eid = _with_suffix(f"{r['domain']}.{prefix}_{slug(r['name'])}", own)
+        if not eid:
+            eid = _with_suffix(f"{r['domain']}.{r['object_id']}", ha_entity_ids)
+        if eid:
+            found.append({**r, "entity_id": eid})
         else:
             missing.append(r)
     return found, missing
