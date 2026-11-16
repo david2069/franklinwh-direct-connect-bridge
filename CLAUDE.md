@@ -229,6 +229,14 @@ on more fixes.
 
 **State the regression risk** before a change: low, medium or high, and what it touches.
 
+## Don't remove or rename without permission
+
+Never remove or rename a function, option, setting, tab, sub-tab, button or API field
+without the owner's explicit permission. When a new page or feature covers something that
+already exists, add it alongside and leave the old one as it is. Moving a feature means
+adding the new place, not taking the old one away. (#637 replaced Settings → Sites &
+Billing with a link and renamed the sub-tab, unasked; #678 restored it.)
+
 ## Keep the changelog current
 
 These rules are this repository's own. An earlier version of this file cited a
