@@ -416,8 +416,9 @@ between installs or shared.
 ### Prices
 
 **Settings → Location & Prices → Prices** holds the rest of what prices the scheduler sees
-(#582). Before 0.5.42 these were under Integrations (Dynamic price, and the Wholesale
-region under Location & Solar).
+(#582). The same card is on **Billing & Utilities → Plans & meters**, under the plans, so
+prices sit with billing too. Before 0.5.42 these were under Integrations (Dynamic price,
+and the Wholesale region under Location & Solar).
 
 - **Price signal for automation** — for a fixed or TOU bill that still wants a wholesale
   signal. **Source**: Off, **AEMO NEM** (your site's region, as above) or **Home Assistant
@@ -425,6 +426,24 @@ region under Location & Solar).
   `tariff.spot_price` and `tariff.feed_in_price` to the scheduler only, never billing. A
   plan with the **Dynamic (live)** rate type drives both billing and the scheduler with
   its own source, and wins while it is the active tariff.
+- **More from the price source** — the other dynamic-pricing attributes, each a scheduler
+  sensor, from a Home Assistant entity:
+
+    | Sensor | What |
+    |---|---|
+    | `tariff.price_forecast` | the buy price forecast, c/kWh |
+    | `tariff.feed_in_forecast` | the feed-in price forecast, c/kWh |
+    | `tariff.price_descriptor` | the buy price descriptor, as the source says it (Amber: `very_low` … `spike`) |
+    | `tariff.feed_in_descriptor` | the feed-in price descriptor |
+    | `tariff.renewables_pct` | renewables on the grid, % |
+
+  Not every source has them: AEMO NEM gives the price only, and a US utility price may
+  give the price only too. Whatever a source doesn't give has **no value** (empty, Home
+  Assistant's "unknown"), never 0 or NaN, so a rule using it simply doesn't match.
+  **Fill from the same integration** reads the buy (or feed-in) entity's integration and
+  lists its other sensors for you to confirm, then **Use these** saves them. Today it knows
+  the Amber Electric integration (`sensor.<site>_general_price` and its siblings, including
+  the price spike and demand window sensors), whether or not they are exposed.
 - **Price events**:
     - **Price spike** — at or above a number of c/kWh (0 = off), or from a Home Assistant
       spike sensor (a binary sensor, which wins when set). Gives `tariff.price_spike` (1
@@ -436,7 +455,9 @@ region under Location & Solar).
 
 The buy and feed-in pickers list the entities exposed to the bridge; typing in **Filter**
 also searches all of Home Assistant's sensors, so "Amber" finds an Amber price sensor that
-isn't exposed. The spike and demand-window pickers list exposed entities only. On the first start of 0.5.42 a saved
+isn't exposed. The spike and demand-window pickers list exposed entities, and show one
+filled from the integration even when it isn't exposed; the bridge reads it either way.
+On the first start of 0.5.42 a saved
 wholesale region is given to any site with no region (NSW1 → AU-NSW); a site whose region
 disagrees keeps its own, and the bridge log says so.
 

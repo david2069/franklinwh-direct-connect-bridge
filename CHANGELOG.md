@@ -11,6 +11,22 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+
+- Prices: the generic dynamic-pricing attributes for any price source: buy and feed-in
+  price, their forecasts and descriptors, renewables on the grid, price spike and demand
+  window, each a scheduler sensor (`tariff.price_forecast`, `tariff.feed_in_forecast`,
+  `tariff.price_descriptor`, `tariff.feed_in_descriptor`, `tariff.renewables_pct` are new).
+  A source without one (AEMO NEM, many utilities) leaves it empty, never 0 or NaN. **Fill
+  from the same integration** finds the rest of the Amber Electric integration's sensors
+  from its price sensor, for you to confirm. The Prices card is on Billing & Utilities →
+  Plans & meters too ([guide](docs/guide/energy-and-costs.md)).
+
+### Fixed
+
+- Prices: a price spike or demand-window sensor that isn't exposed to the bridge now works;
+  it read nothing before ([guide](docs/guide/energy-and-costs.md)).
+
 ### Fixed
 
 - Scheduler: no schedule ran on a gateway whose meter has a tariff. Every tick failed with
