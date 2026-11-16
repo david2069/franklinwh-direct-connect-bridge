@@ -6,9 +6,9 @@ dated copy: at start-up (the first good cloud pass) and whenever TOU mode is set
 **Sync now**. A copy is stored only when the schedule changed; otherwise the latest copy's
 ``checked_ts`` moves on.
 
-While TOU mode is on, the aGate follows those blocks, so a bridge schedule that sets the
-mode, forces the battery, changes the reserve or goes off-grid in the same minutes works
-against them: ``conflicts`` lists those.
+While TOU mode is on, the aGate follows those blocks, so a bridge Force (charge, discharge
+or standby) that contradicts the block it runs in works against it: ``conflicts`` lists
+those, one row per schedule and block.
 
 The bridge recommends its own schedules over FranklinWH TOU. TOU's one advantage is that
 it runs without the bridge, which is also its drawback: the bridge can't see, condition or
@@ -38,8 +38,11 @@ DAY_TYPE = {1: [0, 1, 2, 3, 4], 2: [5, 6], 3: [0, 1, 2, 3, 4, 5, 6]}
 BASE = {1, 6}
 #: TOU dispatches with a bridge action: Force charge, discharge, standby.
 FORCE = {8: "charge", 7: "discharge", 2: "standby"}
-#: Schedule actions that work against a TOU block (the battery, the mode, the reserve).
-CLASH_KINDS = ("set_mode", "force", "reserve_soc", "offgrid")
+#: What each TOU dispatch has the battery do, against a bridge Force direction (owner
+#: 2026-11-16): a clash is a Force whose direction contradicts the block's. Mode, reserve,
+#: off-grid and smart-circuit schedules never clash.
+TOU_BATTERY = {8: "charge", 3: "charge", 7: "discharge", 1: "discharge", 6: "discharge",
+               2: "standby"}
 
 
 def _months(text: Any) -> list[int]:
@@ -160,29 +163,54 @@ def _span(b: dict) -> tuple[int, int]:
     return s, (24 * 60 if not e else e)
 
 
+def _repeats(e: dict) -> str:
+    tt = e.get("trigger_type") or "daily"
+    if tt == "interval":
+        return f"every {int(e.get('interval_min') or 0)} min"
+    if tt == "cron":
+        return f"cron {e.get('cron') or ''}".strip()
+    return ""
+
+
 def conflicts(sched: dict, entries: list[dict], now: dt.datetime,
               gateway_id: str) -> list[dict]:
-    """Today's enabled schedules on this gateway (or All gateways) whose action works
-    against a TOU block, with the minutes they share."""
+    """Today's enabled Force schedules on this gateway (or All gateways) whose direction
+    contradicts a TOU block they run in: one row per schedule and block, from the first
+    to the last minute they share, with how many runs (``slots``) that covers."""
     blocks = blocks_on(sched, now.date())
+    by_id = {e.get("id"): e for e in entries}
     tl = scheduler.timeline_segments(entries, now, gateway_id)
-    out: dict[str, dict] = {}
+    rows: dict[tuple, dict] = {}
     for seg in tl["segments"] + tl.get("site", []):
-        if seg["action"] not in CLASH_KINDS:
+        if seg["action"] != "force":
             continue
-        for s, e in seg["blocks"]:
-            for b in blocks:
+        e = by_id.get(seg["schedule_id"]) or {}
+        force = ((e.get("action") or {}).get("direction") or "").lower()
+        for s, en in seg["blocks"]:
+            for bi, b in enumerate(blocks):
+                want = TOU_BATTERY.get(b["dispatch_id"])
+                if want is None or want == force:
+                    continue
                 bs, be = _span(b)
-                lo, hi = max(s, bs), min(e, be)
+                lo, hi = max(s, bs), min(en, be)
                 if lo >= hi:
                     continue
-                c = out.setdefault(seg["schedule_id"], {
-                    "schedule_id": seg["schedule_id"], "name": seg["name"],
-                    "action": seg["action"], "overlaps": []})
-                c["overlaps"].append({"start": _hhmm(lo), "end": _hhmm(hi),
-                                      "dispatch_id": b["dispatch_id"],
-                                      "dispatch": b["dispatch"]})
-    return list(out.values())
+                key = (seg["schedule_id"], bi)
+                r = rows.get(key)
+                if r is None:
+                    rows[key] = {"schedule_id": seg["schedule_id"], "name": seg["name"],
+                                 "force": force, "repeats": _repeats(e),
+                                 "tou_dispatch_id": b["dispatch_id"],
+                                 "tou_dispatch": b["dispatch"], "_lo": lo, "_hi": hi,
+                                 "slots": 1}
+                else:
+                    r["_lo"], r["_hi"] = min(r["_lo"], lo), max(r["_hi"], hi)
+                    r["slots"] += 1
+    out = []
+    for r in sorted(rows.values(), key=lambda r: (r["_lo"], r["name"])):
+        lo, hi = r.pop("_lo"), r.pop("_hi")
+        out.append({**r, "start": _hhmm(lo), "end": _hhmm(hi)})
+    return out
 
 
 def import_plan(sched: dict, power_pct: float = 100) -> dict[str, list]:

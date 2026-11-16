@@ -247,10 +247,21 @@ see it, add conditions to it or notify on it, and a bridge schedule can work aga
 - **Today.** The day's blocks as a bar and a list: times, what the aGate does (the app's
   names, such as *aPower charges from solar/grid*) and the tariff period. **All seasons**
   shows every season and day type.
-- **Clashes.** Enabled schedules on this gateway (or All gateways) that run today in the
-  same minutes as a TOU block and set the operating mode, force the battery, change the
-  reserve or go off-grid. While TOU mode is on, each works against the block it overlaps;
-  **Edit** opens it. With TOU mode off, the list says they would clash if it were set.
+- **Clashes.** Battery dispatch only: an enabled **Force** schedule on this gateway (or All
+  gateways) that runs today in a TOU block wanting the battery to do something else.
+  A schedule that sets the mode, the reserve, off-grid or a smart circuit never clashes.
+
+  | TOU block | Force charge | Force discharge | Force standby |
+  |---|---|---|---|
+  | aPower charges from solar/grid, aPower charges from solar | — | clash | clash |
+  | aPower to home/grid, aPower to home, Self-consumption | clash | — | clash |
+  | aPower on standby | clash | clash | — |
+
+  The table has one row per schedule and TOU block: **Schedule**, **Time** (its first to
+  last minute in the block), **Repeats** (for an interval or cron schedule, with how many
+  runs), **TOU block** and **Bridge** (its Force). **Edit** opens the schedule. While TOU
+  mode is on, each row works against the aGate; with it off, the table says they would if
+  it were set.
 - **Import as schedules…** asks first, with the trade-off above, then makes bridge
   schedules for Self-Consumption as the base mode:
     - *aPower charges from solar/grid* → **Force charge**; *aPower to home/grid* →
