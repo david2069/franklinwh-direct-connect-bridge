@@ -27,6 +27,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- Gateways: a shutdown just after a gateway edit no longer spins the poller restart (the
+  log filled with "still winding down" and the bridge stopped); no poller starts during
+  shutdown ([#681](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/681);
+  [guide](docs/guide/multi-gateway.md)).
+
 - Settings: the **Billing & Utilities** sub-tab is back, with the sites, meters, retailers
   and tariffs editors; 0.5.45 had replaced it with a link to the Billing & Utilities page
   ([#674](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/674);
