@@ -298,12 +298,12 @@
   </div>
 
   </div>
-  <div x-show="sub==='billing'" x-cloak class="space-y-6" id="settings-billing">
-  <!-- Sites, meters, retailers and tariffs moved to Billing & Utilities → Plans & meters (#613). -->
-  <div class="card text-xs flex flex-wrap items-center justify-between gap-2" data-testid="plans-moved">
-    <span style="color:var(--text-secondary)">Sites, meters, retailers and tariffs are on the <b>Billing &amp; Utilities</b> page.</span>
-    <button class="btn btn-secondary btn-sm" @click="$store.app.setActiveTab('energy_costs'); setTimeout(() => window.dispatchEvent(new CustomEvent('fwh-open-billing', { detail: { sub: 'plans' } })), 50)">Plans &amp; meters</button>
+  <!-- Billing & Utilities (#674): the same sites, meters, retailers and tariffs editors as
+       the Billing & Utilities page's Plans & meters (one partial). -->
+  <div x-show="sub==='sites'" x-cloak class="space-y-6" id="settings-sites">
+  {% include "partials/plans_meters.html" %}
   </div>
+  <div x-show="sub==='billing'" x-cloak class="space-y-6" id="settings-billing">
 
   <!-- ══ Location & Solar ══ -->
   <div class="flex items-center gap-3">

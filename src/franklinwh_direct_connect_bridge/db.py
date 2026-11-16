@@ -103,6 +103,7 @@ class MetricsStore:
         self._migrate_tariff_meter()
         self._migrate_alerts()
         self._migrate_health()
+        self._migrate_cloud_tou()
         self._conn.commit()
 
     def _migrate_gateway_id(self) -> None:
@@ -3453,6 +3454,55 @@ class MetricsStore:
         q += " ORDER BY ts DESC, id DESC LIMIT ?"
         args.append(max(1, min(int(limit), 400)))
         return self._health_rows(q, args)
+
+    # ── FranklinWH TOU schedule: dated copies from the cloud (cloud_tou.py) ────────
+    def _migrate_cloud_tou(self) -> None:
+        """One row per distinct schedule per gateway: ``first_ts`` when it was first read,
+        ``checked_ts`` when it was last read unchanged; ``body`` is the schedule as JSON."""
+        self._conn.execute(
+            """CREATE TABLE IF NOT EXISTS cloud_tou(
+                   id INTEGER PRIMARY KEY AUTOINCREMENT, gateway_id TEXT NOT NULL,
+                   first_ts REAL NOT NULL, checked_ts REAL NOT NULL, cloud_updated TEXT,
+                   digest TEXT NOT NULL, reason TEXT NOT NULL, body TEXT NOT NULL)""")
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_cloud_tou ON cloud_tou(gateway_id, first_ts DESC)")
+        self._conn.commit()
+
+    def _cloud_tou_rows(self, q: str, args) -> list[dict]:
+        with self._lock:
+            cur = self._conn.execute(q, args)
+            cols = [c[0] for c in cur.description]
+            return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+    def latest_cloud_tou(self, gateway_id: str) -> dict | None:
+        rows = self._cloud_tou_rows("SELECT * FROM cloud_tou WHERE gateway_id=? "
+                                    "ORDER BY first_ts DESC, id DESC LIMIT 1", (gateway_id,))
+        return rows[0] if rows else None
+
+    def save_cloud_tou(self, gateway_id: str, ts: float, cloud_updated: str, digest: str,
+                       reason: str, body: str) -> tuple[dict, bool]:
+        """A new copy when the schedule differs from the latest, else the latest checked
+        again. Returns (row, changed)."""
+        last = self.latest_cloud_tou(gateway_id)
+        with self._lock:
+            if last and last["digest"] == digest:
+                self._conn.execute("UPDATE cloud_tou SET checked_ts=? WHERE id=?",
+                                   (ts, last["id"]))
+                changed = False
+            else:
+                self._conn.execute(
+                    "INSERT INTO cloud_tou(gateway_id, first_ts, checked_ts, cloud_updated, "
+                    "digest, reason, body) VALUES (?,?,?,?,?,?,?)",
+                    (gateway_id, ts, ts, cloud_updated, digest, reason, body))
+                changed = True
+            self._conn.commit()
+        return self.latest_cloud_tou(gateway_id), changed
+
+    def cloud_tou_history(self, gateway_id: str, limit: int = 50) -> list[dict]:
+        return self._cloud_tou_rows(
+            "SELECT id, first_ts, checked_ts, cloud_updated, reason FROM cloud_tou "
+            "WHERE gateway_id=? ORDER BY first_ts DESC, id DESC LIMIT ?",
+            (gateway_id, max(1, min(int(limit), 500))))
 
     # ── admin: storage insight + backup / restore / vacuum ────────────────────
     #: Tables surfaced in the storage view, richest-first bias handled at call time.

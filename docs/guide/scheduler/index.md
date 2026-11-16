@@ -228,6 +228,43 @@ A One-off schedule appears only on its date.
 
 <!-- @b IDX-11 ;; src: app.py:3328-3358 ;; untested ;; write: no ;; b: The timeline ignores the gateway for segments and markers and uses the container clock ;; test: unit (API): two gateways' schedules; ?gateway=gw2 still returns both -->
 
+## FranklinWH TOU schedule
+
+The **FranklinWH TOU** view on the Scheduler shows the time-of-use schedule set in the
+FranklinWH app. The aGate runs it while the operating mode is **Time-of-Use**. The local
+API can't read it, so the bridge reads it from the FranklinWH cloud (read-only). This needs
+the cloud sign-in in **Settings → Integrations → FranklinWH Cloud API**, for this aGate.
+
+**This bridge's schedules are recommended instead of FranklinWH TOU.** TOU's one advantage
+is that the aGate runs it without the bridge. That is also its drawback: the bridge can't
+see it, add conditions to it or notify on it, and a bridge schedule can work against it.
+
+- **The copy.** The bridge keeps a dated copy of the schedule. It reads it at start-up (the
+  first cloud status pass) and whenever the operating mode becomes Time-of-Use; **Sync now**
+  reads it at once. A new copy is kept only when the schedule changed; otherwise the latest
+  copy's *last checked* time moves on. **Copies** lists them, each with why it was taken.
+  *Last changed in the FranklinWH app* is the cloud's own date.
+- **Today.** The day's blocks as a bar and a list: times, what the aGate does (the app's
+  names, such as *aPower charges from solar/grid*) and the tariff period. **All seasons**
+  shows every season and day type.
+- **Clashes.** Enabled schedules on this gateway (or All gateways) that run today in the
+  same minutes as a TOU block and set the operating mode, force the battery, change the
+  reserve or go off-grid. While TOU mode is on, each works against the block it overlaps;
+  **Edit** opens it. With TOU mode off, the list says they would clash if it were set.
+- **Import as schedules…** asks first, with the trade-off above, then makes bridge
+  schedules for Self-Consumption as the base mode:
+    - *aPower charges from solar/grid* → **Force charge**; *aPower to home/grid* →
+      **Force discharge**; *aPower on standby* → **Force standby**. Set the **Force power**
+      (pre-filled 100 %; please confirm).
+    - *Self-consumption* and *aPower to home* need no schedule: Self-Consumption does them.
+    - *aPower charges from solar* has no bridge action; the dialog lists those blocks.
+    - The same block in several seasons or day types is one schedule when its days (or
+      months) are the same, so it never runs on a day TOU doesn't.
+
+  The schedules are created **disabled**. Enable them and set Self-Consumption when you are
+  ready, so they and TOU don't both run. The result stays in the dialog. Nothing is changed
+  in the FranklinWH app or on the aGate.
+
 ## Activity Log
 
 Every decision the scheduler makes is written to **History**, newest first: created,

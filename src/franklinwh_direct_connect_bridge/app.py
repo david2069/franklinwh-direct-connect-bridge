@@ -741,6 +741,12 @@ class NotifyBroadcastReq(BaseModel):
     message: str
     device_ids: list[str] | None = None
 
+class TouImportReq(BaseModel):
+    """Import the FranklinWH TOU schedule as bridge schedules: the Force power to use."""
+    model_config = ConfigDict(extra="forbid")
+    power_pct: float = Field(100, ge=1, le=100)
+
+
 class ScheduleReq(BaseModel):
     # Unknown fields are refused, not ignored (#269): a mis-shaped request otherwise saved
     # a schedule built from defaults, firing at a time nobody chose.
@@ -1305,6 +1311,7 @@ def create_app() -> FastAPI:
             want = (get_settings().fwh_cloud_gateway or "").upper()
             _last_status = None   # only log cloud status on a real CHANGE (see Logs policy)
             _fail_streak = 0      # for failure VISIBILITY without 5-min spam (onset + recovery)
+            _tou_mode, _tou_synced = "", False   # the TOU schedule's copy (cloud_tou)
             while True:
                 _workers.registry.beat("cloud-status", state=_workers.WorkerState.RUNNING)
                 ok = False
@@ -1327,6 +1334,22 @@ def create_app() -> FastAPI:
                             # Logs policy: startup, state changes and errors). A transient unknown
                             # (empty mode -> "?") is skipped so it can't flap the log.
                             mode = data.get("effective_mode") or ""
+                            # A copy of the FranklinWH TOU schedule at start-up and when
+                            # TOU mode is set (owner 2026-11-16). One try each: a failure
+                            # is logged, not retried every pass.
+                            from . import cloud_tou
+                            why = cloud_tou.sync_reason(mode, _tou_mode, _tou_synced)
+                            _tou_mode, _tou_synced = mode or _tou_mode, True
+                            if why:
+                                try:
+                                    tou = cloud_tou.sync(db.get_store(get_settings()),
+                                                         get_settings(), target.id,
+                                                         target.serial, why)
+                                    if tou["changed"]:
+                                        log.info("TOU schedule copied from the cloud (%s): %s",
+                                                 why, tou["schedule"]["name"] or "unnamed")
+                                except Exception as e:  # noqa: BLE001
+                                    log.warning("TOU schedule read failed (%s): %s", why, e)
                             if mode:
                                 key = (mode, bool(data["is_vpp"]))
                                 if key != _last_status:
@@ -5235,6 +5258,89 @@ def create_app() -> FastAPI:
         mode_list (1726, → result.currendId + result.list) enriched with tou_schedule
         (1408) in one aGate session. 502 on device error."""
         return _read(client.cloud_tou, gateway)
+
+    # ── FranklinWH TOU schedule from the Cloud API (cloud_tou.py) ───────────────────
+    def _tou_gateway(gateway: str):
+        """(gateway state, why not) — the TOU schedule is read for the gateway's own locked
+        serial, and only when the cloud account is for that aGate (#351, #379)."""
+        s = get_settings()
+        if not (s.fwh_cloud_email and s.fwh_cloud_password):
+            return None, ("Sign in to the FranklinWH cloud in Settings → Integrations → "
+                          "FranklinWH Cloud API to read the TOU schedule.")
+        gw = state.get_gateway(gateway)
+        why = (providers.cloud_target_refusal(s, serial=gw.serial, serial_locked=gw.serial_locked,
+                                              is_mock=gw.is_mock)
+               if gw is not None else "This gateway isn't running.")
+        return (None, why) if why else (gw, "")
+
+    def _tou_view(gateway: str) -> dict:
+        from . import cloud_tou
+        gw, why = _tou_gateway(gateway)
+        st = _gw_store()
+        mode = ((gw.last_state or {}).get("mode") if gw else "") or (gw.cloud_mode if gw else "")
+        out = {"available": gw is not None, "reason": why, "mode": mode or "",
+               "tou_active": cloud_tou.is_tou(mode), "latest": None, "today": [],
+               "conflicts": [], "history": []}
+        if gw is None or st is None:
+            return out
+        cur = cloud_tou.latest(st, gateway)
+        if cur is None:
+            return out
+        now = _site_now(gateway)
+        out.update(latest=cur, today=cloud_tou.blocks_on(cur["schedule"], now.date()),
+                   conflicts=cloud_tou.conflicts(cur["schedule"], _ha_store().schedules(),
+                                                 now, gateway),
+                   history=st.cloud_tou_history(gateway))
+        return out
+
+    @app.get("/api/cloud/tou/schedule")
+    def api_cloud_tou_schedule(gateway: str = Depends(_gateway_q)):
+        """The FranklinWH TOU schedule's latest copy (taken at start-up, when TOU mode is
+        set, or on Sync now), today's blocks, the schedules that clash with it while TOU
+        is on, and when each copy was taken. No cloud call."""
+        return _tou_view(gateway)
+
+    @app.post("/api/cloud/tou/schedule/sync")
+    def api_cloud_tou_sync(gateway: str = Depends(_gateway_q)):
+        """Read the TOU schedule from the cloud now (read-only) and keep a copy if it
+        changed."""
+        from . import cloud_tou
+        gw, why = _tou_gateway(gateway)
+        if gw is None:
+            raise HTTPException(status_code=409, detail=why)
+        try:
+            cloud_tou.sync(_gw_store(), get_settings(), gateway, gw.serial, "manual")
+        except providers.CloudLoginHeld as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        except Exception as e:  # noqa: BLE001 — the dialog shows why
+            raise HTTPException(status_code=502,
+                                detail=f"Couldn't read the TOU schedule: {e}")
+        return _tou_view(gateway)
+
+    @app.get("/api/cloud/tou/schedule/import")
+    def api_cloud_tou_import_plan(gateway: str = Depends(_gateway_q),
+                                  power_pct: float = Query(100, ge=1, le=100)):
+        """What an import would create: disabled Force schedules for the charge, export
+        and standby blocks; what Self-Consumption covers; what has no bridge action."""
+        from . import cloud_tou
+        cur = cloud_tou.latest(_gw_store(), gateway) if _gw_store() else None
+        if cur is None:
+            raise HTTPException(status_code=404, detail="No TOU schedule read yet: Sync now first.")
+        return cloud_tou.import_plan(cur["schedule"], power_pct=power_pct)
+
+    @app.post("/api/cloud/tou/schedule/import", status_code=201)
+    def api_cloud_tou_import(req: TouImportReq, gateway: str = Depends(_gateway_q)):
+        """Create the import's schedules, disabled, on this gateway. Nothing is written
+        to the cloud or the aGate."""
+        _guard_writes()
+        plan = api_cloud_tou_import_plan(gateway, req.power_pct)
+        made = [api_schedule_create(ScheduleReq(**e, gateway_id=gateway))
+                for e in plan["entries"]]
+        _audit("tou_import", gateway=gateway,
+               detail=f"{len(made)} schedule(s) from the FranklinWH TOU schedule",
+               result="created, disabled", ok=True)
+        return {"created": [{"id": m["id"], "name": m["name"]} for m in made],
+                "left_out": plan["left_out"]}
 
     @app.get("/api/cloud/mode")
     def api_cloud_mode(requestedMode: int | None = Query(None),
