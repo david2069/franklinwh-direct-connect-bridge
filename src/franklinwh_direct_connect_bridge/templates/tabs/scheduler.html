@@ -331,22 +331,40 @@
             </div>
           </div>
           <div data-testid="tou-conflicts">
-            <div class="text-[10px] uppercase tracking-wide mb-1" style="color:var(--text-secondary)">Clashes with this bridge's schedules today</div>
+            <div class="text-[10px] uppercase tracking-wide mb-1" style="color:var(--text-secondary)">Clashes with this bridge's schedules today: a Force that contradicts the TOU block</div>
             <p x-show="!tou.conflicts.length" class="text-xs" style="color:var(--text-secondary)">None.</p>
             <p x-show="tou.conflicts.length && !tou.tou_active" class="text-xs mb-1" style="color:var(--text-secondary)">
               TOU mode is off, so these don't clash now; they would if it were set.</p>
-            <template x-for="c in tou.conflicts" :key="c.schedule_id">
-              <div class="rounded px-3 py-2 text-xs mb-1 flex flex-wrap items-start justify-between gap-2"
-                   :style="{ background: 'var(--surface-2)', borderLeft: '3px solid ' + (tou.tou_active ? 'var(--danger)' : 'var(--border)') }">
-                <div>
-                  <div style="color:var(--text-primary)" x-text="c.name"></div>
-                  <template x-for="(o, j) in c.overlaps" :key="j">
-                    <div style="color:var(--text-secondary)" x-text="o.start + '–' + o.end + ': TOU runs ' + o.dispatch"></div>
+            <!-- One row per schedule and TOU block, in columns (owner 2026-11-16) -->
+            <div x-show="tou.conflicts.length" class="overflow-x-auto">
+              <table class="w-full text-xs" data-testid="tou-conflicts-table">
+                <thead>
+                  <tr class="text-left" style="color:var(--text-secondary)">
+                    <th class="py-1 pr-3 font-medium">Schedule</th>
+                    <th class="py-1 pr-3 font-medium">Time</th>
+                    <th class="py-1 pr-3 font-medium">Repeats</th>
+                    <th class="py-1 pr-3 font-medium">TOU block</th>
+                    <th class="py-1 pr-3 font-medium">Bridge</th>
+                    <th class="py-1"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="(c, k) in tou.conflicts" :key="c.schedule_id + ':' + k">
+                    <tr class="border-t align-top" :style="{ borderColor: 'var(--border)' }">
+                      <td class="py-1.5 pr-3" style="color:var(--text-primary)" x-text="c.name"></td>
+                      <td class="py-1.5 pr-3 font-mono whitespace-nowrap" x-text="c.start + '–' + c.end"></td>
+                      <td class="py-1.5 pr-3 whitespace-nowrap" style="color:var(--text-secondary)"
+                          x-text="c.repeats ? c.repeats + ' (' + c.slots + ' runs)' : '—'"></td>
+                      <td class="py-1.5 pr-3">
+                        <span class="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1" :style="{ background: touColour(c.tou_dispatch_id) }"></span><span x-text="c.tou_dispatch"></span></td>
+                      <td class="py-1.5 pr-3 whitespace-nowrap" :style="{ color: tou.tou_active ? 'var(--danger)' : 'var(--text-primary)' }"
+                          x-text="'Force ' + c.force"></td>
+                      <td class="py-1.5 text-right"><button class="btn btn-secondary btn-sm" @click="editById(c.schedule_id)">Edit</button></td>
+                    </tr>
                   </template>
-                </div>
-                <button class="btn btn-secondary btn-sm" @click="editById(c.schedule_id)">Edit</button>
-              </div>
-            </template>
+                </tbody>
+              </table>
+            </div>
           </div>
           <details class="text-xs">
             <summary class="cursor-pointer" style="color:var(--text-secondary)">All seasons</summary>

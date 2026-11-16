@@ -11,6 +11,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+
+- Scheduler → FranklinWH TOU: a clash is now only a Force schedule whose battery dispatch
+  contradicts the TOU block it runs in (a mode, reserve or off-grid schedule no longer
+  counts), shown as a table with one row per schedule and block instead of a line per run
+  ([guide](docs/guide/scheduler/index.md)).
+
 ### Added
 
 - Solar Forecast card in the Energipays Bridge's layout: one chart over today and

@@ -95,26 +95,41 @@ def test_when_to_take_a_copy(mode, prev, synced, want):
 
 
 # ── clashes with the bridge's schedules ──────────────────────────────────────
-def entry(sid, kind, start, dur, gw="gw1", **kw):
-    action = {"kind": kind, **({"direction": "charge", "power": 50, "unit": "pct"} if kind == "force" else {}),
-              **({"mode": "self"} if kind == "set_mode" else {})} if kind else {}
+def entry(sid, kind, start, dur, gw="gw1", direction="charge", **kw):
+    action = {"kind": kind, **({"direction": direction, "power": 50, "unit": "pct"} if kind == "force" else {}),
+              **({"mode": "backup"} if kind == "set_mode" else {})} if kind else {}
     return {"id": sid, "name": sid, "enabled": True, "gateway_id": gw, "fire_at": start,
             "duration_min": dur, "action": action, **kw}
 
 
-def test_schedules_that_drive_the_battery_or_mode_clash_with_the_tou_blocks():
+def test_a_clash_is_a_force_that_contradicts_the_tou_blocks_dispatch():
+    """Owner 2026-11-16: clashes are battery dispatch only, where they contradict. Summer
+    weekdays: 00-02 self, 02-05 grid charge, 05-15 self, 15-21 to home, 21-24 export."""
     s = cloud_tou.schedule(detail())
-    entries = [entry("charge-cheap", "force", "03:00", 60),
-               entry("evening-self", "set_mode", "18:00", 30),
-               entry("porch-light", "smart_circuit", "18:00", 60),     # not the battery
-               entry("notify", "", "18:00", 60),
-               entry("off", "force", "03:00", 60, enabled=False),
-               entry("other-gw", "force", "03:00", 60, gw="gw2")]
-    c = cloud_tou.conflicts(s, entries, MON, "gw1")
-    assert [x["schedule_id"] for x in c] == ["charge-cheap", "evening-self"]
-    assert c[0]["overlaps"] == [{"start": "03:00", "end": "04:00", "dispatch_id": 8,
-                                 "dispatch": "aPower charges from solar/grid"}]
-    assert c[1]["overlaps"][0]["dispatch"] == "aPower to home"
+    entries = [entry("charge-cheap", "force", "03:00", 60),                     # 8 + charge: ok
+               entry("export-evening", "force", "22:00", 60, direction="discharge"),   # 7: ok
+               entry("charge-peak", "force", "16:00", 60),                       # 1 + charge
+               entry("hold", "force", "03:00", 30, direction="standby"),         # 8 + standby
+               entry("storm", "set_mode", "00:00", 1440),                        # a mode: never
+               entry("porch-light", "smart_circuit", "18:00", 60),
+               entry("off", "force", "16:00", 60, enabled=False),
+               entry("other-gw", "force", "16:00", 60, gw="gw2")]
+    rows = cloud_tou.conflicts(s, entries, MON, "gw1")
+    assert [(r["schedule_id"], r["force"], r["tou_dispatch_id"], r["start"], r["end"]) for r in rows] == [
+        ("hold", "standby", 8, "03:00", "03:30"),
+        ("charge-peak", "charge", 1, "16:00", "17:00")]
+    assert rows[0]["tou_dispatch"] == "aPower charges from solar/grid" and rows[0]["slots"] == 1
+
+
+def test_a_repeating_schedule_is_one_row_per_tou_block():
+    s = cloud_tou.schedule(detail())
+    every15 = entry("storm-charge", "force", "00:00", 6, trigger_type="interval",
+                    interval_min=15, anchor="00:00")
+    rows = cloud_tou.conflicts(s, [every15], MON, "gw1")
+    assert [(r["tou_dispatch_id"], r["start"], r["end"], r["slots"]) for r in rows] == [
+        (6, "00:00", "01:51", 8), (6, "05:00", "14:51", 40), (1, "15:00", "20:51", 24),
+        (7, "21:00", "23:51", 12)]                          # 02:00-05:00 is grid charge: ok
+    assert all(r["repeats"] == "every 15 min" for r in rows)
 
 
 # ── import into the bridge's schedules ───────────────────────────────────────
@@ -224,3 +239,14 @@ def test_the_scheduler_has_the_tou_view_and_asks_before_importing():
     dlg = html[html.index('data-testid="tou-import"'):]
     assert "dialog_msg('touImp.msg')" in dlg and "disabled" in dlg     # result in the dialog
     assert "it runs on the aGate without the bridge" in dlg               # the trade-off, asked first
+
+
+def test_the_clashes_are_a_table_in_columns():
+    import pathlib
+    html = (pathlib.Path(__file__).resolve().parents[1] / "src" / "franklinwh_direct_connect_bridge"
+            / "templates" / "tabs" / "scheduler.html").read_text()
+    t = html[html.index('data-testid="tou-conflicts-table"'):]
+    t = t[:t.index("</table>")]
+    for col in ("Schedule", "Time", "Repeats", "TOU block", "Bridge"):
+        assert f">{col}</th>" in t, col
+    assert "editById(c.schedule_id)" in t
