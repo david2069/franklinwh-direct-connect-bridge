@@ -1032,10 +1032,10 @@ document.addEventListener('alpine:init', () => {
         this.allGw.error = 'Could not load the gateways: ' + e.message;   // shown in the modal
       }
     },
-    // Average SoC over the gateways with a reading, for the site row.
+    // The site row's SoC from the bridge: weighted by each gateway's capacity (#358).
     get allGwSoc() {
-      const v = (this.allGw.rows || []).filter(r => r.poll_status === 'ok' && typeof r.soc === 'number').map(r => r.soc);
-      return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null;
+      const v = (this.allGw.totals || {}).soc;
+      return typeof v === 'number' ? Math.round(v) : null;
     },
     allGwCount(status) { return (this.allGw.rows || []).filter(r => r.poll_status === status).length; },
     pickFromAll(row) {

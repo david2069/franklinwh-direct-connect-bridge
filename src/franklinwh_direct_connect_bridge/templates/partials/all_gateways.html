@@ -98,7 +98,8 @@
                 Site total <span class="font-normal text-[10px]" style="color:var(--text-muted)"
                   x-text="'(' + (($store.app.allGw.totals || {}).ok_count || 0) + ' with a reading)'"></span>
               </td>
-              <td class="px-3 py-2 text-right" x-text="$store.app.allGwSoc != null ? $store.app.allGwSoc + '% avg' : '—'"></td>
+              <td class="px-3 py-2 text-right" x-text="$store.app.allGwSoc != null ? $store.app.allGwSoc + (($store.app.allGw.totals || {}).soc_weighted ? '%' : '% avg') : '—'"
+                  :title="($store.app.allGw.totals || {}).soc_weighted ? 'Weighted by each gateway\'s battery capacity' : 'Plain average: a gateway\'s aPowers have not been read yet'"></td>
               <td class="px-3 py-2" colspan="2"></td>
               <td class="px-3 py-2 text-right font-mono" x-text="$store.app.fmtPower((($store.app.allGw.totals || {}).totals || {}).battery_w)"></td>
               <td class="px-3 py-2 text-right font-mono" x-text="$store.app.fmtPower((($store.app.allGw.totals || {}).totals || {}).grid_w)"></td>

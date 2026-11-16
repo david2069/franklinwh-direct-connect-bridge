@@ -234,6 +234,8 @@
       <input type="number" min="0" max="1000" step="0.1" class="form-control form-control-sm" x-model.number="constants.battery_capacity_kwh">
       <div class="flex items-center gap-1.5 flex-wrap mt-0.5">
         <span class="text-[10px]" style="color:var(--text-faint)">Derive from aPower:</span>
+        <span class="text-[10px]" style="color:var(--text-faint)" data-testid="apower-read-from"
+              x-show="$store.app.selectedGateway" x-text="'(read from ' + $store.app.selectedGatewayLabel + ')'"></span>
         <select class="form-control form-control-sm !py-0.5 !text-[11px]" style="width:auto" x-model="apowerModel">
           <option value="">model…</option>
           <template x-for="m in apowerSpecs" :key="m.model">
@@ -315,7 +317,8 @@
       <span class="text-xs" style="color:var(--text-faint)">Each site's location and solar array. Set from a gateway on the site, or enter manually.
         <button type="button" class="underline ml-1" style="color:var(--accent)" data-testid="location-solar-link"
                 @click="$store.app.setActiveTab('solar')">Solar tab</button></span>
-      <button @click="syncLocation()" class="btn btn-secondary btn-sm">⟳ Sync from gateway</button>
+      <button @click="syncLocation()" class="btn btn-secondary btn-sm" data-testid="location-sync-gateway"
+              x-text="'⟳ Sync from gateway' + (locSyncGatewayLabel ? ': ' + locSyncGatewayLabel : '')">⟳ Sync from gateway</button>
     </div>
     <!-- Each site has its own location and PV array (#675); the default site's are the ones
          this card always had. -->

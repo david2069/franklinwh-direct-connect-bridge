@@ -18,6 +18,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - Troubleshoot: the **Steps** fit what the bridge sees. "Check the aGate is powered" shows
   only when it answers nowhere, not while it is on your LAN or online via 4G; with the
   aGate online there are no steps ([guide](docs/guide/ha-setup-and-notifications.md)).
+- Settings: **Derive from aPower** says which gateway its aPower model and count were read
+  from, and **Sync from gateway** names the gateway it reads (#362)
+  ([guide](docs/guide/tour.md), [location](docs/guide/energy-and-costs.md)).
+
+### Fixed
+
+- **All gateways: the site total's SoC was a plain average** (#358). A full gateway with
+  two aPowers and an empty one with one aPower showed 50%; the site holds two thirds. It
+  is now weighted by each gateway's battery capacity (aPower count × usable kWh). Until a
+  gateway's aPowers have been read it stays the plain average, marked "avg"
+  ([guide](docs/guide/multi-gateway.md)).
 
 ## Releases
 

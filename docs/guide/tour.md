@@ -248,8 +248,8 @@ bridge on a trusted network.
   in-app **mock** gateway. See [Multi-gateway](multi-gateway.md).
 - **Automation** — **Automation Constants** (min discharge SoC, max charge SoC,
   demand-charge min SoC, battery capacity, default operating mode). Under battery capacity,
-  **Derive from aPower** starts on the aPower model and count read from the gateway; **Fill**
-  multiplies them. The constants themselves are *not* read
+  **Derive from aPower** starts on the aPower model and count read from the gateway on
+  screen, and names it (*read from House*); **Fill** multiplies them. The constants themselves are *not* read
   from the aGate; you set them here and they become `const.*` sensors in the Scheduler.
   Also **System Setup**, the install profile.
 - **Billing & Utilities** — sites, meters, retailers and tariffs: the same editors as the
