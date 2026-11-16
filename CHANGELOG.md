@@ -11,73 +11,21 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
-### Added
-
-- Scheduler: **Smart Circuits, Generator and V2L** sensor groups (#698). Each smart
-  circuit's on/off state (`circuit.N.on`), named as your aGate names it (*Smart circuit 1
-  (Pool pump): on*), and its name for messages; the generator's energy today; the V2L car
-  switch's enable flag; and whether a generator and V2L are installed, as System Setup has
-  them. All come from the existing poll, with no extra aGate reads. On/off works as a trigger
-  with **Always (sensor-driven)** and a condition such as `circuit.1.on == 1`
-  An accessory the schedule's gateway doesn't have stays listed but is greyed out, marked
-  *(not installed)*
-  ([guide](docs/guide/scheduler/conditions.md#smart-circuits-generator-and-v2l)).
-- Scheduler: **smart circuit, V2L and generator readings** (#698). Every 60 seconds the
-  poll also reads the smart-circuit and V2L meter and the generator in the same aGate
-  session: each circuit's power and energy today, the installed circuit count, the V2L
-  power and lifetime energy, and the generator's enabled flag, state (Standby, Running,
-  Cooldown, Fault) and rated power. A read that fails leaves them without a value; the
-  poll carries on ([guide](docs/guide/scheduler/conditions.md#smart-circuits-generator-and-v2l)).
-
-### Changed
-
-- Troubleshoot: **Reconnect to Wi-Fi** runs when pressed; it no longer asks you to type
-  RECONNECT first ([guide](docs/guide/ha-setup-and-notifications.md)).
-- Troubleshoot: the **Steps** fit what the bridge sees. "Check the aGate is powered" shows
-  only when it answers nowhere, not while it is on your LAN or online via 4G; with the
-  aGate online there are no steps ([guide](docs/guide/ha-setup-and-notifications.md)).
-- Settings: **Derive from aPower** says which gateway its aPower model and count were read
-  from, and **Sync from gateway** names the gateway it reads (#362)
-  ([guide](docs/guide/tour.md), [location](docs/guide/energy-and-costs.md)).
-
-### Fixed
-
-- **All gateways: the site total's SoC was a plain average** (#358). A full gateway with
-  two aPowers and an empty one with one aPower showed 50%; the site holds two thirds. It
-  is now weighted by each gateway's battery capacity (aPower count × usable kWh). Until a
-  gateway's aPowers have been read it stays the plain average, marked "avg"
-  ([guide](docs/guide/multi-gateway.md)).
-
-### Fixed
-
-- Dashboard: the **Battery State of Charge** and **Energy** cards cut text off or ran past
-  their edge when narrow, such as a window about 1024–1200 px wide with the sidebar open (#370). State
-  of Charge now puts Reserved, Mode, Battery and Run status under the ring, and wraps rather
-  than truncating; Energy shows one column when two don't fit
-  ([guide](docs/guide/tour.md)).
-
-### Fixed
-
-- Setup check **Bridge entities in Home Assistant** said "Could not be checked" when Home
-  Assistant held many leftover entities (about 2,600): the answer was over Home Assistant's
-  256 KiB template limit. It now counts per device, so it works however many there are
-  (#445, [guide](docs/guide/ha-setup-and-notifications.md#the-four-setup-checks)).
-
-### Fixed
-
-- Home Assistant → Published by bridge → **Dashboard card** found none of the bridge's
-  entities: Home Assistant names them after the device (`sensor.franklinwh_direct_<last 8
-  of serial>_state_of_charge`), and the card looked for ids built from what the bridge
-  publishes. It now asks Home Assistant for the ids of this gateway's device, so the card
-  uses the real ones. The four binary sensors are looked up as binary sensors (#689,
-  [guide](docs/guide/home-assistant.md#dashboard-card)).
-- Dashboard card: says in one line what it is, numbers the steps to paste it, and a
-  failure says in plain words what to check; entities left out are listed by name (#689,
-  [guide](docs/guide/home-assistant.md#dashboard-card)).
-
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
+
+## 2026-11-17
+
+### [0.5.50](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.50.md)
+
+Added 2 · Changed 3 · Fixed 5
+
+- Scheduler: Smart Circuits, Generator and V2L sensor groups (on/off, power, energy…
+- Home Assistant: the Dashboard card uses Home Assistant's real entity ids
+- Dashboard: the State of Charge and Energy cards reflow instead of cutting text off
+- All gateways: the site SoC is weighted by battery capacity
+- Troubleshoot: Reconnect to Wi-Fi runs when pressed
 
 ## 2026-11-16
 
