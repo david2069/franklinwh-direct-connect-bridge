@@ -234,6 +234,7 @@ function settingsTab(opts = {}) {
       { key: 'general', label: 'General' },
       { key: 'gateways', label: 'Gateways' },
       { key: 'automation', label: 'Automation' },
+      { key: 'sites', label: 'Billing & Utilities' },
       { key: 'billing', label: 'Location & Prices' },
       { key: 'integrations', label: 'Integrations' },
       { key: 'admin', label: 'Admin' },
