@@ -6,7 +6,8 @@ import pathlib
 from franklinwh_direct_connect_bridge import scheduler
 
 PKG = pathlib.Path(__file__).resolve().parents[1] / "src" / "franklinwh_direct_connect_bridge"
-HTML = (PKG / "templates" / "tabs" / "settings.html").read_text()
+HTML = (PKG / "templates" / "tabs" / "settings.html").read_text().replace(   # the Prices card inlined, as it renders
+    '{% include "partials/prices.html" %}', (PKG / "templates" / "partials" / "prices.html").read_text())
 PLANS = (PKG / "templates" / "partials" / "plans_meters.html").read_text()
 
 

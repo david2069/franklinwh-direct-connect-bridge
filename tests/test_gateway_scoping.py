@@ -30,6 +30,7 @@ NOT_DEVICE_BOUND = {
     "api/meters",                  # meter roster — global config, not per-gateway
     "api/utilities",               # utility roster — global config, not per-gateway
     "api/tariffs",                 # tariff roster — global config, not per-gateway
+    "api/prices/related",          # reads a Home Assistant instance's sensors, no gateway
     "api/billing/page",            # meters + setup steps (#613) — global config, not per-gateway
     "api/health/report",         # the bridge-health report (owner 2026-11-15): bridge-wide, not per-gateway
     "api/constants",               # automation constants — global config, not per-gateway

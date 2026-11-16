@@ -900,6 +900,11 @@ class SettingsUpdate(BaseModel):
     price_spike_c: float | None = None        # price events (#582)
     price_spike_entity: str | None = None
     demand_window_entity: str | None = None
+    tariff_price_forecast_entity: str | None = None     # dynamic_price attributes
+    tariff_feedin_forecast_entity: str | None = None
+    tariff_price_descriptor_entity: str | None = None
+    tariff_feedin_descriptor_entity: str | None = None
+    tariff_renewables_entity: str | None = None
     # Interrupted scheduled-dispatch policy: none | notify | release | resume.
     dispatch_interrupt_policy: str | None = None
 
@@ -5818,6 +5823,28 @@ def create_app() -> FastAPI:
                    result=("ok" if out.get("ok") else "unverified/mismatch"), ok=bool(out.get("ok")))
         return out
 
+    @app.get("/api/prices/related")
+    def api_prices_related(entity: str = Query(..., description="ha:<instance>:<entity_id>")):
+        """The other dynamic-pricing sensors of the same retailer integration, from one of
+        them (Amber Electric today): setting -> entity, only ones that exist. Read from
+        that Home Assistant's states, exposed or not. Nothing is saved here."""
+        from . import dynamic_price
+        parts = entity.split(":", 2)
+        if len(parts) != 3 or parts[0] != "ha":
+            raise HTTPException(status_code=422, detail="entity must be ha:<instance>:<entity_id>")
+        st = _ha_store()
+        inst = next((i for i in st.ha_instances() if i["id"] == parts[1]), None)
+        if inst is None:
+            raise HTTPException(status_code=404, detail="no such Home Assistant instance")
+        try:
+            states = ha_instances.states(inst["base_url"], inst.get("token"))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=f"Couldn't read Home Assistant: {e}")
+        found = dynamic_price.related(entity, states)
+        labels = {a["setting"]: a["label"] for a in dynamic_price.ATTRIBUTES}
+        return {"found": [{"setting": k, "label": labels.get(k, k), "entity": v}
+                          for k, v in found.items()]}
+
     @app.get("/api/tariff/spot")
     def api_tariff_spot(region: str | None = Query(None)):
         """Live dynamic-tariff price — the two providers in one view (see FEAT-BILLING-WHOLESALE):
@@ -7443,6 +7470,10 @@ def create_app() -> FastAPI:
                 "price_spike_c": s.price_spike_c,
                 "price_spike_entity": s.price_spike_entity,
                 "demand_window_entity": s.demand_window_entity,
+                **{k: getattr(s, k) for k in (
+                    "tariff_price_forecast_entity", "tariff_feedin_forecast_entity",
+                    "tariff_price_descriptor_entity", "tariff_feedin_descriptor_entity",
+                    "tariff_renewables_entity")},
             },
         }
 
@@ -7535,7 +7566,10 @@ def create_app() -> FastAPI:
                 setattr(s, key, val)
                 save_override(key, val)
             elif key in ("tariff_price_entity", "tariff_feedin_entity",
-                         "price_spike_entity", "demand_window_entity"):
+                         "price_spike_entity", "demand_window_entity",
+                         "tariff_price_forecast_entity", "tariff_feedin_forecast_entity",
+                         "tariff_price_descriptor_entity", "tariff_feedin_descriptor_entity",
+                         "tariff_renewables_entity"):
                 # HA scheduler-id strings (ha:<inst>:<eid>) — not bools; empty clears.
                 val = str(value or "").strip()
                 setattr(s, key, val)
@@ -7990,7 +8024,17 @@ def create_app() -> FastAPI:
                               "Location & Solar: the gateway hasn't reported it yet."}
         fc = solar_forecast.forecast(loc["latitude"], loc["longitude"], kwp=loc["kwp"],
                                      tilt=loc["pv_tilt"], azimuth=loc["pv_azimuth"], force=force)
-        return {"configured": True, **fc,
+        fill = None                    # will today's solar fill the battery? (#676)
+        gw = state.get_gateway(gateway) if gateway else None
+        if gw is not None:
+            from . import constants, solar_fill
+            try:
+                soc = ((gw.last_summary or {}).get("power") or {}).get("soc")
+                cap = constants.values(_gw_store()).get("battery_capacity_kwh")
+                fill = solar_fill.assess(fc, soc=soc, capacity_kwh=cap, now_ts=time.time())
+            except Exception:  # noqa: BLE001 — the forecast shows without it
+                fill = None
+        return {"configured": True, **fc, "fill": fill,
                 "pv": {"kwp": loc["kwp"], "kwp_source": loc["kwp_source"],
                        "tilt": loc["pv_tilt"], "azimuth": loc["pv_azimuth"],
                        "lat": loc["latitude"], "lon": loc["longitude"],

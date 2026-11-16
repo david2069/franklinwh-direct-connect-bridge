@@ -27,7 +27,12 @@ function settingsTab(opts = {}) {
             fwh_cloud_email: '', fwh_cloud_password: '', fwh_cloud_gateway: '',
             pv_latitude: '', pv_longitude: '', pv_kwp: '', pv_tilt: '', pv_azimuth: '',
             nem_region: '', tariff_price_entity: '', tariff_feedin_entity: '',
-            price_spike_c: '', price_spike_entity: '', demand_window_entity: '' },
+            price_spike_c: '', price_spike_entity: '', demand_window_entity: '',
+            // the other dynamic-pricing attributes (dynamic_price, owner 2026-11-16)
+            tariff_price_forecast_entity: '', tariff_feedin_forecast_entity: '',
+            tariff_price_descriptor_entity: '', tariff_feedin_descriptor_entity: '',
+            tariff_renewables_entity: '' },
+    priceRel: null, priceRelMsg: null,   // "Fill from the same integration": found, and the result
     nemSpot: null,   // {region, spot:{price_c_kwh,...}, regions[]} — AEMO NEM wholesale
     cloudTesting: false,
     cloudResult: null,
@@ -161,7 +166,7 @@ function settingsTab(opts = {}) {
           await this.loadGateways();
           await this.loadSitesMeters();
           await this.loadUtilitiesTariffs();
-          this.loadHaPriceOpts();
+          this.loadNemSpot();          // the Prices card is here too (#582); it loads the HA options
         });
         setInterval(() => {
           if (this.$store.app.activeTab !== 'energy_costs') return;
@@ -963,6 +968,29 @@ function settingsTab(opts = {}) {
       }
       await this.loadNemSpot();
     },
+    /** The rest of the price source's sensors, from the buy (or feed-in) entity: shown
+     *  for the user to confirm, never saved on its own. */
+    async findRelated() {
+      this.priceRelMsg = null; this.priceRel = null;
+      const e = this.form.tariff_price_entity || this.form.tariff_feedin_entity;
+      try {
+        const r = await fetch('api/prices/related?entity=' + encodeURIComponent(e));
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || r.statusText);
+        this.priceRel = d;
+      } catch (err) { this.priceRelMsg = { ok: false, text: "Couldn't look: " + err.message }; }
+    },
+    async useRelated() {
+      const patch = {};
+      for (const f of (this.priceRel && this.priceRel.found) || []) { patch[f.setting] = f.entity; this.form[f.setting] = f.entity; }
+      try {
+        const r = await fetch('api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+        this.priceRelMsg = { ok: true, text: 'Saved ' + Object.keys(patch).length + ' sensors from the same integration.' };
+        this.priceRel = null;
+        this.loadNemSpot();
+      } catch (err) { this.priceRelMsg = { ok: false, text: "Couldn't save: " + err.message }; }
+    },
     // The filter searches all of Home Assistant, not only the exposed entities
     // (owner, 2026-11-15: "Amber" found nothing).
     async haPriceSearch(q) {
@@ -1319,6 +1347,9 @@ function settingsTab(opts = {}) {
       this.form.price_spike_c = pr.price_spike_c || '';
       this.form.price_spike_entity = pr.price_spike_entity || '';
       this.form.demand_window_entity = pr.demand_window_entity || '';
+      for (const k of ['tariff_price_forecast_entity', 'tariff_feedin_forecast_entity',
+                       'tariff_price_descriptor_entity', 'tariff_feedin_descriptor_entity',
+                       'tariff_renewables_entity']) this.form[k] = pr[k] || '';
       const loc = this.cfg.location || {};
       if (this.locView && !this.locView.is_default) loc.skip = true;   // another site is shown (#675)
       if (!loc.skip) {

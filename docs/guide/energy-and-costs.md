@@ -416,8 +416,9 @@ between installs or shared.
 ### Prices
 
 **Settings → Location & Prices → Prices** holds the rest of what prices the scheduler sees
-(#582). Before 0.5.42 these were under Integrations (Dynamic price, and the Wholesale
-region under Location & Solar).
+(#582). The same card is on **Billing & Utilities → Plans & meters**, under the plans, so
+prices sit with billing too. Before 0.5.42 these were under Integrations (Dynamic price,
+and the Wholesale region under Location & Solar).
 
 - **Price signal for automation** — for a fixed or TOU bill that still wants a wholesale
   signal. **Source**: Off, **AEMO NEM** (your site's region, as above) or **Home Assistant
@@ -425,6 +426,24 @@ region under Location & Solar).
   `tariff.spot_price` and `tariff.feed_in_price` to the scheduler only, never billing. A
   plan with the **Dynamic (live)** rate type drives both billing and the scheduler with
   its own source, and wins while it is the active tariff.
+- **More from the price source** — the other dynamic-pricing attributes, each a scheduler
+  sensor, from a Home Assistant entity:
+
+    | Sensor | What |
+    |---|---|
+    | `tariff.price_forecast` | the buy price forecast, c/kWh |
+    | `tariff.feed_in_forecast` | the feed-in price forecast, c/kWh |
+    | `tariff.price_descriptor` | the buy price descriptor, as the source says it (Amber: `very_low` … `spike`) |
+    | `tariff.feed_in_descriptor` | the feed-in price descriptor |
+    | `tariff.renewables_pct` | renewables on the grid, % |
+
+  Not every source has them: AEMO NEM gives the price only, and a US utility price may
+  give the price only too. Whatever a source doesn't give has **no value** (empty, Home
+  Assistant's "unknown"), never 0 or NaN, so a rule using it simply doesn't match.
+  **Fill from the same integration** reads the buy (or feed-in) entity's integration and
+  lists its other sensors for you to confirm, then **Use these** saves them. Today it knows
+  the Amber Electric integration (`sensor.<site>_general_price` and its siblings, including
+  the price spike and demand window sensors), whether or not they are exposed.
 - **Price events**:
     - **Price spike** — at or above a number of c/kWh (0 = off), or from a Home Assistant
       spike sensor (a binary sensor, which wins when set). Gives `tariff.price_spike` (1
@@ -436,7 +455,9 @@ region under Location & Solar).
 
 The buy and feed-in pickers list the entities exposed to the bridge; typing in **Filter**
 also searches all of Home Assistant's sensors, so "Amber" finds an Amber price sensor that
-isn't exposed. The spike and demand-window pickers list exposed entities only. On the first start of 0.5.42 a saved
+isn't exposed. The spike and demand-window pickers list exposed entities, and show one
+filled from the integration even when it isn't exposed; the bridge reads it either way.
+On the first start of 0.5.42 a saved
 wholesale region is given to any site with no region (NSW1 → AU-NSW); a site whose region
 disagrees keeps its own, and the bridge log says so.
 
@@ -502,6 +523,25 @@ generated today against the forecast, and an ahead/behind figure versus the fore
 now. Hours are shown in the PV location's local time, aligned to now by the forecast's own
 offset, so it reads correctly from any timezone. The server caches the forecast for about
 15 minutes.
+
+The card is laid out as the Energipays Bridge's (#676): today's and tomorrow's totals side
+by side, then one chart over both days with kW on the left and a red **NOW** line. Two
+toggles in the header draw lines over the bars, and the browser remembers them:
+
+- **Actual**: the solar actually generated today, hour by hour (orange), from the bridge's
+  own history.
+- **Temp**: the temperature for today and tomorrow (dashed blue), from the same Open-Meteo
+  forecast, with °C on the right.
+
+Hover over a bar for the hour's forecast kW, the actual kW and the temperature. The battery
+strip under the chart and the legend stay as before.
+
+**Won't fill the battery.** While solar is still forecast today, the Today box says when the
+solar left today won't take the battery to 100 %: about how many kWh are left, and how many
+the battery needs (Battery capacity × (100 − SoC), with the capacity from Settings →
+Automation). Home use is not taken off, so if it says the battery won't fill, it won't. The
+same goes out as a notification once a day per gateway: the trigger **Today's solar won't
+fill the battery** in [notifications](ha-setup-and-notifications.md), on by default.
 
 The same data becomes scheduler sensors: today's forecast kWh, today's peak kW, remaining
 kWh today, tomorrow's kWh, and two solar-*tracker* sensors comparing actual generation

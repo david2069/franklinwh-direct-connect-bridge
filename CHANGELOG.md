@@ -17,6 +17,15 @@ Full notes for each release are on the [docs site](https://david2069.github.io/f
 
 ## 2026-11-16
 
+### [0.5.49](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.49.md)
+
+Added 2 · Changed 1 · Fixed 2
+
+- Scheduler: schedules run again on a gateway whose meter has a tariff (every tick had…
+- Prices: generic dynamic-pricing attributes (forecasts, descriptors, renewables, spike…
+- Solar Forecast: the Energipays Bridge layout with actual solar and temperature, and a…
+- FranklinWH TOU: a clash is only a Force that contradicts the TOU block, shown as a table
+
 ### [0.5.48](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.48.md)
 
 Added 2 · Fixed 3

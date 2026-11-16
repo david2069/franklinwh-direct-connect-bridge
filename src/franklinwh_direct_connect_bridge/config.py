@@ -100,6 +100,12 @@ class Settings(BaseSettings):
     price_spike_c: float = 0.0
     price_spike_entity: str = ""
     demand_window_entity: str = ""
+    # The other generic dynamic-pricing attributes (dynamic_price): HA entities, empty = none.
+    tariff_price_forecast_entity: str = ""
+    tariff_feedin_forecast_entity: str = ""
+    tariff_price_descriptor_entity: str = ""
+    tariff_feedin_descriptor_entity: str = ""
+    tariff_renewables_entity: str = ""
     billing_dynamic: bool = False     # price BILLING at the live wholesale rate (spot/feed-in), not the static tariff
     pv_tilt: float = 20.0
     pv_azimuth: float = 0.0
@@ -182,6 +188,9 @@ _OVERRIDE_KEYS = {"allow_writes", "log_level", "ha_notify", "ha_url", "ha_token"
                   "tariff_price_entity", "tariff_feedin_entity",   # HA dynamic-price provider
                   "billing_dynamic",   # price billing at the live wholesale rate
                   "price_spike_c", "price_spike_entity", "demand_window_entity",   # #582
+                  "tariff_price_forecast_entity", "tariff_feedin_forecast_entity",
+                  "tariff_price_descriptor_entity", "tariff_feedin_descriptor_entity",
+                  "tariff_renewables_entity",                                       # dynamic_price
                   "dispatch_interrupt_policy",
                   # MQTT publishing, live-editable so the add-on can adopt the Supervisor's
                   # broker in one click instead of sending the user to the add-on options
