@@ -1563,6 +1563,11 @@ function settingsTab(opts = {}) {
       const active = this.$store.app.selectedGateway;
       return ids.includes(active) ? active : (ids[0] || active || '');
     },
+    get locSyncGatewayLabel() {
+      const id = this.locSyncGateway;
+      const g = (this.$store.app.gateways || []).find(x => x.id === id);
+      return g ? (g.label || g.host || g.id) : '';
+    },
     async syncLocation() {
       try {
         const gw = this.locSyncGateway;
@@ -1571,7 +1576,7 @@ function settingsTab(opts = {}) {
         if (r.ok) {
           this.form.pv_latitude = d.latitude; this.form.pv_longitude = d.longitude;
           this.loadLoc(d.site_id || undefined);
-          Alpine.store('app').toast('Location synced from gateway' + (d.postcode ? ' (postcode ' + d.postcode + ')' : ''), 'success');
+          Alpine.store('app').toast('Location synced from ' + (this.locSyncGatewayLabel || 'gateway') + (d.postcode ? ' (postcode ' + d.postcode + ')' : ''), 'success');
         } else Alpine.store('app').toast('Sync failed: ' + (d.detail || r.status), 'error');
       } catch (e) { Alpine.store('app').toast('Sync failed: ' + e.message, 'error'); }
     },

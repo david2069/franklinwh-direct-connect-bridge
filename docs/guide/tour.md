@@ -180,7 +180,7 @@ protocol documentation.
 
 | Tab | For |
 |---|---|
-| **Dashboard** | The at-a-glance view, built from ten cards you can individually hide and reorder: State of Charge, Power Flow (each source with what it is doing — Charging, Exporting — and a **Now / Today** toggle for today's kWh), Battery, Energy, Energy Flow (the Sankey), Operating Mode (with the per-mode reserves and a **Set** button), Diagnostics, Solar Forecast, Power History and Live Points. While the aGate is offline, the State of Charge, Power Flow and Battery cards keep the last values read, greyed, with **Last reading HH:MM (N min ago)**, and the battery state reads **Unknown (offline)**. |
+| **Dashboard** | The at-a-glance view, built from ten cards you can individually hide and reorder: State of Charge, Power Flow (each source with what it is doing — Charging, Exporting — and a **Now / Today** toggle for today's kWh), Battery, Energy, Energy Flow (the Sankey), Operating Mode (with the per-mode reserves and a **Set** button), Diagnostics, Solar Forecast, Power History and Live Points. While the aGate is offline, the State of Charge, Power Flow and Battery cards keep the last values read, greyed, with **Last reading HH:MM (N min ago)**, and the battery state reads **Unknown (offline)**. Cards fit their width: when a card is narrow (three across from a 1024 px window with the sidebar open), State of Charge puts its values under the ring and Energy goes to one column, so nothing is cut off; on a phone the cards stack one per row. |
 | **Battery** | Per-aPower BMS detail — cell voltages, temperatures, pack SoC/SoH, electrical and state readings. **Record** on the live trend keeps it on the bridge from then on (at least every 5 s, up to a day, or until Stop). **Recording** starts a recording by hand, and **Scheduled recordings** start one at a time of day on the days you tick, on the site's clock. **Charts** lists the recordings and charts cells over time; the list folds away (on a phone, once you pick one) so the chart has the width, and on a phone what to chart (Voltage, Temperature, Comparison; All cells, Average, Median) is a drop-down. A read the aGate takes over a minute to answer says so, with **Try again**; it says it is showing the last good reading only when there is one. A failed read (the aGate dropped off) doesn't use up a planned sample, so a recording carries on once the aGate is back; it gives up after an hour with no good read. Each recording shows why it ended (completed, stopped by whom, or the aGate unreachable), and the Logs show who started and stopped it. |
 | **Solar** | Solar production detail. The *forecast* is not here — it is the Solar Forecast card on the Dashboard (see [History and costs](energy-and-costs.md)). Hidden, with the Dashboard's Solar Forecast card, when there is no solar: the gateway reports no AC PV ports and no remote solar, or **System Setup** says none (DC solar is set there). Until the gateway has been read it stays. |
 | **Smart Circuits** | The aGate's controllable circuits: state now, and on/off control. |
@@ -248,8 +248,8 @@ bridge on a trusted network.
   in-app **mock** gateway. See [Multi-gateway](multi-gateway.md).
 - **Automation** — **Automation Constants** (min discharge SoC, max charge SoC,
   demand-charge min SoC, battery capacity, default operating mode). Under battery capacity,
-  **Derive from aPower** starts on the aPower model and count read from the gateway; **Fill**
-  multiplies them. The constants themselves are *not* read
+  **Derive from aPower** starts on the aPower model and count read from the gateway on
+  screen, and names it (*read from House*); **Fill** multiplies them. The constants themselves are *not* read
   from the aGate; you set them here and they become `const.*` sensors in the Scheduler.
   Also **System Setup**, the install profile.
 - **Billing & Utilities** — sites, meters, retailers and tariffs: the same editors as the
