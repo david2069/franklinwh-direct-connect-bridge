@@ -11,6 +11,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+
+- Scheduler: **Smart Circuits, Generator and V2L** sensor groups (#698). Each smart
+  circuit's on/off state (`circuit.N.on`), named as your aGate names it (*Smart circuit 1
+  (Pool pump): on*), and its name for messages; the generator's energy today; the V2L car
+  switch's enable flag; and whether a generator and V2L are installed, as System Setup has
+  them. All come from the existing poll, with no extra aGate reads. On/off works as a trigger
+  with **Always (sensor-driven)** and a condition such as `circuit.1.on == 1`
+  An accessory the schedule's gateway doesn't have stays listed but is greyed out, marked
+  *(not installed)*
+  ([guide](docs/guide/scheduler/conditions.md#smart-circuits-generator-and-v2l)).
+
 ### Changed
 
 - Troubleshoot: **Reconnect to Wi-Fi** runs when pressed; it no longer asks you to type

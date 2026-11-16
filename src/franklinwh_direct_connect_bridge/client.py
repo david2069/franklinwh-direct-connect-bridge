@@ -1209,6 +1209,12 @@ def summary(s: Settings, host: str | None = None, *, mock: bool = False) -> dict
                 # and the names saved on the aGate (the app's), for the System view
                 out["circuit_names"] = {n: str(sw.get(f"Sw{n}Name") or "").strip()
                                         for n in out["circuits_on"]}
+                # the gateway model's circuit count, for the scheduler picker (#698)
+                from . import devicedb as _ddb
+                out["circuits_expected"] = _ddb.describe(manifest).get("expected_circuits")
+                # the V2L car switch's enable flag rides in the same block (#698)
+                if "CarSwConsSupEnable" in sw:
+                    out["carsw_enabled"] = bool(sw.get("CarSwConsSupEnable"))
             except (OSError, TransportError, TimeoutError):
                 pass
             # Grid voltage + frequency, inside the SAME session — one extra read, no

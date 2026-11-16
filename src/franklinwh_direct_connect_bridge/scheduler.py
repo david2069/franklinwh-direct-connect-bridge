@@ -1301,7 +1301,9 @@ def known_sensor_ids() -> set[str]:
     return {i for group in (SENSORS, SOLAR_SENSORS, TARIFF_SENSORS, BILLING_WINDOW_SENSORS,
                             DEMAND_SENSORS, ENERGY_SENSORS, BONUS_SENSORS,
                             EXPORT_CHARGE_SENSORS, FIXED_SENSORS, SYSTEM_SENSORS,
-                            CONST_SENSORS, DERIVED_SENSORS, ASK_SENSORS) for i, _ in group}
+                            CONST_SENSORS, DERIVED_SENSORS, ASK_SENSORS,
+                            CIRCUIT_SENSORS, GENERATOR_SENSORS, V2L_SENSORS)
+            for i, _ in group}
 
 
 def _sensor_ids_in(nodes: Any) -> list[str]:
@@ -1516,8 +1518,29 @@ def snapshot_from_state(state: dict, power: dict | None = None,
     # state IS the summary power block (poller sets last_state = summary['power']), so the daily
     # solar counter is here — available in the scheduler ENGINE tick too (where power is None).
     snap["solar.today_kwh"] = st.get("kwh_sun")   # actual PV generated today
+    snap["generator.today_kwh"] = st.get("kwh_gen")   # generator energy today (#698)
     if power:
         snap["run_status"] = power.get("run_status")
+    return snap
+
+
+def _by_circuit(d: dict | None, n: int) -> Any:
+    """``d[n]``; keys are ints from the poll and strings once they went through JSON."""
+    d = d or {}
+    return d.get(n, d.get(str(n)))
+
+
+def device_snapshot(summary: dict | None) -> dict[str, Any]:
+    """Smart circuits and V2L from the poll's own 1409 read (#698): no extra aGate
+    traffic. Not read is no reading (None), never 0 or off."""
+    s = summary or {}
+    snap: dict[str, Any] = {}
+    for n in CIRCUIT_IDS:
+        on = _by_circuit(s.get("circuits_on"), n)
+        snap[f"circuit.{n}.on"] = None if on is None else int(bool(on))
+        snap[f"circuit.{n}.name"] = str(_by_circuit(s.get("circuit_names"), n) or "").strip() or None
+    car = s.get("carsw_enabled")
+    snap["v2l.enabled"] = None if car is None else int(bool(car))
     return snap
 
 
@@ -2049,6 +2072,75 @@ SYSTEM_SENSORS = [
     ("system.apower_model", "System: aPower model"),
     ("system.v2l", "System: V2L (car switch) on"),
 ]
+
+#: Smart Circuits, generator and V2L (#698). Circuit labels name the aGate's own circuit
+#: names when the poll has read them (``device_sensor_rows``).
+CIRCUIT_IDS = (1, 2, 3)
+CIRCUIT_SENSORS = ([(f"circuit.{n}.on", f"Smart circuit {n}: on") for n in CIRCUIT_IDS]
+                   + [(f"circuit.{n}.name", f"Smart circuit {n}: name (text)")
+                      for n in CIRCUIT_IDS])
+GENERATOR_SENSORS = [
+    ("generator.today_kwh", "Generator: energy today (kWh)"),
+    ("generator.installed", "Generator: installed (System Setup)"),
+]
+V2L_SENSORS = [
+    ("v2l.installed", "V2L: installed (System Setup)"),
+    ("v2l.enabled", "V2L: car switch enabled"),
+]
+
+
+def accessories(store, settings, gw) -> dict[str, Any]:
+    """Which accessories this gateway has, without reading it (#698): ``circuits`` the
+    installed count (the Smart Circuits count setting, else the gateway model's), and
+    ``generator`` / ``v2l`` as System Setup has them (your choice, else what was read).
+    None when not known, so nothing is greyed on a guess."""
+    from . import system_setup
+    pinned = str(getattr(settings, "smart_circuit_count", "auto") or "auto")
+    circuits = int(pinned) if pinned.isdigit() else \
+        (getattr(gw, "last_summary", None) or {}).get("circuits_expected")
+    ov = system_setup._overrides(store, gw.id) if store is not None else {}
+    hit = system_setup._derive_cache.get(gw.active_host or gw.configured_host or "")
+    derived = hit[1] if hit else {}
+    out: dict[str, Any] = {"circuits": circuits}
+    for key, field in (("generator", "generator_input"), ("v2l", "v2l")):
+        v = ov.get(field) if ov.get(field) is not None else derived.get(field)
+        out[key] = None if v is None else bool(v)
+    return out
+
+
+def device_inactive(sid: str, acc: dict) -> str | None:
+    """"not installed" for a Smart Circuits, Generator or V2L value whose accessory this
+    gateway doesn't have (owner 2026-11-17: greyed out in the picker); else None. The
+    installed flags themselves stay pickable."""
+    parts = sid.split(".")
+    if parts[0] == "circuit" and len(parts) == 3 and parts[1].isdigit():
+        n = acc.get("circuits")
+        return "not installed" if n is not None and int(parts[1]) > int(n) else None
+    if sid in ("generator.installed", "v2l.installed"):
+        return None
+    if sid in {i for i, _ in GENERATOR_SENSORS} and acc.get("generator") is False:
+        return "not installed"
+    if sid in {i for i, _ in V2L_SENSORS} and acc.get("v2l") is False:
+        return "not installed"
+    return None
+
+
+def device_sensor_rows(names: dict[int, list[str]] | None = None) -> list[dict[str, str]]:
+    """The Smart Circuits, Generator and V2L picker rows. ``names``: each circuit's names
+    as the gateways' aGates call them, so "Smart circuit 1 (Pool pump): on"."""
+    names = names or {}
+    rows = []
+    for sid, label in CIRCUIT_SENSORS:
+        n = int(sid.split(".")[1])
+        known = [x for x in (names.get(n) or []) if x]
+        if known:
+            label = label.replace(f"Smart circuit {n}:",
+                                  f"Smart circuit {n} ({' / '.join(known)}):")
+        rows.append({"id": sid, "label": label, "group": "Smart Circuits"})
+    rows += [{"id": i, "label": l, "group": "Generator"} for i, l in GENERATOR_SENSORS]
+    rows += [{"id": i, "label": l, "group": "V2L"} for i, l in V2L_SENSORS]
+    return rows
+
 
 #: The answer to this run's "Ask before continuing" question (#374 P4): the label of the
 #: button tapped, or the text typed into a reply. Absent until someone answers, so a
@@ -2766,6 +2858,8 @@ def build_snapshot(settings, store, state: dict, *, host: str | None, gateway_id
     them."""
     from . import billing
     snapshot = snapshot_from_state(state)
+    _gw = _state.get_gateway(gateway_id) if gateway_id else None
+    snapshot.update(device_snapshot(getattr(_gw, "last_summary", None)))   # circuits, V2L (#698)
     snapshot["grid.offgrid_min"] = offgrid_min(state, now.timestamp())   # on the tick's clock
     snapshot.update(ha_snapshot(store))     # exposed HA entities are conditions too
     snapshot.update(solar_snapshot(settings, store, gateway_id))   # weather + solar forecast, the site's
@@ -2788,6 +2882,11 @@ def build_snapshot(settings, store, state: dict, *, host: str | None, gateway_id
         snapshot.update(system_setup.snapshot(store, settings, gateway_id, host))   # system.* (derived+override)
     except Exception:  # noqa: BLE001
         pass
+    # Installed, as System Setup has it (derived, or the user's choice) (#698)
+    for sid, src in (("generator.installed", "system.generator_input"),
+                     ("v2l.installed", "system.v2l")):
+        v = snapshot.get(src)
+        snapshot[sid] = None if v is None else int(bool(v))
     snapshot.update(const_snapshot(store))   # const.* automation constants
     # Modbus (SunSpec 702) target: an explicit modbus_host when the poller resolved one
     # (empty string = skip, e.g. a mock with no Modbus); else fall back to host.

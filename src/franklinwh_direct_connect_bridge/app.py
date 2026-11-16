@@ -4418,6 +4418,16 @@ def create_app() -> FastAPI:
         host = (gw.active_host or gw.configured_host) if gw is not None else None
         return site_time.now_known(host)
 
+    def _circuit_names() -> dict[int, list[str]]:
+        """Each smart circuit's names as the gateways' aGates call them (#698)."""
+        out: dict[int, list[str]] = {}
+        for g in get_gateways():
+            for k, v in ((g.last_summary or {}).get("circuit_names") or {}).items():
+                v = str(v or "").strip()
+                if v and v not in out.setdefault(int(k), []):
+                    out[int(k)].append(v)
+        return out
+
     @app.get("/api/schedules")
     def api_schedules():
         """Schedules plus the action catalogue — including what is NOT available
@@ -4431,6 +4441,49 @@ def create_app() -> FastAPI:
             _lfd = _e.get("last_fired_day")
             _e["next_fire"] = scheduler.next_fire_ts(_e, _now, _lfd)
             _e["active_now"] = scheduler.active_now(_e, _now, _lfd)
+        _sensors = [
+            {**row, "inactive": scheduler.sensor_inactive(row["id"], _features)}
+            for row in [{"id": i, "label": l, "group": "Gateway"}
+             for i, l in scheduler.SENSORS]
+            + [{"id": i, "label": l, "group": "Weather & Solar"}
+               for i, l in scheduler.SOLAR_SENSORS]
+            + [{"id": i, "label": l, "group": "Tariff & Utility"}
+               for i, l in scheduler.TARIFF_SENSORS]
+            + [{"id": i, "label": l, "group": "Tariff & Utility"}
+               for i, l in scheduler.BILLING_WINDOW_SENSORS]
+            + [{"id": i, "label": l, "group": "Demand / Tariff"}
+               for i, l in scheduler.DEMAND_SENSORS]
+            + [{"id": i, "label": l, "group": "Energy"}
+               for i, l in scheduler.ENERGY_SENSORS]
+            + [{"id": i, "label": l, "group": "Demand / Tariff"}
+               for i, l in scheduler.BONUS_SENSORS]
+            + [{"id": i, "label": l, "group": "Tariff & Utility"}
+               for i, l in scheduler.EXPORT_CHARGE_SENSORS]
+            + [{"id": i, "label": l, "group": "Fixed Charges"}
+               for i, l in scheduler.FIXED_SENSORS]
+            + [{"id": i, "label": l, "group": "System Setup"}
+               for i, l in scheduler.SYSTEM_SENSORS]
+            + [{"id": i, "label": l, "group": "Automation Constants"}
+               for i, l in scheduler.CONST_SENSORS]
+            + [{"id": i, "label": l, "group": "Derived Battery"}
+               for i, l in scheduler.DERIVED_SENSORS]
+            + [{"id": i, "label": l, "group": "Ask before continuing"}
+               for i, l in scheduler.ASK_SENSORS]
+            + scheduler.device_sensor_rows(_circuit_names())
+            + scheduler.ha_sensor_options(_ha_store())
+        ]
+        # An accessory a gateway doesn't have is greyed out for it (#698, owner
+        # 2026-11-17); for every gateway when none has it. Still listed, so a schedule
+        # that uses one keeps it.
+        _acc = {g.id: scheduler.accessories(_ha_store(), get_settings(), g)
+                for g in get_gateways()}
+        for _row in _sensors:
+            _gw_why = {gid: why for gid, a in _acc.items()
+                       if (why := scheduler.device_inactive(_row["id"], a))}
+            if _gw_why:
+                _row["inactive_gw"] = _gw_why
+                if not _row["inactive"] and len(_gw_why) == len(_acc):
+                    _row["inactive"] = next(iter(_gw_why.values()))
         return {
             "schedules": _scheds,
             "actions": scheduler.ACTIONS,
@@ -4439,36 +4492,7 @@ def create_app() -> FastAPI:
             "force_reason": _force_why,
             "trigger_types": list(scheduler.TRIGGER_TYPES),
             "cron_available": scheduler.cron_available(),
-            "sensors": [
-                {**row, "inactive": scheduler.sensor_inactive(row["id"], _features)}
-                for row in [{"id": i, "label": l, "group": "Gateway"}
-                 for i, l in scheduler.SENSORS]
-                + [{"id": i, "label": l, "group": "Weather & Solar"}
-                   for i, l in scheduler.SOLAR_SENSORS]
-                + [{"id": i, "label": l, "group": "Tariff & Utility"}
-                   for i, l in scheduler.TARIFF_SENSORS]
-                + [{"id": i, "label": l, "group": "Tariff & Utility"}
-                   for i, l in scheduler.BILLING_WINDOW_SENSORS]
-                + [{"id": i, "label": l, "group": "Demand / Tariff"}
-                   for i, l in scheduler.DEMAND_SENSORS]
-                + [{"id": i, "label": l, "group": "Energy"}
-                   for i, l in scheduler.ENERGY_SENSORS]
-                + [{"id": i, "label": l, "group": "Demand / Tariff"}
-                   for i, l in scheduler.BONUS_SENSORS]
-                + [{"id": i, "label": l, "group": "Tariff & Utility"}
-                   for i, l in scheduler.EXPORT_CHARGE_SENSORS]
-                + [{"id": i, "label": l, "group": "Fixed Charges"}
-                   for i, l in scheduler.FIXED_SENSORS]
-                + [{"id": i, "label": l, "group": "System Setup"}
-                   for i, l in scheduler.SYSTEM_SENSORS]
-                + [{"id": i, "label": l, "group": "Automation Constants"}
-                   for i, l in scheduler.CONST_SENSORS]
-                + [{"id": i, "label": l, "group": "Derived Battery"}
-                   for i, l in scheduler.DERIVED_SENSORS]
-                + [{"id": i, "label": l, "group": "Ask before continuing"}
-                   for i, l in scheduler.ASK_SENSORS]
-                + scheduler.ha_sensor_options(_ha_store())
-            ],
+            "sensors": _sensors,
             "gateways": [{"id": g.id, "name": g.label or g.serial or g.id,
                           "host": g.active_host or g.configured_host}
                          for g in get_gateways()],

@@ -294,7 +294,10 @@ group **per Home Assistant instance**:
 | Derived Battery | 10 | computed from the poll, the constants and a rate |
 | Energy | 5 | the gateway's meter tariff, fed each tick |
 | Fixed Charges | 5 | the meter tariff's fixed charges |
+| Generator | 2 | the gateway's last poll; *installed* from **Settings → Setup** (#698) |
+| Smart Circuits | 6 | the gateway's last poll (the aGate's smart-circuit block) (#698) |
 | System Setup | 8 | **Settings → Setup**, derived from the aGate where possible |
+| V2L | 2 | the gateway's last poll; *installed* from **Settings → Setup** (#698) |
 | Tariff & Utility | 23 | the meter's utility and tariff, AEMO NEM, a Home Assistant price entity |
 | Weather & Solar | 7 | Open-Meteo, from the PV location |
 | *one per HA instance* | your exposed entities | Home Assistant |
@@ -341,6 +344,31 @@ after the restart; it does not guess an earlier start.
 ### Load
 
 `load.power_w` and `generator.power_w` (Gateway).
+
+### Smart Circuits, Generator and V2L
+
+From the gateway's poll, with no extra aGate reads (#698):
+
+- `circuit.1.on`, `circuit.2.on`, `circuit.3.on`: 1 when the smart circuit is on, 0 when
+  off. The picker names each circuit as your aGate does, e.g. *Smart circuit 1 (Pool
+  pump): on*, so typing *Circ* finds them. `circuit.N.name` is that name, for messages
+  (`%circuit.1.name%`).
+- `generator.today_kwh`: the generator's energy today. `generator.power_w` stays under
+  Gateway.
+- `v2l.enabled`: 1 when the V2L car switch is enabled on the aGate.
+- `generator.installed`, `v2l.installed`: 1 or 0 as **Settings → Setup** has them (read
+  from the aGate, or your choice).
+
+An accessory the schedule's gateway doesn't have is greyed out in the picker, marked *(not
+installed)*: a circuit above the installed count (the **Smart Circuits** count setting, else
+the gateway model's), and the Generator or V2L values when System Setup says there is none.
+Under **All gateways** a value is greyed only when no gateway has it. The installed flags
+stay pickable, and a schedule that already uses a greyed value keeps it, with a warning on
+its row. Not known yet is never greyed.
+
+A value the aGate hasn't reported has no value, so its condition is false. To act when a
+circuit turns on, use the [Always (sensor-driven)](triggers.md#always-evaluate) trigger
+with a condition such as `circuit.1.on == 1`: it fires when the condition becomes true.
 
 ### Mode
 
@@ -486,7 +514,7 @@ grouped by `GET /api/schedules`. *Needs* and *without it* are per group.
 | Actionable notification (`ask.answer`) | the schedule's Actionable notification, answered in this run; read by exit conditions and HA action guards | None |
 | an HA instance | the instance enabled and the entity exposed | None (also while the entity is `unavailable` or `unknown`, since 0.5.4, #167) |
 
-??? example "All sensor ids (84 + your Home Assistant entities)"
+??? example "All sensor ids (104 + your Home Assistant entities)"
 
     **Gateway**
 
@@ -607,6 +635,31 @@ grouped by `GET /api/schedules`. *Needs* and *without it* are per group.
     | System: load shedding | `system.load_shedding` |
     | System: non-backup loads panel | `system.non_backup_loads` |
     | System: battery label | `system.battery_label` |
+
+    **Smart Circuits** (labels name your aGate's circuits)
+
+    | Picker label | Sensor id |
+    |---|---|
+    | Smart circuit 1: on | `circuit.1.on` |
+    | Smart circuit 2: on | `circuit.2.on` |
+    | Smart circuit 3: on | `circuit.3.on` |
+    | Smart circuit 1: name (text) | `circuit.1.name` |
+    | Smart circuit 2: name (text) | `circuit.2.name` |
+    | Smart circuit 3: name (text) | `circuit.3.name` |
+
+    **Generator**
+
+    | Picker label | Sensor id |
+    |---|---|
+    | Generator: energy today (kWh) | `generator.today_kwh` |
+    | Generator: installed (System Setup) | `generator.installed` |
+
+    **V2L**
+
+    | Picker label | Sensor id |
+    |---|---|
+    | V2L: installed (System Setup) | `v2l.installed` |
+    | V2L: car switch enabled | `v2l.enabled` |
 
     **Automation Constants**
 
