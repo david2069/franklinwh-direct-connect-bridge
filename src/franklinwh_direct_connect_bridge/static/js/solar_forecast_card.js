@@ -10,6 +10,7 @@ function solarForecastCard() {
     chargeBand: [],     // per-bar (aligned to bars): 'charge'|'discharge'|'idle'|null — what the battery did
 
     async init() {
+      this.$watch('$store.app.selectedGateway', () => this.load());   // its site's forecast (#675)
       await this.load();
       this._loadSolarSplit();
       this._loadChargeBand();
@@ -56,7 +57,8 @@ function solarForecastCard() {
     async load(force) {
       this.loading = true; this.error = '';
       try {
-        const r = await fetch('api/solar/forecast' + (force ? '?force=1' : ''));
+        // the picked gateway's site's location and array (#675)
+        const r = await fetch('api/solar/forecast' + (force ? '?force=1' : '') + this.$store.app.gwQuery(force ? '&' : '?'));
         this.data = await r.json();
       } catch (e) { this.error = e.message; }
       finally { this.loading = false; }
