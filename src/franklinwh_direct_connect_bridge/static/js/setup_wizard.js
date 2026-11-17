@@ -451,7 +451,7 @@ window.setupWizard = function setupWizard() {
             this.error = d.detail || `Could not create mock ${i} of ${want} (HTTP ${r.status}).`;
             return;
           }
-          if (d.id) this.createdIds.push(d.id);
+          // Not added to createdIds: a mock is never published (#711), so Yes leaves it be.
         }
         this.go('cloud');
       } catch (e) { this.error = String(e); } finally { this.busy = false; }

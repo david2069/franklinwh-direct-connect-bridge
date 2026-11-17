@@ -99,6 +99,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Setup wizard: Yes to Home Assistant showed an error for a mock gateway** (#724). The
+  first run's **Yes** asked to publish the mocks it had just created, which the bridge
+  refuses since mocks are never published (#711); it now opts in real gateways only
+  ([guide](docs/guide/home-assistant.md#source)).
+
 - **Plans & meters: a plan starting today showed as future in the Australian morning**
   (#722). The plan list took today as the UTC date, so the meter said "No tariff in force";
   it now uses the site's date, as Analytics does ([guide](docs/guide/energy-and-costs.md)).
