@@ -5345,16 +5345,17 @@ def create_app() -> FastAPI:
         mode = ((gw.last_state or {}).get("mode") if gw else "") or (gw.cloud_mode if gw else "")
         out = {"available": gw is not None, "reason": why, "mode": mode or "",
                "tou_active": cloud_tou.is_tou(mode), "latest": None, "today": [],
-               "conflicts": [], "history": []}
+               "conflicts": [], "bridge": {"spans": [], "clashes": []}, "history": []}
         if gw is None or st is None:
             return out
         cur = cloud_tou.latest(st, gateway)
         if cur is None:
             return out
         now = _site_now(gateway)
+        entries = _ha_store().schedules()
         out.update(latest=cur, today=cloud_tou.blocks_with_rates(cur["schedule"], now.date()),
-                   conflicts=cloud_tou.conflicts(cur["schedule"], _ha_store().schedules(),
-                                                 now, gateway),
+                   conflicts=cloud_tou.conflicts(cur["schedule"], entries, now, gateway),
+                   bridge=cloud_tou.bridge_today(cur["schedule"], entries, now, gateway),
                    history=st.cloud_tou_history(gateway))
         return out
 

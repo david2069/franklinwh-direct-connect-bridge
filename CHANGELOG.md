@@ -48,6 +48,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Changed
 
+- Scheduler → FranklinWH TOU: **clashes on a timeline**. Under today's TOU bar a second
+  bar, *This bridge's schedules*, shows today's mode and Force schedules on the same
+  24 h scale with hour marks, the clashing minutes marked on both bars; hover or tap a
+  span for its name and times. The long uppercase heading is now **Clashes today**, and
+  with none there is one line, *No clashes today.* What counts as a clash is unchanged
+  (#421) ([guide](docs/guide/scheduler/index.md#franklinwh-tou-schedule)).
+
 - Scheduler → FranklinWH TOU: **today and each season's day types are tables** (Time,
   Dispatch, Band, Buy, Sell) instead of run-on lines, which were hard to read; a band with
   a rate but no block that day keeps its own row (#421)

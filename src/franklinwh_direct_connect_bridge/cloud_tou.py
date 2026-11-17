@@ -8,7 +8,9 @@ dated copy: at start-up (the first good cloud pass) and whenever TOU mode is set
 
 While TOU mode is on, the aGate follows those blocks, so a bridge Force (charge, discharge
 or standby) that contradicts the block it runs in works against it: ``conflicts`` lists
-those, one row per schedule and block.
+those, one row per schedule and block. ``bridge_today`` draws today's mode and Force
+schedules as a second bar under the TOU bar, with the clashing minutes marked (owner
+2026-11-18).
 
 The bridge recommends its own schedules over FranklinWH TOU. TOU's one advantage is that
 it runs without the bridge, which is also its drawback: the bridge can't see, condition or
@@ -263,15 +265,12 @@ def _repeats(e: dict) -> str:
     return ""
 
 
-def conflicts(sched: dict, entries: list[dict], now: dt.datetime,
-              gateway_id: str) -> list[dict]:
-    """Today's enabled Force schedules on this gateway (or All gateways) whose direction
-    contradicts a TOU block they run in: one row per schedule and block, from the first
-    to the last minute they share, with how many runs (``slots``) that covers."""
+def _clashes(sched: dict, entries: list[dict], now: dt.datetime, gateway_id: str):
+    """Each run of today's enabled Force schedules that contradicts a TOU block it runs in:
+    ``(segment, entry, force, block index, block, lo, hi)`` with the shared minutes."""
     blocks = blocks_on(sched, now.date())
     by_id = {e.get("id"): e for e in entries}
     tl = scheduler.timeline_segments(entries, now, gateway_id)
-    rows: dict[tuple, dict] = {}
     for seg in tl["segments"] + tl.get("site", []):
         if seg["action"] != "force":
             continue
@@ -284,24 +283,82 @@ def conflicts(sched: dict, entries: list[dict], now: dt.datetime,
                     continue
                 bs, be = _span(b)
                 lo, hi = max(s, bs), min(en, be)
-                if lo >= hi:
-                    continue
-                key = (seg["schedule_id"], bi)
-                r = rows.get(key)
-                if r is None:
-                    rows[key] = {"schedule_id": seg["schedule_id"], "name": seg["name"],
-                                 "force": force, "repeats": _repeats(e),
-                                 "tou_dispatch_id": b["dispatch_id"],
-                                 "tou_dispatch": b["dispatch"], "_lo": lo, "_hi": hi,
-                                 "slots": 1}
-                else:
-                    r["_lo"], r["_hi"] = min(r["_lo"], lo), max(r["_hi"], hi)
-                    r["slots"] += 1
+                if lo < hi:
+                    yield seg, e, force, bi, b, lo, hi
+
+
+def conflicts(sched: dict, entries: list[dict], now: dt.datetime,
+              gateway_id: str) -> list[dict]:
+    """Today's enabled Force schedules on this gateway (or All gateways) whose direction
+    contradicts a TOU block they run in: one row per schedule and block, from the first
+    to the last minute they share, with how many runs (``slots``) that covers."""
+    rows: dict[tuple, dict] = {}
+    for seg, e, force, bi, b, lo, hi in _clashes(sched, entries, now, gateway_id):
+        key = (seg["schedule_id"], bi)
+        r = rows.get(key)
+        if r is None:
+            rows[key] = {"schedule_id": seg["schedule_id"], "name": seg["name"],
+                         "force": force, "repeats": _repeats(e),
+                         "tou_dispatch_id": b["dispatch_id"],
+                         "tou_dispatch": b["dispatch"], "_lo": lo, "_hi": hi,
+                         "slots": 1}
+        else:
+            r["_lo"], r["_hi"] = min(r["_lo"], lo), max(r["_hi"], hi)
+            r["slots"] += 1
     out = []
     for r in sorted(rows.values(), key=lambda r: (r["_lo"], r["name"])):
         lo, hi = r.pop("_lo"), r.pop("_hi")
         out.append({**r, "start": _hhmm(lo), "end": _hhmm(hi)})
     return out
+
+
+def _merge(marks: list[dict]) -> list[dict]:
+    """Touching or overlapping marks of one schedule become one."""
+    out: list[dict] = []
+    for m in sorted(marks, key=lambda m: (m["schedule_id"], m["start_min"])):
+        p = out[-1] if out else None
+        if p and p["schedule_id"] == m["schedule_id"] and m["start_min"] <= p["end_min"]:
+            p["end_min"] = max(p["end_min"], m["end_min"])
+        else:
+            out.append(dict(m))
+    for m in out:
+        m["start"], m["end"] = _hhmm(m["start_min"]), _hhmm(m["end_min"])
+    return sorted(out, key=lambda m: (m["start_min"], m["name"]))
+
+
+def bridge_today(sched: dict, entries: list[dict], now: dt.datetime,
+                 gateway_id: str) -> dict[str, list]:
+    """Today's mode and Force schedules on this gateway (or All gateways) for the bar under
+    the TOU bar (owner 2026-11-18), one span per run, and the clashing minutes to mark on
+    both bars: the same clashes ``conflicts`` lists, without the gaps between runs."""
+    from .constants import _MODES
+    marks = [{"schedule_id": seg["schedule_id"], "name": seg["name"],
+              "tou_dispatch": b["dispatch"], "start_min": lo, "end_min": hi}
+             for seg, _e, _f, _bi, b, lo, hi in _clashes(sched, entries, now, gateway_id)]
+    clashes = _merge(marks)
+    by_id = {e.get("id"): e for e in entries}
+    tl = scheduler.timeline_segments(entries, now, gateway_id)
+    spans = []
+    for seg in tl["segments"] + tl.get("site", []):
+        if seg["action"] not in ("force", "set_mode"):
+            continue
+        a = (by_id.get(seg["schedule_id"]) or {}).get("action") or {}
+        direction = (a.get("direction") or "").lower() if seg["action"] == "force" else ""
+        if seg["action"] == "force":
+            label = f"Force {direction}".strip()
+        else:
+            m = str(a.get("mode") or "")
+            label = f"Mode: {(_MODES.get(m) or {}).get('label') or m}"
+        for s, en in seg["blocks"]:
+            spans.append({"schedule_id": seg["schedule_id"], "name": seg["name"],
+                          "kind": seg["action"], "direction": direction, "label": label,
+                          "start_min": s,
+                          "end_min": en, "start": _hhmm(s), "end": _hhmm(en),
+                          "clash": any(m["schedule_id"] == seg["schedule_id"]
+                                       and m["start_min"] < en and s < m["end_min"]
+                                       for m in clashes)})
+    spans.sort(key=lambda b: (b["start_min"], b["name"]))
+    return {"spans": spans, "clashes": clashes}
 
 
 def import_plan(sched: dict, power_pct: float = 100) -> dict[str, list]:
