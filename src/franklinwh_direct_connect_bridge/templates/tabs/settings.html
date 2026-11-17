@@ -299,6 +299,43 @@
     </div>
   </div>
 
+  <!-- ══ Battery warranty & wear (#713, hems) ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Battery warranty &amp; wear <a :href="$store.app.guideUrl('health-report/#battery-warranty-and-wear')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+  </div>
+  <div class="card space-y-3" data-testid="wear-setup">
+    <p class="text-xs" style="color:var(--text-faint)">From your battery warranty. The FranklinWH cloud, when signed in, fills the end date and warranted throughput; check them against your warranty and save. Nothing here writes to the device.</p>
+    <template x-if="wear">
+      <div class="space-y-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <template x-for="[k, label, type, step] in [['warranty_end','Warranty end','date',null],['warranted_throughput_mwh','Warranted throughput (MWh)','number','0.1'],['end_soh_pct','Guaranteed SoH at the end (%)','number','1'],['install_date','Install date','date',null],['replacement_value','Replacement value ($)','number','1'],['end_value','Value at the end of warranty ($, optional)','number','1']]" :key="k">
+            <label class="flex flex-col gap-1">
+              <span class="text-xs" style="color:var(--text-secondary)"><span x-text="label"></span>
+                <span x-show="wearConfirm(k)" class="text-[9px] uppercase tracking-wide ml-1" style="color:var(--warning)" :data-testid="'wear-confirm-' + k">Please confirm</span></span>
+              <input :type="type" :step="step" min="0" class="form-control form-control-sm" x-model="wearForm[k]" :data-testid="'wear-' + k">
+            </label>
+          </template>
+        </div>
+        <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs" data-testid="wear-figures">
+          <span style="color:var(--text-secondary)">Wear cost</span>
+          <span x-text="wear.cost ? `$${wear.cost.per_kwh.toFixed(4)} per kWh discharged: ${wear.cost.formula}` + (wear.cost.end_value.derived ? ' (end value = replacement × end SoH; please confirm)' : '') : 'needs replacement value, throughput and end SoH or value'"></span>
+          <span style="color:var(--text-secondary)">Throughput used / left</span>
+          <span x-text="wear.used_kwh == null ? 'counted from the daily snapshots; the first is taken after midnight' : `${wear.used_kwh.toFixed(0)} kWh` + ' / ' + (wear.remaining_kwh == null ? '–' : `${wear.remaining_kwh.toFixed(0)} kWh`)"></span>
+          <span style="color:var(--text-secondary)">Pace</span>
+          <span x-text="wear.pace ? `${wear.pace.daily_kwh.toFixed(1)} kWh a day to last the warranty (${wear.pace.formula})` : (wear.remaining_kwh == null && wearForm.warranty_end && wearForm.warranted_throughput_mwh ? 'after the first daily snapshot' : 'needs the warranty end and throughput')"></span>
+          <span style="color:var(--text-secondary)">State of health</span>
+          <span x-text="wear.soh_pct == null ? 'not read yet' : `${wear.soh_pct}%`"></span>
+          <span style="color:var(--text-secondary)">Round-trip efficiency</span>
+          <span x-text="wear.efficiency && wear.efficiency.median != null ? `${(wear.efficiency.median * 100).toFixed(1)}% (median of ${wear.efficiency.n} cycles, ${wear.efficiency.days} days)` : 'no full cycle yet (3 kWh each way, back to the same SoC)'"></span>
+        </div>
+        <div class="flex justify-end">
+          <button class="btn btn-primary btn-sm" data-testid="wear-save" :disabled="!canWrite() || wearSaving || wearFor !== $store.app.gwQuery()" @click="saveWear()" x-text="wearSaving ? 'Saving…' : 'Save warranty & wear'"></button>
+        </div>
+      </div>
+    </template>
+  </div>
+
   </div>
   <!-- Billing & Utilities (#674): the same sites, meters, retailers and tariffs editors as
        the Billing & Utilities page's Plans & meters (one partial). -->

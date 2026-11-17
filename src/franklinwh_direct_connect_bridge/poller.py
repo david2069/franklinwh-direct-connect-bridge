@@ -428,6 +428,11 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                              gw.id, time.time() - starting_since)
                     starting_since = None
                 st = entities.state_payload(summ)   # the keys HA's templates read (#96)
+                # Battery wear (#713, hems): dispatch events and efficiency samples from
+                # this poll's readings. No device read; never breaks the poll.
+                if store is not None and summ.get("ok") and not starting:
+                    from . import wear
+                    wear.observe(store, gw.id, time.time(), summ.get("power") or {})
                 # aGate network (#134): a separate light read every NET_EVERY_S, never every
                 # poll (the aGate is sensitive to load, #123), and never for a mock.
                 if not getattr(gw, "is_mock", False) and summ.get("ok") and \
