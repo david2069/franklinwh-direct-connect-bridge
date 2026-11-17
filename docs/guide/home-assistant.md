@@ -115,6 +115,17 @@ Measured live on 2026-10-15: **21 entities — 17 sensors and 4 controls.**
 | `active_reserve_pct` | Active Reserve SOC | % | core |
 | `device_firmware` | Firmware Version | — | diagnostic |
 | `relay_main1`, `relay_main2`, `relay_grid2`, `relay_black_start` | Main Relay 1, Main Relay 2, Grid Relay 2, Black Start Relay (binary sensors) | — | diagnostic |
+| `status_vpp` | VPP Active (binary sensor) | — | core |
+| `offgrid_reason` | Off-Grid Reason (user requested / grid outage / unknown) | — | core |
+| `offgrid_min` | Off-Grid Duration | min | core |
+| `circuit_1_power_w` … `circuit_3_power_w` | Smart Circuit 1–3 Power | W | power |
+| `circuit_1_today_kwh` … `circuit_3_today_kwh` | Smart Circuit 1–3 Energy Today | kWh | energy |
+| `v2l_power_w` | V2L Power | W | power |
+| `v2l_export_kwh`, `v2l_import_kwh` | V2L Export Energy, V2L Import Energy (lifetime) | kWh | energy |
+| `generator_state` | Generator State (Standby / OFF, Running / ON, Cooldown, Fault) | — | power |
+| `generator_enabled` | Generator Enabled (binary sensor) | — | diagnostic |
+| `generator_today_kwh` | Generator Today | kWh | energy |
+| `active_alarms` | Active Alarms | — | diagnostic |
 
 The six daily `kWh` counters are published as `total_increasing` with the `energy` device
 class, which is what the **Home Assistant Energy dashboard** needs. They come out of the
@@ -130,6 +141,17 @@ outage. *OffGrid* means off grid with the cause unknown. **Active Reserve SOC** 
 reserve of the operating mode in use. **Grid Voltage** is the aGate's service voltage (1707 `gridLineVol`), and **Grid
 Frequency** the grid frequency (1707 `gridFreq`). A relay is on when it conducts. Mock gateways don't
 publish the relays, because the emulator doesn't model them.
+
+**VPP Active** is on while a VPP programme (1707 programme 9) controls the aGate.
+**Off-Grid Reason** and **Off-Grid Duration** have a value only while the aGate is off
+grid, and are unknown on the grid; the duration counts from the first poll that saw it off
+grid, so after a bridge restart it starts again. **Smart Circuit 1–3 Power and Energy
+Today**, **V2L Power and Energy**, and **Generator State and Enabled** come from the
+smart-circuit meter and generator read every 60 seconds (the same read as the scheduler's
+sensors); a circuit or V2L port that isn't read stays unknown, and mock gateways don't
+publish the meter ones, because the emulator reports no meter. A circuit's energy today
+counts from its first reading of the day. **Active Alarms** counts the alarms System view
+lists for the gateway: the devices' own and the bridge's open alerts for it.
 
 ### Controls (writable)
 
