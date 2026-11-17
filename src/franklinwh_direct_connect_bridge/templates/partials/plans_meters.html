@@ -957,9 +957,9 @@
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <label class="block">In force from <span class="chip warn" style="font-size:.6rem">please confirm</span>
-              <input type="date" class="form-control form-control-sm w-full mt-1" x-model="touTar.a.effective_start"></label>
+              <input type="date" :class="{ 'date-empty': !touTar.a.effective_start }" class="form-control form-control-sm w-full mt-1" x-model="touTar.a.effective_start"></label>
             <label class="block">Until (blank: current)
-              <input type="date" class="form-control form-control-sm w-full mt-1" x-model="touTar.a.effective_end"></label>
+              <input type="date" :class="{ 'date-empty': !touTar.a.effective_end }" class="form-control form-control-sm w-full mt-1" x-model="touTar.a.effective_end"></label>
           </div>
           <div class="flex justify-between gap-2">
             <button class="btn btn-secondary btn-sm" @click="touTar.step='prefill'">Back</button>
