@@ -1557,6 +1557,22 @@ def device_snapshot(summary: dict | None, extras: dict | None = None) -> dict[st
     return snap
 
 
+def _calibrate(store, loc: dict, fc: dict, gateway_id: str, now_ts: float) -> None:
+    """Today's uncalibrated forecast and this gateway's measured solar so far, for the
+    site's calibration (#713). The site's day comes from the forecast's UTC offset."""
+    from . import solar_forecast
+    off = int((fc or {}).get("utc_offset_seconds") or 0)
+    day = dt.datetime.fromtimestamp(now_ts, dt.timezone(dt.timedelta(seconds=off))).date().isoformat()
+    pred = next((d.get("raw_total_kwh", d.get("total_kwh")) for d in (fc or {}).get("days") or []
+                 if d.get("date") == day), None)
+    gw = _state.get_gateway(gateway_id)
+    meas = ((getattr(gw, "last_summary", None) or {}).get("power") or {}).get("kwh_sun")
+    solar_forecast.observe(store, solar_forecast.site_key(
+        loc["latitude"], loc["longitude"], loc["pv_tilt"], loc["pv_azimuth"], loc["kwp"]),
+        day=day, gateway_id=gateway_id, predicted_kwh=pred,
+        measured_kwh=meas if isinstance(meas, (int, float)) else None)
+
+
 def ha_sensor_id(instance_id: str, entity_id: str) -> str:
     """The scheduler id for an exposed HA entity: ``ha:<instance>:<entity>``.
 
@@ -1832,17 +1848,21 @@ def nem_snapshot(settings, store=None, gateway_id=None) -> dict[str, Any]:
         return {}
 
 
-def solar_snapshot(settings, store=None, gateway_id: str | None = None) -> dict[str, Any]:
+def solar_snapshot(settings, store=None, gateway_id: str | None = None, *, tick: bool = False,
+                   now_ts: float | None = None) -> dict[str, Any]:
     """Weather/solar-forecast values for the gate snapshot, for the gateway's site (#675).
     Empty when the site's location is not configured or the fetch fails; cached ~15min,
-    so cheap to call per tick."""
+    so cheap to call per tick. ``tick``: the scheduler's own tick, which also feeds the
+    forecast's calibration with the gateway's solar today (#713)."""
     try:
         from . import site_location, solar_forecast
         loc = site_location.for_gateway(settings, store, gateway_id)
         if not site_location.configured(loc) or not loc["kwp"]:
             return {}
         fc = solar_forecast.forecast(loc["latitude"], loc["longitude"], kwp=loc["kwp"],
-                                     tilt=loc["pv_tilt"], azimuth=loc["pv_azimuth"])
+                                     tilt=loc["pv_tilt"], azimuth=loc["pv_azimuth"], store=store)
+        if tick and gateway_id:
+            _calibrate(store, loc, fc, gateway_id, time.time() if now_ts is None else now_ts)
         return solar_forecast.sensors(fc)
     except Exception:                                           # noqa: BLE001
         return {}
@@ -2889,7 +2909,8 @@ def build_snapshot(settings, store, state: dict, *, host: str | None, gateway_id
                                     getattr(_gw, "device_extras", None)))   # circuits, V2L, generator (#698)
     snapshot["grid.offgrid_min"] = offgrid_min(state, now.timestamp())   # on the tick's clock
     snapshot.update(ha_snapshot(store))     # exposed HA entities are conditions too
-    snapshot.update(solar_snapshot(settings, store, gateway_id))   # weather + solar forecast, the site's
+    snapshot.update(solar_snapshot(settings, store, gateway_id, tick=tick,
+                                   now_ts=now.timestamp()))   # weather + solar forecast, the site's
     snapshot.update(nem_snapshot(settings, store, gateway_id))   # tariff.spot_price (AEMO NEM, the site's region)
     snapshot.update(ha_price_snapshot(settings, store))   # HA price entity -> tariff.spot_price/feed_in_price (wins over NEM)
     snapshot.update(tariff_snapshot(store, gateway_id, now))   # tariff.* + service.*

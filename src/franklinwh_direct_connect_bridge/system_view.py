@@ -208,6 +208,7 @@ def _forecast(cfg) -> dict | None:
     from . import db, pv_size, site_location
     if cfg is None or cfg.pv_latitude is None or cfg.pv_longitude is None:
         return None
+    st = None
     try:                                             # the default site's gateways (#675)
         st = db.get_store(cfg)
         kwp = site_location.effective(cfg, st, site_location.default_site(st))["kwp"]
@@ -221,7 +222,7 @@ def _forecast(cfg) -> dict | None:
         def run():
             try:
                 solar_forecast.forecast(cfg.pv_latitude, cfg.pv_longitude, kwp=kwp,
-                                        tilt=cfg.pv_tilt, azimuth=cfg.pv_azimuth)
+                                        tilt=cfg.pv_tilt, azimuth=cfg.pv_azimuth, store=st)
             finally:
                 _refreshing.release()
         threading.Thread(target=run, name="system-view-weather", daemon=True).start()
