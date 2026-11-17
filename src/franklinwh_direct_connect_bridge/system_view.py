@@ -119,6 +119,19 @@ def _device_alarms(gw, now: float) -> list[dict]:
     return out
 
 
+def _rollup(bat: dict, extras: dict | None) -> None:
+    """Several aPowers: one battery with the aGate's totals and the count, and each aPower
+    (the 60 s device read) in its hover and details (#703). Named as the Battery tab names
+    them (aP1, aP2 …). One aPower, or no unit reads yet, draws as before."""
+    units = (extras or {}).get("apowers") or []
+    if (bat.get("count") or 0) < 2 or len(units) < 2:
+        return
+    bat["rollup"] = True
+    bat["units"] = [{"id": f"ap{u['id']}", "name": f"aP{u['id']}",
+                     **{k: u[k] for k in ("soc_pct", "soh_pct", "current_a", "status")
+                        if u.get(k) is not None}} for u in units]
+
+
 def gateway_payload(gw, store=None) -> dict:
     summ = gw.last_summary or {}
     power = summ.get("power") or {}
@@ -161,6 +174,7 @@ def gateway_payload(gw, store=None) -> dict:
         "circuits": circuits,
         "generator": {"power_w": gen_w} if has_gen else None,
     }
+    _rollup(out["battery"], getattr(gw, "device_extras", None))
     energy = _energy(summ)
     if energy:
         out["energy_today"] = energy
