@@ -979,12 +979,10 @@ function settingsTab(opts = {}) {
         if (!r.ok) t.msg = { kind: 'err', text: d.detail || r.statusText };
         else {
           t.p = d;
-          const picks = {};
-          (d.split || []).forEach(x => { picks[x.season + '|' + x.band] = x.pick; });
           // Each charge the cloud lacks starts as "doesn't apply" (off) until the user sets it.
           t.a = { tariff_name: d.tariff_name, retailer: d.retailer, network: d.network, country: d.country,
                   currency: d.currency, unit: d.unit, timezone: d.timezone,
-                  effective_start: d.effective_start, effective_end: '', picks,
+                  effective_start: this._siteToday(), effective_end: '',
                   billing_day: '', billing_na: true, supply: '', supply_na: true,
                   other: { description: '', frequency: 'monthly', rate: '' }, other_na: true,
                   demand: { start: '16:00', end: '21:00', rate: '' }, demand_na: true,
@@ -1006,7 +1004,7 @@ function settingsTab(opts = {}) {
       const na = (k, v) => a[k + '_na'] ? null : v;
       return { gateway: this.touTar.gateway, meter_id: this.touTar.meter_id, answers: {
         tariff_name: a.tariff_name, retailer: a.retailer, network: a.network, country: a.country,
-        timezone: a.timezone, unit: a.unit, picks: a.picks,
+        timezone: a.timezone, unit: a.unit,
         effective_start: a.effective_start || null, effective_end: a.effective_end || null,
         billing_day: na('billing', a.billing_day === '' ? null : Number(a.billing_day)),
         supply: na('supply', a.supply === '' ? null : Number(a.supply)),
@@ -1130,7 +1128,9 @@ function settingsTab(opts = {}) {
       sea.months = sea.months || []; sea.blocks = sea.blocks || []; sea.time_periods = sea.time_periods || {};
       for (const p of ['super_off_peak', 'off_peak', 'mid_peak', 'on_peak']) {
         const r = sea.time_periods[p] || {};
-        sea.time_periods[p] = { buy: r.buy ?? '', sell: r.sell ?? '' };
+        sea.time_periods[p] = { buy: r.buy ?? '', sell: r.sell ?? '',
+          // a weekend rate (#656), kept and editable when the band has one
+          ...(r.weekend ? { weekend: { buy: r.weekend.buy ?? '', sell: r.weekend.sell ?? '' } } : {}) };
       }
       return sea;
     },
@@ -1384,7 +1384,9 @@ function settingsTab(opts = {}) {
         const tp = {};
         for (const p in (sea.time_periods || {})) {
           const r = sea.time_periods[p] || {}, buy = rate(r.buy), sell = rate(r.sell);
-          if (buy != null || sell != null) tp[p] = { ...(buy != null ? { buy } : {}), ...(sell != null ? { sell } : {}) };
+          const wk = r.weekend || {}, wbuy = rate(wk.buy), wsell = rate(wk.sell);
+          if (buy != null || sell != null) tp[p] = { ...(buy != null ? { buy } : {}), ...(sell != null ? { sell } : {}),
+            ...(wbuy != null || wsell != null ? { weekend: { ...(wbuy != null ? { buy: wbuy } : {}), ...(wsell != null ? { sell: wsell } : {}) } } : {}) };
         }
         return { ...(sea.id ? { id: sea.id } : {}), name: sea.name || '', months: (sea.months || []).map(Number), time_periods: tp,
           blocks: (sea.blocks || []).map(b => ({ start: b.start, end: b.end, time_period: b.time_period,

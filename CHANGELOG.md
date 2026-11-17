@@ -22,12 +22,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   ([guide](docs/guide/scheduler/index.md#franklinwh-tou-schedule),
   [Home Assistant](docs/guide/home-assistant.md#sensors)).
 
+- Tariffs: a time period can have a **weekend rate** (#656). Saturday and Sunday are billed
+  at it and other days at the period's own rate; it's an optional `weekend: {buy, sell}`
+  beside the period's rates in the tariff profile, carried by Export and Import and shown
+  in the tariff editor. Tariffs without one price exactly as before
+  ([guide](docs/guide/energy-and-costs.md#static-or-dynamic)).
+
 - Billing & Utilities → Plans & meters: **Import from FranklinWH** (#656). The TOU schedule
   set in the FranklinWH app becomes a plan of the meter, offered while the cloud is signed in
   for the meter's gateway. **1 Pre-fill:** the retailer, tariff and country come from the
-  cloud, and the seasons, bands, blocks and buy and sell rates from the latest copy; the
-  currency, rate unit, network, start date and any band priced differently by day type are
-  marked *please confirm*. **2 Ask** for what the app doesn't hold (billing day, daily supply
+  cloud, and the seasons, bands, blocks and buy and sell rates from the latest copy, keeping
+  a band's weekend rate where the app's differs; the currency, rate unit, network and start
+  date are marked *please confirm*. **2 Ask** for what the app doesn't hold (billing day, daily supply
   and other fixed charges, tax, demand charge, export bonus and charge, dates), each with
   *doesn't apply*. **3 Check** runs the tariff check and shows today's price by hour;
   **Import** adds the plan as any tariff import does. When the app's schedule changes later,

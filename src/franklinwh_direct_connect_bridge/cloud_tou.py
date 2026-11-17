@@ -25,9 +25,10 @@ Assistant's TOU Schedule, Dispatch Now/Next and Tariff Now/Next from the copy (#
 
 ``prefill`` and ``to_profile`` import the copy as a tariff plan (#656 phase 2): the
 seasons, bands, blocks and rates from the copy, with what the cloud doesn't hold (billing
-day, fixed, demand and export charges, tax, dates) asked for. The bridge's tariff prices a
-band once per season, so a band whose weekday and weekend rates differ is picked by the
-user. ``reimport_needed`` says when a newer copy differs from the one a plan came from.
+day, fixed, demand and export charges, tax, dates) asked for. A band priced differently at
+weekends keeps both rates: its weekend rate goes in the time period's ``weekend`` (owner
+2026-11-18). ``reimport_needed`` says when a newer copy differs from the one a plan came
+from.
 """
 from __future__ import annotations
 
@@ -438,13 +439,7 @@ COUNTRY = {"australia": "AU", "united states": "US", "usa": "US", "new zealand":
 #: A country's currency, a guess for the please-confirm pre-fill.
 CURRENCY = {"AU": "AUD", "US": "USD", "NZ": "NZD", "GB": "GBP", "CA": "CAD"}
 #: What the pre-fill guesses: the user confirms each.
-CONFIRM = ("currency", "unit", "network", "effective_start", "day_types")
-
-
-def _hours(day: dict, band: str) -> float:
-    """A day type's hours a week in ``band``."""
-    mins = sum(e - s for s, e in (_span(b) for b in day["blocks"] if b["wave"] == band))
-    return mins / 60 * len(day["weekdays"])
+CONFIRM = ("currency", "unit", "network", "effective_start")
 
 
 def _country(sched: dict, site: dict | None) -> str:
@@ -454,28 +449,10 @@ def _country(sched: dict, site: dict | None) -> str:
     return str((site or {}).get("region") or "").split("-")[0].upper()
 
 
-def _split(sched: dict) -> list[dict]:
-    """Each season's bands whose rates differ between its day types, with the pre-pick:
-    the day type with the most hours in that band."""
-    out = []
-    for s in sched.get("seasons") or []:
-        for band in PERIOD:
-            days = [d for d in s["days"] if any(b["wave"] == band for b in d["blocks"])]
-            rates = {json.dumps((d.get("rates") or {}).get(band), sort_keys=True) for d in days}
-            if len(rates) < 2:
-                continue
-            choices = [{"day": d["name"], **((d.get("rates") or {}).get(band)
-                                             or {"buy": None, "sell": None}),
-                        "hours": round(_hours(d, band), 1)} for d in days]
-            out.append({"season": s["name"], "band": band, "choices": choices,
-                        "pick": max(choices, key=lambda c: c["hours"])["day"]})
-    return out
-
-
 def prefill(copy: dict, site: dict | None, today: dt.date | None = None) -> dict:
     """The import's pre-fill from the latest copy: the utility, tariff and country from
     the cloud; the seasons, a band per day type, from the copy. The guesses (``confirm``)
-    are the currency, the unit, the network, the start date and the day-type split."""
+    are the currency, the unit, the network and the start date."""
     sched = copy["schedule"]
     name = sched.get("name") or "FranklinWH TOU"
     country = _country(sched, site)
@@ -500,7 +477,7 @@ def prefill(copy: dict, site: dict | None, today: dt.date | None = None) -> dict
                      "days": [{"name": d["name"], "weekdays": d["weekdays"],
                                "blocks": d["blocks"], "rates": d.get("rates") or {}}
                               for d in s["days"]]} for s in sched.get("seasons") or []],
-        "split": _split(sched), "left_out": left_out, "grid_fee": grid_fee}
+        "left_out": left_out, "grid_fee": grid_fee}
 
 
 def _num(v) -> float | None:
@@ -519,11 +496,11 @@ def _window(w: dict | None) -> dict | None:
 def to_profile(copy: dict, answers: dict, gateway_id: str) -> dict:
     """A ``franklinwh-bridge/tariff-profile`` from the copy and the user's answers (the
     pre-fill, edited): what ``/api/tariffs/import`` takes. Rates are copied; a band missing
-    a sell rate sells at 0; ``picks`` ({"season|band": day}) chooses a split band's rate."""
+    a sell rate sells at 0. A band's rate is its weekday day type's; when its weekend day
+    type's differs, that is its ``weekend`` rate (a band used only at weekends takes the
+    weekend's as its own)."""
     sched = copy["schedule"]
     scale = 0.01 if answers.get("unit") == "cents" else 1.0
-    picks = answers.get("picks") or {}
-    defaults = {f"{p['season']}|{p['band']}": p["pick"] for p in _split(sched)}
 
     def rate(v):
         return None if v is None else round(float(v) * scale, 6)
@@ -541,10 +518,15 @@ def to_profile(copy: dict, answers: dict, gateway_id: str) -> dict:
             days = [d for d in s["days"] if any(b["wave"] == band for b in d["blocks"])]
             if not days:
                 continue
-            want = picks.get(f"{s['name']}|{band}") or defaults.get(f"{s['name']}|{band}")
-            d = next((x for x in days if x["name"] == want), days[0])
-            r = (d.get("rates") or {}).get(band) or {}
-            periods[tp] = {"buy": rate(r.get("buy")), "sell": rate(r.get("sell")) or 0.0}
+
+            def pair(d):
+                r = (d.get("rates") or {}).get(band) or {}
+                return {"buy": rate(r.get("buy")), "sell": rate(r.get("sell")) or 0.0}
+            wkday = next((d for d in days if set(d["weekdays"]) & {0, 1, 2, 3, 4}), None)
+            wkend = next((d for d in days if set(d["weekdays"]) & {5, 6}), None)
+            periods[tp] = pair(wkday or wkend)
+            if wkday and wkend and pair(wkend) != periods[tp]:
+                periods[tp]["weekend"] = pair(wkend)
         seasons.append({"id": f"s{i + 1}", "name": s["name"], "months": s["months"],
                         "blocks": blocks, "time_periods": periods})
     pricing: dict[str, Any] = {

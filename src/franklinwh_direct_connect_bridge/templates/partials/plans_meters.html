@@ -535,6 +535,14 @@
                         </span>
                       </div>
                     </template>
+                    <!-- The band's weekend rate (#656): Saturday and Sunday, when it has one -->
+                    <template x-if="season.time_periods[w].weekend"><div class="space-y-0.5" data-testid="period-weekend">
+                      <div class="text-[10px] uppercase tracking-wide text-slate-500">Weekends</div>
+                      <template x-for="side in ['buy', 'sell']" :key="w + side + 'wk'">
+                        <label class="flex items-center gap-1.5"><span class="text-slate-500 w-8 shrink-0" x-text="side"></span><span class="text-slate-500">$</span>
+                          <input type="number" min="0" step="0.00001" x-model.number="season.time_periods[w].weekend[side]" class="form-control !py-0.5 !text-xs w-24"></label>
+                      </template>
+                    </div></template>
                     <template x-for="side in ['buy', 'sell']" :key="w + side">
                       <div>
                         <template x-if="isTiered(w, side)">
@@ -881,17 +889,7 @@
               </table>
             </div></template>
           </div></template>
-          <!-- A band priced differently by day type: the plan holds one rate per band in a season -->
-          <template x-if="(touTar.p.split || []).length"><div class="rounded-lg p-2 space-y-2" style="background:var(--surface-2)">
-            <div><span class="chip warn" style="font-size:.6rem">please confirm</span> These bands cost different amounts on different days. A plan holds one rate per band in a season: pick the one to use.</div>
-            <template x-for="x in touTar.p.split" :key="x.season + x.band"><div>
-              <div class="font-medium" style="color:var(--text-primary)" x-text="x.season + ' · ' + x.band"></div>
-              <template x-for="c in x.choices" :key="c.day"><label class="flex items-center gap-2 mt-0.5">
-                <input type="radio" :name="'pick-' + x.season + x.band" :value="c.day" x-model="touTar.a.picks[x.season + '|' + x.band]">
-                <span x-text="c.day + ': buy ' + touTarRate(c.buy) + ' · sell ' + touTarRate(c.sell) + ' (' + c.hours + ' h a week)'"></span>
-              </label></template>
-            </div></template>
-          </div></template>
+          <div style="color:var(--text-faint)">A band priced differently at weekends keeps both rates: Saturday and Sunday use its weekend rate.</div>
           <div x-show="(touTar.p.left_out || []).length" style="color:var(--text-faint)"
                x-text="'Not imported (no matching band): ' + (touTar.p.left_out || []).map(x => x.season + ' ' + x.day + ' ' + x.band + ' buy ' + touTarRate(x.buy)).join('; ') + '.'"></div>
           <div x-show="(touTar.p.grid_fee || []).length" style="color:var(--text-faint)"

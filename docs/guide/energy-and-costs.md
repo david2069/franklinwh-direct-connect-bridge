@@ -353,11 +353,11 @@ and the rates are copied, not linked.
 1. **Pre-fill.** The retailer, tariff name and country come from the cloud; the seasons,
    bands, blocks and buy and sell rates come from the copy, shown per day type as the app
    has them. The currency, whether the app's rates are per kWh or in cents, the network
-   (found in the tariff's name when it names one) and the start date are guesses: each is
-   marked *please confirm*. A plan holds one rate per band in a season, so a band priced
-   differently on weekdays and at weekends is listed for you to pick which rate to use
-   (pre-picked: the day type with the most hours in it). A band with no matching time
-   period (Sharp) and the app's grid fee are shown but not imported.
+   (found in the tariff's name when it names one) and the start date (today at the site)
+   are guesses: each is marked *please confirm*. A band priced differently on weekdays and
+   at weekends keeps both rates: its weekday rate, and its weekend rate for Saturday and
+   Sunday. A band with no matching time period (Sharp) and the app's grid fee are shown
+   but not imported.
 2. **Ask.** The app doesn't hold the billing day, the daily supply charge, another fixed
    charge, tax on fixed charges, a demand charge, an export bonus or an export charge, or
    the plan's end date. Each starts as *doesn't apply*; untick it to enter it. A band with
@@ -419,6 +419,16 @@ The editor's **Rate type** toggle offers two, and only two, options:
   export boundaries can differ, and a tiered price *inside* a time-of-use band needs no
   extra concept — a time period with a tiered price *is* the hybrid plan. A plain flat or
   tiered tariff is complete with no seasons and no periods at all.
+
+  A time period can also have a **weekend rate** (#656): Saturday and Sunday use it, and
+  every other day uses the period's own rate, as the FranklinWH app prices a band per day
+  type. In the tariff profile it is an optional `weekend` beside the period's `buy` and
+  `sell`, for example
+  `"off_peak": {"buy": 0.20, "sell": 0, "weekend": {"buy": 0.18, "sell": 0.04}}`; a side
+  left out of `weekend` is the period's own. A tariff without one prices every day the
+  same, as before, and **Export** and **Import** carry it unchanged. The editor shows a
+  period's weekend rate under it when it has one. There is no holiday list: a public
+  holiday on a weekday uses the weekday rate.
 - **Dynamic (live)** — priced at the live wholesale rate while this tariff is active. Two
   providers:
   - **AusNEM (AEMO spot)** — the region is your site's: **Sites & Meters → Region**

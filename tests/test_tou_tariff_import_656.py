@@ -3,7 +3,8 @@
 Billing → Plans & meters → Import from FranklinWH, shown while the cloud is signed in for
 the meter's gateway. Pre-fill from the latest dated copy (utility, tariff, country from the
 cloud; seasons, bands, blocks and buy/sell from the copy, a band per day type), with the
-guesses marked please confirm; ask for what the cloud doesn't hold (each "doesn't apply");
+guesses marked please confirm; a band priced differently at weekends keeps both rates;
+ask for what the cloud doesn't hold (each "doesn't apply");
 Check with the tariff check and today's price by hour; Import as a plan of the meter. A
 newer copy that differs says "Schedule changed — re-import?" on the plan. Nothing is
 written to the cloud or the aGate; no catalogues."""
@@ -38,8 +39,9 @@ def test_prefill_takes_utility_tariff_and_country_from_the_cloud_and_marks_the_g
     assert p["currency"] == "AUD" and p["unit"] == "dollars"
     assert p["effective_start"] == "2026-11-18" and p["timezone"] == "Australia/Sydney"
     assert p["copy_id"] == 7
-    for k in ("currency", "unit", "network", "effective_start", "day_types"):
+    for k in ("currency", "unit", "network", "effective_start"):
         assert k in p["confirm"], k
+    assert "split" not in p                               # both rates are kept: no pick
     # the seasons as the app has them, a band per day type
     summer = p["seasons"][0]
     assert summer["name"] == "Summer" and [d["name"] for d in summer["days"]] == [
@@ -50,11 +52,6 @@ def test_prefill_takes_utility_tariff_and_country_from_the_cloud_and_marks_the_g
 def test_prefill_without_a_country_uses_the_sites_region_and_lists_what_it_leaves_out():
     p = cloud_tou.prefill(copy(), SITE, today=dt.date(2026, 11, 18))
     assert p["country"] == "AU" and p["network"] == ""
-    # Off-peak costs 0.2 on weekdays and 0.18 at weekends in Summer: one rate per band in
-    # a season, so the user picks; the pre-pick is the day type with most hours in it
-    sp = next(s for s in p["split"] if s["season"] == "Summer" and s["band"] == "Off-peak")
-    assert [c["day"] for c in sp["choices"]] == ["Weekdays", "Weekends,Holidays"]
-    assert sp["pick"] == "Weekends,Holidays"               # 48 h a weekend v 10 h a week
     # Sharp has no band the bridge prices, and the grid fee's meaning is unknown: shown
     assert {"season": "Winter", "day": "Everyday", "band": "Sharp", "buy": 0.9,
             "sell": None} in p["left_out"]
@@ -65,8 +62,7 @@ def test_prefill_without_a_country_uses_the_sites_region_and_lists_what_it_leave
 ANSWERS = {"unit": "dollars", "network": "Ausgrid", "billing_day": 15, "supply": 1.2,
            "tax_pct": 10, "demand": {"start": "16:00", "end": "21:00", "rate": 0.4},
            "bonus": None, "export_charge": None, "other": None,
-           "effective_start": "2026-11-18", "effective_end": None,
-           "picks": {"Summer|Off-peak": "Weekdays"}}
+           "effective_start": "2026-11-18", "effective_end": None}
 
 
 def test_to_profile_prices_the_copy_through_the_same_rate_model_as_billing():
@@ -84,9 +80,14 @@ def test_to_profile_prices_the_copy_through_the_same_rate_model_as_billing():
     assert rate_model.resolve(seasons, mon.replace(hour=16), 0)["buy"] == 0.5     # On-peak
     assert rate_model.resolve(seasons, mon.replace(hour=16), 0)["sell"] == 0.12
     assert rate_model.resolve(seasons, mon.replace(hour=3), 0)["buy"] == 0.1      # Super off
-    # the picked rate for the split band, at weekends too
+    # Off-peak is 0.2 on weekdays and 0.18 at weekends in Summer: both rates are kept
     assert rate_model.resolve(seasons, mon.replace(hour=1), 0)["buy"] == 0.2
-    assert rate_model.resolve(seasons, sat.replace(hour=12), 0)["buy"] == 0.2
+    assert rate_model.resolve(seasons, mon.replace(hour=1), 0)["sell"] == 0.0
+    sat_r = rate_model.resolve(seasons, sat.replace(hour=12), 0)
+    assert (sat_r["buy"], sat_r["sell"]) == (0.18, 0.04)
+    off = seasons[0]["time_periods"]["off_peak"]
+    assert off == {"buy": 0.2, "sell": 0.0, "weekend": {"buy": 0.18, "sell": 0.04}}
+    assert "weekend" not in seasons[0]["time_periods"]["on_peak"]    # weekdays only
     assert rate_model.resolve(seasons, dt.datetime(2026, 6, 1, 12), 0)["buy"] == 0.25
     # what the cloud lacks, from the answers
     assert tar["billing_cycle_day"] == 15
@@ -190,5 +191,8 @@ def test_the_page_has_the_steps_in_the_plans_dialog_and_the_notice():
         assert f'data-testid="{tid}"' in part, tid
     assert "Schedule changed — re-import?" in part
     assert "doesn't apply" in part and "please confirm" in part
+    assert "touTar.p.split" not in part                    # no pick-one box
+    assert 'data-testid="period-weekend"' in part          # the editor shows a weekend rate
     js = (PKG / "static" / "js" / "settings_tab.js").read_text()
     assert "api/cloud/tou/tariff" in js
+    assert "effective_start: this._siteToday()" in js      # in force from: the site's today
