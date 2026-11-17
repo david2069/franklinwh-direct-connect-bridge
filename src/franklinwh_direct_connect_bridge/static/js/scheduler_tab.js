@@ -134,7 +134,8 @@ document.addEventListener('alpine:init', () => {
       } catch (e) { this.touMsg = { kind: 'danger', text: e.message }; }
       finally { this.touBusy = false; }
     },
-    touReason(r) { return { start: 'at start-up', 'tou-mode': 'TOU mode set', manual: 'Sync now' }[r] || r; },
+    touReason(r) { return { start: 'at start-up', 'tou-mode': 'TOU mode set', manual: 'Sync now', daily: 'daily re-read' }[r] || r; },
+    touRate(v) { return v == null ? '—' : String(v); },
     touPct(hhmm) { const [h, m] = String(hhmm).split(':').map(Number); return Math.min(100, (h * 60 + m) / 14.4); },
     touColour(id) {
       return { 8: '#3b82f6', 7: '#f59e0b', 2: '#64748b', 3: '#eab308', 1: '#10b981', 6: '#10b981' }[id] || '#94a3b8';

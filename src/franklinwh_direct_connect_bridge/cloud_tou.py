@@ -14,6 +14,12 @@ The bridge recommends its own schedules over FranklinWH TOU. TOU's one advantage
 it runs without the bridge, which is also its drawback: the bridge can't see, condition or
 notify on it. ``import_plan`` turns the TOU blocks into bridge schedules, created disabled,
 for Self-Consumption as the base mode. Nothing is ever written to the cloud or the aGate.
+
+The copy keeps the buy and sell rates (``eletic*``) for each day type, so a band can cost
+one thing on weekdays and another at weekends (#656; owner 2026-11-18: a band per day
+type). The cloud gives no unit: it's taken as the local currency per kWh, please confirm.
+The schedule is also re-read once a day (``daily``). ``ha_payload`` works out Home
+Assistant's TOU Schedule, Dispatch Now/Next and Tariff Now/Next from the copy (#421).
 """
 from __future__ import annotations
 
@@ -31,6 +37,12 @@ DISPATCH = {1: "aPower to home", 2: "aPower on standby", 3: "aPower charges from
             8: "aPower charges from solar/grid"}
 #: waveType → tariff period (franklinwh_cloud WAVE_TYPES).
 WAVE = {0: "Off-peak", 1: "Mid-peak", 2: "On-peak", 4: "Super off-peak"}
+#: waveType → the ``eletic*`` field suffix of its rate. Sharp has no known band; it is kept.
+RATE_FIELD = {0: "Valley", 1: "Shoulder", 2: "Peak", 4: "SuperOffPeak"}
+#: The cloud gives the rates without a unit (#656).
+RATE_UNIT = "local currency per kWh (assumed; please confirm against the FranklinWH app)"
+#: How often the schedule is read again without another reason (owner 2026-11-18).
+DAILY_S = 86_400
 #: dayType → weekdays (0 = Monday), as the library's ``_match_day_type``.
 DAY_TYPE = {1: [0, 1, 2, 3, 4], 2: [5, 6], 3: [0, 1, 2, 3, 4, 5, 6]}
 
@@ -55,6 +67,17 @@ def _months(text: Any) -> list[int]:
     return out
 
 
+def _rates(d: dict) -> dict[str, dict]:
+    """A day type's buy and sell rate per band; a band with neither is left out (the
+    cloud's ``null`` means not used, not free)."""
+    out = {}
+    for wave, field in [*RATE_FIELD.items(), (None, "Sharp")]:
+        buy, sell = d.get(f"eleticRate{field}"), d.get(f"eleticSell{field}")
+        if buy is not None or sell is not None:
+            out[WAVE[wave] if wave is not None else "Sharp"] = {"buy": buy, "sell": sell}
+    return out
+
+
 def schedule(result: dict) -> dict[str, Any]:
     """``get_tou_dispatch_detail``'s ``result`` as seasons → day types → blocks."""
     tpl = result.get("template") or {}
@@ -70,22 +93,40 @@ def schedule(result: dict) -> dict[str, Any]:
                                "dispatch": DISPATCH.get(did, f"dispatch {did}"),
                                "wave": WAVE.get(b.get("waveType"), "")})
             days.append({"name": d.get("dayName") or "", "day_type": d.get("dayType"),
-                         "weekdays": DAY_TYPE.get(d.get("dayType"), []), "blocks": blocks})
+                         "weekdays": DAY_TYPE.get(d.get("dayType"), []), "blocks": blocks,
+                         "rates": _rates(d), "grid_fee": d.get("eleticRateGridFee")})
         seasons.append({"name": s.get("seasonName") or "", "months": _months(s.get("month")),
                         "days": days})
     return {"name": tpl.get("name") or "", "utility": tpl.get("electricCompany") or "",
-            "cloud_updated": tpl.get("updateTime") or "", "seasons": seasons}
+            "cloud_updated": tpl.get("updateTime") or "", "rate_unit": RATE_UNIT,
+            "seasons": seasons}
 
 
-def blocks_on(sched: dict, day: dt.date) -> list[dict]:
-    """The blocks the aGate runs on ``day``: its season, then its day type."""
+def _day_on(sched: dict, day: dt.date) -> dict | None:
     for s in sched.get("seasons") or []:
         if day.month not in s["months"]:
             continue
         for d in s["days"]:
             if day.weekday() in d["weekdays"]:
-                return d["blocks"]
-    return []
+                return d
+    return None
+
+
+def blocks_on(sched: dict, day: dt.date) -> list[dict]:
+    """The blocks the aGate runs on ``day``: its season, then its day type."""
+    d = _day_on(sched, day)
+    return d["blocks"] if d else []
+
+
+def blocks_with_rates(sched: dict, day: dt.date) -> list[dict]:
+    """``blocks_on`` with each block's buy and sell rate for that day type (None when the
+    cloud gives none, as in a copy taken before rates were kept)."""
+    d = _day_on(sched, day)
+    if not d:
+        return []
+    rates = d.get("rates") or {}
+    return [{**b, "buy": (rates.get(b["wave"]) or {}).get("buy"),
+             "sell": (rates.get(b["wave"]) or {}).get("sell")} for b in d["blocks"]]
 
 
 def _digest(sched: dict) -> str:
@@ -97,13 +138,17 @@ def is_tou(mode: str | None) -> bool:
     return m in ("timeofuse", "tou")
 
 
-def sync_reason(mode: str | None, prev_mode: str | None, synced: bool) -> str | None:
+def sync_reason(mode: str | None, prev_mode: str | None, synced: bool,
+                last_try: float | None = None, now: float | None = None) -> str | None:
     """Why to take a copy now: ``start`` on the first cloud pass, ``tou-mode`` when the
-    mode has just become TOU, else None."""
+    mode has just become TOU, ``daily`` a day after the last read (``last_try``), else
+    None."""
     if not synced:
         return "start"
     if is_tou(mode) and not is_tou(prev_mode):
         return "tou-mode"
+    if last_try is not None and now is not None and now - last_try >= DAILY_S:
+        return "daily"
     return None
 
 
@@ -152,6 +197,52 @@ def sync(store, settings, gateway_id: str, serial: str, reason: str,
 
 def latest(store, gateway_id: str) -> dict | None:
     return _record(store.latest_cloud_tou(gateway_id))
+
+
+def _runs(sched: dict, now: dt.datetime, days: int = 2) -> list[dict]:
+    """Today's and the next days' blocks with rates, as aware start and end times."""
+    out = []
+    for i in range(days):
+        day = now.date() + dt.timedelta(days=i)
+        base = dt.datetime.combine(day, dt.time(), tzinfo=now.tzinfo)
+        for b in blocks_with_rates(sched, day):
+            s, e = _span(b)
+            out.append({**b, "_s": base + dt.timedelta(minutes=s),
+                        "_e": base + dt.timedelta(minutes=e)})
+    return out
+
+
+def ha_payload(copy: dict | None, now: dt.datetime) -> dict | None:
+    """Home Assistant's TOU entities from the latest copy (#421), no cloud read: the
+    schedule, the dispatch and tariff band now (with their times and rates), and the next
+    change of each. None without a copy."""
+    if not copy:
+        return None
+    sched = copy["schedule"]
+    runs = _runs(sched, now)
+    cur = next((r for r in runs if r["_s"] <= now < r["_e"]), None)
+    out: dict[str, Any] = {
+        "schedule": sched.get("name") or "Unnamed schedule", "utility": sched.get("utility") or "",
+        "cloud_updated": sched.get("cloud_updated") or "",
+        "checked": dt.datetime.fromtimestamp(copy.get("checked_ts") or 0, now.tzinfo).isoformat(),
+        "rate_unit": sched.get("rate_unit") or RATE_UNIT,
+        "today": [{k: v for k, v in b.items() if not k.startswith("_")}
+                  for b in runs if b["_s"].date() == now.date()]}
+    for kind, field in (("dispatch", "dispatch"), ("tariff", "wave")):
+        nxt = None
+        if cur is not None:
+            nxt = next((r for r in runs if r["_s"] >= cur["_e"] and r[field] != cur[field]),
+                       None)
+        for when, r in (("now", cur), ("next", nxt)):
+            key = f"{kind}_{when}"
+            out[key] = (r[field] or None) if r else None
+            out[f"{key}_start"] = r["_s"].isoformat() if r else None
+            if kind == "dispatch" or when == "now":
+                out[f"{key}_end"] = r["_e"].isoformat() if r else None
+            if kind == "tariff":
+                out[f"{key}_buy"] = r["buy"] if r else None
+                out[f"{key}_sell"] = r["sell"] if r else None
+    return out
 
 
 def _hhmm(m: int) -> str:

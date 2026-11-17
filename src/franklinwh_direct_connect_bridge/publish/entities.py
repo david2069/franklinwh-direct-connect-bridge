@@ -26,6 +26,37 @@ ENTITIES: list[dict[str, Any]] = [
      "state_class": None, "group": "power", "topic": "load_forecast",
      "attributes": "{{ {'forecast': value_json.forecast, 'method': value_json.method} | tojson }}",
      "value_key": "kw"},
+    # The FranklinWH TOU schedule (#421, #656): worked out each minute from the bridge's
+    # latest copy of it (cloud_tou), so no cloud read; published while the cloud is set up
+    # for this gateway. Rates in the local currency per kWh (assumed, please confirm).
+    {"key": "tou_schedule", "name": "TOU Schedule", "unit": None, "device_class": None,
+     "state_class": None, "group": "core", "topic": "tou", "source": "cloud",
+     "value_key": "schedule",
+     "attributes": "{{ {'utility': value_json.utility, 'cloud_updated': value_json.cloud_updated,"
+                   " 'checked': value_json.checked, 'rate_unit': value_json.rate_unit,"
+                   " 'today': value_json.today} | tojson }}"},
+    {"key": "tou_dispatch_now", "name": "TOU Dispatch Now", "unit": None, "device_class": None,
+     "state_class": None, "group": "core", "topic": "tou", "source": "cloud",
+     "value_key": "dispatch_now",
+     "attributes": "{{ {'start': value_json.dispatch_now_start,"
+                   " 'end': value_json.dispatch_now_end} | tojson }}"},
+    {"key": "tou_dispatch_next", "name": "TOU Dispatch Next", "unit": None, "device_class": None,
+     "state_class": None, "group": "core", "topic": "tou", "source": "cloud",
+     "value_key": "dispatch_next",
+     "attributes": "{{ {'start': value_json.dispatch_next_start,"
+                   " 'end': value_json.dispatch_next_end} | tojson }}"},
+    {"key": "tou_tariff_now", "name": "TOU Tariff Now", "unit": None, "device_class": None,
+     "state_class": None, "group": "core", "topic": "tou", "source": "cloud",
+     "value_key": "tariff_now",
+     "attributes": "{{ {'buy': value_json.tariff_now_buy, 'sell': value_json.tariff_now_sell,"
+                   " 'start': value_json.tariff_now_start, 'end': value_json.tariff_now_end,"
+                   " 'rate_unit': value_json.rate_unit} | tojson }}"},
+    {"key": "tou_tariff_next", "name": "TOU Tariff Next", "unit": None, "device_class": None,
+     "state_class": None, "group": "core", "topic": "tou", "source": "cloud",
+     "value_key": "tariff_next",
+     "attributes": "{{ {'buy': value_json.tariff_next_buy, 'sell': value_json.tariff_next_sell,"
+                   " 'start': value_json.tariff_next_start,"
+                   " 'rate_unit': value_json.rate_unit} | tojson }}"},
     {"key": "generator_w", "name": "Generator Power", "unit": "W", "device_class": "power", "state_class": "measurement", "group": "power"},
     {"key": "mode", "name": "Operating Mode", "unit": None, "device_class": None, "state_class": None, "group": "core"},
     {"key": "latency_ms", "name": "Round-trip Latency", "unit": "ms", "device_class": None, "state_class": "measurement", "group": "diagnostic"},
@@ -217,6 +248,10 @@ BRIDGE_NODE = "fwh_dc_bridge"
 
 def load_forecast_topic(node: str, prefix: str) -> str:
     return f"{prefix}/{node}/load_forecast"
+
+
+def tou_topic(node: str, prefix: str) -> str:
+    return f"{prefix}/{node}/tou"
 
 
 def alerts_topic(node: str, prefix: str) -> str:
@@ -533,6 +568,8 @@ METER_KEYS = frozenset(v for k, v in DEVICE_KEYS.items() if not k.startswith("ge
 #: ...nor the 1707 relays (#386). A mock gateway publishes none of these.
 MOCK_ABSENT_KEYS = (NETWORK_KEYS | frozenset(RELAY_KEYS.values()) | RESERVE_KEYS | METER_KEYS
                     | BATTERY_KEYS)
+#: The TOU schedule's entities (#421), from the cloud's schedule.
+TOU_KEYS = frozenset(e["key"] for e in ENTITIES if e.get("topic") == "tou")
 #: Entities on their own topic, not in the gateway's state JSON (#713).
 OWN_TOPIC_KEYS = frozenset(e["key"] for e in ENTITIES if e.get("topic"))
 #: Published only while the gateway is off-grid (#704); absent (unknown) on the grid.

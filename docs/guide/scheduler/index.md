@@ -240,13 +240,20 @@ is that the aGate runs it without the bridge. That is also its drawback: the bri
 see it, add conditions to it or notify on it, and a bridge schedule can work against it.
 
 - **The copy.** The bridge keeps a dated copy of the schedule. It reads it at start-up (the
-  first cloud status pass) and whenever the operating mode becomes Time-of-Use; **Sync now**
-  reads it at once. A new copy is kept only when the schedule changed; otherwise the latest
+  first cloud status pass), whenever the operating mode becomes Time-of-Use and once a day
+  (*daily re-read*); **Sync now** reads it at once. A new copy is kept only when the schedule changed; otherwise the latest
   copy's *last checked* time moves on. **Copies** lists them, each with why it was taken.
   *Last changed in the FranklinWH app* is the cloud's own date.
 - **Today.** The day's blocks as a bar and a list: times, what the aGate does (the app's
-  names, such as *aPower charges from solar/grid*) and the tariff period. **All seasons**
-  shows every season and day type.
+  names, such as *aPower charges from solar/grid*), the tariff period, and its **buy** and
+  **sell** rate. **All seasons** shows every season and day type, with each day type's
+  rates: a band can cost one thing on weekdays and another at weekends. The cloud gives
+  the rates without a unit; the bridge takes them as your currency per kWh, so please
+  check them against the FranklinWH app. A copy taken before rates were kept shows none
+  until the next read.
+- **Home Assistant.** TOU Schedule, TOU Dispatch Now / Next and TOU Tariff Now / Next are
+  worked out from the copy, with no cloud read
+  ([Home Assistant](../home-assistant.md#sensors)).
 - **Clashes.** Battery dispatch only: an enabled **Force** schedule on this gateway (or All
   gateways) that runs today in a TOU block wanting the battery to do something else.
   A schedule that sets the mode, the reserve, off-grid or a smart circuit never clashes.

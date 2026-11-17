@@ -60,6 +60,7 @@ for the node id:
 |---|---|
 | State (all values, one JSON object) | `franklinwh-local/<node>/state` |
 | Availability | `franklinwh-local/<node>/availability` |
+| TOU entities (#421) | `franklinwh-local/<node>/tou` |
 | Commands in | `franklinwh-local/<node>/control/<key>/set` |
 | Discovery configs | `homeassistant/<sensor\|binary_sensor\|select\|switch>/<node>/<key>/config` |
 
@@ -99,6 +100,9 @@ Measured live on 2026-10-15: **21 entities — 17 sensors and 4 controls.**
 | `battery_w` | Battery Power | W | power | local |
 | `load_w` | Load Power | W | power | local |
 | `load_forecast` | Load Forecast (this hour; the next 48 hours as a `forecast` attribute) | kW | power | local |
+| `tou_schedule` | TOU Schedule: the FranklinWH TOU schedule's name. Attributes: utility, last changed in the app, last checked, rate unit, and today's blocks with their buy and sell rates | — | core | cloud |
+| `tou_dispatch_now`, `tou_dispatch_next` | TOU Dispatch Now / Next: what the TOU block has the battery do, and the next change. Attributes: start, end | — | core | cloud |
+| `tou_tariff_now`, `tou_tariff_next` | TOU Tariff Now / Next: the price band (Off-peak, Mid-peak, On-peak, Super off-peak), and the next change. Attributes: buy, sell, start (and end for now), rate unit | — | core | cloud |
 | `generator_w` | Generator Power | W | power | local |
 | `battery_status` | Battery State (charging / discharging / standby) | — | power | local |
 | `grid_voltage_v` | Grid Voltage | V | power | local |
@@ -223,6 +227,12 @@ writes (#711):
 | `local` | The aGate's Direct Connect API, which the bridge polls | Always |
 | `cloud` | The FranklinWH cloud | Only while your FranklinWH cloud credentials are set and are for this gateway's aGate |
 | `modbus` | This bridge's Modbus client, to the aGate's Modbus TCP Server (:502) | Only while the Modbus client is on (Control → Modbus client) |
+
+The TOU entities are worked out once a minute from the bridge's latest copy of the
+TOU schedule (Scheduler → FranklinWH TOU), so they cost no cloud read. The copy is read
+at start-up, when TOU mode is set, once a day and on **Sync now**. The cloud gives the
+rates without a unit; they're taken as your currency per kWh, so please check them
+against the FranklinWH app.
 
 The bridge checks every poll. When a source turns on, its entities appear in Home
 Assistant; when it turns off, they are removed (not left *unavailable*). Mock gateways are

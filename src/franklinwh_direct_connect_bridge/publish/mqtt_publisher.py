@@ -141,6 +141,11 @@ class MqttPublisher:
         self.client.publish(entities.load_forecast_topic(self.node, self.s.mqtt_prefix),
                             json.dumps(payload), retain=True)
 
+    def publish_tou(self, payload: dict) -> None:
+        """The TOU entities (#421): worked out from the copy of the schedule. Retained."""
+        self.client.publish(entities.tou_topic(self.node, self.s.mqtt_prefix),
+                            json.dumps(payload), retain=True)
+
     def publish_availability(self, online: bool) -> None:
         self.client.publish(self.avail_topic, "online" if online else "offline", retain=True)
 
