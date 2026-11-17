@@ -17,15 +17,15 @@ Full notes for each release are on the [docs site](https://david2069.github.io/f
 
 ## 2026-11-18
 
-### [0.5.51](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.51.md)
+### [0.5.52](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.52.md)
 
-Added 9 · Changed 5 · Fixed 3
+Added 11 · Changed 5 · Fixed 3
 
 - Energy planning (hems 0.2.0): a solar forecast that learns from your system, a Home…
-- FranklinWH TOU: buy and sell rates per day type, daily re-read, tables, clashes on a…
+- FranklinWH TOU and tariffs: buy and sell rates per day type, Import from FranklinWH into…
 - Home Assistant: Battery Command controls, Bridge Version, VPP, off-grid, smart circuit…
 - System view: several aPowers show as one battery with the count, each aPower in the hover…
-- Billing: a plan starting today is in force on an Australian morning
+- Fixes: the setup wizard's Yes no longer errors on a mock
 
 ## 2026-11-17
 
