@@ -4296,6 +4296,32 @@ def create_app() -> FastAPI:
             raise HTTPException(422, str(e))
         return wear.report(st, get_settings(), gateway)
 
+    @app.get("/api/hems/setup")
+    def api_hems_setup(gateway: str = Depends(_gateway_q)):
+        """HEMS setup, opt-in (#713, hems.loads): the notice, the always-on load and usage
+        periods pre-filled from history (please confirm), and each load checked against
+        what this bridge can control. Records answers only; controls nothing."""
+        from . import hems_setup
+        _gw_or_404(gateway)
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        return hems_setup.view(st, get_settings(), gateway)
+
+    @app.put("/api/hems/setup")
+    def api_hems_setup_put(body: dict, gateway: str = Depends(_gateway_q)):
+        """Save HEMS setup answers (null clears one). No device write."""
+        from . import hems_setup
+        _gw_or_404(gateway)
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        try:
+            hems_setup.save(st, gateway, body)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+        return hems_setup.view(st, get_settings(), gateway)
+
     _install_modes: dict[str, tuple] = {}   # host -> (expires_monotonic, mode labels)
     _install_history: dict[str, tuple] = {}  # gateway id -> (expires_monotonic, history)
 

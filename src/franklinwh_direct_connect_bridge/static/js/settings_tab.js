@@ -52,6 +52,9 @@ function settingsTab(opts = {}) {
     systemSetup: {}, systemSpec: {}, systemSaving: false, systemLoaded: {},
     // Battery warranty & wear (#713, hems): the report and the form's values.
     wear: null, wearForm: {}, wearFor: null, wearSaving: false,
+    // HEMS setup, opt-in (#713, hems.loads): the view and the form.
+    hems: null, hemsForm: { opted_in: false, always_on_kw: '', periods_confirmed: false, loads: [] },
+    hemsFor: null, hemsSaving: false,
     systemFor: null,   // the gwQuery() the System Setup form was read for (#352)
     gwBusy: {},          // id -> true while a toggle/test is in flight
     gwAdd: null,         // add-form object when open, else null
@@ -630,6 +633,7 @@ function settingsTab(opts = {}) {
 
     async loadSystemSetup() {
       this.loadWear();
+      this.loadHems();
       const gwq = this.$store.app.gwQuery();
       try { const d = await (await fetch('api/system-setup' + gwq)).json();
             if (gwq !== this.$store.app.gwQuery()) return;     // a late reply for another gateway
@@ -701,6 +705,72 @@ function settingsTab(opts = {}) {
         this.$store.app.toast('Warranty & wear saved', 'success');
       } catch (e) { this.$store.app.toast('Warranty & wear save failed: ' + e.message, 'error'); }
       finally { this.wearSaving = false; }
+    },
+    // ── HEMS setup, opt-in (#713, hems.loads) ──
+    async loadHems() {
+      const gwq = this.$store.app.gwQuery();
+      try {
+        const r = await fetch('api/hems/setup' + gwq); if (!r.ok) return;
+        const d = await r.json();
+        if (gwq !== this.$store.app.gwQuery()) return;
+        this._setHems(d); this.hemsFor = gwq;
+      } catch { this.hems = null; }
+    },
+    _setHems(d) {
+      this.hems = d;
+      const ao = d.always_on;
+      this.hemsForm = {
+        opted_in: !!d.opted_in,
+        always_on_kw: ao && ao.value_kw != null ? ao.value_kw : '',
+        periods_confirmed: !!(d.periods && d.periods.confirm === false),
+        loads: (d.loads || []).map(l => {
+          const { problems, expected_kwh_today, ...ld } = l;
+          return { ...ld, _weather: ld.runs === 'weather',
+                   _runsText: Array.isArray(ld.runs) ? ld.runs.map(w => `${w.start}-${w.end}`).join(', ') : '',
+                   _entities: ((ld.measurement || {}).entities || []).join(', '),
+                   measurement: ld.measurement || { kind: 'nameplate' }, control: ld.control || null,
+                   switch: ld.switch || {}, ev: ld.ev || {} };
+        }),
+      };
+    },
+    hemsAddLoad() {
+      this.hemsForm.loads.push({ name: '', device_type: '', measurement: { kind: 'nameplate' },
+        power_kw: null, duration_h: null, _runsText: '', _weather: false, circuit: '',
+        control: null, switch: {}, ev: {}, _entities: '' });
+    },
+    /** A form load as hems.loads expects it. */
+    _hemsLoad(l) {
+      const { _weather, _runsText, _entities, ...ld } = l;
+      ld.runs = _weather ? 'weather' : (_runsText || '').split(',').map(x => x.trim()).filter(Boolean)
+        .map(x => { const [start, end] = x.split('-').map(y => y.trim()); return { start, end }; });
+      if (!_weather && !ld.runs.length) ld.runs = null;
+      const m = { kind: (ld.measurement || {}).kind || 'nameplate' };
+      if (m.kind !== 'nameplate') m.entities = (_entities || '').split(',').map(x => x.trim()).filter(Boolean);
+      ld.measurement = m;
+      for (const k of ['power_kw', 'duration_h']) ld[k] = ld[k] === '' || ld[k] == null ? null : Number(ld[k]);
+      if (ld.device_type !== 'ev_charger') delete ld.ev;
+      if (!ld.control || !ld.control.type) { delete ld.control; if (!Object.keys(ld.switch || {}).length) delete ld.switch; }
+      return ld;
+    },
+    async saveHems() {
+      if (!this.canWrite()) { this.$store.app.toast('Enable writes to save', 'error'); return; }
+      if (this.hemsFor !== this.$store.app.gwQuery()) return;
+      this.hemsSaving = true;
+      try {
+        const f = this.hemsForm;
+        const body = { opted_in: !!f.opted_in,
+          always_on_kw: f.always_on_kw === '' ? null : Number(f.always_on_kw),
+          periods_confirmed: !!f.periods_confirmed, loads: f.loads.map(l => this._hemsLoad(l)) };
+        const r = await fetch('api/hems/setup' + this.$store.app.gwQuery(), { method: 'PUT',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const d = await r.json(); if (!r.ok) throw new Error(d.detail || 'save failed');
+        this._setHems(d);
+        this.$store.app.toast('HEMS setup saved', 'success');
+      } catch (e) { this.$store.app.toast('HEMS setup save failed: ' + e.message, 'error'); }
+      finally { this.hemsSaving = false; }
+    },
+    hemsBandStyle(b) {
+      return { background: b === 'high' ? 'var(--danger)' : b === 'medium' ? 'var(--warning)' : b === 'low' ? 'var(--accent)' : 'var(--border)' };
     },
     tariffsForUtility(uid) { return this.tariffs.filter(t => t.utility_id === uid); },
     // ── a meter's tariffs (dated plans; one in force per day) ──
