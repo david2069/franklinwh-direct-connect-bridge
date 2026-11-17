@@ -605,5 +605,6 @@ def test_publish_yes_turns_on_publishing_for_the_gateways_it_added():
     body = js[js.index("async publishYes()"):js.index("publishNo()")]
     assert "createdIds" in body and re.search(r"publish_ha:\s*true", body)
     assert body.count("method: 'PATCH'") == 1
-    # every successful add records its id for that
-    assert js.count("this.createdIds.push(d.id)") == 2
+    # every successful real-gateway add records its id for that; a mock is never
+    # published (#711), so creating one doesn't
+    assert js.count("this.createdIds.push(d.id)") == 1

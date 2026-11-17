@@ -19,7 +19,7 @@ Full notes for each release are on the [docs site](https://david2069.github.io/f
 
 ### [0.5.51](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.51.md)
 
-Added 9 · Changed 5 · Fixed 2
+Added 9 · Changed 5 · Fixed 3
 
 - Energy planning (hems 0.2.0): a solar forecast that learns from your system, a Home…
 - FranklinWH TOU: buy and sell rates per day type, daily re-read, tables, clashes on a…
