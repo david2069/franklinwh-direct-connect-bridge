@@ -808,15 +808,22 @@ function settingsTab(opts = {}) {
     },
     utilityName(id) { const u = this.utilities.find(x => x.id === id); return u ? u.name : '—'; },
     tariffName(id) { const t = this.tariffs.find(x => x.id === id); return t ? t.name : '—'; },
+    // Today at the site (the aGate's offset, as Analytics), else the browser's date: never
+    // UTC, which in the Australian morning is still yesterday.
+    _siteToday() {
+      const o = this.$store.app.siteTzOffsetMin;
+      const off = o == null ? -new Date().getTimezoneOffset() : o;
+      return new Date(Date.now() + off * 60000).toISOString().slice(0, 10);
+    },
     tariffStatus(t) {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = this._siteToday();
       if (t.effective_end && t.effective_end < today) return 'past';
       if (t.effective_start && t.effective_start > today) return 'future';
       return 'active';
     },
     // Retired = its end date has passed; locked (owner 2026-11-13). Under 13 months since it
     // ended, unlocking or deleting it takes two warnings and its name typed.
-    tariffRetired(t) { return !!(t && t.effective_end && t.effective_end < new Date().toISOString().slice(0, 10)); },
+    tariffRetired(t) { return !!(t && t.effective_end && t.effective_end < this._siteToday()); },
     tariffRecentlyRetired(t) {
       if (!this.tariffRetired(t)) return false;
       const e = new Date(t.effective_end + 'T00:00:00'); e.setMonth(e.getMonth() + 13);
@@ -858,7 +865,7 @@ function settingsTab(opts = {}) {
       this.editTariff(fresh);            // pre-fill from the current plan…
       Object.assign(this.tariffEdit, { id: '', name: (t.name || 'Tariff') + ' v2',
         meter_id: t.meter_id || this._meterFor(t.utility_id),
-        effective_start: new Date().toISOString().slice(0, 10), effective_end: '' });
+        effective_start: this._siteToday(), effective_end: '' });
       this.tariffMsg = { kind: 'info', text: `Saving ends "${t.name}" the day before this one starts.` };
     },
 
