@@ -104,6 +104,7 @@ class MetricsStore:
         self._migrate_alerts()
         self._migrate_health()
         self._migrate_cloud_tou()
+        self._migrate_wear()
         self._conn.commit()
 
     def _migrate_gateway_id(self) -> None:
@@ -3456,6 +3457,57 @@ class MetricsStore:
         return self._health_rows(q, args)
 
     # ── FranklinWH TOU schedule: dated copies from the cloud (cloud_tou.py) ────────
+    def _migrate_wear(self) -> None:
+        """Battery wear (#713, hems): ``wear_samples`` every few minutes (SoC and the aGate's
+        daily charge and discharge counters, for SoC-matched efficiency) and
+        ``wear_events``, each charge or discharge block hems's tracker closed, as JSON."""
+        self._conn.execute(
+            """CREATE TABLE IF NOT EXISTS wear_samples(
+                   gateway_id TEXT NOT NULL, ts REAL NOT NULL, soc REAL, chg_kwh REAL,
+                   dis_kwh REAL, power_w REAL, temp_c REAL, PRIMARY KEY(gateway_id, ts))""")
+        self._conn.execute(
+            """CREATE TABLE IF NOT EXISTS wear_events(
+                   id INTEGER PRIMARY KEY AUTOINCREMENT, gateway_id TEXT NOT NULL,
+                   start REAL NOT NULL, body TEXT NOT NULL)""")
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_wear_events ON wear_events(gateway_id, start)")
+
+    def wear_sample_add(self, gateway_id: str, ts: float, *, soc, chg_kwh, dis_kwh,
+                        power_w, temp_c) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO wear_samples VALUES (?,?,?,?,?,?,?)",
+                (gateway_id, ts, soc, chg_kwh, dis_kwh, power_w, temp_c))
+            self._conn.commit()
+
+    def wear_samples(self, gateway_id: str, since: float) -> list[dict]:
+        """Oldest first."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT ts, soc, chg_kwh, dis_kwh, power_w, temp_c FROM wear_samples "
+                "WHERE gateway_id=? AND ts>=? ORDER BY ts", (gateway_id, since)).fetchall()
+        return [{"ts": r[0], "soc": r[1], "chg": r[2], "dis": r[3], "power_w": r[4],
+                 "temp_c": r[5]} for r in rows]
+
+    def wear_samples_prune(self, before: float) -> None:
+        with self._lock:
+            self._conn.execute("DELETE FROM wear_samples WHERE ts < ?", (before,))
+            self._conn.commit()
+
+    def wear_event_add(self, gateway_id: str, event: dict) -> None:
+        with self._lock:
+            self._conn.execute("INSERT INTO wear_events(gateway_id, start, body) VALUES (?,?,?)",
+                               (gateway_id, event.get("start") or 0, json.dumps(event)))
+            self._conn.commit()
+
+    def wear_events(self, gateway_id: str, limit: int = 50) -> list[dict]:
+        """Newest first."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT body FROM wear_events WHERE gateway_id=? ORDER BY start DESC LIMIT ?",
+                (gateway_id, int(limit))).fetchall()
+        return [json.loads(r[0]) for r in rows]
+
     def _migrate_cloud_tou(self) -> None:
         """One row per distinct schedule per gateway: ``first_ts`` when it was first read,
         ``checked_ts`` when it was last read unchanged; ``body`` is the schedule as JSON."""

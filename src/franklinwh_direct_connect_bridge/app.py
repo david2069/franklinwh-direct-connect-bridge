@@ -4270,6 +4270,32 @@ def create_app() -> FastAPI:
         return {"values": system_setup.values(st, get_settings(), gateway, _gw_host(gateway)),
                 "spec": system_setup.spec()}
 
+    @app.get("/api/wear")
+    def api_wear(gateway: str = Depends(_gateway_q)):
+        """Battery wear for one gateway (#713, hems): the warranty setup fields (the cloud
+        pre-fills, please confirm), the wear cost per kWh, the throughput pace, SoH,
+        round-trip efficiency and the last dispatch events. No device read."""
+        from . import wear
+        _gw_or_404(gateway)
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        return wear.report(st, get_settings(), gateway)
+
+    @app.put("/api/wear")
+    def api_wear_put(body: dict, gateway: str = Depends(_gateway_q)):
+        """Set warranty fields (null clears one back to the pre-fill). No device write."""
+        from . import wear
+        _gw_or_404(gateway)
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        try:
+            wear.save(st, gateway, body)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+        return wear.report(st, get_settings(), gateway)
+
     _install_modes: dict[str, tuple] = {}   # host -> (expires_monotonic, mode labels)
     _install_history: dict[str, tuple] = {}  # gateway id -> (expires_monotonic, history)
 

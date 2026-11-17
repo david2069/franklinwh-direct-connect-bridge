@@ -13,6 +13,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- Settings → Gateways: **Battery warranty & wear** (#713, hems 0.2.0). Warranty end and
+  throughput (filled from the FranklinWH cloud when signed in, marked *Please confirm*), the
+  guaranteed end SoH, install date and replacement value give the wear cost per kWh
+  discharged, the throughput used and left, and the daily pace that lasts the warranty;
+  with SoH and the round-trip efficiency from full cycles on the aGate's own counters. Each
+  charge and discharge block is recorded. Nothing is written to the aGate
+  ([guide](docs/guide/health-report.md#battery-warranty-and-wear)).
 - Home Assistant: **Load Forecast** (#713). The home load expected this hour, in kW, with
   the next 48 hours as HAEO's `forecast` attribute (every 30 minutes), learnt by hems 0.2.0
   from the gateway's own hourly home load and the site's temperatures. Published every half

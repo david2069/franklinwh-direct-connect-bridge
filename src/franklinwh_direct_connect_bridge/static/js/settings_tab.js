@@ -50,6 +50,8 @@ function settingsTab(opts = {}) {
     // ── Automation constants (const.* sensors) ──
     constants: {}, constSpec: {}, constModes: [], constSaving: false,
     systemSetup: {}, systemSpec: {}, systemSaving: false, systemLoaded: {},
+    // Battery warranty & wear (#713, hems): the report and the form's values.
+    wear: null, wearForm: {}, wearFor: null, wearSaving: false,
     systemFor: null,   // the gwQuery() the System Setup form was read for (#352)
     gwBusy: {},          // id -> true while a toggle/test is in flight
     gwAdd: null,         // add-form object when open, else null
@@ -627,6 +629,7 @@ function settingsTab(opts = {}) {
     },
 
     async loadSystemSetup() {
+      this.loadWear();
       const gwq = this.$store.app.gwQuery();
       try { const d = await (await fetch('api/system-setup' + gwq)).json();
             if (gwq !== this.$store.app.gwQuery()) return;     // a late reply for another gateway
@@ -668,6 +671,36 @@ function settingsTab(opts = {}) {
         this.$store.app.toast('System Setup saved', 'success');
       } catch (e) { this.$store.app.toast('System Setup save failed: ' + e.message, 'error'); }
       finally { this.systemSaving = false; }
+    },
+    // ── Battery warranty & wear (#713, hems) ──
+    async loadWear() {
+      const gwq = this.$store.app.gwQuery();
+      try {
+        const r = await fetch('api/wear' + gwq); if (!r.ok) return;
+        const d = await r.json();
+        if (gwq !== this.$store.app.gwQuery()) return;
+        this._setWear(d); this.wearFor = gwq;
+      } catch { this.wear = null; }
+    },
+    _setWear(d) {
+      this.wear = d;
+      this.wearForm = Object.fromEntries(Object.entries(d.fields || {}).map(([k, f]) => [k, f.value ?? '']));
+    },
+    wearConfirm(k) { const f = this.wear && this.wear.fields[k]; return !!(f && f.confirm && f.value != null); },
+    /** Every field as shown: a confirmed pre-fill becomes the user's value. */
+    async saveWear() {
+      if (!this.canWrite()) { this.$store.app.toast('Enable writes to save', 'error'); return; }
+      if (this.wearFor !== this.$store.app.gwQuery()) return;
+      this.wearSaving = true;
+      try {
+        const body = Object.fromEntries(Object.entries(this.wearForm).map(([k, v]) => [k, v === '' ? null : v]));
+        const r = await fetch('api/wear' + this.$store.app.gwQuery(), { method: 'PUT',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const d = await r.json(); if (!r.ok) throw new Error(d.detail || 'save failed');
+        this._setWear(d);
+        this.$store.app.toast('Warranty & wear saved', 'success');
+      } catch (e) { this.$store.app.toast('Warranty & wear save failed: ' + e.message, 'error'); }
+      finally { this.wearSaving = false; }
     },
     tariffsForUtility(uid) { return this.tariffs.filter(t => t.utility_id === uid); },
     // ── a meter's tariffs (dated plans; one in force per day) ──
