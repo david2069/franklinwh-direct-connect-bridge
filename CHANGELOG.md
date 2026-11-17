@@ -15,6 +15,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
 
+## 2026-11-18
+
+### [0.5.51](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.51.md)
+
+Added 9 · Changed 5 · Fixed 2
+
+- Energy planning (hems 0.2.0): a solar forecast that learns from your system, a Home…
+- FranklinWH TOU: buy and sell rates per day type, daily re-read, tables, clashes on a…
+- Home Assistant: Battery Command controls, Bridge Version, VPP, off-grid, smart circuit…
+- System view: several aPowers show as one battery with the count, each aPower in the hover…
+- Billing: a plan starting today is in force on an Australian morning
+
 ## 2026-11-17
 
 ### [0.5.50](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.50.md)

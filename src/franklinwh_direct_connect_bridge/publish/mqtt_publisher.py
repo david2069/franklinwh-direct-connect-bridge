@@ -18,6 +18,7 @@ class MqttPublisher:
                  command_handler=None, groups=None, skip=frozenset()):
         self.s = settings
         self.skip = frozenset(skip)       # entity keys this gateway has no source for
+        self.groups = groups              # the publish groups switched on
         self.node = node
         self.device = device
         #: Called as ``handler(key, payload)`` for an inbound control message.
@@ -83,6 +84,7 @@ class MqttPublisher:
         """Re-derive the discovery set for `groups`: clear the OLD entities from HA, then
         publish the new set — so a disabled group's entities disappear from HA."""
         self.clear_discovery()
+        self.groups = groups
         self.configs, self.state_topic, self.avail_topic = entities.discovery_configs(
             self.node, self.device, self.s.mqtt_prefix, self.s.ha_discovery_prefix, groups,
             skip=self.skip)
@@ -93,6 +95,24 @@ class MqttPublisher:
                 self.client.subscribe(self.cmd_filter)
             else:
                 self.client.unsubscribe(self.cmd_filter)
+
+    def set_skip(self, skip) -> None:
+        """Follow a source turning on or off (#711): publish the entities that now have a
+        source and clear (empty retained config) those that lost theirs, so HA drops them
+        rather than showing them unavailable. Nothing is sent when nothing changed."""
+        skip = frozenset(skip)
+        if skip == self.skip:
+            return
+        self.skip = skip
+        old = dict(self.configs)
+        self.configs, self.state_topic, self.avail_topic = entities.discovery_configs(
+            self.node, self.device, self.s.mqtt_prefix, self.s.ha_discovery_prefix,
+            self.groups, skip=self.skip)
+        new = dict(self.configs)
+        for topic in old.keys() - new.keys():
+            self.client.publish(topic, "", retain=True)
+        for topic in new.keys() - old.keys():
+            self.client.publish(topic, json.dumps(new[topic]), retain=True)
 
     def clear_discovery(self) -> None:
         """Remove the entities from Home Assistant by publishing an empty retained
@@ -114,6 +134,16 @@ class MqttPublisher:
     def publish_alerts(self, payload: dict) -> None:
         """Bridge problem (#271). Retained, so HA has it at once after a restart."""
         self.client.publish(entities.alerts_topic(self.node, self.s.mqtt_prefix),
+                            json.dumps(payload), retain=True)
+
+    def publish_load_forecast(self, payload: dict) -> None:
+        """Load Forecast (#713): this hour's kW and HAEO's series. Retained."""
+        self.client.publish(entities.load_forecast_topic(self.node, self.s.mqtt_prefix),
+                            json.dumps(payload), retain=True)
+
+    def publish_tou(self, payload: dict) -> None:
+        """The TOU entities (#421): worked out from the copy of the schedule. Retained."""
+        self.client.publish(entities.tou_topic(self.node, self.s.mqtt_prefix),
                             json.dumps(payload), retain=True)
 
     def publish_availability(self, online: bool) -> None:
@@ -142,6 +172,8 @@ class BridgeHeartbeat:
             settings.mqtt_prefix, settings.ha_discovery_prefix)
         self.problem_topic, self.problem_config = entities.bridge_problem_config(
             settings.mqtt_prefix, settings.ha_discovery_prefix)
+        self.version_topic, self.version_config = entities.bridge_version_config(
+            settings.mqtt_prefix, settings.ha_discovery_prefix)
         self.client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
             client_id=f"franklinwh-direct-connect-bridge-{entities.BRIDGE_NODE}")
@@ -152,6 +184,7 @@ class BridgeHeartbeat:
     def _on_connect(self, client, userdata, flags, rc, properties=None):
         client.publish(self.config_topic, json.dumps(self.config), retain=True)
         client.publish(self.problem_topic, json.dumps(self.problem_config), retain=True)
+        client.publish(self.version_topic, json.dumps(self.version_config), retain=True)
 
     def start(self) -> None:
         self.client.connect(self.s.mqtt_host, self.s.mqtt_port)
@@ -171,6 +204,11 @@ class BridgeHeartbeat:
     def publish_problem(self, payload: dict) -> None:
         """The bridge-level "Bridge problem" (#286). Retained, like the per-gateway one."""
         self.client.publish(entities.alerts_topic(entities.BRIDGE_NODE, self.s.mqtt_prefix),
+                            json.dumps(payload), retain=True)
+
+    def publish_version(self, payload: dict) -> None:
+        """The bridge-level "Bridge Version" (#706). Retained, so HA has it after a restart."""
+        self.client.publish(entities.version_topic(self.s.mqtt_prefix),
                             json.dumps(payload), retain=True)
 
     def stop(self) -> None:

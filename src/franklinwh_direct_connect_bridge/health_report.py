@@ -586,6 +586,9 @@ def build_weekly(store, now: float, *, gateways: list[dict]) -> dict:
             sec["full_cycles"]["needs"] = "battery capacity"
         sec["cycles"] = soc_cycles(store.soc_series(g["id"], monday.timestamp(),
                                                     this_monday.timestamp()))
+        # the home-load forecast's walk-forward accuracy (#713, hems)
+        from . import load_forecast
+        sec["load_forecast"] = load_forecast.backtest(store, None, g["id"], now)
         sections.append(sec)
     parts = []
     for sec in sections:

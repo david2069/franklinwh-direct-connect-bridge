@@ -50,6 +50,11 @@ function settingsTab(opts = {}) {
     // ── Automation constants (const.* sensors) ──
     constants: {}, constSpec: {}, constModes: [], constSaving: false,
     systemSetup: {}, systemSpec: {}, systemSaving: false, systemLoaded: {},
+    // Battery warranty & wear (#713, hems): the report and the form's values.
+    wear: null, wearForm: {}, wearFor: null, wearSaving: false,
+    // HEMS setup, opt-in (#713, hems.loads): the view and the form.
+    hems: null, hemsForm: { opted_in: false, always_on_kw: '', periods_confirmed: false, loads: [] },
+    hemsFor: null, hemsSaving: false,
     systemFor: null,   // the gwQuery() the System Setup form was read for (#352)
     gwBusy: {},          // id -> true while a toggle/test is in flight
     gwAdd: null,         // add-form object when open, else null
@@ -479,13 +484,13 @@ function settingsTab(opts = {}) {
     },
 
     // ── Mock gateway (in-process emulator, testing) ──
-    mockForm: { label: 'Mock', units: 3, seed: '', publish_ha: false },
+    mockForm: { label: 'Mock', units: 3, seed: '' },
     async saveMockGateway() {
       if (!this.canWrite()) { this.gwErr = 'Enable writes (ALLOW_WRITES) to add a gateway.'; return; }
       try {
         const body = { label: this.mockForm.label || 'Mock', is_mock: true,
           mock_units: Math.max(1, Math.min(8, this.mockForm.units || 1)),
-          publish_ha: this.mockForm.publish_ha, enabled: true };
+          enabled: true };
         const seed = parseInt(this.mockForm.seed, 10);
         if (Number.isFinite(seed)) body.mock_seed = seed;   // reproducible profile
         const r = await fetch('api/gateways', {
@@ -627,6 +632,8 @@ function settingsTab(opts = {}) {
     },
 
     async loadSystemSetup() {
+      this.loadWear();
+      this.loadHems();
       const gwq = this.$store.app.gwQuery();
       try { const d = await (await fetch('api/system-setup' + gwq)).json();
             if (gwq !== this.$store.app.gwQuery()) return;     // a late reply for another gateway
@@ -669,6 +676,102 @@ function settingsTab(opts = {}) {
       } catch (e) { this.$store.app.toast('System Setup save failed: ' + e.message, 'error'); }
       finally { this.systemSaving = false; }
     },
+    // ── Battery warranty & wear (#713, hems) ──
+    async loadWear() {
+      const gwq = this.$store.app.gwQuery();
+      try {
+        const r = await fetch('api/wear' + gwq); if (!r.ok) return;
+        const d = await r.json();
+        if (gwq !== this.$store.app.gwQuery()) return;
+        this._setWear(d); this.wearFor = gwq;
+      } catch { this.wear = null; }
+    },
+    _setWear(d) {
+      this.wear = d;
+      this.wearForm = Object.fromEntries(Object.entries(d.fields || {}).map(([k, f]) => [k, f.value ?? '']));
+    },
+    wearConfirm(k) { const f = this.wear && this.wear.fields[k]; return !!(f && f.confirm && f.value != null); },
+    /** Every field as shown: a confirmed pre-fill becomes the user's value. */
+    async saveWear() {
+      if (!this.canWrite()) { this.$store.app.toast('Enable writes to save', 'error'); return; }
+      if (this.wearFor !== this.$store.app.gwQuery()) return;
+      this.wearSaving = true;
+      try {
+        const body = Object.fromEntries(Object.entries(this.wearForm).map(([k, v]) => [k, v === '' ? null : v]));
+        const r = await fetch('api/wear' + this.$store.app.gwQuery(), { method: 'PUT',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const d = await r.json(); if (!r.ok) throw new Error(d.detail || 'save failed');
+        this._setWear(d);
+        this.$store.app.toast('Warranty & wear saved', 'success');
+      } catch (e) { this.$store.app.toast('Warranty & wear save failed: ' + e.message, 'error'); }
+      finally { this.wearSaving = false; }
+    },
+    // ── HEMS setup, opt-in (#713, hems.loads) ──
+    async loadHems() {
+      const gwq = this.$store.app.gwQuery();
+      try {
+        const r = await fetch('api/hems/setup' + gwq); if (!r.ok) return;
+        const d = await r.json();
+        if (gwq !== this.$store.app.gwQuery()) return;
+        this._setHems(d); this.hemsFor = gwq;
+      } catch { this.hems = null; }
+    },
+    _setHems(d) {
+      this.hems = d;
+      const ao = d.always_on;
+      this.hemsForm = {
+        opted_in: !!d.opted_in,
+        always_on_kw: ao && ao.value_kw != null ? ao.value_kw : '',
+        periods_confirmed: !!(d.periods && d.periods.confirm === false),
+        loads: (d.loads || []).map(l => {
+          const { problems, expected_kwh_today, ...ld } = l;
+          return { ...ld, _weather: ld.runs === 'weather',
+                   _runsText: Array.isArray(ld.runs) ? ld.runs.map(w => `${w.start}-${w.end}`).join(', ') : '',
+                   _entities: ((ld.measurement || {}).entities || []).join(', '),
+                   measurement: ld.measurement || { kind: 'nameplate' }, control: ld.control || null,
+                   switch: ld.switch || {}, ev: ld.ev || {} };
+        }),
+      };
+    },
+    hemsAddLoad() {
+      this.hemsForm.loads.push({ name: '', device_type: '', measurement: { kind: 'nameplate' },
+        power_kw: null, duration_h: null, _runsText: '', _weather: false, circuit: '',
+        control: null, switch: {}, ev: {}, _entities: '' });
+    },
+    /** A form load as hems.loads expects it. */
+    _hemsLoad(l) {
+      const { _weather, _runsText, _entities, ...ld } = l;
+      ld.runs = _weather ? 'weather' : (_runsText || '').split(',').map(x => x.trim()).filter(Boolean)
+        .map(x => { const [start, end] = x.split('-').map(y => y.trim()); return { start, end }; });
+      if (!_weather && !ld.runs.length) ld.runs = null;
+      const m = { kind: (ld.measurement || {}).kind || 'nameplate' };
+      if (m.kind !== 'nameplate') m.entities = (_entities || '').split(',').map(x => x.trim()).filter(Boolean);
+      ld.measurement = m;
+      for (const k of ['power_kw', 'duration_h']) ld[k] = ld[k] === '' || ld[k] == null ? null : Number(ld[k]);
+      if (ld.device_type !== 'ev_charger') delete ld.ev;
+      if (!ld.control || !ld.control.type) { delete ld.control; if (!Object.keys(ld.switch || {}).length) delete ld.switch; }
+      return ld;
+    },
+    async saveHems() {
+      if (!this.canWrite()) { this.$store.app.toast('Enable writes to save', 'error'); return; }
+      if (this.hemsFor !== this.$store.app.gwQuery()) return;
+      this.hemsSaving = true;
+      try {
+        const f = this.hemsForm;
+        const body = { opted_in: !!f.opted_in,
+          always_on_kw: f.always_on_kw === '' ? null : Number(f.always_on_kw),
+          periods_confirmed: !!f.periods_confirmed, loads: f.loads.map(l => this._hemsLoad(l)) };
+        const r = await fetch('api/hems/setup' + this.$store.app.gwQuery(), { method: 'PUT',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const d = await r.json(); if (!r.ok) throw new Error(d.detail || 'save failed');
+        this._setHems(d);
+        this.$store.app.toast('HEMS setup saved', 'success');
+      } catch (e) { this.$store.app.toast('HEMS setup save failed: ' + e.message, 'error'); }
+      finally { this.hemsSaving = false; }
+    },
+    hemsBandStyle(b) {
+      return { background: b === 'high' ? 'var(--danger)' : b === 'medium' ? 'var(--warning)' : b === 'low' ? 'var(--accent)' : 'var(--border)' };
+    },
     tariffsForUtility(uid) { return this.tariffs.filter(t => t.utility_id === uid); },
     // ── a meter's tariffs (dated plans; one in force per day) ──
     plansForMeter(m) {
@@ -705,15 +808,22 @@ function settingsTab(opts = {}) {
     },
     utilityName(id) { const u = this.utilities.find(x => x.id === id); return u ? u.name : '—'; },
     tariffName(id) { const t = this.tariffs.find(x => x.id === id); return t ? t.name : '—'; },
+    // Today at the site (the aGate's offset, as Analytics), else the browser's date: never
+    // UTC, which in the Australian morning is still yesterday.
+    _siteToday() {
+      const o = this.$store.app.siteTzOffsetMin;
+      const off = o == null ? -new Date().getTimezoneOffset() : o;
+      return new Date(Date.now() + off * 60000).toISOString().slice(0, 10);
+    },
     tariffStatus(t) {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = this._siteToday();
       if (t.effective_end && t.effective_end < today) return 'past';
       if (t.effective_start && t.effective_start > today) return 'future';
       return 'active';
     },
     // Retired = its end date has passed; locked (owner 2026-11-13). Under 13 months since it
     // ended, unlocking or deleting it takes two warnings and its name typed.
-    tariffRetired(t) { return !!(t && t.effective_end && t.effective_end < new Date().toISOString().slice(0, 10)); },
+    tariffRetired(t) { return !!(t && t.effective_end && t.effective_end < this._siteToday()); },
     tariffRecentlyRetired(t) {
       if (!this.tariffRetired(t)) return false;
       const e = new Date(t.effective_end + 'T00:00:00'); e.setMonth(e.getMonth() + 13);
@@ -755,7 +865,7 @@ function settingsTab(opts = {}) {
       this.editTariff(fresh);            // pre-fill from the current plan…
       Object.assign(this.tariffEdit, { id: '', name: (t.name || 'Tariff') + ' v2',
         meter_id: t.meter_id || this._meterFor(t.utility_id),
-        effective_start: new Date().toISOString().slice(0, 10), effective_end: '' });
+        effective_start: this._siteToday(), effective_end: '' });
       this.tariffMsg = { kind: 'info', text: `Saving ends "${t.name}" the day before this one starts.` };
     },
 
@@ -1265,7 +1375,7 @@ function settingsTab(opts = {}) {
       if (!this.canWrite()) { this.gwErr = 'Enable writes (ALLOW_WRITES) to edit gateways.'; return; }
       const e = this.gwEdit;
       const body = e.is_mock
-        ? { label: e.label, description: e.description, publish_ha: e.publish_ha,
+        ? { label: e.label, description: e.description,
             mock_units: Math.max(1, Math.min(8, e.mock_units || 1)) }
         : { label: e.label, host: e.host, port: e.port, description: e.description, publish_ha: e.publish_ha };
       if (e.enabled !== e.was_enabled) body.enabled = e.enabled;

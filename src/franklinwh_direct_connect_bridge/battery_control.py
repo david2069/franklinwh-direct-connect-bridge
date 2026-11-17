@@ -806,3 +806,104 @@ def _close(c) -> None:
         c.disconnect()
     except Exception:                                           # noqa: BLE001
         pass
+
+
+# ── Battery Command staging, shared by the Battery tab and Home Assistant (#705) ──────
+#: The staged values the next Battery Command uses, and its last result. One set per
+#: bridge, as the Battery tab has always had; Home Assistant's numbers stage into it too.
+STAGED_DEFAULTS = {"power_w": 0, "power_pct": 100, "power_mode": "pct",
+                   "duration_s": 0, "target_soc": 0, "active": "Not Active", "result": ""}
+STAGED: dict = dict(STAGED_DEFAULTS)
+
+#: Parameter slug -> (staged field, power_mode it sets). The Modbus Bridge's slugs.
+_STAGE_SLUGS = {"battery_command_power": ("power_w", "w"),
+                "battery_command_power_pct": ("power_pct", "pct"),
+                "battery_command_duration": ("duration_s", None),
+                "battery_command_target_soc": ("target_soc", None)}
+
+#: The commands a Battery Command can run.
+COMMANDS = ("Not Active", "Force Charge", "Force Discharge", "Force Standby", "Release")
+
+#: Who ran a Battery Command -> its dispatch row's name.
+_SOURCE_NAME = {"widget": "Battery Control (widget)", "ha": "Battery Control (Home Assistant)"}
+
+
+def reset_staged() -> None:
+    """Back to the defaults (a new app, or a test)."""
+    STAGED.clear()
+    STAGED.update(STAGED_DEFAULTS)
+
+
+def stage(slug: str, value) -> dict | None:
+    """Store a parameter slug's value for the next command; None when ``slug`` is not one.
+    Power in watts or in % is last-set-wins, as the Battery tab's."""
+    hit = _STAGE_SLUGS.get(slug)
+    if hit is None:
+        return None
+    field, mode = hit
+    STAGED[field] = int(float(value or 0))
+    if mode:
+        STAGED["power_mode"] = mode
+    return {"ok": True, "result": {"power_w": "power set", "power_pct": "power% set",
+                                   "duration_s": "duration set",
+                                   "target_soc": "target set"}[field]}
+
+
+def run_command(value: str, *, host: str, gateway_id: str | None, soc_getter=None,
+                store=None, dry_run: bool = False, source: str = "widget") -> dict:
+    """Run a Battery Command with the staged values: ``execute``, then record the dispatch
+    so the boot reconcile covers it, and log its start and end. The Battery tab's route and
+    Home Assistant's Battery Command both come here (#705). Never raises for the record."""
+    def _log(status, detail):
+        if store is None:
+            return
+        try:
+            store.log_schedule_event("_batt", "Battery dispatch", status, detail)
+            # A clean end closes the persisted row so a later boot reconcile does
+            # not treat this dispatch as interrupted.
+            if status == "dispatch-end" and hasattr(store, "end_active_dispatches"):
+                store.end_active_dispatches(host=host, status="ended")
+        except Exception:  # noqa: BLE001
+            pass
+    out = execute(
+        value, host=host, power_w=STAGED["power_w"], power_pct=STAGED["power_pct"],
+        power_mode=STAGED["power_mode"], duration_s=STAGED["duration_s"],
+        target_soc=STAGED["target_soc"], soc_getter=soc_getter, on_event=_log,
+        dry_run=dry_run)
+    # Persist a force so it, too, is covered by the boot reconcile policy (an
+    # interrupted one no longer falls to the generic orphan alert).
+    dirn = {"Force Charge": "charge", "Force Discharge": "discharge",
+            "Force Standby": "standby"}.get(value)
+    try:
+        if store is not None and out.get("ok") and not dry_run and dirn \
+                and hasattr(store, "record_dispatch"):
+            mode = STAGED["power_mode"]
+            mag = int(STAGED["power_w"] if mode == "w" else STAGED["power_pct"])
+            signed = (abs(mag) if dirn == "charge"
+                      else -abs(mag) if dirn == "discharge" else 0)
+            dur = int(STAGED["duration_s"] or 0)
+            store.record_dispatch(
+                schedule_id="_widget", name=_SOURCE_NAME.get(source, _SOURCE_NAME["widget"]),
+                gateway_id=gateway_id or None,
+                host=host, direction=dirn, watts=signed, power_mode=mode,
+                target_soc=int(STAGED["target_soc"] or 0), window_start_ts=time.time(),
+                window_end_ts=(time.time() + dur) if dur else None)
+        elif store is not None and out.get("ok") and not dry_run \
+                and value in ("Release", "Not Active") and hasattr(store, "end_active_dispatches"):
+            store.end_active_dispatches(host=host, status="ended")
+    except Exception:  # noqa: BLE001
+        pass
+    if out.get("active"):
+        STAGED["active"] = out["active"]
+    STAGED["result"] = out.get("result", "")
+    return out
+
+
+def ha_state(host: str | None) -> dict:
+    """The Battery Command entities' state for Home Assistant (#705): the force this bridge
+    holds on ``host`` and the staged values (no Modbus)."""
+    return {"battery_command_state": (current(host) if host else {}).get("active", "Not Active"),
+            "battery_command_power_w": STAGED["power_w"],
+            "battery_command_power_pct": STAGED["power_pct"],
+            "battery_command_duration_s": STAGED["duration_s"],
+            "battery_command_target_soc": STAGED["target_soc"]}

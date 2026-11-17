@@ -299,6 +299,150 @@
     </div>
   </div>
 
+  <!-- ══ Battery warranty & wear (#713, hems) ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Battery warranty &amp; wear <a :href="$store.app.guideUrl('health-report/#battery-warranty-and-wear')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+  </div>
+  <div class="card space-y-3" data-testid="wear-setup">
+    <p class="text-xs" style="color:var(--text-faint)">From your battery warranty. The FranklinWH cloud, when signed in, fills the end date and warranted throughput; check them against your warranty and save. Nothing here writes to the device.</p>
+    <template x-if="wear">
+      <div class="space-y-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <template x-for="[k, label, type, step] in [['warranty_end','Warranty end','date',null],['warranted_throughput_mwh','Warranted throughput (MWh)','number','0.1'],['end_soh_pct','Guaranteed SoH at the end (%)','number','1'],['install_date','Install date','date',null],['replacement_value','Replacement value ($)','number','1'],['end_value','Value at the end of warranty ($, optional)','number','1']]" :key="k">
+            <label class="flex flex-col gap-1">
+              <span class="text-xs" style="color:var(--text-secondary)"><span x-text="label"></span>
+                <span x-show="wearConfirm(k)" class="text-[9px] uppercase tracking-wide ml-1" style="color:var(--warning)" :data-testid="'wear-confirm-' + k">Please confirm</span></span>
+              <input :type="type" :step="step" min="0" class="form-control form-control-sm" x-model="wearForm[k]" :data-testid="'wear-' + k">
+            </label>
+          </template>
+        </div>
+        <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs" data-testid="wear-figures">
+          <span style="color:var(--text-secondary)">Wear cost</span>
+          <span x-text="wear.cost ? `$${wear.cost.per_kwh.toFixed(4)} per kWh discharged: ${wear.cost.formula}` + (wear.cost.end_value.derived ? ' (end value = replacement × end SoH; please confirm)' : '') : 'needs replacement value, throughput and end SoH or value'"></span>
+          <span style="color:var(--text-secondary)">Throughput used / left</span>
+          <span x-text="wear.used_kwh == null ? 'counted from the daily snapshots; the first is taken after midnight' : `${wear.used_kwh.toFixed(0)} kWh` + ' / ' + (wear.remaining_kwh == null ? '–' : `${wear.remaining_kwh.toFixed(0)} kWh`)"></span>
+          <span style="color:var(--text-secondary)">Pace</span>
+          <span x-text="wear.pace ? `${wear.pace.daily_kwh.toFixed(1)} kWh a day to last the warranty (${wear.pace.formula})` : (wear.remaining_kwh == null && wearForm.warranty_end && wearForm.warranted_throughput_mwh ? 'after the first daily snapshot' : 'needs the warranty end and throughput')"></span>
+          <span style="color:var(--text-secondary)">State of health</span>
+          <span x-text="wear.soh_pct == null ? 'not read yet' : `${wear.soh_pct}%`"></span>
+          <span style="color:var(--text-secondary)">Round-trip efficiency</span>
+          <span x-text="wear.efficiency && wear.efficiency.median != null ? `${(wear.efficiency.median * 100).toFixed(1)}% (median of ${wear.efficiency.n} cycles, ${wear.efficiency.days} days)` : 'no full cycle yet (3 kWh each way, back to the same SoC)'"></span>
+        </div>
+        <div class="flex justify-end">
+          <button class="btn btn-primary btn-sm" data-testid="wear-save" :disabled="!canWrite() || wearSaving || wearFor !== $store.app.gwQuery()" @click="saveWear()" x-text="wearSaving ? 'Saving…' : 'Save warranty & wear'"></button>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- ══ HEMS setup, opt-in (#713, hems.loads) ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">HEMS setup <a :href="$store.app.guideUrl('energy-and-costs/#hems-setup')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+  </div>
+  <div class="card space-y-3" data-testid="hems-setup">
+    <template x-if="hems">
+      <div class="space-y-3">
+        <div class="flex items-center justify-between gap-2 text-xs">
+          <span style="color:var(--text-secondary)">Describe this home for energy planning (optional). <span class="font-medium" x-text="hems.notice"></span></span>
+          <button type="button" data-testid="hems-optin" @click="hemsForm.opted_in = !hemsForm.opted_in" role="switch" :aria-checked="hemsForm.opted_in" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="hemsForm.opted_in ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="hemsForm.opted_in ? 'translate-x-5' : 'translate-x-0.5'"></span></button>
+        </div>
+        <div x-show="hemsForm.opted_in" class="space-y-3">
+          <label class="flex flex-col gap-1 sm:w-1/2">
+            <span class="text-xs" style="color:var(--text-secondary)">Always-on load (kW)
+              <span x-show="hems.always_on && hems.always_on.confirm" class="text-[9px] uppercase tracking-wide ml-1" style="color:var(--warning)" data-testid="hems-confirm-always-on">Please confirm</span>
+              <span x-show="hems.always_on && hems.always_on.confirm" class="text-[10px] ml-1" style="color:var(--text-faint)" x-text="hems.always_on && hems.always_on.basis"></span></span>
+            <input type="number" step="0.01" min="0" class="form-control form-control-sm" x-model="hemsForm.always_on_kw" data-testid="hems-always-on" placeholder="filled in from your overnight history once there is some">
+          </label>
+          <div class="text-xs space-y-1" data-testid="hems-periods">
+            <div style="color:var(--text-secondary)">Usage periods from your history (high · medium · low)
+              <span x-show="hems.periods.confirm && !hemsForm.periods_confirmed && hems.periods.weekday.some(b => b)" class="text-[9px] uppercase tracking-wide ml-1" style="color:var(--warning)">Please confirm</span>
+              <span x-show="!hems.periods.weekday.some(b => b) && !hems.periods.weekend.some(b => b)" class="ml-1" style="color:var(--text-faint)">· no history yet</span></div>
+            <template x-for="[day, label] in [['weekday','Weekday'],['weekend','Weekend']]" :key="day">
+              <div class="flex items-center gap-2">
+                <span class="w-16 shrink-0" style="color:var(--text-faint)" x-text="label"></span>
+                <div class="flex flex-1 gap-px min-w-0">
+                  <template x-for="(b, h) in hems.periods[day]" :key="h">
+                    <span class="flex-1 h-3 rounded-sm" :style="hemsBandStyle(b)" :title="`${String(h).padStart(2,'0')}:00 ${b || 'no data'}`"></span>
+                  </template>
+                </div>
+              </div>
+            </template>
+            <label class="inline-flex items-center gap-2"><input type="checkbox" x-model="hemsForm.periods_confirmed"> These look right</label>
+          </div>
+          <div class="space-y-2">
+            <div class="text-xs" style="color:var(--text-secondary)">Heavy loads <span style="color:var(--text-faint)" x-text="'· this bridge can control: ' + hems.capabilities.join(', ')"></span></div>
+            <template x-for="(l, i) in hemsForm.loads" :key="i">
+              <div class="rounded p-2 space-y-2" style="border:1px solid var(--border)" :data-testid="'hems-load-' + i">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                  <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Name</span><input class="form-control form-control-sm" x-model="l.name"></label>
+                  <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Device type</span><input class="form-control form-control-sm" x-model="l.device_type" placeholder="pool_pump, hot_water, ev_charger…"></label>
+                  <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Measured by</span>
+                    <select class="form-control form-control-sm" x-model="l.measurement.kind"><template x-for="m in hems.choices.measurement" :key="m"><option :value="m" x-text="m" :selected="m === l.measurement.kind"></option></template></select></label>
+                  <label class="flex flex-col gap-1" x-show="l.measurement.kind !== 'nameplate'"><span style="color:var(--text-faint)">HA entities (comma-separated)</span><input class="form-control form-control-sm" x-model="l._entities"></label>
+                  <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Power (kW)</span><input type="number" step="0.1" min="0" class="form-control form-control-sm" x-model="l.power_kw"></label>
+                  <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Duration (h)</span><input type="number" step="0.25" min="0" class="form-control form-control-sm" x-model="l.duration_h"></label>
+                  <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Runs (HH:MM-HH:MM, …)</span><input class="form-control form-control-sm" x-model="l._runsText" :disabled="l._weather" placeholder="10:00-16:00"></label>
+                  <label class="inline-flex items-center gap-2 self-end"><input type="checkbox" x-model="l._weather"> Follows the weather</label>
+                  <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Circuit</span>
+                    <select class="form-control form-control-sm" x-model="l.circuit"><option value="">—</option><template x-for="c in hems.choices.circuit" :key="c"><option :value="c" x-text="c" :selected="c === l.circuit"></option></template></select></label>
+                  <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Control</span>
+                    <select class="form-control form-control-sm" :value="l.control ? l.control.type : ''" @change="l.control = $event.target.value ? { ...(l.control || {}), type: $event.target.value } : null">
+                      <option value="">none (just measured)</option><template x-for="c in hems.choices.control" :key="c"><option :value="c" x-text="c" :selected="l.control && c === l.control.type"></option></template></select></label>
+                  <template x-if="l.control">
+                    <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Switched by</span>
+                      <select class="form-control form-control-sm" x-model="l.switch.kind"><option value="">—</option><template x-for="c in hems.choices.switch" :key="c"><option :value="c" x-text="c" :selected="c === l.switch.kind"></option></template></select></label>
+                  </template>
+                  <template x-if="l.control && l.control.type === 'deferrable'">
+                    <div class="contents">
+                      <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Energy needed (kWh)</span><input type="number" step="0.1" min="0" class="form-control form-control-sm" x-model.number="l.control.energy_kwh"></label>
+                      <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">By (HH:MM)</span><input type="time" class="form-control form-control-sm" x-model="l.control.deadline"></label>
+                    </div>
+                  </template>
+                  <template x-if="l.control && l.control.type === 'sheddable'">
+                    <div class="contents">
+                      <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Max off (min)</span><input type="number" min="0" class="form-control form-control-sm" x-model.number="l.control.max_off_min"></label>
+                      <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Min on (min)</span><input type="number" min="0" class="form-control form-control-sm" x-model.number="l.control.min_on_min"></label>
+                      <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Priority</span><input type="number" min="1" class="form-control form-control-sm" x-model.number="l.control.priority"></label>
+                    </div>
+                  </template>
+                  <template x-if="l.control && l.control.type === 'soak'">
+                    <div class="contents">
+                      <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Quota (kWh)</span><input type="number" step="0.1" min="0" class="form-control form-control-sm" x-model.number="l.control.quota_kwh"></label>
+                      <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Price penalty (c/kWh)</span><input type="number" step="0.1" class="form-control form-control-sm" x-model.number="l.control.price_penalty"></label>
+                      <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">When export price ≤ (c/kWh)</span><input type="number" step="0.1" class="form-control form-control-sm" x-model.number="l.control.export_price_at_or_below"></label>
+                      <label class="inline-flex items-center gap-2"><input type="checkbox" x-model="l.control.export_limited"> When export is limited</label>
+                      <label class="inline-flex items-center gap-2"><input type="checkbox" x-model="l.control.battery_full_exporting"> When the battery is full and exporting</label>
+                    </div>
+                  </template>
+                  <template x-if="l.device_type === 'ev_charger'">
+                    <div class="contents">
+                      <template x-for="f in hems.choices.ev_fields" :key="f">
+                        <label class="flex flex-col gap-1"><span style="color:var(--text-faint)" x-text="'EV: ' + f.replaceAll('_', ' ')"></span><input class="form-control form-control-sm" x-model="l.ev[f]"></label>
+                      </template>
+                    </div>
+                  </template>
+                </div>
+                <ul class="text-xs list-disc pl-4" style="color:var(--danger)" x-show="(hems.loads[i] || {}).problems && hems.loads[i].problems.length">
+                  <template x-for="p in (hems.loads[i] || {}).problems || []" :key="p"><li x-text="p"></li></template>
+                </ul>
+                <div class="flex justify-between items-center text-xs">
+                  <span style="color:var(--text-faint)" x-text="(hems.loads[i] || {}).expected_kwh_today != null ? `about ${hems.loads[i].expected_kwh_today} kWh today` : ''"></span>
+                  <button type="button" class="btn btn-secondary btn-sm" @click="hemsForm.loads.splice(i, 1)">Remove</button>
+                </div>
+              </div>
+            </template>
+            <button type="button" class="btn btn-secondary btn-sm" data-testid="hems-add-load" @click="hemsAddLoad()">+ Add load</button>
+          </div>
+        </div>
+        <div class="flex justify-end">
+          <button class="btn btn-primary btn-sm" data-testid="hems-save" :disabled="!canWrite() || hemsSaving || hemsFor !== $store.app.gwQuery()" @click="saveHems()" x-text="hemsSaving ? 'Saving…' : 'Save HEMS setup'"></button>
+        </div>
+      </div>
+    </template>
+  </div>
+
   </div>
   <!-- Billing & Utilities (#674): the same sites, meters, retailers and tariffs editors as
        the Billing & Utilities page's Plans & meters (one partial). -->
@@ -521,12 +665,12 @@
           <summary class="text-xs uppercase tracking-wide cursor-pointer" style="color:var(--text-secondary)">Add a mock gateway (testing) <span class="text-[9px] px-1.5 rounded ml-1" style="background:rgba(167,139,250,.2);color:#c4b5fd">OPTIONAL</span></summary>
           <p class="text-[11px] text-slate-500 my-2 leading-relaxed">
             A <strong>mock</strong> is an in-process emulated aGate — no hardware, no network, running inside
-            the bridge — for trying the UI, dashboards and HA discovery. Each mock is a deterministic
+            the bridge — for trying the UI and dashboards. Each mock is a deterministic
             <em>seed-derived</em> site: it simulates <strong>battery + aPowers, live power flow, operating
             modes, Smart Circuits and daily energy history</strong>. It does <strong>not</strong> simulate a
             Generator or V2L (those read as absent). Set the number of aPowers (1–8); an optional seed makes
-            the profile reproducible (leave blank for a random one). <strong>Publish to Home Assistant</strong>
-            is off by default so synthetic data never pollutes your HA statistics. Remove it anytime with the
+            the profile reproducible (leave blank for a random one). A mock is <strong>never published to
+            Home Assistant</strong>, so synthetic data never pollutes your HA statistics. Remove it anytime with the
             gateway's <em>Edit → Remove</em>.
           </p>
           <div class="flex flex-wrap items-end gap-3">
@@ -536,7 +680,6 @@
               <input type="number" min="1" max="8" class="form-control form-control-sm block mt-1" style="width:5rem" x-model.number="mockForm.units"></label>
             <label class="text-xs" style="color:var(--text-secondary)">Seed <span class="text-slate-600">(optional)</span>
               <input type="number" class="form-control form-control-sm block mt-1" style="width:6rem" x-model="mockForm.seed" placeholder="random"></label>
-            <div class="flex items-center justify-between gap-2 text-xs pb-1.5" style="color:var(--text-secondary)"><span>Publish to Home Assistant</span><button type="button" @click="mockForm.publish_ha = !mockForm.publish_ha" role="switch" :aria-checked="mockForm.publish_ha" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="mockForm.publish_ha ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="mockForm.publish_ha ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
             <button class="btn btn-primary btn-sm" @click="saveMockGateway()">Add mock</button>
           </div>
         </details>
@@ -590,7 +733,7 @@
         <label class="text-xs block" style="color:var(--text-secondary)">Description
           <input class="form-control form-control-sm block mt-1 w-full" x-model="gwEdit.description" placeholder="optional"></label>
         <div class="space-y-1.5 text-xs" style="color:var(--text-secondary)">
-          <div class="flex items-center justify-between gap-2"><span>Publish to Home Assistant (MQTT)</span><button type="button" @click="gwEdit.publish_ha = !gwEdit.publish_ha" role="switch" :aria-checked="gwEdit.publish_ha" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="gwEdit.publish_ha ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="gwEdit.publish_ha ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
+          <div x-show="!gwEdit.is_mock" class="flex items-center justify-between gap-2"><span>Publish to Home Assistant (MQTT)</span><button type="button" @click="gwEdit.publish_ha = !gwEdit.publish_ha" role="switch" :aria-checked="gwEdit.publish_ha" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="gwEdit.publish_ha ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="gwEdit.publish_ha ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
           <div class="flex items-center justify-between gap-2"><span>Enabled</span><button type="button" @click="gwEdit.enabled = !gwEdit.enabled" :disabled="gwEdit.is_default" role="switch" :aria-checked="gwEdit.enabled" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="[gwEdit.enabled ? 'bg-emerald-500' : 'bg-slate-600', gwEdit.is_default ? 'opacity-50 cursor-not-allowed' : '']"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="gwEdit.enabled ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
           <p x-show="gwEdit.is_default" class="text-[10px]" style="color:var(--text-faint)">The default gateway can't be disabled. Make another gateway the default first.</p>
           <div class="flex items-center justify-between gap-2"><span>Default gateway</span>
@@ -599,7 +742,7 @@
                     :disabled="!gwEdit.was_enabled" @click="makeDefaultGateway()">Make default</button></div>
           <p class="text-[10px]" style="color:var(--text-faint)">The default gateway is listed first and is the active gateway when the page opens, and whenever the active one is disabled or offline.<span x-show="!gwEdit.is_default && !gwEdit.was_enabled"> Enable this gateway before making it the default.</span></p>
         </div>
-        <p x-show="gwEdit.is_mock" class="text-[10px]" style="color:var(--text-faint)">Mock host/port are managed by the in-process emulator. Changing aPowers restarts it. Publishing synthetic energy to HA is discouraged.</p>
+        <p x-show="gwEdit.is_mock" class="text-[10px]" style="color:var(--text-faint)">Mock host/port are managed by the in-process emulator. Changing aPowers restarts it. A mock is never published to Home Assistant.</p>
         <p class="text-[10px]" style="color:var(--text-faint)">Poll interval &amp; timeout are global (Connection, above) and apply on reconnect.</p>
         <div class="flex items-center gap-2 pt-1">
           <button class="btn btn-primary btn-sm" @click="saveEditGateway()">Save Changes</button>

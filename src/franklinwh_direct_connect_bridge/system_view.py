@@ -119,6 +119,19 @@ def _device_alarms(gw, now: float) -> list[dict]:
     return out
 
 
+def _rollup(bat: dict, extras: dict | None) -> None:
+    """Several aPowers: one battery with the aGate's totals and the count, and each aPower
+    (the 60 s device read) in its hover and details (#703). Named as the Battery tab names
+    them (aP1, aP2 …). One aPower, or no unit reads yet, draws as before."""
+    units = (extras or {}).get("apowers") or []
+    if (bat.get("count") or 0) < 2 or len(units) < 2:
+        return
+    bat["rollup"] = True
+    bat["units"] = [{"id": f"ap{u['id']}", "name": f"aP{u['id']}",
+                     **{k: u[k] for k in ("soc_pct", "soh_pct", "current_a", "status")
+                        if u.get(k) is not None}} for u in units]
+
+
 def gateway_payload(gw, store=None) -> dict:
     summ = gw.last_summary or {}
     power = summ.get("power") or {}
@@ -161,19 +174,26 @@ def gateway_payload(gw, store=None) -> dict:
         "circuits": circuits,
         "generator": {"power_w": gen_w} if has_gen else None,
     }
+    _rollup(out["battery"], getattr(gw, "device_extras", None))
     energy = _energy(summ)
     if energy:
         out["energy_today"] = energy
-    alarms = _device_alarms(gw, time.time())
+    alarms = gateway_alarms(gw, store, time.time())
+    if store is not None or alarms:
+        out["alarms"] = alarms
+    return out
+
+
+def gateway_alarms(gw, store, now: float) -> list[dict]:
+    """The gateway's alarms as the diagram lists them: the devices' own, then the
+    bridge's open alerts for it. Home Assistant's Active Alarms counts these (#704)."""
+    alarms = _device_alarms(gw, now)
     if store is not None:
         try:
             alarms += _alarms(store, gw.id)
         except Exception as e:  # noqa: BLE001 - the view is still worth drawing without them
             log.debug("system view: alerts unread: %s", e)
-        out["alarms"] = alarms
-    elif alarms:
-        out["alarms"] = alarms
-    return out
+    return alarms
 
 
 # ── the site: its name from the location, and the weather now ─────────────────
@@ -188,6 +208,7 @@ def _forecast(cfg) -> dict | None:
     from . import db, pv_size, site_location
     if cfg is None or cfg.pv_latitude is None or cfg.pv_longitude is None:
         return None
+    st = None
     try:                                             # the default site's gateways (#675)
         st = db.get_store(cfg)
         kwp = site_location.effective(cfg, st, site_location.default_site(st))["kwp"]
@@ -201,7 +222,7 @@ def _forecast(cfg) -> dict | None:
         def run():
             try:
                 solar_forecast.forecast(cfg.pv_latitude, cfg.pv_longitude, kwp=kwp,
-                                        tilt=cfg.pv_tilt, azimuth=cfg.pv_azimuth)
+                                        tilt=cfg.pv_tilt, azimuth=cfg.pv_azimuth, store=st)
             finally:
                 _refreshing.release()
         threading.Thread(target=run, name="system-view-weather", daemon=True).start()

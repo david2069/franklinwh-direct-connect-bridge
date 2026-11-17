@@ -34,3 +34,19 @@ def test_the_workflow_runs_the_four_shared_jobs():
     assert sorted(re.findall(r"name: ([a-z]+-n?o?mqtt),", wf)) == [
         "docker-mqtt", "docker-nomqtt", "python-mqtt", "python-nomqtt"]
     assert "tools/install_smoke.py" in wf
+
+
+def test_mqtt_is_proved_by_the_bridges_own_device_not_the_mock():
+    """#711: a mock gateway is never published, so the smoke proves MQTT publishing with the
+    bridge's own device (Bridge heartbeat, Bridge problem, Bridge Version) and checks the
+    mock published nothing."""
+    p = "homeassistant"
+    have = [f"{p}/sensor/fwh_dc_bridge/heartbeat/config",
+            f"{p}/binary_sensor/fwh_dc_bridge/bridge_problem/config"]
+    assert smoke.missing_bridge_configs(have, p) == [
+        f"{p}/sensor/fwh_dc_bridge/bridge_version/config"]
+    have.append(f"{p}/sensor/fwh_dc_bridge/bridge_version/config")
+    assert smoke.missing_bridge_configs(have, p) == []
+    src = (ROOT / "tools/install_smoke.py").read_text()
+    assert "publishes no discovery" in src
+    assert "discovery configs are retained on the broker" in src

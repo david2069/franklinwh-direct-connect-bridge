@@ -54,6 +54,19 @@ def _record_modbus_leg(store, gw_id: str, summ: dict) -> bool:
     return True
 
 
+def ha_skip(settings: Settings, gw: GatewayState) -> frozenset:
+    """The Home Assistant entities this gateway has no active source for (#711): the cloud
+    ones unless the cloud can write it (C2), the Modbus ones unless this bridge's Modbus
+    client is on, and what a mock has no source for. Cheap: no I/O, so it runs every cycle."""
+    from . import battery_control
+    mock = bool(getattr(gw, "is_mock", False))
+    cloud = providers.cloud_can_write(settings, serial=gw.serial,
+                                      serial_locked=bool(getattr(gw, "serial_locked", False)),
+                                      is_mock=mock)
+    skip = entities.source_skip(cloud=cloud, modbus=battery_control.is_enabled())
+    return skip | (entities.MOCK_ABSENT_KEYS if mock else frozenset())
+
+
 def _fmt_outage(seconds: float | None) -> str:
     """An outage length in words. '4920s' is a number; '1h 22m' is an answer."""
     if seconds is None:
@@ -88,6 +101,11 @@ SWEEP_GAP_MAX_S = 3600
 
 #: How often the aGate's network state is read for Home Assistant (#134).
 NET_EVERY_S = 600
+#: How often the home-load forecast is worked out and published to HA (#713). No aGate
+#: read: hems on the stored history.
+LOAD_FORECAST_EVERY_S = 1800
+#: The TOU entities (#421) are worked out from the stored copy this often.
+TOU_EVERY_S = 60
 #: System view → Alarms: how often each aPower's 1705 alarmLevel and the aGate's 1829
 #: event count are read. Slow on purpose: the aGate is sensitive to load (#123).
 APOWER_ALARM_EVERY_S = 300
@@ -227,17 +245,18 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                 result = handle_command(key, payload, settings=settings, client=client,
                                         host=gw.active_host or gw.configured_host, gateway=gw)
                 log.info("[%s] control %s=%s -> %s", gw.id, key, payload, result)
+                if key.startswith("battery_command") and pub is not None:
+                    # Show the new value or force now, not at the next poll (#705).
+                    from . import battery_control as _bc
+                    st_now = dict(gw.last_state or {})
+                    st_now.update(_bc.ha_state(gw.active_host or gw.configured_host))
+                    pub.publish_state(st_now)
             except Exception as e:  # noqa: BLE001
                 log.warning("[%s] control %s failed: %s", gw.id, key, e)
 
-        skip = (entities.MOCK_ABSENT_KEYS if getattr(gw, "is_mock", False) else frozenset())
-        if not providers.cloud_can_write(settings, serial=gw.serial,
-                                         serial_locked=bool(getattr(gw, "serial_locked", False)),
-                                         is_mock=bool(getattr(gw, "is_mock", False))):
-            skip = skip | entities.RESERVE_KEYS       # C2: only when the cloud can write it
         pub = MqttPublisher(settings, node, device, command_handler=_on_control,
                             groups=entities.enabled_from_store(get_store(settings)),
-                            skip=skip)
+                            skip=ha_skip(settings, gw))
         pub.start()
         return pub
 
@@ -277,6 +296,8 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
     net_last = 0.0
     alarm_last = events_last = 0.0   # System view → Alarms (slow device reads)
     extras_last = 0.0                # scheduler's circuit/V2L/generator read (#698)
+    load_fc_last = 0.0               # Load Forecast to HA (#713)
+    tou_last = 0.0                   # TOU entities to HA (#421)
     next_sweep = 0.0
     sweep_gap = SWEEP_GAP_MIN_S
     prev: dict | None = None
@@ -337,6 +358,12 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                         gw.published_entities = len(pub.configs)
                         log.info("[%s] re-published HA discovery (UI request)", gw.id)
                         gw.republish_requested = False
+                    # A source switched on or off since the last cycle (#711): cloud
+                    # sign-in or sign-out, the Modbus client on or off. Adds or clears
+                    # just those entities; nothing is sent when nothing changed.
+                    if not gw.unpublish_requested:
+                        await asyncio.to_thread(pub.set_skip, ha_skip(settings, gw))
+                        gw.published_entities = len(pub.configs)
                     if gw.unpublish_requested:
                         await asyncio.to_thread(pub.clear_discovery)
                         log.info("[%s] cleared HA discovery entities (UI request)", gw.id)
@@ -404,6 +431,11 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                              gw.id, time.time() - starting_since)
                     starting_since = None
                 st = entities.state_payload(summ)   # the keys HA's templates read (#96)
+                # Battery wear (#713, hems): dispatch events and efficiency samples from
+                # this poll's readings. No device read; never breaks the poll.
+                if store is not None and summ.get("ok") and not starting:
+                    from . import wear
+                    wear.observe(store, gw.id, time.time(), summ.get("power") or {})
                 # aGate network (#134): a separate light read every NET_EVERY_S, never every
                 # poll (the aGate is sensitive to load, #123), and never for a mock.
                 if not getattr(gw, "is_mock", False) and summ.get("ok") and \
@@ -449,6 +481,22 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                 from .scheduler import off_grid_since as _ogs
                 off_grid_since = _ogs(off_grid_since, st.get("off_grid"), time.time())
                 st["off_grid_since"] = off_grid_since
+                # Home Assistant (#704): circuits, V2L and the generator from the 60 s read,
+                # minutes off-grid, and the alarms System view lists. Never breaks the poll.
+                try:
+                    from . import system_view as _sv
+                    from .scheduler import device_snapshot as _dsnap
+                    st.update(entities.device_payload(
+                        _dsnap(summ, getattr(gw, "device_extras", None))))
+                    _alarm_n = len(_sv.gateway_alarms(gw, store, time.time()))
+                except Exception as e:  # noqa: BLE001
+                    log.debug("[%s] HA extras not worked out: %s", gw.id, e)
+                    _alarm_n = None
+                st.update(entities.late_state(st, now=time.time(), alarms=_alarm_n))
+                # Battery Command entities (#705): the force this bridge holds on this aGate
+                # and the staged values. In memory, no Modbus.
+                from . import battery_control as _bc
+                st.update(_bc.ha_state(gw.active_host or gw.configured_host))
                 gw.last_state = st
                 # Only a poll that READ the gateway makes the snapshot fresh (#284). A
                 # failed poll stored an empty snapshot as new, so the scheduler kept
@@ -543,6 +591,32 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                     if not starting:
                         pub.publish_state(st)
                     pub.publish_availability(bool(summ.get("ok")))
+                    # Load Forecast (#713): hems on the stored history, off the poll's
+                    # thread, every half hour. Never breaks the poll.
+                    if store is not None and time.time() - load_fc_last >= LOAD_FORECAST_EVERY_S:
+                        load_fc_last = time.time()
+                        try:
+                            from . import load_forecast
+                            lf = await asyncio.to_thread(load_forecast.ha_payload, store,
+                                                         settings, gw.id)
+                            if lf is not None:
+                                pub.publish_load_forecast(lf)
+                        except Exception as e:  # noqa: BLE001
+                            log.debug("[%s] load forecast not published: %s", gw.id, e)
+                    # TOU entities (#421, #656): from the latest copy of the schedule,
+                    # no cloud read; only while the cloud is set up for this gateway.
+                    if (store is not None and time.time() - tou_last >= TOU_EVERY_S
+                            and "tou_schedule" not in ha_skip(settings, gw)):
+                        tou_last = time.time()
+                        try:
+                            from . import cloud_tou, site_time
+                            tp = cloud_tou.ha_payload(
+                                cloud_tou.latest(store, gw.id),
+                                site_time.now_known(gw.active_host or gw.configured_host))
+                            if tp is not None:
+                                pub.publish_tou(tp)
+                        except Exception as e:  # noqa: BLE001
+                            log.debug("[%s] TOU entities not published: %s", gw.id, e)
                 for title, msg in transitions(prev, summ, gw.label or gw.id):
                     await asyncio.to_thread(notifier.notify, title, msg)
                 # Configurable companion-push triggers + delivery log (FEAT-NOTIFY).

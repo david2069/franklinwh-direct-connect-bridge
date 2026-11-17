@@ -346,7 +346,8 @@ another, open Import again.
 (blank = current). A retailer has **Provider from** and **Provider until** the same way;
 both are optional and save blank. An empty date box stays blank (Safari otherwise greys
 in today's date, which nobody set). On a phone the two date boxes sit side by side at the
-same size. A meter has one tariff in force on any day, and each day is priced
+same size. "Today" here is the site's date (the aGate's time zone), so a plan starting
+today is in force from the site's midnight. A meter has one tariff in force on any day, and each day is priced
 with the tariff in force that day (energy, fixed charges, the `tariff.*` sensors). A
 tariff dated to start tomorrow takes over at midnight by itself. The billing period it
 interrupts is closed at the switch and shows in history under the tariff that priced it,
@@ -463,11 +464,47 @@ disagrees keeps its own, and the bridge log says so.
 
 ---
 
+## HEMS setup
+
+**Settings → Gateways → HEMS setup** (#713) describes your home for energy planning. It is
+optional and off until you switch it on. *Planning is only as accurate as your answers.*
+
+- **Always-on load** (kW): filled in from the quietest overnight hours of your own history
+  (00:00–06:00), marked **Please confirm**. Change it if it is wrong; saving confirms it.
+- **Usage periods:** your high, medium and low hours on a weekday and on a weekend day, from
+  the last four weeks of history. Tick **These look right** when they do.
+- **Heavy loads:** each large appliance you want planned around: what it is, how it is
+  measured (a Home Assistant power entity, an energy entity, or its nameplate kW), its power
+  and/or how long it runs, when it runs (times, or that it follows the weather), its circuit,
+  and how it may be controlled:
+  - *deferrable*: the energy it needs and the time it needs it by;
+  - *sheddable*: how long it may be off, how long it must stay on, and its priority;
+  - *soak*: soaks up energy when the export price is at or below a level, export is limited,
+    or the battery is full and exporting, up to a kWh quota.
+
+  An EV charger also asks for its kW, phases, how it is controlled, arrival and departure
+  times, and the energy needed.
+
+Each load is checked against what this bridge can control (shown on the card): the operating
+mode always; battery power and target SoC while the Modbus client is on; smart circuits when
+the gateway has them. A problem is listed under the load, such as a smart-circuit switch on a
+gateway with none. The checks and pre-fills come from hems, the shared energy engine. The
+answers are only recorded: nothing is switched or scheduled from them yet.
+
 ## Solar forecast
 
 ![Settings → Location & Prices → Location & Solar](../images/energy-and-costs/08-solar-forecast.png)
 
 Optional, and off until the bridge has a location. The forecast comes from Open-Meteo.
+
+**How it is worked out.** The bridge asks Open-Meteo for the hourly sunlight on your panels'
+tilt and direction and the air temperature. It turns that into kW for your array size, less
+about 15 % for the inverter and wiring, and less what hot panels lose (they make less in the
+heat). It then **learns from your own system**: each day it compares the forecast with the
+solar your gateways measured, and once it has five days with real sun it scales the forecast
+by measured ÷ forecast over the last 30 days. A shaded or oversized array is corrected this
+way. Changing the location, tilt, direction or solar size starts the learning afresh. The
+maths come from hems, the shared energy engine the bridges use.
 
 **Location & Solar** is under **Settings → Location & Prices**. The default site on
 Billing & Utilities → Plans & meters shows its location and solar size and links to it, the card

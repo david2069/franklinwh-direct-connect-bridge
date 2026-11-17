@@ -298,8 +298,8 @@
         <p class="text-xs" style="color:var(--text-secondary)" x-text="tou.reason"></p>
       </template>
       <template x-if="tou && tou.available && !tou.latest">
-        <p class="text-xs" style="color:var(--text-secondary)">No copy yet. The bridge reads it at start-up and
-          whenever TOU mode is set; <b>Sync now</b> reads it now.</p>
+        <p class="text-xs" style="color:var(--text-secondary)">No copy yet. The bridge reads it at start-up,
+          whenever TOU mode is set and once a day; <b>Sync now</b> reads it now.</p>
       </template>
       <template x-if="tou && tou.latest">
         <div class="space-y-3">
@@ -318,21 +318,68 @@
                 <div class="absolute top-0 bottom-0" :title="b.start + '–' + b.end + ' ' + b.dispatch"
                      :style="{ left: touPct(b.start) + '%', width: (touPct(b.end) - touPct(b.start)) + '%', background: touColour(b.dispatch_id) }"></div>
               </template>
-            </div>
-            <div class="mt-2 space-y-0.5">
-              <template x-for="(b, i) in tou.today" :key="i">
-                <div class="text-xs flex items-center gap-2" style="color:var(--text-secondary)">
-                  <span class="inline-block w-2.5 h-2.5 rounded-sm shrink-0" :style="{ background: touColour(b.dispatch_id) }"></span>
-                  <span class="font-mono" x-text="b.start + '–' + b.end"></span>
-                  <span style="color:var(--text-primary)" x-text="b.dispatch"></span>
-                  <span x-show="b.wave" x-text="'· ' + b.wave"></span>
-                </div>
+              <!-- the clashing minutes, outlined on the TOU bar too (owner 2026-11-18) -->
+              <template x-for="(m, k) in tou.bridge.clashes" :key="'tc' + k">
+                <div class="absolute top-0 bottom-0 rounded-sm pointer-events-none" data-testid="tou-bar-clash"
+                     :style="{ left: touPct(m.start) + '%', width: Math.max(0.4, touPct(m.end) - touPct(m.start)) + '%', boxShadow: 'inset 0 0 0 2px ' + (tou.tou_active ? 'var(--danger)' : 'var(--warn)') }"></div>
               </template>
+            </div>
+            <!-- This bridge's mode and Force schedules on the same 24 h scale, clashes marked
+                 (owner 2026-11-18: "visual time representation of conflicts") -->
+            <div x-show="tou.bridge && tou.bridge.spans.length" class="mt-1.5">
+              <div class="text-[11px] mb-0.5" style="color:var(--text-secondary)">This bridge's schedules</div>
+              <div class="relative h-4 rounded overflow-hidden" style="background:var(--surface-2)" data-testid="tou-bridge-bar">
+                <template x-for="(b, i) in tou.bridge.spans" :key="'bs' + i">
+                  <div class="absolute top-0 bottom-0 cursor-pointer" data-testid="tou-bridge-span"
+                       :title="touSpanTip(b)" @click="touTip = touTip === touSpanTip(b) ? '' : touSpanTip(b)"
+                       :style="{ left: touPct(b.start) + '%', width: Math.max(0.6, touPct(b.end) - touPct(b.start)) + '%', background: touSpanColour(b) }"></div>
+                </template>
+                <template x-for="(m, k) in tou.bridge.clashes" :key="'bc' + k">
+                  <div class="absolute top-0 bottom-0 pointer-events-none" data-testid="tou-clash-mark"
+                       :style="{ left: touPct(m.start) + '%', width: Math.max(0.6, touPct(m.end) - touPct(m.start)) + '%', background: 'repeating-linear-gradient(135deg, ' + (tou.tou_active ? 'var(--danger)' : 'var(--warn)') + ' 0 3px, transparent 3px 6px)' }"></div>
+                </template>
+              </div>
+            </div>
+            <div class="relative h-3 mt-0.5 text-[10px] font-mono" style="color:var(--text-secondary)" data-testid="tou-ticks">
+              <template x-for="h in [0, 6, 12, 18, 24]" :key="'t' + h">
+                <span class="absolute" :style="h === 0 ? { left: '0' } : h === 24 ? { right: '0' } : { left: (h / 24 * 100) + '%', transform: 'translateX(-50%)' }" x-text="h"></span>
+              </template>
+            </div>
+            <p x-show="touTip" class="text-[11px] mt-1" style="color:var(--text-primary)" data-testid="tou-span-tip" x-text="touTip"></p>
+            <p x-show="tou.today.some(b => b.buy != null || b.sell != null)" class="text-[11px] mt-2" style="color:var(--text-secondary)"
+               data-testid="tou-rate-unit">Rates in <span x-text="tou.latest.schedule.rate_unit"></span>.</p>
+            <!-- Today in columns (owner 2026-11-18: rows were hard to read) -->
+            <div class="overflow-x-auto mt-1">
+              <table class="w-full text-xs table-fixed" style="min-width:32rem" data-testid="tou-today-table"><colgroup><col style="width:22%"><col style="width:36%"><col style="width:20%"><col style="width:11%"><col style="width:11%"></colgroup>
+                <thead>
+                  <tr class="text-left" style="color:var(--text-secondary)">
+                    <th class="py-1 pr-3 font-medium">Time</th>
+                    <th class="py-1 pr-3 font-medium">Dispatch</th>
+                    <th class="py-1 pr-3 font-medium">Band</th>
+                    <th class="py-1 pr-3 font-medium text-right">Buy</th>
+                    <th class="py-1 font-medium text-right">Sell</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="(b, i) in tou.today" :key="i">
+                    <tr class="border-t" :style="{ borderColor: 'var(--border)' }">
+                      <td class="py-1.5 pr-3 font-mono whitespace-nowrap">
+                        <span class="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1" :style="{ background: touColour(b.dispatch_id) }"></span><span x-text="b.start + '–' + b.end"></span></td>
+                      <td class="py-1.5 pr-3" style="color:var(--text-primary)" x-text="b.dispatch"></td>
+                      <td class="py-1.5 pr-3 whitespace-nowrap" style="color:var(--text-secondary)" x-text="b.wave || '—'"></td>
+                      <td class="py-1.5 pr-3 text-right font-mono" data-testid="tou-rates" x-text="touRate(b.buy)"></td>
+                      <td class="py-1.5 text-right font-mono" x-text="touRate(b.sell)"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
             </div>
           </div>
           <div data-testid="tou-conflicts">
-            <div class="text-[10px] uppercase tracking-wide mb-1" style="color:var(--text-secondary)">Clashes with this bridge's schedules today: a Force that contradicts the TOU block</div>
-            <p x-show="!tou.conflicts.length" class="text-xs" style="color:var(--text-secondary)">None.</p>
+            <!-- toned down (owner 2026-11-18): a plain label, one line when there are none -->
+            <p x-show="!tou.conflicts.length" class="text-xs" style="color:var(--text-secondary)">No clashes today.</p>
+            <div x-show="tou.conflicts.length" class="text-xs font-medium mb-1" style="color:var(--text-primary)"
+                 title="A Force schedule whose direction contradicts the TOU block it runs in">Clashes today</div>
             <p x-show="tou.conflicts.length && !tou.tou_active" class="text-xs mb-1" style="color:var(--text-secondary)">
               TOU mode is off, so these don't clash now; they would if it were set.</p>
             <!-- One row per schedule and TOU block, in columns (owner 2026-11-16) -->
@@ -369,12 +416,36 @@
           <details class="text-xs">
             <summary class="cursor-pointer" style="color:var(--text-secondary)">All seasons</summary>
             <template x-for="(s, i) in tou.latest.schedule.seasons" :key="i">
-              <div class="mt-2">
-                <div style="color:var(--text-primary)" x-text="s.name + ' · months ' + s.months.join(', ')"></div>
+              <div class="mt-3">
+                <div class="font-medium" style="color:var(--text-primary)" x-text="s.name + ' · months ' + s.months.join(', ')"></div>
                 <template x-for="(d, j) in s.days" :key="j">
-                  <div class="ml-3" style="color:var(--text-secondary)">
-                    <span x-text="d.name + ': '"></span>
-                    <span x-text="d.blocks.map(b => b.start + '–' + b.end + ' ' + b.dispatch).join('; ')"></span>
+                  <div class="mt-1">
+                    <div style="color:var(--text-secondary)" x-text="d.name"></div>
+                    <div class="overflow-x-auto">
+                      <table class="w-full text-xs table-fixed" style="min-width:32rem" data-testid="tou-season-table"><colgroup><col style="width:22%"><col style="width:36%"><col style="width:20%"><col style="width:11%"><col style="width:11%"></colgroup>
+                        <thead>
+                          <tr class="text-left" style="color:var(--text-secondary)">
+                            <th class="py-1 pr-3 font-medium">Time</th>
+                            <th class="py-1 pr-3 font-medium">Dispatch</th>
+                            <th class="py-1 pr-3 font-medium">Band</th>
+                            <th class="py-1 pr-3 font-medium text-right">Buy</th>
+                            <th class="py-1 font-medium text-right">Sell</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <template x-for="(r, k) in touDayRows(d)" :key="k">
+                            <tr class="border-t" :style="{ borderColor: 'var(--border)' }">
+                              <td class="py-1 pr-3 font-mono whitespace-nowrap">
+                                <span x-show="r.dispatch_id != null" class="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1" :style="{ background: touColour(r.dispatch_id) }"></span><span x-text="r.start ? r.start + '–' + r.end : '—'"></span></td>
+                              <td class="py-1 pr-3" style="color:var(--text-primary)" x-text="r.dispatch || '—'"></td>
+                              <td class="py-1 pr-3 whitespace-nowrap" style="color:var(--text-secondary)" x-text="r.wave || '—'"></td>
+                              <td class="py-1 pr-3 text-right font-mono" x-text="touRate(r.buy)"></td>
+                              <td class="py-1 text-right font-mono" x-text="touRate(r.sell)"></td>
+                            </tr>
+                          </template>
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </template>
               </div>

@@ -19,6 +19,44 @@ ENTITIES: list[dict[str, Any]] = [
     {"key": "solar_w", "name": "Solar Power", "unit": "W", "device_class": "power", "state_class": "measurement", "group": "power"},
     {"key": "battery_w", "name": "Battery Power", "unit": "W", "device_class": "power", "state_class": "measurement", "group": "power"},
     {"key": "load_w", "name": "Load Power", "unit": "W", "device_class": "power", "state_class": "measurement", "group": "power"},
+    # The home-load forecast (#713, hems): this hour's kW, with HAEO's 30-minute ``forecast``
+    # series as an attribute, on its own topic, published every half hour (not each poll).
+    # No state_class: a forecast is not a measurement for HA's statistics.
+    {"key": "load_forecast", "name": "Load Forecast", "unit": "kW", "device_class": "power",
+     "state_class": None, "group": "power", "topic": "load_forecast",
+     "attributes": "{{ {'forecast': value_json.forecast, 'method': value_json.method} | tojson }}",
+     "value_key": "kw"},
+    # The FranklinWH TOU schedule (#421, #656): worked out each minute from the bridge's
+    # latest copy of it (cloud_tou), so no cloud read; published while the cloud is set up
+    # for this gateway. Rates in the local currency per kWh (assumed, please confirm).
+    {"key": "tou_schedule", "name": "TOU Schedule", "unit": None, "device_class": None,
+     "state_class": None, "group": "core", "topic": "tou", "source": "cloud",
+     "value_key": "schedule",
+     "attributes": "{{ {'utility': value_json.utility, 'cloud_updated': value_json.cloud_updated,"
+                   " 'checked': value_json.checked, 'rate_unit': value_json.rate_unit,"
+                   " 'today': value_json.today} | tojson }}"},
+    {"key": "tou_dispatch_now", "name": "TOU Dispatch Now", "unit": None, "device_class": None,
+     "state_class": None, "group": "core", "topic": "tou", "source": "cloud",
+     "value_key": "dispatch_now",
+     "attributes": "{{ {'start': value_json.dispatch_now_start,"
+                   " 'end': value_json.dispatch_now_end} | tojson }}"},
+    {"key": "tou_dispatch_next", "name": "TOU Dispatch Next", "unit": None, "device_class": None,
+     "state_class": None, "group": "core", "topic": "tou", "source": "cloud",
+     "value_key": "dispatch_next",
+     "attributes": "{{ {'start': value_json.dispatch_next_start,"
+                   " 'end': value_json.dispatch_next_end} | tojson }}"},
+    {"key": "tou_tariff_now", "name": "TOU Tariff Now", "unit": None, "device_class": None,
+     "state_class": None, "group": "core", "topic": "tou", "source": "cloud",
+     "value_key": "tariff_now",
+     "attributes": "{{ {'buy': value_json.tariff_now_buy, 'sell': value_json.tariff_now_sell,"
+                   " 'start': value_json.tariff_now_start, 'end': value_json.tariff_now_end,"
+                   " 'rate_unit': value_json.rate_unit} | tojson }}"},
+    {"key": "tou_tariff_next", "name": "TOU Tariff Next", "unit": None, "device_class": None,
+     "state_class": None, "group": "core", "topic": "tou", "source": "cloud",
+     "value_key": "tariff_next",
+     "attributes": "{{ {'buy': value_json.tariff_next_buy, 'sell': value_json.tariff_next_sell,"
+                   " 'start': value_json.tariff_next_start,"
+                   " 'rate_unit': value_json.rate_unit} | tojson }}"},
     {"key": "generator_w", "name": "Generator Power", "unit": "W", "device_class": "power", "state_class": "measurement", "group": "power"},
     {"key": "mode", "name": "Operating Mode", "unit": None, "device_class": None, "state_class": None, "group": "core"},
     {"key": "latency_ms", "name": "Round-trip Latency", "unit": "ms", "device_class": None, "state_class": "measurement", "group": "diagnostic"},
@@ -65,7 +103,37 @@ ENTITIES: list[dict[str, Any]] = [
     {"key": "relay_main2", "name": "Main Relay 2", "ha_type": "binary_sensor", "unit": None, "device_class": "power", "state_class": None, "group": "diagnostic"},
     {"key": "relay_grid2", "name": "Grid Relay 2", "ha_type": "binary_sensor", "unit": None, "device_class": "power", "state_class": None, "group": "diagnostic"},
     {"key": "relay_black_start", "name": "Black Start Relay", "ha_type": "binary_sensor", "unit": None, "device_class": "power", "state_class": None, "group": "diagnostic"},
+    # #704: readings the bridge already has. VPP and off-grid from every poll; the reason
+    # and minutes only while off-grid (the scheduler's grid.offgrid_reason / _min).
+    {"key": "status_vpp", "name": "VPP Active", "ha_type": "binary_sensor", "unit": None, "device_class": None, "state_class": None, "group": "core"},
+    {"key": "offgrid_reason", "name": "Off-Grid Reason", "unit": None, "device_class": None, "state_class": None, "group": "core"},
+    {"key": "offgrid_min", "name": "Off-Grid Duration", "unit": "min", "device_class": "duration", "state_class": "measurement", "group": "core"},
+    {"key": "generator_today_kwh", "name": "Generator Today", "unit": "kWh", "device_class": "energy", "state_class": "total_increasing", "group": "energy"},
+    # Smart circuits, V2L and the generator from the 60 s device read (#700). All three
+    # circuits, as the Smart Circuit 1-3 switches are; a circuit not read is unknown.
+    *[e for n in (1, 2, 3) for e in (
+        {"key": f"circuit_{n}_power_w", "name": f"Smart Circuit {n} Power", "unit": "W", "device_class": "power", "state_class": "measurement", "group": "power"},
+        {"key": f"circuit_{n}_today_kwh", "name": f"Smart Circuit {n} Energy Today", "unit": "kWh", "device_class": "energy", "state_class": "total_increasing", "group": "energy"},
+    )],
+    {"key": "v2l_power_w", "name": "V2L Power", "unit": "W", "device_class": "power", "state_class": "measurement", "group": "power"},
+    {"key": "v2l_export_kwh", "name": "V2L Export Energy", "unit": "kWh", "device_class": "energy", "state_class": "total_increasing", "group": "energy"},
+    {"key": "v2l_import_kwh", "name": "V2L Import Energy", "unit": "kWh", "device_class": "energy", "state_class": "total_increasing", "group": "energy"},
+    {"key": "generator_state", "name": "Generator State", "unit": None, "device_class": None, "state_class": None, "group": "power"},
+    {"key": "generator_enabled", "name": "Generator Enabled", "ha_type": "binary_sensor", "unit": None, "device_class": None, "state_class": None, "group": "diagnostic"},
+    # The gateway's alarms as System view lists them: the devices' own and the bridge's
+    # open alerts for it.
+    {"key": "active_alarms", "name": "Active Alarms", "unit": None, "device_class": None, "state_class": "measurement", "group": "diagnostic"},
 ]
+
+#: Scheduler device sensor (scheduler.device_snapshot, #698) -> its HA state key (#704).
+DEVICE_KEYS = {
+    **{f"circuit.{n}.power_w": f"circuit_{n}_power_w" for n in (1, 2, 3)},
+    **{f"circuit.{n}.today_kwh": f"circuit_{n}_today_kwh" for n in (1, 2, 3)},
+    "v2l.power_w": "v2l_power_w",
+    "v2l.export_kwh": "v2l_export_kwh",
+    "v2l.import_kwh": "v2l_import_kwh",
+    "generator.state_desc": "generator_state",
+}
 
 #: 1707 field -> relay entity key. raw 1 is FranklinWH's "OPEN", which is conducting
 #: (solar.py _relay; mainRelay1Status read 0 through a real island, docs/OFFGRID_DESIGN.md).
@@ -103,15 +171,57 @@ CONTROLS: list[dict[str, Any]] = [
     # already makes. Names follow the Modbus Bridge's. No Emergency Backup number: that
     # mode's reserve is fixed at 100 % and can't be changed, so a control would do nothing.
     {"key": "reserve_soc_tou", "name": "TOU Reserve SOC", "ha_type": "number",
-     "state_key": "reserve_tou_pct", "reserve_mode": "tou"},
+     "state_key": "reserve_tou_pct", "reserve_mode": "tou", "source": "cloud"},
     {"key": "reserve_soc_self", "name": "Self-Consumption Reserve SOC", "ha_type": "number",
-     "state_key": "reserve_self_pct", "reserve_mode": "self"},
+     "state_key": "reserve_self_pct", "reserve_mode": "self", "source": "cloud"},
     # Go off-grid / reconnect (1723), as Control → Off-grid does, without its confirm step
     # (owner, 2026-11-03). State is 1723 offgridSet, what was REQUESTED: an outage islands
     # the house with the switch off, and Grid Status says which it is.
     {"key": "off_grid", "name": "Go Off-Grid", "ha_type": "switch",
      "state_key": "off_grid_requested_on"},
+    # Battery Command (#705): the Modbus Bridge's entities, names, options and ranges. They
+    # run the Battery tab's Battery Command (battery_control: the Modbus TCP Server's
+    # power setpoint, with the bridge's watchdog) and stage into its values.
+    {"key": "battery_command", "name": "Battery Command", "ha_type": "select",
+     "options": ["Not Active", "Force Charge", "Force Discharge", "Force Standby", "Release"],
+     "state_key": "battery_command_state", "battery": True, "source": "modbus"},
+    {"key": "battery_command_power", "name": "Command Power", "ha_type": "number",
+     "state_key": "battery_command_power_w", "unit": "W", "device_class": "power",
+     "min": 0, "max": 5000, "step": 100, "battery": True, "source": "modbus"},
+    {"key": "battery_command_power_pct", "name": "Command Power %", "ha_type": "number",
+     "state_key": "battery_command_power_pct", "unit": "%", "min": 0, "max": 100, "step": 5,
+     "battery": True, "source": "modbus"},
+    {"key": "battery_command_duration", "name": "Command Duration", "ha_type": "number",
+     "state_key": "battery_command_duration_s", "unit": "s", "device_class": "duration",
+     "min": 0, "max": 7200, "step": 60, "battery": True, "source": "modbus"},
+    {"key": "battery_command_target_soc", "name": "Target SoC", "ha_type": "number",
+     "state_key": "battery_command_target_soc", "unit": "%", "min": 0, "max": 100, "step": 5,
+     "battery": True, "source": "modbus"},
 ]
+
+#: Where each entity's value comes from, or where a control writes (#711): ``local`` the
+#: aGate's Direct Connect API, ``cloud`` the FranklinWH cloud, ``modbus`` this bridge's
+#: Modbus client. An entity is published only while its source is set up and active; the
+#: guide's entity tables give it as the Source column. Unmarked entries are local.
+SOURCES = ("local", "cloud", "modbus")
+for _e in ENTITIES + CONTROLS:
+    _e.setdefault("source", "local")
+
+
+def source_keys(source: str) -> frozenset:
+    """The keys of every entity and control that come from ``source``."""
+    return frozenset(e["key"] for e in ENTITIES + CONTROLS if e["source"] == source)
+
+
+def source_skip(*, cloud: bool, modbus: bool) -> frozenset:
+    """The keys to leave out of discovery while the cloud or the Modbus client isn't
+    active for a gateway (#711). The local API is the gateway itself: always active."""
+    return ((frozenset() if cloud else source_keys("cloud"))
+            | (frozenset() if modbus else source_keys("modbus")))
+
+
+#: The Battery Command entities (#705). A mock has no Modbus TCP Server, so none for it.
+BATTERY_KEYS = frozenset(c["key"] for c in CONTROLS if c.get("battery"))
 
 #: The reserve controls, left out of discovery unless the cloud can write this gateway.
 RESERVE_KEYS = frozenset(c["key"] for c in CONTROLS if c.get("reserve_mode"))
@@ -134,6 +244,14 @@ HEARTBEAT_EVERY_S = 60
 #: per bridge (spec §11 — it proves the process and its alert monitor are alive, so it
 #: must not depend on a gateway or a poller). `fwh_dc` per the identity plan (#92).
 BRIDGE_NODE = "fwh_dc_bridge"
+
+
+def load_forecast_topic(node: str, prefix: str) -> str:
+    return f"{prefix}/{node}/load_forecast"
+
+
+def tou_topic(node: str, prefix: str) -> str:
+    return f"{prefix}/{node}/tou"
 
 
 def alerts_topic(node: str, prefix: str) -> str:
@@ -183,6 +301,32 @@ def bridge_problem_config(prefix: str, discovery_prefix: str) -> tuple[str, dict
         "json_attributes_topic": topic,
         "json_attributes_template": ("{{ {'level': value_json.level, 'open': value_json.open,"
                                      " 'alerts': value_json.alerts} | tojson }}"),
+    })
+
+
+def version_topic(prefix: str) -> str:
+    return f"{prefix}/{BRIDGE_NODE}/version"
+
+
+def bridge_version_config(prefix: str, discovery_prefix: str) -> tuple[str, dict[str, Any]]:
+    """(config_topic, payload) for the bridge-level "Bridge Version" (#706): the version as
+    the state; platform, install type, integrations and libraries as its attributes."""
+    topic = version_topic(prefix)
+    return (f"{discovery_prefix}/sensor/{BRIDGE_NODE}/bridge_version/config", {
+        "name": "Bridge Version",
+        "unique_id": f"franklinwh_{BRIDGE_NODE}_bridge_version",
+        "object_id": f"franklinwh_{BRIDGE_NODE}_bridge_version",
+        "state_topic": topic,
+        "entity_category": "diagnostic",
+        "icon": "mdi:information-outline",
+        "device": bridge_device_info(),
+        "value_template": "{{ value_json.version }}",
+        "json_attributes_topic": topic,
+        "json_attributes_template": ("{{ {'platform': value_json.platform,"
+                                     " 'install_type': value_json.install_type,"
+                                     " 'home_assistant': value_json.home_assistant,"
+                                     " 'integrations': value_json.integrations,"
+                                     " 'libraries': value_json.libraries} | tojson }}"),
     })
 
 
@@ -275,7 +419,11 @@ _HA_KEYS = {
     "kwh_fhp_di": "battery_discharge_today_kwh",
     "kwh_load": "load_today_kwh",
     "grid_freq_hz": "grid_frequency_hz",
+    "kwh_gen": "generator_today_kwh",
 }
+
+#: off_grid_kind -> Off-Grid Reason, the words the scheduler and notifications use.
+OFFGRID_REASON = {"simulated": "user requested", "outage": "grid outage"}
 
 
 def state_payload(summary: dict) -> dict[str, Any]:
@@ -304,6 +452,11 @@ def state_payload(summary: dict) -> dict[str, Any]:
     if og is not None:
         st["status_grid_status"] = (GRID_STATUS.get(st.get("off_grid_kind"), "OffGrid")
                                     if og else "Connected")
+    if og:
+        st["offgrid_reason"] = OFFGRID_REASON.get(st.get("off_grid_kind"), "unknown")
+    vpp = st.get("vpp")
+    if vpp is not None:
+        st["status_vpp"] = "ON" if vpp else "OFF"
     active = next((m for m in (summary.get("mode") or {}).get("modes") or []
                    if m.get("active")), None)
     if active and active.get("reserved_soc") is not None:
@@ -325,6 +478,29 @@ def state_payload(summary: dict) -> dict[str, Any]:
         st["battery_status"] = ("charging" if bw < 0 else "discharging" if bw > 0
                                 else "standby")
     return st
+
+
+def device_payload(snap: dict) -> dict[str, Any]:
+    """Smart circuits, V2L and the generator for HA (#704), from the scheduler's device
+    snapshot (#698). A value not read is left out, so HA shows unknown, never 0."""
+    out = {ha: snap[k] for k, ha in DEVICE_KEYS.items() if snap.get(k) is not None}
+    en = snap.get("generator.enabled")
+    if en is not None:
+        out["generator_enabled"] = "ON" if en else "OFF"
+    return out
+
+
+def late_state(st: dict, *, now: float, alarms: int | None) -> dict[str, Any]:
+    """What the poller knows only after the state is built (#704): minutes off-grid, from
+    the period's start it keeps in ``st`` (#463), and the active alarms count."""
+    from ..scheduler import offgrid_min
+    out: dict[str, Any] = {}
+    mins = offgrid_min(st, now)
+    if mins is not None:
+        out["offgrid_min"] = mins
+    if alarms is not None:
+        out["active_alarms"] = alarms
+    return out
 
 
 def display_precision(e: dict) -> int | None:
@@ -386,8 +562,18 @@ def device_info(node: str, serial: str, firmware: str | None = None, *,
 
 #: Keys that only a REAL gateway has a source for (the emulator models no network, #134).
 NETWORK_KEYS = frozenset(e["key"] for e in ENTITIES if e["key"].startswith("net_"))
+#: ...nor the smart-circuit and V2L meter (1411, #704): the emulator reports no meter
+#: fields, so a mock has no watts or kWh for them.
+METER_KEYS = frozenset(v for k, v in DEVICE_KEYS.items() if not k.startswith("generator."))
 #: ...nor the 1707 relays (#386). A mock gateway publishes none of these.
-MOCK_ABSENT_KEYS = NETWORK_KEYS | frozenset(RELAY_KEYS.values()) | RESERVE_KEYS
+MOCK_ABSENT_KEYS = (NETWORK_KEYS | frozenset(RELAY_KEYS.values()) | RESERVE_KEYS | METER_KEYS
+                    | BATTERY_KEYS)
+#: The TOU schedule's entities (#421), from the cloud's schedule.
+TOU_KEYS = frozenset(e["key"] for e in ENTITIES if e.get("topic") == "tou")
+#: Entities on their own topic, not in the gateway's state JSON (#713).
+OWN_TOPIC_KEYS = frozenset(e["key"] for e in ENTITIES if e.get("topic"))
+#: Published only while the gateway is off-grid (#704); absent (unknown) on the grid.
+OFF_GRID_ONLY_KEYS = frozenset({"offgrid_reason", "offgrid_min"})
 
 
 def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: str, groups=None,
@@ -409,6 +595,11 @@ def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: st
             "availability_topic": avail_topic,
             "device": device,
         }
+        if e.get("topic"):              # its own topic, with attributes (#713)
+            cfg["state_topic"] = f"{prefix}/{node}/{e['topic']}"
+            cfg["value_template"] = "{{ value_json.%s }}" % e["value_key"]
+            cfg["json_attributes_topic"] = cfg["state_topic"]
+            cfg["json_attributes_template"] = e["attributes"]
         if e["unit"]:
             cfg["unit_of_measurement"] = e["unit"]
         if e["device_class"]:
@@ -447,8 +638,12 @@ def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: st
         if c["ha_type"] == "select":
             cfg["options"] = c["options"]
         if c["ha_type"] == "number":
-            cfg.update({"min": 0, "max": 100, "step": 1, "unit_of_measurement": "%",
+            # 0-100 % in steps of 1 (the reserves) unless the control says otherwise.
+            cfg.update({"min": c.get("min", 0), "max": c.get("max", 100),
+                        "step": c.get("step", 1), "unit_of_measurement": c.get("unit", "%"),
                         "mode": "box"})
+            if c.get("device_class"):
+                cfg["device_class"] = c["device_class"]
         if c["ha_type"] == "switch":
             # The state JSON carries a bool; HA needs the payloads spelled out.
             cfg["payload_on"] = "ON"

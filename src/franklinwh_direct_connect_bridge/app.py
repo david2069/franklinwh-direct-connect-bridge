@@ -1317,6 +1317,7 @@ def create_app() -> FastAPI:
             _last_status = None   # only log cloud status on a real CHANGE (see Logs policy)
             _fail_streak = 0      # for failure VISIBILITY without 5-min spam (onset + recovery)
             _tou_mode, _tou_synced = "", False   # the TOU schedule's copy (cloud_tou)
+            _tou_last_try = None                  # its last read, for the daily one (#656)
             while True:
                 _workers.registry.beat("cloud-status", state=_workers.WorkerState.RUNNING)
                 ok = False
@@ -1339,13 +1340,15 @@ def create_app() -> FastAPI:
                             # Logs policy: startup, state changes and errors). A transient unknown
                             # (empty mode -> "?") is skipped so it can't flap the log.
                             mode = data.get("effective_mode") or ""
-                            # A copy of the FranklinWH TOU schedule at start-up and when
-                            # TOU mode is set (owner 2026-11-16). One try each: a failure
-                            # is logged, not retried every pass.
+                            # A copy of the FranklinWH TOU schedule at start-up, when
+                            # TOU mode is set (owner 2026-11-16) and once a day (#656). One
+                            # try each: a failure is logged, not retried every pass.
                             from . import cloud_tou
-                            why = cloud_tou.sync_reason(mode, _tou_mode, _tou_synced)
+                            why = cloud_tou.sync_reason(mode, _tou_mode, _tou_synced,
+                                                        last_try=_tou_last_try, now=_t.time())
                             _tou_mode, _tou_synced = mode or _tou_mode, True
                             if why:
+                                _tou_last_try = _t.time()
                                 try:
                                     tou = cloud_tou.sync(db.get_store(get_settings()),
                                                          get_settings(), target.id,
@@ -2288,7 +2291,7 @@ def create_app() -> FastAPI:
             "enabled": bool(row.get("enabled")),
             "is_mock": bool(row.get("is_mock")),
             "mock_units": row.get("mock_units"),
-            "publish_ha": bool(row.get("publish_ha")),
+            "publish_ha": bool(row.get("publish_ha")) and not row.get("is_mock"),
             "is_default": bool(row.get("is_default")),
             "meter_id": row.get("meter_id"),
             "description": row.get("description") or "",
@@ -2416,7 +2419,9 @@ def create_app() -> FastAPI:
         import uuid
         gid = uuid.uuid4().hex[:12]
         seed = mockgw.seed_for(gid, req.mock_seed) if req.is_mock else None
-        publish_ha = (not req.is_mock) if req.publish_ha is None else bool(req.publish_ha)
+        # A mock is never published (#711); a real gateway is unless the caller says not.
+        publish_ha = False if req.is_mock else (True if req.publish_ha is None
+                                                else bool(req.publish_ha))
         row = st.create_gateway(
             gw_id=gid, label=req.label, host=("127.0.0.1" if req.is_mock else req.host),
             port=req.port, is_default=(current is None), enabled=(req.enabled or current is None),
@@ -2447,6 +2452,8 @@ def create_app() -> FastAPI:
                 f"'{before['label']}' is the default gateway. Make another gateway the "
                 "default first." if is_default else _default_taken(_default_row(st))))
         fields.pop("is_default", None)
+        if before.get("is_mock") and fields.get("publish_ha"):
+            raise HTTPException(422, "A mock gateway is never published to Home Assistant.")
         released = None
         if fields.get("enabled") is False and before.get("enabled"):
             if is_default:
@@ -4266,6 +4273,58 @@ def create_app() -> FastAPI:
         return {"values": system_setup.values(st, get_settings(), gateway, _gw_host(gateway)),
                 "spec": system_setup.spec()}
 
+    @app.get("/api/wear")
+    def api_wear(gateway: str = Depends(_gateway_q)):
+        """Battery wear for one gateway (#713, hems): the warranty setup fields (the cloud
+        pre-fills, please confirm), the wear cost per kWh, the throughput pace, SoH,
+        round-trip efficiency and the last dispatch events. No device read."""
+        from . import wear
+        _gw_or_404(gateway)
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        return wear.report(st, get_settings(), gateway)
+
+    @app.put("/api/wear")
+    def api_wear_put(body: dict, gateway: str = Depends(_gateway_q)):
+        """Set warranty fields (null clears one back to the pre-fill). No device write."""
+        from . import wear
+        _gw_or_404(gateway)
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        try:
+            wear.save(st, gateway, body)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+        return wear.report(st, get_settings(), gateway)
+
+    @app.get("/api/hems/setup")
+    def api_hems_setup(gateway: str = Depends(_gateway_q)):
+        """HEMS setup, opt-in (#713, hems.loads): the notice, the always-on load and usage
+        periods pre-filled from history (please confirm), and each load checked against
+        what this bridge can control. Records answers only; controls nothing."""
+        from . import hems_setup
+        _gw_or_404(gateway)
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        return hems_setup.view(st, get_settings(), gateway)
+
+    @app.put("/api/hems/setup")
+    def api_hems_setup_put(body: dict, gateway: str = Depends(_gateway_q)):
+        """Save HEMS setup answers (null clears one). No device write."""
+        from . import hems_setup
+        _gw_or_404(gateway)
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        try:
+            hems_setup.save(st, gateway, body)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+        return hems_setup.view(st, get_settings(), gateway)
+
     _install_modes: dict[str, tuple] = {}   # host -> (expires_monotonic, mode labels)
     _install_history: dict[str, tuple] = {}  # gateway id -> (expires_monotonic, history)
 
@@ -4946,8 +5005,11 @@ def create_app() -> FastAPI:
     # franklinwh-modbus library) — independent of the modbus-bridge service. Until
     # that path is installed + configured we report it plainly; the widget stays a
     # read-only control rather than a button that lies.
-    _batt_cmd = {"power_w": 0, "power_pct": 100, "power_mode": "pct",
-                 "duration_s": 0, "target_soc": 0, "active": "Not Active", "result": ""}
+    # The staged Battery Command values, shared with Home Assistant's Battery Command
+    # entities (#705); fresh for each app, as before.
+    from . import battery_control as _bc_mod
+    _bc_mod.reset_staged()
+    _batt_cmd = _bc_mod.STAGED
     #: Availability per gateway host (#349): host -> {"ts", "val"}.
     _avail_cache: dict = {}
 
@@ -5033,23 +5095,16 @@ def create_app() -> FastAPI:
         Executing actually moves the battery, so it is gated on allow_writes AND a
         reachable, configured Modbus path — otherwise it refuses with the reason."""
         slug, value = req.slug, req.value
+        from . import battery_control
         # Parameter slugs just stage the value for the next command.
-        if slug == "battery_command_power":
-            _batt_cmd["power_w"] = int(float(value or 0)); _batt_cmd["power_mode"] = "w"
-            return {"ok": True, "result": "power set"}
-        if slug == "battery_command_power_pct":
-            _batt_cmd["power_pct"] = int(float(value or 0)); _batt_cmd["power_mode"] = "pct"
-            return {"ok": True, "result": "power% set"}
-        if slug == "battery_command_duration":
-            _batt_cmd["duration_s"] = int(float(value or 0)); return {"ok": True, "result": "duration set"}
-        if slug == "battery_command_target_soc":
-            _batt_cmd["target_soc"] = int(float(value or 0)); return {"ok": True, "result": "target set"}
+        staged = battery_control.stage(slug, value)
+        if staged is not None:
+            return staged
         if slug != "battery_command":
             raise HTTPException(status_code=422, detail=f"unknown slug '{slug}'")
 
         # Executing a Force/Release command — this MOVES the battery.
         _guard_writes()
-        from . import battery_control
         gw = _gw_or_404(gateway)       # the gateway on screen (#349), else the default
         host = _modbus_host(gateway)
         if not host:
@@ -5061,47 +5116,12 @@ def create_app() -> FastAPI:
                 return (getattr(gw, "last_state", {}) or {}).get("soc")
             except Exception:  # noqa: BLE001
                 return None
-        def _batt_log(status, detail):
-            try:
-                st = _ha_store()
-                st.log_schedule_event("_batt", "Battery dispatch", status, detail)
-                # A clean end closes the persisted row so a later boot reconcile does
-                # not treat this widget dispatch as interrupted.
-                if status == "dispatch-end" and hasattr(st, "end_active_dispatches"):
-                    st.end_active_dispatches(host=host, status="ended")
-            except Exception:  # noqa: BLE001
-                pass
-        out = battery_control.execute(
-            value, host=host, power_w=_batt_cmd["power_w"], power_pct=_batt_cmd["power_pct"],
-            power_mode=_batt_cmd["power_mode"], duration_s=_batt_cmd["duration_s"],
-            target_soc=_batt_cmd["target_soc"], soc_getter=_batt_soc, on_event=_batt_log,
-            dry_run=dry)
-        # Persist a widget-initiated force so it, too, is covered by the boot reconcile
-        # policy (an interrupted one no longer falls to the generic orphan alert).
-        _force_dirn = {"Force Charge": "charge", "Force Discharge": "discharge",
-                       "Force Standby": "standby"}.get(value)
         try:
             store = _ha_store()
-            if out.get("ok") and not dry and _force_dirn and hasattr(store, "record_dispatch"):
-                mode = _batt_cmd["power_mode"]
-                mag = int(_batt_cmd["power_w"] if mode == "w" else _batt_cmd["power_pct"])
-                signed = (abs(mag) if _force_dirn == "charge"
-                          else -abs(mag) if _force_dirn == "discharge" else 0)
-                dur = int(_batt_cmd["duration_s"] or 0)
-                store.record_dispatch(
-                    schedule_id="_widget", name="Battery Control (widget)",
-                    gateway_id=gw.id or None,
-                    host=host, direction=_force_dirn, watts=signed, power_mode=mode,
-                    target_soc=int(_batt_cmd["target_soc"] or 0), window_start_ts=time.time(),
-                    window_end_ts=(time.time() + dur) if dur else None)
-            elif out.get("ok") and not dry and value in ("Release", "Not Active") \
-                    and hasattr(store, "end_active_dispatches"):
-                store.end_active_dispatches(host=host, status="ended")
-        except Exception:  # noqa: BLE001
-            pass
-        if out.get("active"):
-            _batt_cmd["active"] = out["active"]
-        _batt_cmd["result"] = out.get("result", "")
+        except Exception:  # noqa: BLE001 — no store: the command still runs, unrecorded
+            store = None
+        out = battery_control.run_command(value, host=host, gateway_id=gw.id,
+                                          soc_getter=_batt_soc, store=store, dry_run=dry)
         if not out.get("ok"):
             _avail_invalidate()      # the path may have changed: re-check on the next GET
         return out
@@ -5325,16 +5345,17 @@ def create_app() -> FastAPI:
         mode = ((gw.last_state or {}).get("mode") if gw else "") or (gw.cloud_mode if gw else "")
         out = {"available": gw is not None, "reason": why, "mode": mode or "",
                "tou_active": cloud_tou.is_tou(mode), "latest": None, "today": [],
-               "conflicts": [], "history": []}
+               "conflicts": [], "bridge": {"spans": [], "clashes": []}, "history": []}
         if gw is None or st is None:
             return out
         cur = cloud_tou.latest(st, gateway)
         if cur is None:
             return out
         now = _site_now(gateway)
-        out.update(latest=cur, today=cloud_tou.blocks_on(cur["schedule"], now.date()),
-                   conflicts=cloud_tou.conflicts(cur["schedule"], _ha_store().schedules(),
-                                                 now, gateway),
+        entries = _ha_store().schedules()
+        out.update(latest=cur, today=cloud_tou.blocks_with_rates(cur["schedule"], now.date()),
+                   conflicts=cloud_tou.conflicts(cur["schedule"], entries, now, gateway),
+                   bridge=cloud_tou.bridge_today(cur["schedule"], entries, now, gateway),
                    history=st.cloud_tou_history(gateway))
         return out
 
@@ -7362,6 +7383,8 @@ def create_app() -> FastAPI:
         gw = _gw_or_404(gateway)
         if not s.mqtt_enabled:
             return {"ok": False, "detail": "MQTT is disabled"}
+        if gw.is_mock:
+            return {"ok": False, "detail": "A mock gateway is never published to Home Assistant."}
         st = _gw_store()
         row = st.gateway(gw.id) if st is not None else None
         if row is not None and not row.get("publish_ha"):
@@ -8070,7 +8093,8 @@ def create_app() -> FastAPI:
                     "reason": "Please confirm your solar size in Settings → Location & Prices → "
                               "Location & Solar: the gateway hasn't reported it yet."}
         fc = solar_forecast.forecast(loc["latitude"], loc["longitude"], kwp=loc["kwp"],
-                                     tilt=loc["pv_tilt"], azimuth=loc["pv_azimuth"], force=force)
+                                     tilt=loc["pv_tilt"], azimuth=loc["pv_azimuth"], force=force,
+                                     store=_gw_store())
         fill = None                    # will today's solar fill the battery? (#676)
         gw = state.get_gateway(gateway) if gateway else None
         if gw is not None:

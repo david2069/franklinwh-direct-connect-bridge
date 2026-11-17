@@ -373,6 +373,9 @@ A separate device, **FranklinWH Direct Connect Bridge**, has one **Bridge heartb
 timestamp, sent every minute while MQTT publishing is on and connected. If the bridge
 itself stops, the heartbeat stops moving, which an automation can watch for (for
 example, "heartbeat older than 5 minutes → notify").
+Its **Bridge Version** sensor gives this bridge's version, with the install type,
+platform, integrations in use and library versions as attributes
+([the bridge's own device](home-assistant.md#the-bridges-own-device)).
 
 Closed alerts are kept 90 days; open ones are never removed.
 

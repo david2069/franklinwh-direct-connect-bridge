@@ -102,15 +102,16 @@ def test_a_real_gateway_still_publishes_by_default(tmp_path, monkeypatch):
     assert r.json()["publish_ha"] is True
 
 
-def test_publishing_a_mock_is_possible_when_asked_for(tmp_path, monkeypatch):
-    """Explicit is explicit — this is a default, not a prohibition."""
+def test_a_mock_is_not_published_even_when_asked_for(tmp_path, monkeypatch):
+    """Owner, 2026-11-17 (#711): a mock is never published to Home Assistant. This used to
+    be a default an explicit request could override; it is now a rule."""
     c, _ = _client(tmp_path, monkeypatch)
     monkeypatch.setattr(mockgw, "start_mock",
                         lambda gid, *, seed, units, tz_offset_hours=None: "127.0.0.1:9999")
     monkeypatch.setattr(mockgw, "stop_mock", lambda gid: None)
     r = c.post("/api/gateways", json={"label": "Mock", "is_mock": True, "enabled": True,
                                       "publish_ha": True})
-    assert r.json()["publish_ha"] is True
+    assert r.json()["publish_ha"] is False
 
 
 # --- optional cloud credentials --------------------------------------------------------------
