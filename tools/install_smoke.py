@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Install smoke check (#409): does a fresh standalone install start, take a mock gateway,
-poll it and, with MQTT, publish it? Run against a bridge that was just installed from this
+poll it and, with MQTT, publish to the broker? A mock gateway is never published to Home
+Assistant (#711), so publishing is proved by the bridge's own device and the mock must
+publish nothing. Run against a bridge that was just installed from this
 checkout by Docker Compose or pip; the workflow (.github/workflows/install-smoke.yml) does
 the installing. Follows the shared fwh-tools "install-smoke" spec, so the Modbus bridge's
 copy differs only in BRIDGE below.
@@ -32,9 +34,13 @@ from http.cookiejar import CookieJar
 #: The only bridge-specific part.
 BRIDGE = {
     "health": "/api/live",
+    # publish_ha asked for, so the run also proves a mock isn't published even then (#711)
     "add_gateway": ("POST", "/api/gateways", {"label": "smoke", "is_mock": True, "publish_ha": True}),
     "gateways": "/api/gateways",
     "discovery_prefix": "homeassistant",
+    # The bridge's own HA device: published whenever MQTT is on, whatever the gateways.
+    "bridge_configs": ("sensor/fwh_dc_bridge/heartbeat", "binary_sensor/fwh_dc_bridge/bridge_problem",
+                       "sensor/fwh_dc_bridge/bridge_version"),
 }
 
 #: Log lines that fail the run. A fresh install with defaults should log neither.
@@ -87,6 +93,12 @@ def discovery_topics(topics, serial: str, prefix: str) -> list[str]:
     s8 = (serial or "")[-8:].lower()
     return sorted(t for t in topics
                   if s8 and t.startswith(prefix + "/") and t.endswith("/config") and s8 in t.lower())
+
+
+def missing_bridge_configs(topics, prefix: str) -> list[str]:
+    """The bridge's own discovery config topics that aren't retained on the broker."""
+    want = [f"{prefix}/{t}/config" for t in BRIDGE["bridge_configs"]]
+    return [t for t in want if t not in set(topics)]
 
 
 def retained_topics(hostport: str, prefix: str, wait_s: float = 5.0) -> list[str]:
@@ -190,15 +202,20 @@ def main(argv=None) -> int:
               "" if mock else "no mock gateway listed")
 
         if a.mqtt:
+            prefix = BRIDGE["discovery_prefix"]
             topics = []
             while time.monotonic() < deadline:
-                topics = retained_topics(a.mqtt, BRIDGE["discovery_prefix"])
-                if discovery_topics(topics, (mock or {}).get("serial"), BRIDGE["discovery_prefix"]):
+                topics = retained_topics(a.mqtt, prefix)
+                if not missing_bridge_configs(topics, prefix):
                     break
-            ours = discovery_topics(topics, (mock or {}).get("serial"), BRIDGE["discovery_prefix"])
+            missing = missing_bridge_configs(topics, prefix)
             save("retained-topics", topics)
-            check("the mock gateway's discovery configs are retained on the broker", ours,
-                  f"{len(ours)} of {len(topics)} retained topics")
+            check("the bridge's own discovery configs are retained on the broker", not missing,
+                  f"missing {', '.join(missing)}" if missing else
+                  f"{len(BRIDGE['bridge_configs'])} of {len(topics)} retained topics")
+            mocks = discovery_topics(topics, (mock or {}).get("serial"), prefix)
+            check("the mock gateway publishes no discovery (#711)", not mocks,
+                  f"{len(mocks)} retained: {', '.join(mocks[:3])}" if mocks else "")
 
     if a.log_cmd:
         log = subprocess.run(a.log_cmd, shell=True, capture_output=True, text=True).stdout
