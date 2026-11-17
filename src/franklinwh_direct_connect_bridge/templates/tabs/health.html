@@ -125,6 +125,9 @@
               <span x-text="g.full_cycles.week != null ? num(g.full_cycles.week) : 'set Battery capacity (Settings → Automation)'"></span>
               <span style="color:var(--text-secondary)">Cycles by depth</span>
               <span x-text="`${g.cycles.cycles}` + (g.cycles.mean_depth == null ? '' : `, ${g.cycles.mean_depth} points deep on average`)"></span>
+              <span style="color:var(--text-secondary)">Load forecast</span>
+              <span data-testid="health-load-forecast"
+                    x-text="g.load_forecast && g.load_forecast.model.daily_mape_pct != null ? `off by ${g.load_forecast.model.daily_mape_pct}% a day (same as the day before: ${g.load_forecast.persistence.daily_mape_pct ?? '–'}%, over ${g.load_forecast.days} days)` : 'needs 4 weeks of history'"></span>
               <template x-if="g.energy">
                 <div class="contents">
                   <span style="color:var(--text-secondary)">Battery in / out</span>

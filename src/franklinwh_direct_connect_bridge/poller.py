@@ -101,6 +101,9 @@ SWEEP_GAP_MAX_S = 3600
 
 #: How often the aGate's network state is read for Home Assistant (#134).
 NET_EVERY_S = 600
+#: How often the home-load forecast is worked out and published to HA (#713). No aGate
+#: read: hems on the stored history.
+LOAD_FORECAST_EVERY_S = 1800
 #: System view → Alarms: how often each aPower's 1705 alarmLevel and the aGate's 1829
 #: event count are read. Slow on purpose: the aGate is sensitive to load (#123).
 APOWER_ALARM_EVERY_S = 300
@@ -291,6 +294,7 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
     net_last = 0.0
     alarm_last = events_last = 0.0   # System view → Alarms (slow device reads)
     extras_last = 0.0                # scheduler's circuit/V2L/generator read (#698)
+    load_fc_last = 0.0               # Load Forecast to HA (#713)
     next_sweep = 0.0
     sweep_gap = SWEEP_GAP_MIN_S
     prev: dict | None = None
@@ -579,6 +583,18 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                     if not starting:
                         pub.publish_state(st)
                     pub.publish_availability(bool(summ.get("ok")))
+                    # Load Forecast (#713): hems on the stored history, off the poll's
+                    # thread, every half hour. Never breaks the poll.
+                    if store is not None and time.time() - load_fc_last >= LOAD_FORECAST_EVERY_S:
+                        load_fc_last = time.time()
+                        try:
+                            from . import load_forecast
+                            lf = await asyncio.to_thread(load_forecast.ha_payload, store,
+                                                         settings, gw.id)
+                            if lf is not None:
+                                pub.publish_load_forecast(lf)
+                        except Exception as e:  # noqa: BLE001
+                            log.debug("[%s] load forecast not published: %s", gw.id, e)
                 for title, msg in transitions(prev, summ, gw.label or gw.id):
                     await asyncio.to_thread(notifier.notify, title, msg)
                 # Configurable companion-push triggers + delivery log (FEAT-NOTIFY).

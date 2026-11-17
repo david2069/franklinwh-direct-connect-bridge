@@ -44,10 +44,12 @@ def test_the_poll_succeeds(mock_summary):
 def test_every_sensor_template_key_is_published(mock_summary):
     st = _poller_state(mock_summary)
     # A mock publishes no network (#134), relay (#386) or meter (#704) entities: no
-    # source. The mock is on the grid, so it has no off-grid reason or duration.
+    # source. The mock is on the grid, so it has no off-grid reason or duration. Load
+    # Forecast has its own topic (#713).
     missing = [e["key"] for e in entities.ENTITIES
                if e["key"] not in st and e["key"] not in entities.MOCK_ABSENT_KEYS
-               and e["key"] not in entities.OFF_GRID_ONLY_KEYS]
+               and e["key"] not in entities.OFF_GRID_ONLY_KEYS
+               and e["key"] not in entities.OWN_TOPIC_KEYS]
     assert not missing, f"entities whose template key is never published: {missing}"
 
 
@@ -56,7 +58,8 @@ def test_published_values_are_real_values_not_none(mock_summary):
     st = _poller_state(mock_summary)
     nones = [e["key"] for e in entities.ENTITIES
              if st.get(e["key"]) is None and e["key"] not in entities.MOCK_ABSENT_KEYS
-             and e["key"] not in entities.OFF_GRID_ONLY_KEYS]
+             and e["key"] not in entities.OFF_GRID_ONLY_KEYS
+             and e["key"] not in entities.OWN_TOPIC_KEYS]
     assert not nones, f"published as null: {nones}"
 
 

@@ -98,6 +98,7 @@ Measured live on 2026-10-15: **21 entities — 17 sensors and 4 controls.**
 | `solar_w` | Solar Power | W | power | local |
 | `battery_w` | Battery Power | W | power | local |
 | `load_w` | Load Power | W | power | local |
+| `load_forecast` | Load Forecast (this hour; the next 48 hours as a `forecast` attribute) | kW | power | local |
 | `generator_w` | Generator Power | W | power | local |
 | `battery_status` | Battery State (charging / discharging / standby) | — | power | local |
 | `grid_voltage_v` | Grid Voltage | V | power | local |
@@ -131,6 +132,16 @@ Measured live on 2026-10-15: **21 entities — 17 sensors and 4 controls.**
 | `generator_enabled` | Generator Enabled (binary sensor) | — | diagnostic | local |
 | `generator_today_kwh` | Generator Today | kWh | energy | local |
 | `active_alarms` | Active Alarms | — | diagnostic | local |
+
+**Load Forecast** (#713) is the home load the bridge expects this hour, in kW, with the next
+48 hours in its `forecast` attribute as `[{time, value}]` every 30 minutes: the format HAEO
+and similar optimisers read. It is learnt from this gateway's own home load (hour of the day,
+weekday or weekend, season, and the outside temperature when the load follows it) by hems,
+the shared energy engine, and published every half hour on its own topic. In its first four
+weeks it is the median of the same weekday and hour so far (the `method` attribute says
+`cold_start`). The attribute changes every half hour; to keep it out of Home Assistant's
+history database, add the entity to the recorder's `exclude`. The weekly battery report on
+the Health tab shows how far off it was over the last 90 days.
 
 The six daily `kWh` counters are published as `total_increasing` with the `energy` device
 class, which is what the **Home Assistant Energy dashboard** needs. They come out of the

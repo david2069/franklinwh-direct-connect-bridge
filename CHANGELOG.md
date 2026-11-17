@@ -13,6 +13,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- Home Assistant: **Load Forecast** (#713). The home load expected this hour, in kW, with
+  the next 48 hours as HAEO's `forecast` attribute (every 30 minutes), learnt by hems 0.2.0
+  from the gateway's own hourly home load and the site's temperatures. Published every half
+  hour; no aGate read ([guide](docs/guide/home-assistant.md)).
+- Health: the weekly battery report shows **how far off the load forecast was** over the last
+  90 days, against "same as the day before" (#713) ([guide](docs/guide/health-report.md)).
 - System view: **several aPowers are one battery** with the count and the aGate's charge and
   power; its hover and details list each aPower (aP1, aP2 …: charge, current, BMS state,
   and state of health in the details), read once a minute with the Battery tab's reads
