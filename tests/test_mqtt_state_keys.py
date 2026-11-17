@@ -62,8 +62,10 @@ def test_published_values_are_real_values_not_none(mock_summary):
 
 def test_every_control_state_key_is_published_except_the_unpolled_circuits(mock_summary):
     st = entities.state_payload(mock_summary)
+    # A mock has no Battery Command entities (#705): no Modbus TCP Server to reach.
     missing = [c["state_key"] for c in entities.CONTROLS
-               if c["state_key"] not in st and c["state_key"] not in NOT_IN_POLL]
+               if c["state_key"] not in st and c["state_key"] not in NOT_IN_POLL
+               and c["key"] not in entities.BATTERY_KEYS]
     assert not missing
 
 

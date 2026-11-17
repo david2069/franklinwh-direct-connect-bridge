@@ -165,6 +165,11 @@ lists for the gateway: the devices' own and the bridge's open alerts for it.
 | `smart_circuit_3` | `switch` | ON / OFF |
 | `reserve_soc_tou` | `number` | 0–100 %, TOU Reserve SOC |
 | `reserve_soc_self` | `number` | 0–100 %, Self-Consumption Reserve SOC |
+| `battery_command` | `select` | Not Active · Force Charge · Force Discharge · Force Standby · Release |
+| `battery_command_power` | `number` | 0–5000 W in steps of 100, Command Power |
+| `battery_command_power_pct` | `number` | 0–100 % in steps of 5, Command Power % |
+| `battery_command_duration` | `number` | 0–7200 s in steps of 60, Command Duration |
+| `battery_command_target_soc` | `number` | 0–100 % in steps of 5, Target SoC |
 
 The publisher subscribes to `…/control/+/set` and routes by the key in the topic.
 
@@ -174,6 +179,18 @@ own Control page does. Emergency Backup has no number: its reserve is fixed at 1
 Settings and they are for this gateway's aGate. Mock gateways never have them. Each number
 shows the reserve the aGate reports locally every poll, so a change made in the app shows
 up too. The result of each change is in the bridge's log.
+
+**Battery Command** is the Battery tab's Battery Command, with the Modbus Bridge's entity
+names and ranges. Set **Command Power** (watts) or **Command Power %** (of the aGate's
+rating; the last one set wins), and optionally **Command Duration** and **Target SoC**,
+then choose *Force Charge*, *Force Discharge* or *Force Standby* in **Battery Command**;
+*Release* (or *Not Active*) ends the force. The numbers are the same staged values the
+Battery tab shows, and the force runs the same way: over the Modbus TCP Server (aGate
+:502), with the bridge's watchdog ending it at the duration or target, recorded like a
+Battery tab force. It needs **Allow writes** and the Modbus client switched on in
+Control → Modbus client; a refusal is in the bridge's log. **Battery Command** shows the
+force this bridge holds on the gateway. Mock gateways don't have these controls: they
+have no Modbus TCP Server.
 
 **Smart-circuit schedules are not published**: the gateway discards that write, and an
 HA control that silently does nothing is worse than no control.

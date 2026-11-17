@@ -19,6 +19,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   makes: every poll, and the 60-second smart-circuit, V2L and generator read. A value that
   isn't read is unknown in Home Assistant, never 0
   ([guide](docs/guide/home-assistant.md#sensors)).
+- Home Assistant: **Battery Command**, **Command Power**, **Command Power %**, **Command
+  Duration** and **Target SoC** controls, as the Modbus Bridge has them (#705). They run
+  the Battery tab's Battery Command on that gateway and share its staged values; they need
+  Allow writes and the Modbus client on, and mock gateways don't have them
+  ([guide](docs/guide/home-assistant.md#controls-writable)).
 
 ## Releases
 
