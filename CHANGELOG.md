@@ -18,6 +18,21 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   and state of health in the details), read once a minute with the Battery tab's reads
   (#703; franklinwh-system-view 0.4.1) ([guide](docs/guide/tour.md)).
 
+### Changed
+
+- Home Assistant: **an entity is published only while its source is active** (#711). Each
+  entity now has a source: the aGate's Direct Connect API (*local*), the FranklinWH cloud
+  (*cloud*) or this bridge's Modbus client (*modbus*). The **Battery Command** controls
+  appear only while the Modbus client is on, as the reserve numbers already did only with
+  cloud credentials for the gateway; both now follow a change at once, without a restart,
+  and are removed from Home Assistant (not left *unavailable*) when their source goes away.
+  The guide's entity tables have a **Source** column, and list every entity
+  ([guide](docs/guide/home-assistant.md#source)).
+- Settings: **a mock gateway is never published to Home Assistant** (#711). Its *Publish to
+  Home Assistant* switch is gone, from **Add mock** and its Edit dialog, and anything a mock
+  published before is removed from Home Assistant when it starts
+  ([guide](docs/guide/multi-gateway.md)).
+
 ### Fixed
 
 - **System view said "Battery" for a gateway with four aPowers** (#703). The count came only

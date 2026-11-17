@@ -479,13 +479,13 @@ function settingsTab(opts = {}) {
     },
 
     // ── Mock gateway (in-process emulator, testing) ──
-    mockForm: { label: 'Mock', units: 3, seed: '', publish_ha: false },
+    mockForm: { label: 'Mock', units: 3, seed: '' },
     async saveMockGateway() {
       if (!this.canWrite()) { this.gwErr = 'Enable writes (ALLOW_WRITES) to add a gateway.'; return; }
       try {
         const body = { label: this.mockForm.label || 'Mock', is_mock: true,
           mock_units: Math.max(1, Math.min(8, this.mockForm.units || 1)),
-          publish_ha: this.mockForm.publish_ha, enabled: true };
+          enabled: true };
         const seed = parseInt(this.mockForm.seed, 10);
         if (Number.isFinite(seed)) body.mock_seed = seed;   // reproducible profile
         const r = await fetch('api/gateways', {
@@ -1265,7 +1265,7 @@ function settingsTab(opts = {}) {
       if (!this.canWrite()) { this.gwErr = 'Enable writes (ALLOW_WRITES) to edit gateways.'; return; }
       const e = this.gwEdit;
       const body = e.is_mock
-        ? { label: e.label, description: e.description, publish_ha: e.publish_ha,
+        ? { label: e.label, description: e.description,
             mock_units: Math.max(1, Math.min(8, e.mock_units || 1)) }
         : { label: e.label, host: e.host, port: e.port, description: e.description, publish_ha: e.publish_ha };
       if (e.enabled !== e.was_enabled) body.enabled = e.enabled;

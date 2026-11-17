@@ -90,42 +90,47 @@ Measured live on 2026-10-15: **21 entities — 17 sensors and 4 controls.**
 
 ![The MQTT tab filtered to sensors](../images/home-assistant/05-sensors.png)
 
-| Key | Name | Unit | Group |
-|---|---|---|---|
-| `soc` | State of Charge | % | core |
-| `mode` | Operating Mode | — | core |
-| `grid_w` | Grid Power | W | power |
-| `solar_w` | Solar Power | W | power |
-| `battery_w` | Battery Power | W | power |
-| `load_w` | Load Power | W | power |
-| `generator_w` | Generator Power | W | power |
-| `battery_status` | Battery State (charging / discharging / standby) | — | power |
-| `grid_voltage_v` | Grid Voltage | V | power |
-| `grid_frequency_hz` | Grid Frequency | Hz | power |
-| `solar_today_kwh` | Solar Today | kWh | energy |
-| `grid_import_today_kwh` | Grid Import Today | kWh | energy |
-| `grid_export_today_kwh` | Grid Export Today | kWh | energy |
-| `battery_charge_today_kwh` | Battery Charged Today | kWh | energy |
-| `battery_discharge_today_kwh` | Battery Discharged Today | kWh | energy |
-| `load_today_kwh` | Home Load Today | kWh | energy |
-| `ambient_temp_c` | Ambient Temperature | °C | diagnostic |
-| `run_status` | Run Status | — | diagnostic |
-| `latency_ms` | Round-trip Latency | ms | diagnostic |
-| `status_grid_status` | Grid Status (Connected / SimulatedOffGrid / Outage / OffGrid) | — | core |
-| `active_reserve_pct` | Active Reserve SOC | % | core |
-| `device_firmware` | Firmware Version | — | diagnostic |
-| `relay_main1`, `relay_main2`, `relay_grid2`, `relay_black_start` | Main Relay 1, Main Relay 2, Grid Relay 2, Black Start Relay (binary sensors) | — | diagnostic |
-| `status_vpp` | VPP Active (binary sensor) | — | core |
-| `offgrid_reason` | Off-Grid Reason (user requested / grid outage / unknown) | — | core |
-| `offgrid_min` | Off-Grid Duration | min | core |
-| `circuit_1_power_w` … `circuit_3_power_w` | Smart Circuit 1–3 Power | W | power |
-| `circuit_1_today_kwh` … `circuit_3_today_kwh` | Smart Circuit 1–3 Energy Today | kWh | energy |
-| `v2l_power_w` | V2L Power | W | power |
-| `v2l_export_kwh`, `v2l_import_kwh` | V2L Export Energy, V2L Import Energy (lifetime) | kWh | energy |
-| `generator_state` | Generator State (Standby / OFF, Running / ON, Cooldown, Fault) | — | power |
-| `generator_enabled` | Generator Enabled (binary sensor) | — | diagnostic |
-| `generator_today_kwh` | Generator Today | kWh | energy |
-| `active_alarms` | Active Alarms | — | diagnostic |
+| Key | Name | Unit | Group | Source |
+|---|---|---|---|---|
+| `soc` | State of Charge | % | core | local |
+| `mode` | Operating Mode | — | core | local |
+| `grid_w` | Grid Power | W | power | local |
+| `solar_w` | Solar Power | W | power | local |
+| `battery_w` | Battery Power | W | power | local |
+| `load_w` | Load Power | W | power | local |
+| `generator_w` | Generator Power | W | power | local |
+| `battery_status` | Battery State (charging / discharging / standby) | — | power | local |
+| `grid_voltage_v` | Grid Voltage | V | power | local |
+| `grid_frequency_hz` | Grid Frequency | Hz | power | local |
+| `solar_today_kwh` | Solar Today | kWh | energy | local |
+| `grid_import_today_kwh` | Grid Import Today | kWh | energy | local |
+| `grid_export_today_kwh` | Grid Export Today | kWh | energy | local |
+| `battery_charge_today_kwh` | Battery Charged Today | kWh | energy | local |
+| `battery_discharge_today_kwh` | Battery Discharged Today | kWh | energy | local |
+| `load_today_kwh` | Home Load Today | kWh | energy | local |
+| `ambient_temp_c` | Ambient Temperature | °C | diagnostic | local |
+| `run_status` | Run Status | — | diagnostic | local |
+| `run_status_desc` | Run Status Description | — | diagnostic | local |
+| `latency_ms` | Round-trip Latency | ms | diagnostic | local |
+| `net_in_use`, `net_available`, `net_write_safety`, `net_fallback` | Network In Use, Networks Available, Network Write Safety, Network Fallback (the aGate's network, read every few minutes) | — | diagnostic | local |
+| `net_wifi_signal`, `net_4g_signal` | WiFi Signal, 4G Signal | %, — | diagnostic | local |
+| `net_if_eth0`, `net_if_eth1`, `net_if_wifi`, `net_if_4g` | Ethernet 0, Ethernet 1, WiFi Link, 4G Link | — | diagnostic | local |
+| `net_cloud`, `net_cloud_endpoint`, `net_cloud_via` | Cloud Connection, Cloud Endpoint, Cloud Connection Via (the aGate's own link to the FranklinWH cloud) | — | diagnostic | local |
+| `status_grid_status` | Grid Status (Connected / SimulatedOffGrid / Outage / OffGrid) | — | core | local |
+| `active_reserve_pct` | Active Reserve SOC | % | core | local |
+| `device_firmware` | Firmware Version | — | diagnostic | local |
+| `relay_main1`, `relay_main2`, `relay_grid2`, `relay_black_start` | Main Relay 1, Main Relay 2, Grid Relay 2, Black Start Relay (binary sensors) | — | diagnostic | local |
+| `status_vpp` | VPP Active (binary sensor) | — | core | local |
+| `offgrid_reason` | Off-Grid Reason (user requested / grid outage / unknown) | — | core | local |
+| `offgrid_min` | Off-Grid Duration | min | core | local |
+| `circuit_1_power_w` … `circuit_3_power_w` | Smart Circuit 1–3 Power | W | power | local |
+| `circuit_1_today_kwh` … `circuit_3_today_kwh` | Smart Circuit 1–3 Energy Today | kWh | energy | local |
+| `v2l_power_w` | V2L Power | W | power | local |
+| `v2l_export_kwh`, `v2l_import_kwh` | V2L Export Energy, V2L Import Energy (lifetime) | kWh | energy | local |
+| `generator_state` | Generator State (Standby / OFF, Running / ON, Cooldown, Fault) | — | power | local |
+| `generator_enabled` | Generator Enabled (binary sensor) | — | diagnostic | local |
+| `generator_today_kwh` | Generator Today | kWh | energy | local |
+| `active_alarms` | Active Alarms | — | diagnostic | local |
 
 The six daily `kWh` counters are published as `total_increasing` with the `energy` device
 class, which is what the **Home Assistant Energy dashboard** needs. They come out of the
@@ -157,26 +162,28 @@ lists for the gateway: the devices' own and the bridge's open alerts for it.
 
 ![The MQTT tab filtered to writable entities](../images/home-assistant/06-controls.png)
 
-| Key | HA type | Options |
-|---|---|---|
-| `operating_mode` | `select` | Time-of-Use · Self-Consumption · Emergency Backup |
-| `smart_circuit_1` | `switch` | ON / OFF |
-| `smart_circuit_2` | `switch` | ON / OFF |
-| `smart_circuit_3` | `switch` | ON / OFF |
-| `reserve_soc_tou` | `number` | 0–100 %, TOU Reserve SOC |
-| `reserve_soc_self` | `number` | 0–100 %, Self-Consumption Reserve SOC |
-| `battery_command` | `select` | Not Active · Force Charge · Force Discharge · Force Standby · Release |
-| `battery_command_power` | `number` | 0–5000 W in steps of 100, Command Power |
-| `battery_command_power_pct` | `number` | 0–100 % in steps of 5, Command Power % |
-| `battery_command_duration` | `number` | 0–7200 s in steps of 60, Command Duration |
-| `battery_command_target_soc` | `number` | 0–100 % in steps of 5, Target SoC |
+| Key | HA type | Options | Source |
+|---|---|---|---|
+| `operating_mode` | `select` | Time-of-Use · Self-Consumption · Emergency Backup | local |
+| `smart_circuit_1` | `switch` | ON / OFF | local |
+| `smart_circuit_2` | `switch` | ON / OFF | local |
+| `smart_circuit_3` | `switch` | ON / OFF | local |
+| `off_grid` | `switch` | ON / OFF, Go Off-Grid | local |
+| `reserve_soc_tou` | `number` | 0–100 %, TOU Reserve SOC | cloud |
+| `reserve_soc_self` | `number` | 0–100 %, Self-Consumption Reserve SOC | cloud |
+| `battery_command` | `select` | Not Active · Force Charge · Force Discharge · Force Standby · Release | modbus |
+| `battery_command_power` | `number` | 0–5000 W in steps of 100, Command Power | modbus |
+| `battery_command_power_pct` | `number` | 0–100 % in steps of 5, Command Power % | modbus |
+| `battery_command_duration` | `number` | 0–7200 s in steps of 60, Command Duration | modbus |
+| `battery_command_target_soc` | `number` | 0–100 % in steps of 5, Target SoC | modbus |
 
 The publisher subscribes to `…/control/+/set` and routes by the key in the topic.
 
 **Reserve SoC goes through the FranklinWH cloud.** The aGate discards a reserve written
 over the local API, so the two reserve numbers write through the cloud, as the bridge's
 own Control page does. Emergency Backup has no number: its reserve is fixed at 100 %. They appear only when your FranklinWH cloud credentials are set in
-Settings and they are for this gateway's aGate. Mock gateways never have them. Each number
+Settings and they are for this gateway's aGate, and leave Home Assistant when they no
+longer are (see *Source* below). Mock gateways never have them. Each number
 shows the reserve the aGate reports locally every poll, so a change made in the app shows
 up too. The result of each change is in the bridge's log.
 
@@ -187,13 +194,28 @@ then choose *Force Charge*, *Force Discharge* or *Force Standby* in **Battery Co
 *Release* (or *Not Active*) ends the force. The numbers are the same staged values the
 Battery tab shows, and the force runs the same way: over the Modbus TCP Server (aGate
 :502), with the bridge's watchdog ending it at the duration or target, recorded like a
-Battery tab force. It needs **Allow writes** and the Modbus client switched on in
-Control → Modbus client; a refusal is in the bridge's log. **Battery Command** shows the
+Battery tab force. It needs **Allow writes**, and the controls are published only while the Modbus client is
+switched on in Control → Modbus client (see *Source* below); a refusal is in the bridge's log. **Battery Command** shows the
 force this bridge holds on the gateway. Mock gateways don't have these controls: they
 have no Modbus TCP Server.
 
 **Smart-circuit schedules are not published**: the gateway discards that write, and an
 HA control that silently does nothing is worse than no control.
+
+### Source
+
+The **Source** column says where each entity's value comes from, or where a control
+writes (#711):
+
+| Source | What it is | Published |
+|---|---|---|
+| `local` | The aGate's Direct Connect API, which the bridge polls | Always |
+| `cloud` | The FranklinWH cloud | Only while your FranklinWH cloud credentials are set and are for this gateway's aGate |
+| `modbus` | This bridge's Modbus client, to the aGate's Modbus TCP Server (:502) | Only while the Modbus client is on (Control → Modbus client) |
+
+The bridge checks every poll. When a source turns on, its entities appear in Home
+Assistant; when it turns off, they are removed (not left *unavailable*). Mock gateways are
+never published to Home Assistant.
 
 ### Entity groups
 

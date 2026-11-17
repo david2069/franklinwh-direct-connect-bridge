@@ -23,6 +23,7 @@ class _FakePub:
     def is_connected(self): return True
     def publish_state(self, st): pass
     def publish_availability(self, online): pass
+    def set_skip(self, skip): pass
 
 
 def _run(monkeypatch, publish_ha: bool) -> list:
@@ -35,7 +36,7 @@ def _run(monkeypatch, publish_ha: bool) -> list:
     monkeypatch.setattr(poller.client, "summary", lambda *a, **k: {"ok": True, "power": {"soc": 50}})
     import franklinwh_direct_connect_bridge.ha_supervisor as hs
     monkeypatch.setattr(hs, "apply_supervisor_mqtt", lambda *a, **k: None)
-    gw = GatewayState(id="g98", label="mock", is_mock=True, publish_ha=publish_ha,
+    gw = GatewayState(id="g98", label="aGate", publish_ha=publish_ha,
                       configured_host="127.0.0.1:1", active_host="127.0.0.1:1")
 
     async def go():

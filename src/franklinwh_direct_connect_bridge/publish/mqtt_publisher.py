@@ -18,6 +18,7 @@ class MqttPublisher:
                  command_handler=None, groups=None, skip=frozenset()):
         self.s = settings
         self.skip = frozenset(skip)       # entity keys this gateway has no source for
+        self.groups = groups              # the publish groups switched on
         self.node = node
         self.device = device
         #: Called as ``handler(key, payload)`` for an inbound control message.
@@ -83,6 +84,7 @@ class MqttPublisher:
         """Re-derive the discovery set for `groups`: clear the OLD entities from HA, then
         publish the new set — so a disabled group's entities disappear from HA."""
         self.clear_discovery()
+        self.groups = groups
         self.configs, self.state_topic, self.avail_topic = entities.discovery_configs(
             self.node, self.device, self.s.mqtt_prefix, self.s.ha_discovery_prefix, groups,
             skip=self.skip)
@@ -93,6 +95,24 @@ class MqttPublisher:
                 self.client.subscribe(self.cmd_filter)
             else:
                 self.client.unsubscribe(self.cmd_filter)
+
+    def set_skip(self, skip) -> None:
+        """Follow a source turning on or off (#711): publish the entities that now have a
+        source and clear (empty retained config) those that lost theirs, so HA drops them
+        rather than showing them unavailable. Nothing is sent when nothing changed."""
+        skip = frozenset(skip)
+        if skip == self.skip:
+            return
+        self.skip = skip
+        old = dict(self.configs)
+        self.configs, self.state_topic, self.avail_topic = entities.discovery_configs(
+            self.node, self.device, self.s.mqtt_prefix, self.s.ha_discovery_prefix,
+            self.groups, skip=self.skip)
+        new = dict(self.configs)
+        for topic in old.keys() - new.keys():
+            self.client.publish(topic, "", retain=True)
+        for topic in new.keys() - old.keys():
+            self.client.publish(topic, json.dumps(new[topic]), retain=True)
 
     def clear_discovery(self) -> None:
         """Remove the entities from Home Assistant by publishing an empty retained

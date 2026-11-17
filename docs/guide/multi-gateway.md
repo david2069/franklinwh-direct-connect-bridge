@@ -113,9 +113,9 @@ The selector at the top of the screen scopes **every tab**: dashboard, battery, 
 circuits, generator, control, grid, health, network, MQTT. Also per gateway:
 
 - its own poll loop, last state and health;
-- `publish_ha` — whether *this* gateway is published to MQTT/HA. The UI defaults a mock
-  gateway to **not** publishing (verified live: both mock gateways reported
-  `publish_ha: false`, the real one `true`); you can turn it on;
+- `publish_ha` — whether *this* gateway is published to MQTT/HA. A mock gateway is
+  **never** published (#711): it has no switch, the API refuses to turn it on, and
+  anything a mock published before is removed from Home Assistant when it starts;
 - its MQTT node id, which is that gateway's serial, lower-cased — so two gateways are two
   HA devices, as they should be;
 - `POST /api/gateways/{id}/restart` restarts just that gateway's workers.
