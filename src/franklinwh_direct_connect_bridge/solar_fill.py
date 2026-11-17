@@ -84,7 +84,7 @@ def check_gateway(store, settings, gateway_id: str, gateway_name: str, soc,
         if not site_location.configured(loc) or not loc["kwp"]:
             return False
         fc = solar_forecast.forecast(loc["latitude"], loc["longitude"], kwp=loc["kwp"],
-                                     tilt=loc["pv_tilt"], azimuth=loc["pv_azimuth"])
+                                     tilt=loc["pv_tilt"], azimuth=loc["pv_azimuth"], store=store)
         cap = constants.values(store).get("battery_capacity_kwh")
         return check(store, gateway_id, gateway_name, fc, soc=soc, capacity_kwh=cap,
                      now_ts=now_ts)

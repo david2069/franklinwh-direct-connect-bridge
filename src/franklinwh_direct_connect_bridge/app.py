@@ -8037,7 +8037,8 @@ def create_app() -> FastAPI:
                     "reason": "Please confirm your solar size in Settings → Location & Prices → "
                               "Location & Solar: the gateway hasn't reported it yet."}
         fc = solar_forecast.forecast(loc["latitude"], loc["longitude"], kwp=loc["kwp"],
-                                     tilt=loc["pv_tilt"], azimuth=loc["pv_azimuth"], force=force)
+                                     tilt=loc["pv_tilt"], azimuth=loc["pv_azimuth"], force=force,
+                                     store=_gw_store())
         fill = None                    # will today's solar fill the battery? (#676)
         gw = state.get_gateway(gateway) if gateway else None
         if gw is not None:

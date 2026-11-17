@@ -5,14 +5,19 @@ irradiance (GTI) to the user's PV array (kWp, tilt, azimuth) to estimate hourly 
 and daily kWh. Results are cached (~15 min) so polling/sensors are cheap. Everything
 is best-effort — a network hiccup returns the last cache or an empty forecast, never
 an exception that breaks a page.
+
+The maths come from hems, the shared engine (#713, #612): the request and parsing from
+``hems.adapters.open_meteo``, the kW from ``hems.forecast.solar`` (with the cell-temperature
+loss), and a self-calibration against the solar the site's gateways measured.
 """
 from __future__ import annotations
 
 import json
 import logging
 import time
-import urllib.parse
-import urllib.request
+
+from hems import forecast as hforecast
+from hems.adapters import open_meteo
 
 log = logging.getLogger(__name__)
 
@@ -36,33 +41,28 @@ _cache: dict = {}   # key -> (ts, data)
 
 
 def _fetch(lat: float, lon: float, tilt: float, azimuth: float) -> dict:
-    params = {
-        "latitude": lat, "longitude": lon, "timezone": "auto", "forecast_days": 2,
-        "current": "temperature_2m,weather_code",
-        "hourly": "temperature_2m,global_tilted_irradiance",
-        "tilt": tilt, "azimuth": azimuth,
-    }
-    url = OPEN_METEO + "?" + urllib.parse.urlencode(params)
-    req = urllib.request.Request(url, headers={"User-Agent": "franklinwh-direct-connect-bridge"})
-    with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r:
-        return json.loads(r.read())
+    # hems's forecast request, plus the current weather; timezone=auto keeps the hourly
+    # times location-local, as the card, the sensors and solar_fill read them.
+    params = {**open_meteo.forecast_params(lat, lon, tilt=tilt, azimuth=azimuth),
+              "timezone": "auto", "current": "temperature_2m,weather_code"}
+    return open_meteo.fetch(open_meteo.FORECAST_URL, params, timeout=TIMEOUT_S,
+                            user_agent="franklinwh-direct-connect-bridge")
 
 
-def _compute(raw: dict, kwp: float) -> dict:
+def _compute(raw: dict, kwp: float, calibration: float = 1.0) -> dict:
     cur = raw.get("current", {}) or {}
     code = cur.get("weather_code")
-    hourly = raw.get("hourly", {}) or {}
-    times = hourly.get("time", []) or []
-    gti = hourly.get("global_tilted_irradiance", []) or []
-    temps = hourly.get("temperature_2m", []) or []
+    times = (raw.get("hourly", {}) or {}).get("time", []) or []
+    rows = open_meteo.parse_hourly(raw)
+    # GTI (W/m²) at STC 1000 W/m² -> kWp array output, derated, less the cell-temperature
+    # loss; once with the calibration and once without, for the calibration's own record.
+    pv = hforecast.solar(rows, kwp, derate=PV_EFFICIENCY, calibration=calibration)
+    pv_raw = (hforecast.solar(rows, kwp, derate=PV_EFFICIENCY) if calibration != 1.0 else pv)
 
     hours = []
     for i, t in enumerate(times):
-        g = gti[i] if i < len(gti) and gti[i] is not None else 0
-        # GTI (W/m²) at STC 1000 W/m² -> kWp array output, derated.
-        kw = round(g / 1000.0 * kwp * PV_EFFICIENCY, 3)
-        hours.append({"time": t, "kw": kw,
-                      "temp_c": temps[i] if i < len(temps) else None})
+        hours.append({"time": t, "kw": pv[i]["kw"], "temp_c": rows[i]["temp_c"],
+                      "_raw": pv_raw[i]["kw"]})
 
     # Daily totals (hourly kW summed over 1h steps = kWh).
     by_day: dict = {}
@@ -73,7 +73,10 @@ def _compute(raw: dict, kwp: float) -> dict:
         hs = by_day[d]
         peak = max(hs, key=lambda x: x["kw"])
         days.append({"date": d, "total_kwh": round(sum(x["kw"] for x in hs), 1),
+                     "raw_total_kwh": round(sum(x["_raw"] for x in hs), 1),
                      "peak_kw": peak["kw"], "peak_time": peak["time"][11:16]})
+    for h in hours:
+        del h["_raw"]
 
     return {
         "current": {"temp_c": cur.get("temperature_2m"), "code": code,
@@ -85,19 +88,26 @@ def _compute(raw: dict, kwp: float) -> dict:
         "utc_offset_seconds": raw.get("utc_offset_seconds"),
         "timezone": raw.get("timezone"),
         "generated_at": int(time.time()),
+        "calibration": calibration,
     }
 
 
+def site_key(lat, lon, tilt, azimuth, kwp) -> str:
+    """The forecast's cache key, and its calibration's: a changed array starts afresh."""
+    return f"{lat},{lon},{tilt},{azimuth},{kwp}"
+
+
 def forecast(lat: float, lon: float, *, kwp: float = 5.0, tilt: float = 20.0,
-             azimuth: float = 0.0, force: bool = False) -> dict:
+             azimuth: float = 0.0, force: bool = False, store=None) -> dict:
     """Weather + PV forecast for a site. Cached ~15 min; returns the last good
-    result (or an empty stub) on a fetch error."""
-    key = f"{lat},{lon},{tilt},{azimuth},{kwp}"
+    result (or an empty stub) on a fetch error. With ``store``, scaled by the site's
+    calibration (1.0 until there are enough measured days)."""
+    key = site_key(lat, lon, tilt, azimuth, kwp)
     now = time.time()
     if not force and key in _cache and now - _cache[key][0] < CACHE_S:
         return _cache[key][1]
     try:
-        out = _compute(_fetch(lat, lon, tilt, azimuth), kwp)
+        out = _compute(_fetch(lat, lon, tilt, azimuth), kwp, calibration(store, key))
         _cache[key] = (now, out)
         return out
     except Exception as e:                                       # noqa: BLE001
@@ -136,3 +146,51 @@ def sensors(fc: dict) -> dict:
         "solar_forecast.remaining_kwh": remaining,
         "solar_forecast.tomorrow_kwh": tomorrow.get("total_kwh"),
     }
+
+
+# ── Calibration (#713) ─────────────────────────────────────────────────────────────
+#: app_config keys: hems's calibration state, and the day being measured, per site key.
+CAL_KEY = "solar_calibration:{key}"
+DAY_KEY = "solar_calibration_day:{key}"
+
+
+def _load(store, k: str):
+    try:
+        v = store.get_config(k) if store is not None else None
+        return json.loads(v) if v else None
+    except Exception:                                            # noqa: BLE001
+        return None
+
+
+def calibration(store, key: str) -> float:
+    """Measured ÷ forecast over the site's recent days (hems), 1.0 without a store or
+    enough days. Never raises."""
+    state = _load(store, CAL_KEY.format(key=key))
+    return hforecast.calibration_factor(state) if state else 1.0
+
+
+def observe(store, key: str, *, day: str, gateway_id: str, predicted_kwh, measured_kwh) -> None:
+    """One gateway's solar so far on ``day`` and the uncalibrated forecast for it. The
+    highest reading per gateway counts (the aGate's counter only rises in a day), and a
+    site's gateways add up. When the day changes, the finished day goes into hems's
+    calibration. Never raises."""
+    if store is None:
+        return
+    try:
+        cur = _load(store, DAY_KEY.format(key=key)) or {}
+        if cur.get("day") and cur["day"] != day:
+            state = _load(store, CAL_KEY.format(key=key)) or hforecast.new_calibration()
+            meas = sum((cur.get("meas") or {}).values()) if cur.get("meas") else None
+            hforecast.add_solar_day(state, day=cur["day"], predicted_kwh=cur.get("pred"),
+                                    measured_kwh=meas)
+            store.set_config(CAL_KEY.format(key=key), json.dumps(state))
+            cur = {}
+        cur["day"] = day
+        if predicted_kwh is not None:
+            cur["pred"] = float(predicted_kwh)
+        if measured_kwh is not None:
+            m = cur.setdefault("meas", {})
+            m[gateway_id] = max(float(measured_kwh), float(m.get(gateway_id) or 0))
+        store.set_config(DAY_KEY.format(key=key), json.dumps(cur))
+    except Exception as e:                                       # noqa: BLE001
+        log.debug("solar calibration not recorded: %s", e)

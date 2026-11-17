@@ -469,6 +469,15 @@ disagrees keeps its own, and the bridge log says so.
 
 Optional, and off until the bridge has a location. The forecast comes from Open-Meteo.
 
+**How it is worked out.** The bridge asks Open-Meteo for the hourly sunlight on your panels'
+tilt and direction and the air temperature. It turns that into kW for your array size, less
+about 15 % for the inverter and wiring, and less what hot panels lose (they make less in the
+heat). It then **learns from your own system**: each day it compares the forecast with the
+solar your gateways measured, and once it has five days with real sun it scales the forecast
+by measured ÷ forecast over the last 30 days. A shaded or oversized array is corrected this
+way. Changing the location, tilt, direction or solar size starts the learning afresh. The
+maths come from hems, the shared energy engine the bridges use.
+
 **Location & Solar** is under **Settings → Location & Prices**. The default site on
 Billing & Utilities → Plans & meters shows its location and solar size and links to it, the card
 links to the **Solar** tab, and the Solar tab's **Location & array settings** link comes back

@@ -20,6 +20,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Changed
 
+- Solar forecast: **learns from your system** and allows for hot panels (#713). Each day
+  the forecast is compared with the solar your site's gateways measured; after five sunny
+  days it is scaled by measured ÷ forecast over the last 30 days. Hot panels make less, and
+  the forecast now allows for it. The maths come from hems 0.2.0 (the shared engine); the
+  card, the sensors and the solar-fill warning are unchanged
+  ([guide](docs/guide/energy-and-costs.md#solar-forecast)).
 - Home Assistant: **an entity is published only while its source is active** (#711). Each
   entity now has a source: the aGate's Direct Connect API (*local*), the FranklinWH cloud
   (*cloud*) or this bridge's Modbus client (*modbus*). The **Battery Command** controls
