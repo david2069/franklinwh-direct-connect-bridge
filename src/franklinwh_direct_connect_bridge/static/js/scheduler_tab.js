@@ -39,7 +39,7 @@ document.addEventListener('alpine:init', () => {
     importReport: null,
     view: 'schedules',       // schedules | timeline | history | tou
     // FranklinWH TOU (owner 2026-11-16): the cloud schedule's copy, and its import dialog.
-    tou: null, touBusy: false, touMsg: null,
+    tou: null, touBusy: false, touMsg: null, touTip: '',
     touImp: { open: false, power: 100, plan: null, msg: null, done: false },
     timeline: null,
     timelineGw: '',          // a gateway's id, or '*' for every gateway (#579)
@@ -146,6 +146,12 @@ document.addEventListener('alpine:init', () => {
       return rows;
     },
     touPct(hhmm) { const [h, m] = String(hhmm).split(':').map(Number); return Math.min(100, (h * 60 + m) / 14.4); },
+    // A span on the bridge's bar, for its hover title and the line a tap shows (#421)
+    touSpanTip(b) { return b.name + ' · ' + b.label + ' · ' + b.start + '–' + b.end + (b.clash ? ' · clashes with TOU' : ''); },
+    // Force spans in the TOU colour of the same battery direction, so like matches like
+    touSpanColour(b) {
+      return { charge: '#3b82f6', discharge: '#f59e0b', standby: '#64748b' }[b.direction] || '#94a3b8';
+    },
     touColour(id) {
       return { 8: '#3b82f6', 7: '#f59e0b', 2: '#64748b', 3: '#eab308', 1: '#10b981', 6: '#10b981' }[id] || '#94a3b8';
     },

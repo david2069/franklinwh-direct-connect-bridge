@@ -318,7 +318,34 @@
                 <div class="absolute top-0 bottom-0" :title="b.start + '–' + b.end + ' ' + b.dispatch"
                      :style="{ left: touPct(b.start) + '%', width: (touPct(b.end) - touPct(b.start)) + '%', background: touColour(b.dispatch_id) }"></div>
               </template>
+              <!-- the clashing minutes, outlined on the TOU bar too (owner 2026-11-18) -->
+              <template x-for="(m, k) in tou.bridge.clashes" :key="'tc' + k">
+                <div class="absolute top-0 bottom-0 rounded-sm pointer-events-none" data-testid="tou-bar-clash"
+                     :style="{ left: touPct(m.start) + '%', width: Math.max(0.4, touPct(m.end) - touPct(m.start)) + '%', boxShadow: 'inset 0 0 0 2px ' + (tou.tou_active ? 'var(--danger)' : 'var(--warn)') }"></div>
+              </template>
             </div>
+            <!-- This bridge's mode and Force schedules on the same 24 h scale, clashes marked
+                 (owner 2026-11-18: "visual time representation of conflicts") -->
+            <div x-show="tou.bridge && tou.bridge.spans.length" class="mt-1.5">
+              <div class="text-[11px] mb-0.5" style="color:var(--text-secondary)">This bridge's schedules</div>
+              <div class="relative h-4 rounded overflow-hidden" style="background:var(--surface-2)" data-testid="tou-bridge-bar">
+                <template x-for="(b, i) in tou.bridge.spans" :key="'bs' + i">
+                  <div class="absolute top-0 bottom-0 cursor-pointer" data-testid="tou-bridge-span"
+                       :title="touSpanTip(b)" @click="touTip = touTip === touSpanTip(b) ? '' : touSpanTip(b)"
+                       :style="{ left: touPct(b.start) + '%', width: Math.max(0.6, touPct(b.end) - touPct(b.start)) + '%', background: touSpanColour(b) }"></div>
+                </template>
+                <template x-for="(m, k) in tou.bridge.clashes" :key="'bc' + k">
+                  <div class="absolute top-0 bottom-0 pointer-events-none" data-testid="tou-clash-mark"
+                       :style="{ left: touPct(m.start) + '%', width: Math.max(0.6, touPct(m.end) - touPct(m.start)) + '%', background: 'repeating-linear-gradient(135deg, ' + (tou.tou_active ? 'var(--danger)' : 'var(--warn)') + ' 0 3px, transparent 3px 6px)' }"></div>
+                </template>
+              </div>
+            </div>
+            <div class="relative h-3 mt-0.5 text-[10px] font-mono" style="color:var(--text-secondary)" data-testid="tou-ticks">
+              <template x-for="h in [0, 6, 12, 18, 24]" :key="'t' + h">
+                <span class="absolute" :style="h === 0 ? { left: '0' } : h === 24 ? { right: '0' } : { left: (h / 24 * 100) + '%', transform: 'translateX(-50%)' }" x-text="h"></span>
+              </template>
+            </div>
+            <p x-show="touTip" class="text-[11px] mt-1" style="color:var(--text-primary)" data-testid="tou-span-tip" x-text="touTip"></p>
             <p x-show="tou.today.some(b => b.buy != null || b.sell != null)" class="text-[11px] mt-2" style="color:var(--text-secondary)"
                data-testid="tou-rate-unit">Rates in <span x-text="tou.latest.schedule.rate_unit"></span>.</p>
             <!-- Today in columns (owner 2026-11-18: rows were hard to read) -->
@@ -349,8 +376,10 @@
             </div>
           </div>
           <div data-testid="tou-conflicts">
-            <div class="text-[10px] uppercase tracking-wide mb-1" style="color:var(--text-secondary)">Clashes with this bridge's schedules today: a Force that contradicts the TOU block</div>
-            <p x-show="!tou.conflicts.length" class="text-xs" style="color:var(--text-secondary)">None.</p>
+            <!-- toned down (owner 2026-11-18): a plain label, one line when there are none -->
+            <p x-show="!tou.conflicts.length" class="text-xs" style="color:var(--text-secondary)">No clashes today.</p>
+            <div x-show="tou.conflicts.length" class="text-xs font-medium mb-1" style="color:var(--text-primary)"
+                 title="A Force schedule whose direction contradicts the TOU block it runs in">Clashes today</div>
             <p x-show="tou.conflicts.length && !tou.tou_active" class="text-xs mb-1" style="color:var(--text-secondary)">
               TOU mode is off, so these don't clash now; they would if it were set.</p>
             <!-- One row per schedule and TOU block, in columns (owner 2026-11-16) -->

@@ -266,6 +266,15 @@ see it, add conditions to it or notify on it, and a bridge schedule can work aga
   | aPower to home/grid, aPower to home, Self-consumption | clash | — | clash |
   | aPower on standby | clash | clash | — |
 
+  Under today's TOU bar, **This bridge's schedules** draws today's mode and Force
+  schedules on the same 24 h scale (hours 0, 6, 12, 18, 24 below both bars). A Force is
+  drawn in the TOU colour of the same battery direction (charge blue, discharge amber,
+  standby grey); a mode schedule is grey. The clashing minutes are hatched on that bar and
+  outlined on the TOU bar, red while TOU mode is on and amber while it is off. Hover a
+  span, or tap it on a phone, for its name, action and times. With no such schedules
+  today the second bar is left out.
+
+  Below the bars, **Clashes today** lists them, or one line says *No clashes today.*
   The table has one row per schedule and TOU block: **Schedule**, **Time** (its first to
   last minute in the block), **Repeats** (for an interval or cron schedule, with how many
   runs), **TOU block** and **Bridge** (its Force). **Edit** opens the schedule. While TOU
