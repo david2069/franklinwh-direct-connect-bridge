@@ -136,6 +136,15 @@ document.addEventListener('alpine:init', () => {
     },
     touReason(r) { return { start: 'at start-up', 'tou-mode': 'TOU mode set', manual: 'Sync now', daily: 'daily re-read' }[r] || r; },
     touRate(v) { return v == null ? '—' : String(v); },
+    /** A season's day type as table rows: each block with its band's rates, then any band
+     *  with a rate but no block that day, so every rate still shows. */
+    touDayRows(d) {
+      const rates = d.rates || {};
+      const rows = (d.blocks || []).map(b => ({ ...b, buy: (rates[b.wave] || {}).buy, sell: (rates[b.wave] || {}).sell }));
+      const used = new Set(rows.map(r => r.wave));
+      for (const [k, r] of Object.entries(rates)) if (!used.has(k)) rows.push({ wave: k, buy: r.buy, sell: r.sell });
+      return rows;
+    },
     touPct(hhmm) { const [h, m] = String(hhmm).split(':').map(Number); return Math.min(100, (h * 60 + m) / 14.4); },
     touColour(id) {
       return { 8: '#3b82f6', 7: '#f59e0b', 2: '#64748b', 3: '#eab308', 1: '#10b981', 6: '#10b981' }[id] || '#94a3b8';
