@@ -19,6 +19,13 @@ ENTITIES: list[dict[str, Any]] = [
     {"key": "solar_w", "name": "Solar Power", "unit": "W", "device_class": "power", "state_class": "measurement", "group": "power"},
     {"key": "battery_w", "name": "Battery Power", "unit": "W", "device_class": "power", "state_class": "measurement", "group": "power"},
     {"key": "load_w", "name": "Load Power", "unit": "W", "device_class": "power", "state_class": "measurement", "group": "power"},
+    # The home-load forecast (#713, hems): this hour's kW, with HAEO's 30-minute ``forecast``
+    # series as an attribute, on its own topic, published every half hour (not each poll).
+    # No state_class: a forecast is not a measurement for HA's statistics.
+    {"key": "load_forecast", "name": "Load Forecast", "unit": "kW", "device_class": "power",
+     "state_class": None, "group": "power", "topic": "load_forecast",
+     "attributes": "{{ {'forecast': value_json.forecast, 'method': value_json.method} | tojson }}",
+     "value_key": "kw"},
     {"key": "generator_w", "name": "Generator Power", "unit": "W", "device_class": "power", "state_class": "measurement", "group": "power"},
     {"key": "mode", "name": "Operating Mode", "unit": None, "device_class": None, "state_class": None, "group": "core"},
     {"key": "latency_ms", "name": "Round-trip Latency", "unit": "ms", "device_class": None, "state_class": "measurement", "group": "diagnostic"},
@@ -206,6 +213,10 @@ HEARTBEAT_EVERY_S = 60
 #: per bridge (spec §11 — it proves the process and its alert monitor are alive, so it
 #: must not depend on a gateway or a poller). `fwh_dc` per the identity plan (#92).
 BRIDGE_NODE = "fwh_dc_bridge"
+
+
+def load_forecast_topic(node: str, prefix: str) -> str:
+    return f"{prefix}/{node}/load_forecast"
 
 
 def alerts_topic(node: str, prefix: str) -> str:
@@ -522,6 +533,8 @@ METER_KEYS = frozenset(v for k, v in DEVICE_KEYS.items() if not k.startswith("ge
 #: ...nor the 1707 relays (#386). A mock gateway publishes none of these.
 MOCK_ABSENT_KEYS = (NETWORK_KEYS | frozenset(RELAY_KEYS.values()) | RESERVE_KEYS | METER_KEYS
                     | BATTERY_KEYS)
+#: Entities on their own topic, not in the gateway's state JSON (#713).
+OWN_TOPIC_KEYS = frozenset(e["key"] for e in ENTITIES if e.get("topic"))
 #: Published only while the gateway is off-grid (#704); absent (unknown) on the grid.
 OFF_GRID_ONLY_KEYS = frozenset({"offgrid_reason", "offgrid_min"})
 
@@ -545,6 +558,11 @@ def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: st
             "availability_topic": avail_topic,
             "device": device,
         }
+        if e.get("topic"):              # its own topic, with attributes (#713)
+            cfg["state_topic"] = f"{prefix}/{node}/{e['topic']}"
+            cfg["value_template"] = "{{ value_json.%s }}" % e["value_key"]
+            cfg["json_attributes_topic"] = cfg["state_topic"]
+            cfg["json_attributes_template"] = e["attributes"]
         if e["unit"]:
             cfg["unit_of_measurement"] = e["unit"]
         if e["device_class"]:

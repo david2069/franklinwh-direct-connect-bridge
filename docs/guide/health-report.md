@@ -68,6 +68,7 @@ phones. Untick **Mondays 07:00** to stop it; **Run now** makes last week's at on
 | Round-trip efficiency | Battery energy out ÷ in over the longest run of days that starts and ends at a similar SoC (within 5 points), so the charge left in the battery hardly counts. |
 | Full cycles | The week's discharge ÷ **Battery capacity** (Settings → Automation); without it, the report says to set it. |
 | Cycles by depth | Charge cycles counted from the SoC readings (rainflow), with their average depth. |
+| Load forecast | How far off the home-load forecast (Home Assistant's **Load Forecast**) was over the last 90 days, as the average error in a day's total, beside "same as the day before" for comparison. Each day is predicted only from the days before it. It needs four weeks of history. |
 | Energy | The week's battery in and out, solar, home, and grid in and out, from the aGate's daily totals. |
 
 If the bridge was off at 07:00 on Monday, the report runs on its first minute back that week.

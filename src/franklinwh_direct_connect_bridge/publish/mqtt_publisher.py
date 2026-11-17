@@ -136,6 +136,11 @@ class MqttPublisher:
         self.client.publish(entities.alerts_topic(self.node, self.s.mqtt_prefix),
                             json.dumps(payload), retain=True)
 
+    def publish_load_forecast(self, payload: dict) -> None:
+        """Load Forecast (#713): this hour's kW and HAEO's series. Retained."""
+        self.client.publish(entities.load_forecast_topic(self.node, self.s.mqtt_prefix),
+                            json.dumps(payload), retain=True)
+
     def publish_availability(self, online: bool) -> None:
         self.client.publish(self.avail_topic, "online" if online else "offline", retain=True)
 
