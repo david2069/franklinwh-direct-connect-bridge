@@ -8,6 +8,11 @@ now. A tariff's rate model is stored as its pricing JSON:
                  blocks:[{start:"15:00", end:"21:00", time_period:"on_peak", days:[0..6]}] } ]
     default_rate: {buy, sell}          # flat/tiered fallback (a plain number or a tier ladder)
 
+A time period may also hold ``weekend: {buy, sell}`` (#656): Saturday's and Sunday's rate
+for that band in that season, as the FranklinWH app prices a band per day type (weekdays,
+and weekends and holidays; the bridge has no holiday list). A side it leaves out is the
+band's own. A time period without one prices every day the same, as before.
+
 Three separate concepts: a SEASON owns which months it covers; a BLOCK owns hours (+ optional
 days) and NAMES a time period; a TIME PERIOD owns the price pair {buy, sell}. Blocks name a
 period (not a price) so import and export boundaries can differ; a tiered price on a time
@@ -55,6 +60,18 @@ def period_of(block: Any) -> str | None:
     if not isinstance(block, dict):
         return None
     return block.get("time_period") or block.get("wave")
+
+
+def rates_on(rates: Any, now: datetime) -> dict:
+    """A time period's {buy, sell} on ``now``'s day: its ``weekend`` rate on a Saturday or
+    Sunday when it has one (a side left out there is the band's own), else its own."""
+    if not isinstance(rates, dict):
+        return {}
+    wk = rates.get("weekend")
+    if now.weekday() < 5 or not isinstance(wk, dict):
+        return rates
+    return {side: (wk.get(side) if wk.get(side) is not None else rates.get(side))
+            for side in ("buy", "sell")}
 
 
 def tier_rate(value: Any, used_kwh: float | None) -> float | None:
@@ -236,7 +253,7 @@ def resolve(
         }
 
     period = period_of(block)
-    rates = periods_of(season).get(period) or {}
+    rates = rates_on(periods_of(season).get(period) or {}, now)
     raw_buy, raw_sell = rates.get("buy"), rates.get("sell")
     buy = tier_rate(raw_buy, used_kwh)
     sell = tier_rate(raw_sell, used_kwh)
@@ -299,8 +316,9 @@ def validate(seasons: Any, default_rate: Any = None) -> list[str]:
         for wname, wrates in periods.items():
             if not isinstance(wrates, dict):
                 continue
-            for side in ("buy", "sell"):
-                ladder = wrates.get(side)
+            wk = wrates.get("weekend") if isinstance(wrates.get("weekend"), dict) else {}
+            for side, ladder in [(side, wrates.get(side)) for side in ("buy", "sell")] + [
+                    (f"weekend {side}", wk.get(side)) for side in ("buy", "sell")]:
                 if not isinstance(ladder, list):
                     continue
                 label = TIME_PERIOD_LABELS.get(wname, wname)

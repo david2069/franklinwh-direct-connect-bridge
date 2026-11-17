@@ -747,6 +747,14 @@ class TouImportReq(BaseModel):
     power_pct: float = Field(100, ge=1, le=100)
 
 
+class TouTariffReq(BaseModel):
+    """Import the FranklinWH TOU schedule as a tariff plan (#656): the gateway whose copy,
+    the meter it prices, and the pre-fill as the user edited it."""
+    gateway: str
+    meter_id: str | None = None
+    answers: dict = Field(default_factory=dict)
+
+
 class ScheduleReq(BaseModel):
     # Unknown fields are refused, not ignored (#269): a mis-shaped request otherwise saved
     # a schedule built from defaults, firing at a time nobody chose.
@@ -5407,6 +5415,117 @@ def create_app() -> FastAPI:
                result="created, disabled", ok=True)
         return {"created": [{"id": m["id"], "name": m["name"]} for m in made],
                 "left_out": plan["left_out"]}
+
+    # ── the TOU schedule as a tariff plan (#656 phase 2) ──────────────────────────
+    @app.get("/api/cloud/tou/tariff/status")
+    def api_cloud_tou_tariff_status():
+        """The gateways whose TOU schedule can be imported (the cloud is signed in for
+        them), each with its meter, and the plans whose schedule has changed since they
+        were imported. No cloud call."""
+        from . import cloud_tou
+        st = _gw_store()
+        rows = {g["id"]: g for g in (st.gateways() if st is not None else [])}
+        out, latest = [], {}
+        for g in get_gateways():
+            gw, _why = _tou_gateway(g.id)
+            if gw is None:
+                continue
+            out.append({"id": g.id, "label": g.label or g.id,
+                        "meter_id": (rows.get(g.id) or {}).get("meter_id")})
+        if st is not None:
+            for g in get_gateways():
+                cur = st.latest_cloud_tou(g.id)
+                if cur is not None:
+                    latest[g.id] = cur["id"]
+        stale = {}
+        for t in (st.tariffs() if st is not None else []):
+            need = cloud_tou.reimport_needed(t, latest)
+            if need:
+                stale[t["id"]] = need
+        return {"gateways": out, "reimport": stale}
+
+    def _tou_tariff_copy(gateway: str) -> dict:
+        """The latest copy, read once (Sync now) when there is none; 409 without the cloud."""
+        from . import cloud_tou
+        gw, why = _tou_gateway(gateway)
+        if gw is None:
+            raise HTTPException(status_code=409, detail=why)
+        st = _gw_store()
+        cur = cloud_tou.latest(st, gateway) if st is not None else None
+        if cur is None:
+            try:
+                cur = cloud_tou.sync(st, get_settings(), gateway, gw.serial, "manual")
+            except providers.CloudLoginHeld as e:
+                raise HTTPException(status_code=409, detail=str(e))
+            except Exception as e:  # noqa: BLE001 — the dialog shows why
+                raise HTTPException(status_code=502,
+                                    detail=f"Couldn't read the TOU schedule: {e}")
+        return cur
+
+    def _meter_site(meter_id: str | None) -> tuple[str | None, dict | None]:
+        st = _ha_store()
+        meters = st.meters()
+        mid = meter_id or next((m["id"] for m in meters if m.get("is_default")),
+                               meters[0]["id"] if meters else None)
+        m = st.meter(mid) if mid else None
+        if meter_id and m is None:
+            raise HTTPException(422, f"no meter '{meter_id}'")
+        return mid, (st.site(m["site_id"]) if m else None)
+
+    @app.get("/api/cloud/tou/tariff")
+    def api_cloud_tou_tariff(gateway: str = Depends(_gateway_q),
+                             meter: str | None = Query(None)):
+        """The import's pre-fill: the utility, tariff and country from the cloud, the
+        seasons and rates from the latest copy, the guesses to confirm."""
+        from . import cloud_tou
+        cur = _tou_tariff_copy(gateway)
+        mid, site = _meter_site(meter)
+        today = _site_now(gateway).date()
+        return {**cloud_tou.prefill(cur, site, today=today), "meter_id": mid,
+                "gateway": gateway}
+
+    def _tou_tariff_bundle(req: TouTariffReq):
+        from . import cloud_tou
+        cur = _tou_tariff_copy(req.gateway)
+        mid, _site = _meter_site(req.meter_id)
+        bundle = cloud_tou.to_profile(cur, req.answers, req.gateway)
+        return cur, mid, bundle
+
+    @app.post("/api/cloud/tou/tariff/check")
+    def api_cloud_tou_tariff_check(req: TouTariffReq):
+        """Check: the tariff check on the plan, what importing it does (the plan it ends),
+        and today's price by hour. Changes nothing."""
+        from . import cloud_tou, rate_model, tariff_io
+        cur, mid, bundle = _tou_tariff_bundle(req)
+        _u, tar, _tz = tariff_io.to_local(bundle["profile"])
+        seasons = tar["pricing"]["seasons"]
+        probs = cloud_tou.problems(cur) + rate_model.validate(seasons, None)
+        now = _site_now(req.gateway).replace(minute=0, second=0, microsecond=0)
+        hours = []
+        for h in range(24):
+            r = rate_model.resolve(seasons, now.replace(hour=h), 0)
+            hours.append({"hour": h, "band": r.get("time_period_label"), "buy": r.get("buy"),
+                          "sell": r.get("sell")})
+        preview = None
+        try:
+            preview = api_tariff_import(TariffProfileImport(**bundle, meter_id=mid),
+                                        dry_run=True)["preview"]
+        except HTTPException as e:
+            probs.append(str(e.detail))
+        return {"problems": probs, "hours": hours, "preview": preview, "profile": bundle}
+
+    @app.post("/api/cloud/tou/tariff/import", status_code=201)
+    def api_cloud_tou_tariff_import(req: TouTariffReq):
+        """Import as a plan of the meter, through the tariff import (one plan in force per
+        meter; the current one ends the day before). Nothing is written to the cloud or
+        the aGate."""
+        _guard_writes()
+        _cur, mid, bundle = _tou_tariff_bundle(req)
+        out = api_tariff_import(TariffProfileImport(**bundle, meter_id=mid), dry_run=False)
+        _audit("tou_tariff_import", gateway=req.gateway,
+               detail=f"\"{bundle['profile']['name']}\" from the FranklinWH TOU schedule",
+               result="imported", ok=True)
+        return out
 
     @app.get("/api/cloud/mode")
     def api_cloud_mode(requestedMode: int | None = Query(None),
