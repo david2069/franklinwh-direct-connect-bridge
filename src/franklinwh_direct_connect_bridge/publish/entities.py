@@ -141,7 +141,28 @@ CONTROLS: list[dict[str, Any]] = [
     # the house with the switch off, and Grid Status says which it is.
     {"key": "off_grid", "name": "Go Off-Grid", "ha_type": "switch",
      "state_key": "off_grid_requested_on"},
+    # Battery Command (#705): the Modbus Bridge's entities, names, options and ranges. They
+    # run the Battery tab's Battery Command (battery_control: the Modbus TCP Server's
+    # power setpoint, with the bridge's watchdog) and stage into its values.
+    {"key": "battery_command", "name": "Battery Command", "ha_type": "select",
+     "options": ["Not Active", "Force Charge", "Force Discharge", "Force Standby", "Release"],
+     "state_key": "battery_command_state", "battery": True},
+    {"key": "battery_command_power", "name": "Command Power", "ha_type": "number",
+     "state_key": "battery_command_power_w", "unit": "W", "device_class": "power",
+     "min": 0, "max": 5000, "step": 100, "battery": True},
+    {"key": "battery_command_power_pct", "name": "Command Power %", "ha_type": "number",
+     "state_key": "battery_command_power_pct", "unit": "%", "min": 0, "max": 100, "step": 5,
+     "battery": True},
+    {"key": "battery_command_duration", "name": "Command Duration", "ha_type": "number",
+     "state_key": "battery_command_duration_s", "unit": "s", "device_class": "duration",
+     "min": 0, "max": 7200, "step": 60, "battery": True},
+    {"key": "battery_command_target_soc", "name": "Target SoC", "ha_type": "number",
+     "state_key": "battery_command_target_soc", "unit": "%", "min": 0, "max": 100, "step": 5,
+     "battery": True},
 ]
+
+#: The Battery Command entities (#705). A mock has no Modbus TCP Server, so none for it.
+BATTERY_KEYS = frozenset(c["key"] for c in CONTROLS if c.get("battery"))
 
 #: The reserve controls, left out of discovery unless the cloud can write this gateway.
 RESERVE_KEYS = frozenset(c["key"] for c in CONTROLS if c.get("reserve_mode"))
@@ -478,7 +499,8 @@ NETWORK_KEYS = frozenset(e["key"] for e in ENTITIES if e["key"].startswith("net_
 #: fields, so a mock has no watts or kWh for them.
 METER_KEYS = frozenset(v for k, v in DEVICE_KEYS.items() if not k.startswith("generator."))
 #: ...nor the 1707 relays (#386). A mock gateway publishes none of these.
-MOCK_ABSENT_KEYS = NETWORK_KEYS | frozenset(RELAY_KEYS.values()) | RESERVE_KEYS | METER_KEYS
+MOCK_ABSENT_KEYS = (NETWORK_KEYS | frozenset(RELAY_KEYS.values()) | RESERVE_KEYS | METER_KEYS
+                    | BATTERY_KEYS)
 #: Published only while the gateway is off-grid (#704); absent (unknown) on the grid.
 OFF_GRID_ONLY_KEYS = frozenset({"offgrid_reason", "offgrid_min"})
 
@@ -540,8 +562,12 @@ def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: st
         if c["ha_type"] == "select":
             cfg["options"] = c["options"]
         if c["ha_type"] == "number":
-            cfg.update({"min": 0, "max": 100, "step": 1, "unit_of_measurement": "%",
+            # 0-100 % in steps of 1 (the reserves) unless the control says otherwise.
+            cfg.update({"min": c.get("min", 0), "max": c.get("max", 100),
+                        "step": c.get("step", 1), "unit_of_measurement": c.get("unit", "%"),
                         "mode": "box"})
+            if c.get("device_class"):
+                cfg["device_class"] = c["device_class"]
         if c["ha_type"] == "switch":
             # The state JSON carries a bool; HA needs the payloads spelled out.
             cfg["payload_on"] = "ON"

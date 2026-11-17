@@ -62,4 +62,36 @@ def handle_command(key: str, payload: str, *, settings, client, store=None,
         ok = out.get("ok", True) if isinstance(out, dict) else True
         return f"reserve {mode} -> {soc}%: {'applied via cloud' if ok else out}"
 
+    if key.startswith("battery_command"):
+        # The Battery tab's Battery Command (#705): a number stages a value, the select
+        # runs it on this gateway. allow_writes is checked by the caller, as for every
+        # control; battery_control checks the Modbus path itself.
+        from .. import battery_control
+        staged = battery_control.stage(key, payload)
+        if staged is not None:
+            return f"{key} -> {payload}: {staged['result']}"
+        if key != "battery_command":
+            return f"unknown control '{key}'"
+        if payload not in battery_control.COMMANDS:
+            return f"unknown battery command '{payload}'"
+        if not host:
+            return "battery command: no gateway host to reach over Modbus"
+
+        def _soc():
+            return ((getattr(gateway, "last_state", None) or {}).get("soc")
+                    if gateway is not None else None)
+        out = battery_control.run_command(
+            payload, host=host, gateway_id=getattr(gateway, "id", None), soc_getter=_soc,
+            store=store if store is not None else _store(settings), source="ha")
+        return f"battery command -> {payload}: {out.get('result', '')}"
+
     return f"unknown control '{key}'"
+
+
+def _store(settings):
+    """The metrics store, for the dispatch record; None when it is off."""
+    try:
+        from ..db import get_store
+        return get_store(settings)
+    except Exception:  # noqa: BLE001
+        return None

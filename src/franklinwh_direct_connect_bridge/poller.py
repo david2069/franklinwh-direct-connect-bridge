@@ -227,6 +227,12 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                 result = handle_command(key, payload, settings=settings, client=client,
                                         host=gw.active_host or gw.configured_host, gateway=gw)
                 log.info("[%s] control %s=%s -> %s", gw.id, key, payload, result)
+                if key.startswith("battery_command") and pub is not None:
+                    # Show the new value or force now, not at the next poll (#705).
+                    from . import battery_control as _bc
+                    st_now = dict(gw.last_state or {})
+                    st_now.update(_bc.ha_state(gw.active_host or gw.configured_host))
+                    pub.publish_state(st_now)
             except Exception as e:  # noqa: BLE001
                 log.warning("[%s] control %s failed: %s", gw.id, key, e)
 
@@ -461,6 +467,10 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                     log.debug("[%s] HA extras not worked out: %s", gw.id, e)
                     _alarm_n = None
                 st.update(entities.late_state(st, now=time.time(), alarms=_alarm_n))
+                # Battery Command entities (#705): the force this bridge holds on this aGate
+                # and the staged values. In memory, no Modbus.
+                from . import battery_control as _bc
+                st.update(_bc.ha_state(gw.active_host or gw.configured_host))
                 gw.last_state = st
                 # Only a poll that READ the gateway makes the snapshot fresh (#284). A
                 # failed poll stored an empty snapshot as new, so the scheduler kept

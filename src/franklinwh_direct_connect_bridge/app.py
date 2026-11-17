@@ -4946,8 +4946,11 @@ def create_app() -> FastAPI:
     # franklinwh-modbus library) — independent of the modbus-bridge service. Until
     # that path is installed + configured we report it plainly; the widget stays a
     # read-only control rather than a button that lies.
-    _batt_cmd = {"power_w": 0, "power_pct": 100, "power_mode": "pct",
-                 "duration_s": 0, "target_soc": 0, "active": "Not Active", "result": ""}
+    # The staged Battery Command values, shared with Home Assistant's Battery Command
+    # entities (#705); fresh for each app, as before.
+    from . import battery_control as _bc_mod
+    _bc_mod.reset_staged()
+    _batt_cmd = _bc_mod.STAGED
     #: Availability per gateway host (#349): host -> {"ts", "val"}.
     _avail_cache: dict = {}
 
@@ -5033,23 +5036,16 @@ def create_app() -> FastAPI:
         Executing actually moves the battery, so it is gated on allow_writes AND a
         reachable, configured Modbus path — otherwise it refuses with the reason."""
         slug, value = req.slug, req.value
+        from . import battery_control
         # Parameter slugs just stage the value for the next command.
-        if slug == "battery_command_power":
-            _batt_cmd["power_w"] = int(float(value or 0)); _batt_cmd["power_mode"] = "w"
-            return {"ok": True, "result": "power set"}
-        if slug == "battery_command_power_pct":
-            _batt_cmd["power_pct"] = int(float(value or 0)); _batt_cmd["power_mode"] = "pct"
-            return {"ok": True, "result": "power% set"}
-        if slug == "battery_command_duration":
-            _batt_cmd["duration_s"] = int(float(value or 0)); return {"ok": True, "result": "duration set"}
-        if slug == "battery_command_target_soc":
-            _batt_cmd["target_soc"] = int(float(value or 0)); return {"ok": True, "result": "target set"}
+        staged = battery_control.stage(slug, value)
+        if staged is not None:
+            return staged
         if slug != "battery_command":
             raise HTTPException(status_code=422, detail=f"unknown slug '{slug}'")
 
         # Executing a Force/Release command — this MOVES the battery.
         _guard_writes()
-        from . import battery_control
         gw = _gw_or_404(gateway)       # the gateway on screen (#349), else the default
         host = _modbus_host(gateway)
         if not host:
@@ -5061,47 +5057,12 @@ def create_app() -> FastAPI:
                 return (getattr(gw, "last_state", {}) or {}).get("soc")
             except Exception:  # noqa: BLE001
                 return None
-        def _batt_log(status, detail):
-            try:
-                st = _ha_store()
-                st.log_schedule_event("_batt", "Battery dispatch", status, detail)
-                # A clean end closes the persisted row so a later boot reconcile does
-                # not treat this widget dispatch as interrupted.
-                if status == "dispatch-end" and hasattr(st, "end_active_dispatches"):
-                    st.end_active_dispatches(host=host, status="ended")
-            except Exception:  # noqa: BLE001
-                pass
-        out = battery_control.execute(
-            value, host=host, power_w=_batt_cmd["power_w"], power_pct=_batt_cmd["power_pct"],
-            power_mode=_batt_cmd["power_mode"], duration_s=_batt_cmd["duration_s"],
-            target_soc=_batt_cmd["target_soc"], soc_getter=_batt_soc, on_event=_batt_log,
-            dry_run=dry)
-        # Persist a widget-initiated force so it, too, is covered by the boot reconcile
-        # policy (an interrupted one no longer falls to the generic orphan alert).
-        _force_dirn = {"Force Charge": "charge", "Force Discharge": "discharge",
-                       "Force Standby": "standby"}.get(value)
         try:
             store = _ha_store()
-            if out.get("ok") and not dry and _force_dirn and hasattr(store, "record_dispatch"):
-                mode = _batt_cmd["power_mode"]
-                mag = int(_batt_cmd["power_w"] if mode == "w" else _batt_cmd["power_pct"])
-                signed = (abs(mag) if _force_dirn == "charge"
-                          else -abs(mag) if _force_dirn == "discharge" else 0)
-                dur = int(_batt_cmd["duration_s"] or 0)
-                store.record_dispatch(
-                    schedule_id="_widget", name="Battery Control (widget)",
-                    gateway_id=gw.id or None,
-                    host=host, direction=_force_dirn, watts=signed, power_mode=mode,
-                    target_soc=int(_batt_cmd["target_soc"] or 0), window_start_ts=time.time(),
-                    window_end_ts=(time.time() + dur) if dur else None)
-            elif out.get("ok") and not dry and value in ("Release", "Not Active") \
-                    and hasattr(store, "end_active_dispatches"):
-                store.end_active_dispatches(host=host, status="ended")
-        except Exception:  # noqa: BLE001
-            pass
-        if out.get("active"):
-            _batt_cmd["active"] = out["active"]
-        _batt_cmd["result"] = out.get("result", "")
+        except Exception:  # noqa: BLE001 — no store: the command still runs, unrecorded
+            store = None
+        out = battery_control.run_command(value, host=host, gateway_id=gw.id,
+                                          soc_getter=_batt_soc, store=store, dry_run=dry)
         if not out.get("ok"):
             _avail_invalidate()      # the path may have changed: re-check on the next GET
         return out
