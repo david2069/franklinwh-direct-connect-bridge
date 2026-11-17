@@ -81,6 +81,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Plans & meters: a plan starting today showed as future in the Australian morning**
+  (#722). The plan list took today as the UTC date, so the meter said "No tariff in force";
+  it now uses the site's date, as Analytics does ([guide](docs/guide/energy-and-costs.md)).
+
 - **System view said "Battery" for a gateway with four aPowers** (#703). The count came only
   from the power-flow read, which leaves it out on this firmware; it now also comes from the
   aGate's list of aPowers in its login reply ([guide](docs/guide/tour.md)).
