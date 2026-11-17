@@ -336,6 +336,113 @@
     </template>
   </div>
 
+  <!-- ══ HEMS setup, opt-in (#713, hems.loads) ══ -->
+  <div class="flex items-center gap-3">
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">HEMS setup <a :href="$store.app.guideUrl('energy-and-costs/#hems-setup')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
+    <div class="flex-1 border-t border-white/[0.08]"></div>
+  </div>
+  <div class="card space-y-3" data-testid="hems-setup">
+    <template x-if="hems">
+      <div class="space-y-3">
+        <div class="flex items-center justify-between gap-2 text-xs">
+          <span style="color:var(--text-secondary)">Describe this home for energy planning (optional). <span class="font-medium" x-text="hems.notice"></span></span>
+          <button type="button" data-testid="hems-optin" @click="hemsForm.opted_in = !hemsForm.opted_in" role="switch" :aria-checked="hemsForm.opted_in" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="hemsForm.opted_in ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="hemsForm.opted_in ? 'translate-x-5' : 'translate-x-0.5'"></span></button>
+        </div>
+        <div x-show="hemsForm.opted_in" class="space-y-3">
+          <label class="flex flex-col gap-1 sm:w-1/2">
+            <span class="text-xs" style="color:var(--text-secondary)">Always-on load (kW)
+              <span x-show="hems.always_on && hems.always_on.confirm" class="text-[9px] uppercase tracking-wide ml-1" style="color:var(--warning)" data-testid="hems-confirm-always-on">Please confirm</span>
+              <span x-show="hems.always_on && hems.always_on.confirm" class="text-[10px] ml-1" style="color:var(--text-faint)" x-text="hems.always_on && hems.always_on.basis"></span></span>
+            <input type="number" step="0.01" min="0" class="form-control form-control-sm" x-model="hemsForm.always_on_kw" data-testid="hems-always-on" placeholder="filled in from your overnight history once there is some">
+          </label>
+          <div class="text-xs space-y-1" data-testid="hems-periods">
+            <div style="color:var(--text-secondary)">Usage periods from your history (high · medium · low)
+              <span x-show="hems.periods.confirm && !hemsForm.periods_confirmed && hems.periods.weekday.some(b => b)" class="text-[9px] uppercase tracking-wide ml-1" style="color:var(--warning)">Please confirm</span>
+              <span x-show="!hems.periods.weekday.some(b => b) && !hems.periods.weekend.some(b => b)" class="ml-1" style="color:var(--text-faint)">· no history yet</span></div>
+            <template x-for="[day, label] in [['weekday','Weekday'],['weekend','Weekend']]" :key="day">
+              <div class="flex items-center gap-2">
+                <span class="w-16 shrink-0" style="color:var(--text-faint)" x-text="label"></span>
+                <div class="flex flex-1 gap-px min-w-0">
+                  <template x-for="(b, h) in hems.periods[day]" :key="h">
+                    <span class="flex-1 h-3 rounded-sm" :style="hemsBandStyle(b)" :title="`${String(h).padStart(2,'0')}:00 ${b || 'no data'}`"></span>
+                  </template>
+                </div>
+              </div>
+            </template>
+            <label class="inline-flex items-center gap-2"><input type="checkbox" x-model="hemsForm.periods_confirmed"> These look right</label>
+          </div>
+          <div class="space-y-2">
+            <div class="text-xs" style="color:var(--text-secondary)">Heavy loads <span style="color:var(--text-faint)" x-text="'· this bridge can control: ' + hems.capabilities.join(', ')"></span></div>
+            <template x-for="(l, i) in hemsForm.loads" :key="i">
+              <div class="rounded p-2 space-y-2" style="border:1px solid var(--border)" :data-testid="'hems-load-' + i">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                  <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Name</span><input class="form-control form-control-sm" x-model="l.name"></label>
+                  <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Device type</span><input class="form-control form-control-sm" x-model="l.device_type" placeholder="pool_pump, hot_water, ev_charger…"></label>
+                  <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Measured by</span>
+                    <select class="form-control form-control-sm" x-model="l.measurement.kind"><template x-for="m in hems.choices.measurement" :key="m"><option :value="m" x-text="m" :selected="m === l.measurement.kind"></option></template></select></label>
+                  <label class="flex flex-col gap-1" x-show="l.measurement.kind !== 'nameplate'"><span style="color:var(--text-faint)">HA entities (comma-separated)</span><input class="form-control form-control-sm" x-model="l._entities"></label>
+                  <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Power (kW)</span><input type="number" step="0.1" min="0" class="form-control form-control-sm" x-model="l.power_kw"></label>
+                  <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Duration (h)</span><input type="number" step="0.25" min="0" class="form-control form-control-sm" x-model="l.duration_h"></label>
+                  <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Runs (HH:MM-HH:MM, …)</span><input class="form-control form-control-sm" x-model="l._runsText" :disabled="l._weather" placeholder="10:00-16:00"></label>
+                  <label class="inline-flex items-center gap-2 self-end"><input type="checkbox" x-model="l._weather"> Follows the weather</label>
+                  <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Circuit</span>
+                    <select class="form-control form-control-sm" x-model="l.circuit"><option value="">—</option><template x-for="c in hems.choices.circuit" :key="c"><option :value="c" x-text="c" :selected="c === l.circuit"></option></template></select></label>
+                  <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Control</span>
+                    <select class="form-control form-control-sm" :value="l.control ? l.control.type : ''" @change="l.control = $event.target.value ? { ...(l.control || {}), type: $event.target.value } : null">
+                      <option value="">none (just measured)</option><template x-for="c in hems.choices.control" :key="c"><option :value="c" x-text="c" :selected="l.control && c === l.control.type"></option></template></select></label>
+                  <template x-if="l.control">
+                    <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Switched by</span>
+                      <select class="form-control form-control-sm" x-model="l.switch.kind"><option value="">—</option><template x-for="c in hems.choices.switch" :key="c"><option :value="c" x-text="c" :selected="c === l.switch.kind"></option></template></select></label>
+                  </template>
+                  <template x-if="l.control && l.control.type === 'deferrable'">
+                    <div class="contents">
+                      <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Energy needed (kWh)</span><input type="number" step="0.1" min="0" class="form-control form-control-sm" x-model.number="l.control.energy_kwh"></label>
+                      <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">By (HH:MM)</span><input type="time" class="form-control form-control-sm" x-model="l.control.deadline"></label>
+                    </div>
+                  </template>
+                  <template x-if="l.control && l.control.type === 'sheddable'">
+                    <div class="contents">
+                      <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Max off (min)</span><input type="number" min="0" class="form-control form-control-sm" x-model.number="l.control.max_off_min"></label>
+                      <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Min on (min)</span><input type="number" min="0" class="form-control form-control-sm" x-model.number="l.control.min_on_min"></label>
+                      <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Priority</span><input type="number" min="1" class="form-control form-control-sm" x-model.number="l.control.priority"></label>
+                    </div>
+                  </template>
+                  <template x-if="l.control && l.control.type === 'soak'">
+                    <div class="contents">
+                      <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Quota (kWh)</span><input type="number" step="0.1" min="0" class="form-control form-control-sm" x-model.number="l.control.quota_kwh"></label>
+                      <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Price penalty (c/kWh)</span><input type="number" step="0.1" class="form-control form-control-sm" x-model.number="l.control.price_penalty"></label>
+                      <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">When export price ≤ (c/kWh)</span><input type="number" step="0.1" class="form-control form-control-sm" x-model.number="l.control.export_price_at_or_below"></label>
+                      <label class="inline-flex items-center gap-2"><input type="checkbox" x-model="l.control.export_limited"> When export is limited</label>
+                      <label class="inline-flex items-center gap-2"><input type="checkbox" x-model="l.control.battery_full_exporting"> When the battery is full and exporting</label>
+                    </div>
+                  </template>
+                  <template x-if="l.device_type === 'ev_charger'">
+                    <div class="contents">
+                      <template x-for="f in hems.choices.ev_fields" :key="f">
+                        <label class="flex flex-col gap-1"><span style="color:var(--text-faint)" x-text="'EV: ' + f.replaceAll('_', ' ')"></span><input class="form-control form-control-sm" x-model="l.ev[f]"></label>
+                      </template>
+                    </div>
+                  </template>
+                </div>
+                <ul class="text-xs list-disc pl-4" style="color:var(--danger)" x-show="(hems.loads[i] || {}).problems && hems.loads[i].problems.length">
+                  <template x-for="p in (hems.loads[i] || {}).problems || []" :key="p"><li x-text="p"></li></template>
+                </ul>
+                <div class="flex justify-between items-center text-xs">
+                  <span style="color:var(--text-faint)" x-text="(hems.loads[i] || {}).expected_kwh_today != null ? `about ${hems.loads[i].expected_kwh_today} kWh today` : ''"></span>
+                  <button type="button" class="btn btn-secondary btn-sm" @click="hemsForm.loads.splice(i, 1)">Remove</button>
+                </div>
+              </div>
+            </template>
+            <button type="button" class="btn btn-secondary btn-sm" data-testid="hems-add-load" @click="hemsAddLoad()">+ Add load</button>
+          </div>
+        </div>
+        <div class="flex justify-end">
+          <button class="btn btn-primary btn-sm" data-testid="hems-save" :disabled="!canWrite() || hemsSaving || hemsFor !== $store.app.gwQuery()" @click="saveHems()" x-text="hemsSaving ? 'Saving…' : 'Save HEMS setup'"></button>
+        </div>
+      </div>
+    </template>
+  </div>
+
   </div>
   <!-- Billing & Utilities (#674): the same sites, meters, retailers and tariffs editors as
        the Billing & Utilities page's Plans & meters (one partial). -->

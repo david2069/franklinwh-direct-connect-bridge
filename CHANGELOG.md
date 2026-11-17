@@ -13,6 +13,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- Settings → Gateways: **HEMS setup**, opt-in (#713, hems 0.2.0). Describe the home for
+  energy planning: the always-on load and the high, medium and low usage periods, filled in
+  from your own history to confirm, and each heavy load (how it is measured, when it runs,
+  its circuit, and whether it is deferrable, sheddable or soaks up spare solar, and an EV
+  charger's details), checked against what this bridge can control. Answers only: nothing is
+  switched from them yet ([guide](docs/guide/energy-and-costs.md#hems-setup)).
 - Settings → Gateways: **Battery warranty & wear** (#713, hems 0.2.0). Warranty end and
   throughput (filled from the FranklinWH cloud when signed in, marked *Please confirm*), the
   guaranteed end SoH, install date and replacement value give the wear cost per kWh
