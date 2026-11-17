@@ -342,6 +342,34 @@ Why a tariff was not accepted is shown in the dialog. After **Import** the dialo
 was added and to which meter (and which plan it ended, if any); **Done** closes it. To import
 another, open Import again.
 
+### Import from FranklinWH
+
+**Import from FranklinWH** on a meter turns the TOU schedule set in the FranklinWH app into
+that meter's plan (#656). It shows while the FranklinWH cloud is signed in for a gateway on
+the meter, and uses the latest copy of the schedule (the one on **Scheduler → FranklinWH
+TOU**; it reads one first if there is none). Nothing is written to the cloud or the aGate,
+and the rates are copied, not linked.
+
+1. **Pre-fill.** The retailer, tariff name and country come from the cloud; the seasons,
+   bands, blocks and buy and sell rates come from the copy, shown per day type as the app
+   has them. The currency, whether the app's rates are per kWh or in cents, the network
+   (found in the tariff's name when it names one) and the start date are guesses: each is
+   marked *please confirm*. A plan holds one rate per band in a season, so a band priced
+   differently on weekdays and at weekends is listed for you to pick which rate to use
+   (pre-picked: the day type with the most hours in it). A band with no matching time
+   period (Sharp) and the app's grid fee are shown but not imported.
+2. **Ask.** The app doesn't hold the billing day, the daily supply charge, another fixed
+   charge, tax on fixed charges, a demand charge, an export bonus or an export charge, or
+   the plan's end date. Each starts as *doesn't apply*; untick it to enter it. A band with
+   no sell rate in the app sells at 0.
+3. **Check.** The tariff check (months covered once, every hour priced, a rate for each
+   band), what importing does (the plan it ends), and today's price by hour. **Import** is
+   enabled when there are no problems.
+
+**Import** adds the plan through the tariff import, so the rules below apply. The result
+stays in the dialog until **Done**. When the app's schedule changes later (a newer copy),
+the plan in force shows **Schedule changed — re-import?**, which opens the import again.
+
 **One tariff in force per meter.** A tariff has **Effective from** and **Effective to**
 (blank = current). A retailer has **Provider from** and **Provider until** the same way;
 both are optional and save blank. An empty date box stays blank (Safari otherwise greys

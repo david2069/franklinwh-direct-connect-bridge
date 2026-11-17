@@ -46,6 +46,10 @@ function settingsTab(opts = {}) {
     sites: [], meters: [], siteEdit: null, meterEdit: null,
     utilities: [], tariffs: [], utilEdit: null, tariffEdit: null, tariffMsg: null,
     tariffImp: { open: false, text: '', preview: null, msg: null, busy: false, done: false, result: null, meter_id: '' },
+    // Import from FranklinWH (#656): the gateways it's offered for and the plans whose
+    // schedule changed since; the dialog's steps (prefill, ask, check) and its result.
+    touTarStatus: { gateways: [], reimport: {} },
+    touTar: { open: false, step: 'prefill', gateway: '', meter_id: '', p: null, a: null, chk: null, msg: null, busy: false, done: false, result: null },
     planHist: {},
     // ── Automation constants (const.* sensors) ──
     constants: {}, constSpec: {}, constModes: [], constSaving: false,
@@ -599,6 +603,7 @@ function settingsTab(opts = {}) {
     async loadUtilitiesTariffs() {
       try { this.utilities = (await (await fetch('api/utilities')).json()).utilities || []; } catch { this.utilities = []; }
       try { this.tariffs = (await (await fetch('api/tariffs')).json()).tariffs || []; } catch { this.tariffs = []; }
+      try { this.touTarStatus = await (await fetch('api/cloud/tou/tariff/status')).json(); } catch { this.touTarStatus = { gateways: [], reimport: {} }; }
     },
 
     async loadConstants() {
@@ -937,6 +942,93 @@ function settingsTab(opts = {}) {
                        meter: m ? m.name : '', start: p.effective_start || '',
                        replaced: p.replaces || '', replacedEnd: p.replaces_end || '' };
           t.preview = null; t.msg = null;
+          t.done = true;
+          await this.loadUtilitiesTariffs(); await this.loadSitesMeters();
+        } else t.msg = { kind: 'err', text: 'Import failed: ' + (d.detail || r.statusText) };
+      } catch (e) { t.msg = { kind: 'err', text: 'Import failed: ' + e.message }; }
+      t.busy = false;
+    },
+    // ── Import from FranklinWH (#656 phase 2): the TOU schedule's latest copy as a plan of the
+    // meter. Pre-fill (please confirm the guesses), ask for what the cloud doesn't hold,
+    // Check, Import. Nothing is written to the cloud or the aGate; results stay in the dialog.
+    touGateways(m) {
+      const gws = (this.touTarStatus && this.touTarStatus.gateways) || [];
+      const def = this.meters.find(x => x.is_default) || this.meters[0];
+      return gws.filter(g => g.meter_id ? g.meter_id === m.id : (def && def.id === m.id));
+    },
+    touReimport(t) { return t ? ((this.touTarStatus && this.touTarStatus.reimport) || {})[t.id] : null; },
+    async openTouTariff(m, gateway) {
+      const gws = this.touGateways(m);
+      const gw = gateway || (gws[0] && gws[0].id) || '';
+      this.touTar = { open: true, step: 'prefill', gateway: gw, meter_id: m.id, p: null, a: null, chk: null, msg: null, busy: true, done: false, result: null };
+      await this.touTarLoad();
+    },
+    async touTarLoad() {
+      const t = this.touTar;
+      Object.assign(t, { p: null, a: null, chk: null, msg: null, busy: true, step: 'prefill' });
+      try {
+        const r = await fetch('api/cloud/tou/tariff?gateway=' + encodeURIComponent(t.gateway) + '&meter=' + encodeURIComponent(t.meter_id));
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) t.msg = { kind: 'err', text: d.detail || r.statusText };
+        else {
+          t.p = d;
+          const picks = {};
+          (d.split || []).forEach(x => { picks[x.season + '|' + x.band] = x.pick; });
+          // Each charge the cloud lacks starts as "doesn't apply" (off) until the user sets it.
+          t.a = { tariff_name: d.tariff_name, retailer: d.retailer, network: d.network, country: d.country,
+                  currency: d.currency, unit: d.unit, timezone: d.timezone,
+                  effective_start: d.effective_start, effective_end: '', picks,
+                  billing_day: '', billing_na: true, supply: '', supply_na: true,
+                  other: { description: '', frequency: 'monthly', rate: '' }, other_na: true,
+                  demand: { start: '16:00', end: '21:00', rate: '' }, demand_na: true,
+                  bonus: { start: '17:00', end: '20:00', rate: '' }, bonus_na: true,
+                  export_charge: { start: '10:00', end: '15:00', rate: '', free_kwh: '' }, export_charge_na: true,
+                  tax_pct: '', tax_na: true };
+        }
+      } catch (e) { t.msg = { kind: 'err', text: 'Couldn\'t load the TOU schedule: ' + e.message }; }
+      t.busy = false;
+    },
+    touTarConfirm(k) { return !!(this.touTar.p && (this.touTar.p.confirm || []).includes(k)); },
+    touTarMonths(ms) {
+      const n = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return (ms || []).map(m => n[m - 1]).join(', ');
+    },
+    touTarRate(v) { return v == null ? '—' : String(v); },
+    touTarBody() {
+      const a = this.touTar.a || {};
+      const na = (k, v) => a[k + '_na'] ? null : v;
+      return { gateway: this.touTar.gateway, meter_id: this.touTar.meter_id, answers: {
+        tariff_name: a.tariff_name, retailer: a.retailer, network: a.network, country: a.country,
+        timezone: a.timezone, unit: a.unit, picks: a.picks,
+        effective_start: a.effective_start || null, effective_end: a.effective_end || null,
+        billing_day: na('billing', a.billing_day === '' ? null : Number(a.billing_day)),
+        supply: na('supply', a.supply === '' ? null : Number(a.supply)),
+        other: na('other', a.other), demand: na('demand', a.demand), bonus: na('bonus', a.bonus),
+        export_charge: na('export_charge', a.export_charge),
+        tax_pct: na('tax', a.tax_pct === '' ? null : Number(a.tax_pct)) } };
+    },
+    async touTarCheck() {
+      const t = this.touTar;
+      Object.assign(t, { chk: null, msg: null, busy: true });
+      try {
+        const r = await fetch('api/cloud/tou/tariff/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.touTarBody()) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) t.msg = { kind: 'err', text: 'Check failed: ' + (d.detail || r.statusText) };
+        else { t.chk = d; t.step = 'check'; }
+      } catch (e) { t.msg = { kind: 'err', text: 'Check failed: ' + e.message }; }
+      t.busy = false;
+    },
+    async touTarImport() {
+      const t = this.touTar;
+      if (!this.canWrite()) { t.msg = { kind: 'err', text: 'Enable writes (ALLOW_WRITES) to import a tariff.' }; return; }
+      Object.assign(t, { msg: null, busy: true });
+      try {
+        const r = await fetch('api/cloud/tou/tariff/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.touTarBody()) });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.ok) {
+          const p = (t.chk && t.chk.preview) || {}, m = this.meters.find(x => x.id === (d.attached_meter || t.meter_id));
+          t.result = { name: p.tariff_name, retailer: p.retailer, meter: m ? m.name : '',
+                       start: p.effective_start || '', replaced: p.replaces || '', replacedEnd: p.replaces_end || '' };
           t.done = true;
           await this.loadUtilitiesTariffs(); await this.loadSitesMeters();
         } else t.msg = { kind: 'err', text: 'Import failed: ' + (d.detail || r.statusText) };

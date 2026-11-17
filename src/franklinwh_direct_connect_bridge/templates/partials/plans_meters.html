@@ -118,6 +118,10 @@
                     <span class="text-[10px] uppercase tracking-wider" style="color:var(--text-faint)">Tariff</span>
                     <div class="text-sm font-medium" style="color:var(--text-primary)" x-text="planNow(m).name || '(unnamed tariff)'"></div>
                     <div style="color:var(--text-faint)" x-text="[utilName(planNow(m).utility_id), tariffDateLabel(planNow(m)) || 'no dates', 'billing day ' + planNow(m).billing_cycle_day].filter(Boolean).join(' · ')"></div>
+                    <!-- Imported from FranklinWH, and the app's schedule has changed since (#656) -->
+                    <button type="button" data-testid="meter-plan-reimport" x-show="touReimport(planNow(m))"
+                            class="text-[11px] underline mt-0.5" style="color:var(--warn)"
+                            @click="openTouTariff(m, touReimport(planNow(m)).gateway_id)">Schedule changed — re-import?</button>
                   </div></template>
                   <div x-show="!planNow(m)" style="color:var(--text-faint)">No tariff in force. Add one or import it.</div>
                 </div>
@@ -126,6 +130,9 @@
                           :title="planNow(m) ? 'A new plan from today; Save ends this one the day before' : 'Add a tariff for this meter'"
                           x-text="planNow(m) ? 'New plan' : '+ Add tariff'"></button>
                   <button data-testid="meter-plan-import" class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="openTariffImport(m.id)">Import</button>
+                  <button data-testid="meter-plan-import-fwh" x-show="touGateways(m).length" class="btn btn-secondary btn-sm"
+                          :disabled="!canWrite()" @click="openTouTariff(m)"
+                          title="Import the TOU schedule set in the FranklinWH app as this meter's plan">Import from FranklinWH</button>
                   <template x-if="planNow(m)"><span class="inline-flex gap-1.5">
                     <button class="btn btn-secondary btn-sm" :disabled="!canWrite()" @click="editTariff(planNow(m))">Edit</button>
                     <button class="btn btn-secondary btn-sm" @click="exportTariffProfile(planNow(m))" title="Export as a tariff profile (Modbus Bridge format)">Export</button>
@@ -805,6 +812,186 @@
         <div data-testid="tariff-import-result" x-show="tariffImp.msg" class="text-sm"
              :style="{ color: tariffImp.msg?.kind === 'ok' ? 'var(--success,#34d399)' : 'var(--danger,#f87171)' }"
              x-text="tariffImp.msg?.text"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Import from FranklinWH (#656 phase 2): the TOU schedule's latest copy as a plan of the
+       meter. 1 Pre-fill (please confirm the guesses) · 2 Ask for what the cloud lacks ·
+       3 Check · Import. Nothing is written to the cloud or the aGate. -->
+  <div x-show="touTar.open" x-cloak class="fixed inset-0 z-[110] flex items-center justify-center p-4"
+       @keydown.escape.window="touTar.open=false" data-testid="tou-tariff-dialog">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="touTar.open=false"></div>
+    <div class="relative w-full max-w-2xl rounded-xl border shadow-2xl flex flex-col" style="background:var(--surface-0,#0f172a);border-color:var(--border);max-height:90vh">
+      <div class="px-5 py-3 border-b flex items-center justify-between gap-2" style="border-color:var(--border)">
+        <div class="min-w-0">
+          <div class="text-sm font-semibold" style="color:var(--text-primary)">Import from FranklinWH</div>
+          <div x-show="!touTar.done" class="text-[11px]" style="color:var(--text-faint)">
+            <span :style="touTar.step==='prefill' ? 'color:var(--accent);font-weight:600' : ''">1 Pre-fill</span> ·
+            <span :style="touTar.step==='ask' ? 'color:var(--accent);font-weight:600' : ''">2 Ask</span> ·
+            <span :style="touTar.step==='check' ? 'color:var(--accent);font-weight:600' : ''">3 Check</span>
+          </div>
+        </div>
+        <button class="text-slate-400 hover:text-slate-200" @click="touTar.open=false" aria-label="Close"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="overflow-y-auto">
+      <!-- Imported: the result stays in the dialog until Done -->
+      <div x-show="touTar.done && touTar.result" class="px-5 py-4 space-y-3" data-testid="tou-tariff-done">
+        <div class="text-sm font-semibold" style="color:var(--success,#34d399)">Imported</div>
+        <div class="text-sm" style="color:var(--text-primary)"
+             x-text="`&quot;${touTar.result?.name}&quot; (${touTar.result?.retailer}) is now the tariff` + (touTar.result?.meter ? ` on ${touTar.result.meter}` : '') + (touTar.result?.start ? `, in force from ${touTar.result.start}.` : '.')"></div>
+        <div x-show="touTar.result?.replaced" class="text-xs" style="color:var(--text-secondary)"
+             x-text="`&quot;${touTar.result?.replaced}&quot; ended on ${touTar.result?.replacedEnd}.`"></div>
+        <div class="flex justify-end"><button class="btn btn-primary btn-sm" @click="touTar.open=false">Done</button></div>
+      </div>
+      <div x-show="!touTar.done" class="px-5 py-4 space-y-3 text-xs" style="color:var(--text-secondary)">
+        <label x-show="touGateways(meters.find(x => x.id === touTar.meter_id) || {}).length > 1" class="block">Gateway
+          <select class="form-control form-control-sm w-full mt-1" x-model="touTar.gateway" @change="touTarLoad()">
+            <template x-for="g in touGateways(meters.find(x => x.id === touTar.meter_id) || {})" :key="g.id"><option :value="g.id" x-text="g.label"></option></template>
+          </select></label>
+        <div x-show="touTar.busy && !touTar.p" style="color:var(--text-faint)">Reading the TOU schedule…</div>
+
+        <!-- 1 Pre-fill -->
+        <template x-if="touTar.p && touTar.a && touTar.step==='prefill'"><div class="space-y-3" data-testid="tou-tariff-step-prefill">
+          <div style="color:var(--text-faint)" x-text="'From the FranklinWH app' + (touTar.p.cloud_updated ? ' (last changed ' + touTar.p.cloud_updated + ')' : '') + '. Rates are copied, not linked.'"></div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label class="block">Tariff<input class="form-control form-control-sm w-full mt-1" x-model="touTar.a.tariff_name"></label>
+            <label class="block">Retailer<input class="form-control form-control-sm w-full mt-1" x-model="touTar.a.retailer"></label>
+            <label class="block">Network <span class="chip warn" style="font-size:.6rem">please confirm</span>
+              <input class="form-control form-control-sm w-full mt-1" x-model="touTar.a.network" placeholder="e.g. Ausgrid"></label>
+            <label class="block">Country<input class="form-control form-control-sm w-full mt-1" x-model="touTar.a.country"></label>
+            <label class="block">Currency <span class="chip warn" style="font-size:.6rem">please confirm</span>
+              <input class="form-control form-control-sm w-full mt-1" x-model="touTar.a.currency" placeholder="AUD"></label>
+            <label class="block">Rates in the app are <span class="chip warn" style="font-size:.6rem">please confirm</span>
+              <select class="form-control form-control-sm w-full mt-1" x-model="touTar.a.unit">
+                <option value="dollars">per kWh in currency units (e.g. 0.25)</option>
+                <option value="cents">cents per kWh (e.g. 25)</option>
+              </select></label>
+          </div>
+          <template x-for="s in touTar.p.seasons" :key="s.name"><div>
+            <div class="font-medium" style="color:var(--text-primary)" x-text="s.name + ' · ' + touTarMonths(s.months)"></div>
+            <template x-for="d in s.days" :key="d.name"><div class="mt-1 overflow-x-auto">
+              <div style="color:var(--text-faint)" x-text="d.name"></div>
+              <table class="w-full text-xs" style="min-width:280px;table-layout:fixed">
+                <colgroup><col style="width:50%"><col style="width:25%"><col style="width:25%"></colgroup>
+                <thead><tr style="color:var(--text-faint)"><th class="text-left font-medium py-0.5">Band</th><th class="text-right font-medium">Buy</th><th class="text-right font-medium">Sell</th></tr></thead>
+                <tbody><template x-for="[band, r] in Object.entries(d.rates || {})" :key="band"><tr class="border-t" style="border-color:var(--border)">
+                  <td class="py-0.5" x-text="band"></td><td class="text-right font-mono" x-text="touTarRate(r.buy)"></td><td class="text-right font-mono" x-text="touTarRate(r.sell)"></td>
+                </tr></template></tbody>
+              </table>
+            </div></template>
+          </div></template>
+          <!-- A band priced differently by day type: the plan holds one rate per band in a season -->
+          <template x-if="(touTar.p.split || []).length"><div class="rounded-lg p-2 space-y-2" style="background:var(--surface-2)">
+            <div><span class="chip warn" style="font-size:.6rem">please confirm</span> These bands cost different amounts on different days. A plan holds one rate per band in a season: pick the one to use.</div>
+            <template x-for="x in touTar.p.split" :key="x.season + x.band"><div>
+              <div class="font-medium" style="color:var(--text-primary)" x-text="x.season + ' · ' + x.band"></div>
+              <template x-for="c in x.choices" :key="c.day"><label class="flex items-center gap-2 mt-0.5">
+                <input type="radio" :name="'pick-' + x.season + x.band" :value="c.day" x-model="touTar.a.picks[x.season + '|' + x.band]">
+                <span x-text="c.day + ': buy ' + touTarRate(c.buy) + ' · sell ' + touTarRate(c.sell) + ' (' + c.hours + ' h a week)'"></span>
+              </label></template>
+            </div></template>
+          </div></template>
+          <div x-show="(touTar.p.left_out || []).length" style="color:var(--text-faint)"
+               x-text="'Not imported (no matching band): ' + (touTar.p.left_out || []).map(x => x.season + ' ' + x.day + ' ' + x.band + ' buy ' + touTarRate(x.buy)).join('; ') + '.'"></div>
+          <div x-show="(touTar.p.grid_fee || []).length" style="color:var(--text-faint)"
+               x-text="'The app also has a grid fee (' + (touTar.p.grid_fee || []).map(x => x.value).join(', ') + '); its meaning is unknown, so it isn\'t imported. If it\'s your daily supply charge, enter it in the next step.'"></div>
+          <div class="flex justify-end gap-2"><button class="btn btn-primary btn-sm" @click="touTar.step='ask'">Next</button></div>
+        </div></template>
+
+        <!-- 2 Ask: what the FranklinWH cloud doesn't hold -->
+        <template x-if="touTar.p && touTar.a && touTar.step==='ask'"><div class="space-y-2" data-testid="tou-tariff-step-ask">
+          <div style="color:var(--text-faint)">The FranklinWH app doesn't hold these. Fill in what your plan has; tick doesn't apply for the rest.</div>
+          <div class="rounded-lg p-2 space-y-1" style="background:var(--surface-1)">
+            <div class="flex items-center justify-between gap-2"><span style="color:var(--text-primary)">Billing day of the month</span>
+              <label class="flex items-center gap-1"><input type="checkbox" x-model="touTar.a.billing_na"> doesn't apply</label></div>
+            <input x-show="!touTar.a.billing_na" type="number" min="1" max="28" class="form-control form-control-sm w-24" x-model="touTar.a.billing_day" placeholder="1">
+          </div>
+          <div class="rounded-lg p-2 space-y-1" style="background:var(--surface-1)">
+            <div class="flex items-center justify-between gap-2"><span style="color:var(--text-primary)">Daily supply charge (per day)</span>
+              <label class="flex items-center gap-1"><input type="checkbox" x-model="touTar.a.supply_na"> doesn't apply</label></div>
+            <input x-show="!touTar.a.supply_na" type="number" step="any" min="0" class="form-control form-control-sm w-32" x-model="touTar.a.supply" placeholder="1.10">
+          </div>
+          <div class="rounded-lg p-2 space-y-1" style="background:var(--surface-1)">
+            <div class="flex items-center justify-between gap-2"><span style="color:var(--text-primary)">Other fixed charge</span>
+              <label class="flex items-center gap-1"><input type="checkbox" x-model="touTar.a.other_na"> doesn't apply</label></div>
+            <div x-show="!touTar.a.other_na" class="flex flex-wrap gap-2">
+              <input class="form-control form-control-sm flex-1 min-w-[8rem]" x-model="touTar.a.other.description" placeholder="Metering charge">
+              <select class="form-control form-control-sm w-28" x-model="touTar.a.other.frequency"><option value="daily">daily</option><option value="monthly">monthly</option><option value="quarterly">quarterly</option><option value="annual">annual</option></select>
+              <input type="number" step="any" min="0" class="form-control form-control-sm w-24" x-model="touTar.a.other.rate" placeholder="Amount">
+            </div>
+          </div>
+          <div class="rounded-lg p-2 space-y-1" style="background:var(--surface-1)">
+            <div class="flex items-center justify-between gap-2"><span style="color:var(--text-primary)">Tax on fixed charges (%)</span>
+              <label class="flex items-center gap-1"><input type="checkbox" x-model="touTar.a.tax_na"> doesn't apply</label></div>
+            <input x-show="!touTar.a.tax_na" type="number" step="any" min="0" class="form-control form-control-sm w-24" x-model="touTar.a.tax_pct" placeholder="10">
+            <div style="color:var(--text-faint)">The energy rates are used as the app has them.</div>
+          </div>
+          <div class="rounded-lg p-2 space-y-1" style="background:var(--surface-1)">
+            <div class="flex items-center justify-between gap-2"><span style="color:var(--text-primary)">Demand charge (per kW per day)</span>
+              <label class="flex items-center gap-1"><input type="checkbox" x-model="touTar.a.demand_na"> doesn't apply</label></div>
+            <div x-show="!touTar.a.demand_na" class="flex flex-wrap items-center gap-2">
+              <input type="time" class="form-control form-control-sm w-28" x-model="touTar.a.demand.start"> to
+              <input type="time" class="form-control form-control-sm w-28" x-model="touTar.a.demand.end">
+              <input type="number" step="any" min="0" class="form-control form-control-sm w-24" x-model="touTar.a.demand.rate" placeholder="Rate">
+            </div>
+          </div>
+          <div class="rounded-lg p-2 space-y-1" style="background:var(--surface-1)">
+            <div class="flex items-center justify-between gap-2"><span style="color:var(--text-primary)">Export bonus (per kWh)</span>
+              <label class="flex items-center gap-1"><input type="checkbox" x-model="touTar.a.bonus_na"> doesn't apply</label></div>
+            <div x-show="!touTar.a.bonus_na" class="flex flex-wrap items-center gap-2">
+              <input type="time" class="form-control form-control-sm w-28" x-model="touTar.a.bonus.start"> to
+              <input type="time" class="form-control form-control-sm w-28" x-model="touTar.a.bonus.end">
+              <input type="number" step="any" min="0" class="form-control form-control-sm w-24" x-model="touTar.a.bonus.rate" placeholder="Rate">
+            </div>
+          </div>
+          <div class="rounded-lg p-2 space-y-1" style="background:var(--surface-1)">
+            <div class="flex items-center justify-between gap-2"><span style="color:var(--text-primary)">Export charge (per kWh)</span>
+              <label class="flex items-center gap-1"><input type="checkbox" x-model="touTar.a.export_charge_na"> doesn't apply</label></div>
+            <div x-show="!touTar.a.export_charge_na" class="flex flex-wrap items-center gap-2">
+              <input type="time" class="form-control form-control-sm w-28" x-model="touTar.a.export_charge.start"> to
+              <input type="time" class="form-control form-control-sm w-28" x-model="touTar.a.export_charge.end">
+              <input type="number" step="any" min="0" class="form-control form-control-sm w-24" x-model="touTar.a.export_charge.rate" placeholder="Rate">
+              <input type="number" step="any" min="0" class="form-control form-control-sm w-28" x-model="touTar.a.export_charge.free_kwh" placeholder="Free kWh/day">
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label class="block">In force from <span class="chip warn" style="font-size:.6rem">please confirm</span>
+              <input type="date" class="form-control form-control-sm w-full mt-1" x-model="touTar.a.effective_start"></label>
+            <label class="block">Until (blank: current)
+              <input type="date" class="form-control form-control-sm w-full mt-1" x-model="touTar.a.effective_end"></label>
+          </div>
+          <div class="flex justify-between gap-2">
+            <button class="btn btn-secondary btn-sm" @click="touTar.step='prefill'">Back</button>
+            <button class="btn btn-primary btn-sm" :disabled="touTar.busy" @click="touTarCheck()" x-text="touTar.busy ? '…' : 'Check'"></button>
+          </div>
+        </div></template>
+
+        <!-- 3 Check: the tariff check, what importing does, today's price by hour -->
+        <template x-if="touTar.chk && touTar.step==='check'"><div class="space-y-2" data-testid="tou-tariff-step-check">
+          <div x-show="!(touTar.chk.problems || []).length" style="color:var(--success,#34d399)">No problems found.</div>
+          <ul x-show="(touTar.chk.problems || []).length" class="list-disc pl-5" style="color:var(--danger,#f87171)">
+            <template x-for="pr in touTar.chk.problems" :key="pr"><li x-text="pr"></li></template>
+          </ul>
+          <div x-show="touTar.chk.preview" class="rounded-lg p-2" style="background:var(--surface-2)"
+               x-text="touTar.chk.preview ? ('&quot;' + touTar.chk.preview.tariff_name + '&quot; for ' + ((meters.find(x => x.id === touTar.chk.preview.meter_id) || {}).name || 'the meter') + (touTar.chk.preview.effective_start ? ', from ' + touTar.chk.preview.effective_start : '') + (touTar.chk.preview.reuses_utility ? '. Adds a plan to the existing ' + touTar.chk.preview.retailer + '.' : '.') + (touTar.chk.preview.replaces ? ' Ends &quot;' + touTar.chk.preview.replaces + '&quot; on ' + touTar.chk.preview.replaces_end + '.' : '')) : ''"></div>
+          <div class="font-medium" style="color:var(--text-primary)">Today's price by hour</div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs" style="min-width:280px">
+              <thead><tr style="color:var(--text-faint)"><th class="text-left font-medium py-0.5">Hour</th><th class="text-left font-medium">Band</th><th class="text-right font-medium">Buy</th><th class="text-right font-medium">Sell</th></tr></thead>
+              <tbody><template x-for="h in touTar.chk.hours" :key="h.hour"><tr class="border-t" style="border-color:var(--border)">
+                <td class="py-0.5 font-mono" x-text="String(h.hour).padStart(2, '0') + ':00'"></td><td x-text="h.band || '—'"></td>
+                <td class="text-right font-mono" x-text="touTarRate(h.buy)"></td><td class="text-right font-mono" x-text="touTarRate(h.sell)"></td>
+              </tr></template></tbody>
+            </table>
+          </div>
+          <div class="flex justify-between gap-2">
+            <button class="btn btn-secondary btn-sm" @click="touTar.step='ask'">Back</button>
+            <button data-testid="tou-tariff-import" class="btn btn-primary btn-sm" :disabled="touTar.busy || !canWrite() || (touTar.chk.problems || []).length > 0" @click="touTarImport()" x-text="touTar.busy ? '…' : 'Import'"></button>
+          </div>
+        </div></template>
+        <div data-testid="tou-tariff-msg" x-show="touTar.msg" class="text-sm" style="color:var(--danger,#f87171)" x-text="touTar.msg?.text"></div>
+      </div>
       </div>
     </div>
   </div>

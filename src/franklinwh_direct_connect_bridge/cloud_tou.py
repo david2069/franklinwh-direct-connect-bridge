@@ -22,6 +22,12 @@ one thing on weekdays and another at weekends (#656; owner 2026-11-18: a band pe
 type). The cloud gives no unit: it's taken as the local currency per kWh, please confirm.
 The schedule is also re-read once a day (``daily``). ``ha_payload`` works out Home
 Assistant's TOU Schedule, Dispatch Now/Next and Tariff Now/Next from the copy (#421).
+
+``prefill`` and ``to_profile`` import the copy as a tariff plan (#656 phase 2): the
+seasons, bands, blocks and rates from the copy, with what the cloud doesn't hold (billing
+day, fixed, demand and export charges, tax, dates) asked for. The bridge's tariff prices a
+band once per season, so a band whose weekday and weekend rates differ is picked by the
+user. ``reimport_needed`` says when a newer copy differs from the one a plan came from.
 """
 from __future__ import annotations
 
@@ -99,9 +105,15 @@ def schedule(result: dict) -> dict[str, Any]:
                          "rates": _rates(d), "grid_fee": d.get("eleticRateGridFee")})
         seasons.append({"name": s.get("seasonName") or "", "months": _months(s.get("month")),
                         "days": days})
-    return {"name": tpl.get("name") or "", "utility": tpl.get("electricCompany") or "",
-            "cloud_updated": tpl.get("updateTime") or "", "rate_unit": RATE_UNIT,
-            "seasons": seasons}
+    out = {"name": tpl.get("name") or "", "utility": tpl.get("electricCompany") or "",
+           "cloud_updated": tpl.get("updateTime") or "", "rate_unit": RATE_UNIT,
+           "seasons": seasons}
+    # The tariff's country and state, for the import (#656); kept only when the cloud
+    # gives them, so a copy without them reads as before.
+    for key, field in (("country", "countryEn"), ("region", "provinceEn")):
+        if tpl.get(field):
+            out[key] = tpl[field]
+    return out
 
 
 def _day_on(sched: dict, day: dt.date) -> dict | None:
@@ -409,3 +421,197 @@ def import_plan(sched: dict, power_pct: float = 100) -> dict[str, list]:
                 "months": [] if len(months) == 12 else sorted(months),
                 "action": action})
     return {"entries": entries, "base": base, "left_out": left_out}
+
+
+# ── import as a tariff plan (#656 phase 2) ─────────────────────────────────────
+#: The copy's bands → the bridge tariff's time periods (rate_model.TIME_PERIODS). Sharp has
+#: none: it's shown and left out.
+PERIOD = {"Off-peak": "off_peak", "Mid-peak": "mid_peak", "On-peak": "on_peak",
+          "Super off-peak": "super_off_peak"}
+#: Australian distribution networks, found in a tariff's name to pre-fill its network.
+NETWORKS = ("Ausgrid", "Endeavour Energy", "Essential Energy", "Energex", "Ergon Energy",
+            "SA Power Networks", "Jemena", "CitiPower", "Powercor", "AusNet",
+            "United Energy", "Evoenergy", "TasNetworks", "Western Power")
+#: The cloud's English country names → the bridge's country codes.
+COUNTRY = {"australia": "AU", "united states": "US", "usa": "US", "new zealand": "NZ",
+           "united kingdom": "GB", "canada": "CA"}
+#: A country's currency, a guess for the please-confirm pre-fill.
+CURRENCY = {"AU": "AUD", "US": "USD", "NZ": "NZD", "GB": "GBP", "CA": "CAD"}
+#: What the pre-fill guesses: the user confirms each.
+CONFIRM = ("currency", "unit", "network", "effective_start", "day_types")
+
+
+def _hours(day: dict, band: str) -> float:
+    """A day type's hours a week in ``band``."""
+    mins = sum(e - s for s, e in (_span(b) for b in day["blocks"] if b["wave"] == band))
+    return mins / 60 * len(day["weekdays"])
+
+
+def _country(sched: dict, site: dict | None) -> str:
+    c = str(sched.get("country") or "").strip()
+    if c:
+        return COUNTRY.get(c.casefold(), c.upper() if len(c) == 2 else c)
+    return str((site or {}).get("region") or "").split("-")[0].upper()
+
+
+def _split(sched: dict) -> list[dict]:
+    """Each season's bands whose rates differ between its day types, with the pre-pick:
+    the day type with the most hours in that band."""
+    out = []
+    for s in sched.get("seasons") or []:
+        for band in PERIOD:
+            days = [d for d in s["days"] if any(b["wave"] == band for b in d["blocks"])]
+            rates = {json.dumps((d.get("rates") or {}).get(band), sort_keys=True) for d in days}
+            if len(rates) < 2:
+                continue
+            choices = [{"day": d["name"], **((d.get("rates") or {}).get(band)
+                                             or {"buy": None, "sell": None}),
+                        "hours": round(_hours(d, band), 1)} for d in days]
+            out.append({"season": s["name"], "band": band, "choices": choices,
+                        "pick": max(choices, key=lambda c: c["hours"])["day"]})
+    return out
+
+
+def prefill(copy: dict, site: dict | None, today: dt.date | None = None) -> dict:
+    """The import's pre-fill from the latest copy: the utility, tariff and country from
+    the cloud; the seasons, a band per day type, from the copy. The guesses (``confirm``)
+    are the currency, the unit, the network, the start date and the day-type split."""
+    sched = copy["schedule"]
+    name = sched.get("name") or "FranklinWH TOU"
+    country = _country(sched, site)
+    left_out, grid_fee = [], []
+    for s in sched.get("seasons") or []:
+        for d in s["days"]:
+            r = (d.get("rates") or {}).get("Sharp")
+            if r:
+                left_out.append({"season": s["name"], "day": d["name"], "band": "Sharp", **r})
+            if d.get("grid_fee") is not None:
+                grid_fee.append({"season": s["name"], "day": d["name"], "value": d["grid_fee"]})
+    return {
+        "copy_id": copy.get("id"), "cloud_updated": sched.get("cloud_updated") or "",
+        "tariff_name": name, "retailer": sched.get("utility") or "",
+        "country": country, "region": sched.get("region") or "",
+        "network": next((n for n in NETWORKS if n.casefold() in name.casefold()), ""),
+        "currency": (site or {}).get("currency") or CURRENCY.get(country, ""),
+        "unit": "dollars", "timezone": (site or {}).get("timezone") or "",
+        "effective_start": (today or dt.date.today()).isoformat(), "effective_end": None,
+        "confirm": list(CONFIRM),
+        "seasons": [{"name": s["name"], "months": s["months"],
+                     "days": [{"name": d["name"], "weekdays": d["weekdays"],
+                               "blocks": d["blocks"], "rates": d.get("rates") or {}}
+                              for d in s["days"]]} for s in sched.get("seasons") or []],
+        "split": _split(sched), "left_out": left_out, "grid_fee": grid_fee}
+
+
+def _num(v) -> float | None:
+    try:
+        return None if v in (None, "") else float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _window(w: dict | None) -> dict | None:
+    if not w or not w.get("start") or not w.get("end"):
+        return None
+    return {"months": [], "days": [], "start": w["start"], "end": w["end"]}
+
+
+def to_profile(copy: dict, answers: dict, gateway_id: str) -> dict:
+    """A ``franklinwh-bridge/tariff-profile`` from the copy and the user's answers (the
+    pre-fill, edited): what ``/api/tariffs/import`` takes. Rates are copied; a band missing
+    a sell rate sells at 0; ``picks`` ({"season|band": day}) chooses a split band's rate."""
+    sched = copy["schedule"]
+    scale = 0.01 if answers.get("unit") == "cents" else 1.0
+    picks = answers.get("picks") or {}
+    defaults = {f"{p['season']}|{p['band']}": p["pick"] for p in _split(sched)}
+
+    def rate(v):
+        return None if v is None else round(float(v) * scale, 6)
+
+    seasons = []
+    for i, s in enumerate(sched.get("seasons") or []):
+        blocks, periods = [], {}
+        for d in s["days"]:
+            days = [] if len(d["weekdays"]) == 7 else list(d["weekdays"])
+            for b in d["blocks"]:
+                if b["wave"] in PERIOD:
+                    blocks.append({"start": b["start"], "end": b["end"],
+                                   "time_period": PERIOD[b["wave"]], "days": days})
+        for band, tp in PERIOD.items():
+            days = [d for d in s["days"] if any(b["wave"] == band for b in d["blocks"])]
+            if not days:
+                continue
+            want = picks.get(f"{s['name']}|{band}") or defaults.get(f"{s['name']}|{band}")
+            d = next((x for x in days if x["name"] == want), days[0])
+            r = (d.get("rates") or {}).get(band) or {}
+            periods[tp] = {"buy": rate(r.get("buy")), "sell": rate(r.get("sell")) or 0.0}
+        seasons.append({"id": f"s{i + 1}", "name": s["name"], "months": s["months"],
+                        "blocks": blocks, "time_periods": periods})
+    pricing: dict[str, Any] = {
+        "billing_cycle_day": int(answers.get("billing_day") or 1), "seasons": seasons,
+        "source": {"kind": "franklinwh_tou", "gateway_id": gateway_id,
+                   "copy_id": copy.get("id")}}
+    tax = (_num(answers.get("tax_pct")) or 0.0) / 100
+    fixed = []
+    if _num(answers.get("supply")) is not None:
+        fixed.append({"type": "supply", "description": "Daily supply charge",
+                      "levied_by": "utility", "frequency": "daily",
+                      "rate": _num(answers["supply"]), "tax_rate": tax})
+    other = answers.get("other") or {}
+    if _num(other.get("rate")) is not None:
+        fixed.append({"type": "other", "description": other.get("description") or "Fixed charge",
+                      "levied_by": "utility", "frequency": other.get("frequency") or "monthly",
+                      "rate": _num(other["rate"]), "tax_rate": tax})
+    if fixed:
+        pricing["fixed_charges"] = fixed
+    demand = _window(answers.get("demand"))
+    if demand:
+        pricing.update(demand_rate=_num(answers["demand"].get("rate")) or 0.0,
+                       demand_interval_min=30, demand_charge_basis="per_kw_day")
+    bonus = _window(answers.get("bonus"))
+    if bonus:
+        pricing["export_bonus_rate"] = _num(answers["bonus"].get("rate")) or 0.0
+    charge = _window(answers.get("export_charge"))
+    if charge:
+        pricing["export_charge"] = {"window": charge,
+                                    "rate": _num(answers["export_charge"].get("rate")) or 0.0,
+                                    "free_kwh_per_day": _num(
+                                        answers["export_charge"].get("free_kwh")) or 0.0}
+    profile = {
+        "name": answers.get("tariff_name") or sched.get("name") or "FranklinWH TOU",
+        "retailer": answers.get("retailer") or sched.get("utility") or "",
+        "network": answers.get("network") or "", "plan_type": "tou",
+        "country": answers.get("country") or "", "timezone": answers.get("timezone") or "",
+        "has_tou": 1, "has_peak_demand": 1 if demand else 0,
+        "has_export_bonus": 1 if bonus else 0,
+        "demand_window": demand, "bonus_window": bonus, "pricing": pricing}
+    for k in ("effective_start", "effective_end"):
+        if answers.get(k):
+            profile[k] = answers[k]
+    return {"type": "franklinwh-bridge/tariff-profile", "version": 1, "profile": profile}
+
+
+def problems(copy: dict) -> list[str]:
+    """What the copy lacks for a plan, beyond the tariff check: a band in use with no buy
+    rate in the app."""
+    out = []
+    for s in copy["schedule"].get("seasons") or []:
+        for d in s["days"]:
+            for band in {b["wave"] for b in d["blocks"] if b["wave"] in PERIOD}:
+                if ((d.get("rates") or {}).get(band) or {}).get("buy") is None:
+                    out.append(f"'{s['name']}' {d['name']}: {band} has no buy rate in the "
+                               "FranklinWH app.")
+    return out
+
+
+def reimport_needed(tariff: dict, latest_ids: dict[str, Any]) -> dict | None:
+    """``{gateway_id, copy_id}`` when ``tariff`` was imported from a FranklinWH TOU copy and
+    its gateway's latest copy (``latest_ids``) is a different one; else None."""
+    src = (tariff.get("pricing") or {}).get("source") or {}
+    if src.get("kind") != "franklinwh_tou":
+        return None
+    gid = src.get("gateway_id")
+    cur = latest_ids.get(gid)
+    if cur is None or cur == src.get("copy_id"):
+        return None
+    return {"gateway_id": gid, "copy_id": cur}

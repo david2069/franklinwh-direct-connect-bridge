@@ -22,6 +22,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   ([guide](docs/guide/scheduler/index.md#franklinwh-tou-schedule),
   [Home Assistant](docs/guide/home-assistant.md#sensors)).
 
+- Billing & Utilities → Plans & meters: **Import from FranklinWH** (#656). The TOU schedule
+  set in the FranklinWH app becomes a plan of the meter, offered while the cloud is signed in
+  for the meter's gateway. **1 Pre-fill:** the retailer, tariff and country come from the
+  cloud, and the seasons, bands, blocks and buy and sell rates from the latest copy; the
+  currency, rate unit, network, start date and any band priced differently by day type are
+  marked *please confirm*. **2 Ask** for what the app doesn't hold (billing day, daily supply
+  and other fixed charges, tax, demand charge, export bonus and charge, dates), each with
+  *doesn't apply*. **3 Check** runs the tariff check and shows today's price by hour;
+  **Import** adds the plan as any tariff import does. When the app's schedule changes later,
+  the plan says **Schedule changed — re-import?** Nothing is written to the cloud or the aGate
+  ([guide](docs/guide/energy-and-costs.md#import-from-franklinwh)).
+
 - Settings → Gateways: **HEMS setup**, opt-in (#713, hems 0.2.0). Describe the home for
   energy planning: the always-on load and the high, medium and low usage periods, filled in
   from your own history to confirm, and each heavy load (how it is measured, when it runs,
