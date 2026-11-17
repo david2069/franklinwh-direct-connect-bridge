@@ -91,7 +91,7 @@ def test_the_payload_builds_with_the_extras():
 
 def test_pins_the_overlay_with_the_extras():
     pin = (ROOT / "pyproject.toml").read_text()
-    assert '"franklinwh-system-view==0.4.0"' in pin
+    assert '"franklinwh-system-view==0.4.1"' in pin
 
 
 def test_smart_circuits_can_be_hidden_and_options_is_a_drop_down():

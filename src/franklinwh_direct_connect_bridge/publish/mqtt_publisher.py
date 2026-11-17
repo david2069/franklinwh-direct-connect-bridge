@@ -142,6 +142,8 @@ class BridgeHeartbeat:
             settings.mqtt_prefix, settings.ha_discovery_prefix)
         self.problem_topic, self.problem_config = entities.bridge_problem_config(
             settings.mqtt_prefix, settings.ha_discovery_prefix)
+        self.version_topic, self.version_config = entities.bridge_version_config(
+            settings.mqtt_prefix, settings.ha_discovery_prefix)
         self.client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
             client_id=f"franklinwh-direct-connect-bridge-{entities.BRIDGE_NODE}")
@@ -152,6 +154,7 @@ class BridgeHeartbeat:
     def _on_connect(self, client, userdata, flags, rc, properties=None):
         client.publish(self.config_topic, json.dumps(self.config), retain=True)
         client.publish(self.problem_topic, json.dumps(self.problem_config), retain=True)
+        client.publish(self.version_topic, json.dumps(self.version_config), retain=True)
 
     def start(self) -> None:
         self.client.connect(self.s.mqtt_host, self.s.mqtt_port)
@@ -171,6 +174,11 @@ class BridgeHeartbeat:
     def publish_problem(self, payload: dict) -> None:
         """The bridge-level "Bridge problem" (#286). Retained, like the per-gateway one."""
         self.client.publish(entities.alerts_topic(entities.BRIDGE_NODE, self.s.mqtt_prefix),
+                            json.dumps(payload), retain=True)
+
+    def publish_version(self, payload: dict) -> None:
+        """The bridge-level "Bridge Version" (#706). Retained, so HA has it after a restart."""
+        self.client.publish(entities.version_topic(self.s.mqtt_prefix),
                             json.dumps(payload), retain=True)
 
     def stop(self) -> None:

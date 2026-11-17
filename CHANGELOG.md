@@ -13,6 +13,26 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- System view: **several aPowers are one battery** with the count and the aGate's charge and
+  power; its hover and details list each aPower (aP1, aP2 …: charge, current, BMS state,
+  and state of health in the details), read once a minute with the Battery tab's reads
+  (#703; franklinwh-system-view 0.4.1) ([guide](docs/guide/tour.md)).
+
+### Fixed
+
+- **System view said "Battery" for a gateway with four aPowers** (#703). The count came only
+  from the power-flow read, which leaves it out on this firmware; it now also comes from the
+  aGate's list of aPowers in its login reply ([guide](docs/guide/tour.md)).
+
+- Home Assistant: **Bridge Version** on the bridge's own device (#706). Its state is this
+  bridge's version; its attributes give the install type (HA add-on, Docker, Podman, pip),
+  the Home Assistant version for the add-on, the platform (OS, CPU, Python), the
+  integrations in use (local gateways, FranklinWH cloud signed in, Modbus client, MQTT,
+  Home Assistant instances) and the installed version of each FranklinWH and shared
+  library. Sent on connect, with every heartbeat and when an integration changes; no
+  serial, address, account or install id
+  ([guide](docs/guide/home-assistant.md#the-bridges-own-device)).
+
 - Home Assistant: **VPP Active, Off-Grid Reason and Off-Grid Duration**, **Smart Circuit
   1–3 Power and Energy Today**, **V2L Power, Export and Import Energy**, **Generator State,
   Enabled and Today**, and **Active Alarms** (#704). All come from reads the bridge already

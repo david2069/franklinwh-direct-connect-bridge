@@ -212,6 +212,32 @@ read live, and all five are on by default:
 
 Turning a group off reduces both MQTT traffic and the number of HA entities.
 
+### The bridge's own device
+
+A separate device, **FranklinWH Direct Connect Bridge**, holds what belongs to the bridge
+rather than to a gateway. Its entities are diagnostic and don't depend on the groups
+above:
+
+| Key | Name | HA type | State |
+|---|---|---|---|
+| `heartbeat` | Bridge heartbeat | `sensor` (timestamp) | Sent every minute while MQTT is connected |
+| `bridge_problem` | Bridge problem | `binary_sensor` (problem) | On while any alert is open |
+| `bridge_version` | Bridge Version | `sensor` | This bridge's version, e.g. `0.5.50` (#706) |
+
+**Bridge Version**'s attributes say how this bridge runs:
+
+| Attribute | What it holds |
+|---|---|
+| `install_type` | `ha_addon_haos`, `ha_addon_supervised`, `docker`, `podman`, `pip` or `dev` |
+| `home_assistant` | The Home Assistant version, for the add-on; else empty |
+| `platform` | `os`, `arch` (CPU) and `python` |
+| `integrations` | `local` (on, number of gateways), `cloud` (signed in, sign-in state), `modbus` (this bridge's Modbus client on), `mqtt` (on), `ha_instances` (enabled Home Assistant instances) |
+| `libraries` | The installed version of each FranklinWH and shared library the bridge depends on, e.g. `franklinwh-direct-connect-api`, `franklinwh-cloud`, `hems`; empty when one isn't installed |
+
+It is sent when the bridge connects, with every heartbeat, and as soon as an integration
+changes (a gateway added, the cloud signed in, the Modbus client switched on). It holds
+counts and versions only: no serial, address, account or install id.
+
 ### Republish and Unpublish
 
 ![The Republish and Clear HA buttons on the MQTT tab](../images/home-assistant/08-republish-clear-ha.png)

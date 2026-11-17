@@ -23,6 +23,7 @@ for a raise, INFO for a resolve or an acknowledgement), whether or not it was de
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import threading
 import time
@@ -427,6 +428,7 @@ class AlertMonitor:
         self._hb_try = float("-inf")
         self._hb_last = float("-inf")
         self._problem_sig = None
+        self._version_sig = None
 
     def heartbeat_once(self, now: float | None = None) -> bool:
         """The bridge-level "Bridge heartbeat" (spec §11), every HEARTBEAT_EVERY_S, sent
@@ -474,6 +476,22 @@ class AlertMonitor:
         self._problem_sig = sig
         return True
 
+    def version_once(self, store, now: float | None = None) -> bool:
+        """Publish the bridge-level "Bridge Version" (#706) when it changes (an integration
+        switched on or off, a gateway added) and with every heartbeat. Rides the heartbeat's
+        connection, so it is sent only while that is up. Returns True if it published."""
+        from . import install_identity
+        if self._hb is None or not self._hb.is_connected():
+            return False
+        payload = install_identity.bridge_version(self.settings, store)
+        sig = json.dumps(payload, sort_keys=True, default=str)
+        ts = float(now if now is not None else time.time())
+        if sig == self._version_sig and ts - self._hb_last > 1:
+            return False
+        self._hb.publish_version(payload)
+        self._version_sig = sig
+        return True
+
     def stop_heartbeat(self) -> None:
         if self._hb is not None:
             self._hb.stop()
@@ -486,6 +504,10 @@ class AlertMonitor:
         except Exception as e:  # noqa: BLE001 — a heartbeat never stops the monitor
             log.debug("bridge heartbeat failed: %s", e)
         store = self._store_fn()
+        try:
+            self.version_once(store, now=ts)
+        except Exception as e:  # noqa: BLE001 — publishing never stops the monitor
+            log.debug("bridge version not published: %s", e)
         if store is None:
             return
         check_workers(self.registry, now=ts)

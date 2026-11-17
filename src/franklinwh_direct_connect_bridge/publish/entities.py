@@ -237,6 +237,32 @@ def bridge_problem_config(prefix: str, discovery_prefix: str) -> tuple[str, dict
     })
 
 
+def version_topic(prefix: str) -> str:
+    return f"{prefix}/{BRIDGE_NODE}/version"
+
+
+def bridge_version_config(prefix: str, discovery_prefix: str) -> tuple[str, dict[str, Any]]:
+    """(config_topic, payload) for the bridge-level "Bridge Version" (#706): the version as
+    the state; platform, install type, integrations and libraries as its attributes."""
+    topic = version_topic(prefix)
+    return (f"{discovery_prefix}/sensor/{BRIDGE_NODE}/bridge_version/config", {
+        "name": "Bridge Version",
+        "unique_id": f"franklinwh_{BRIDGE_NODE}_bridge_version",
+        "object_id": f"franklinwh_{BRIDGE_NODE}_bridge_version",
+        "state_topic": topic,
+        "entity_category": "diagnostic",
+        "icon": "mdi:information-outline",
+        "device": bridge_device_info(),
+        "value_template": "{{ value_json.version }}",
+        "json_attributes_topic": topic,
+        "json_attributes_template": ("{{ {'platform': value_json.platform,"
+                                     " 'install_type': value_json.install_type,"
+                                     " 'home_assistant': value_json.home_assistant,"
+                                     " 'integrations': value_json.integrations,"
+                                     " 'libraries': value_json.libraries} | tojson }}"),
+    })
+
+
 def heartbeat_payload(now: float) -> str:
     import datetime as _dt
     return _dt.datetime.fromtimestamp(now, _dt.timezone.utc).isoformat(timespec="seconds")
