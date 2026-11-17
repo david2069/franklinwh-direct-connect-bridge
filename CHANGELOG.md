@@ -48,6 +48,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Changed
 
+- Scheduler → FranklinWH TOU: **today and each season's day types are tables** (Time,
+  Dispatch, Band, Buy, Sell) instead of run-on lines, which were hard to read; a band with
+  a rate but no block that day keeps its own row (#421)
+  ([guide](docs/guide/scheduler/index.md#franklinwh-tou-schedule)).
+
 - Solar forecast: **learns from your system** and allows for hot panels (#713). Each day
   the forecast is compared with the solar your site's gateways measured; after five sunny
   days it is scaled by measured ÷ forecast over the last 30 days. Hot panels make less, and

@@ -244,10 +244,12 @@ see it, add conditions to it or notify on it, and a bridge schedule can work aga
   (*daily re-read*); **Sync now** reads it at once. A new copy is kept only when the schedule changed; otherwise the latest
   copy's *last checked* time moves on. **Copies** lists them, each with why it was taken.
   *Last changed in the FranklinWH app* is the cloud's own date.
-- **Today.** The day's blocks as a bar and a list: times, what the aGate does (the app's
-  names, such as *aPower charges from solar/grid*), the tariff period, and its **buy** and
-  **sell** rate. **All seasons** shows every season and day type, with each day type's
-  rates: a band can cost one thing on weekdays and another at weekends. The cloud gives
+- **Today.** The day's blocks as a bar and a table with the columns **Time**, **Dispatch** (what
+  the aGate does, in the app's names, such as *aPower charges from solar/grid*), **Band**
+  (the tariff period), **Buy** and **Sell**. **All seasons** shows every season with a
+  table like it for each day type: a band can cost one thing on weekdays and another at
+  weekends. A band with a rate but no block that day has its own row. On a phone a table
+  scrolls sideways inside its box. The cloud gives
   the rates without a unit; the bridge takes them as your currency per kWh, so please
   check them against the FranklinWH app. A copy taken before rates were kept shows none
   until the next read.
