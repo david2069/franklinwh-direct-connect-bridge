@@ -54,6 +54,19 @@ def _record_modbus_leg(store, gw_id: str, summ: dict) -> bool:
     return True
 
 
+def ha_skip(settings: Settings, gw: GatewayState) -> frozenset:
+    """The Home Assistant entities this gateway has no active source for (#711): the cloud
+    ones unless the cloud can write it (C2), the Modbus ones unless this bridge's Modbus
+    client is on, and what a mock has no source for. Cheap: no I/O, so it runs every cycle."""
+    from . import battery_control
+    mock = bool(getattr(gw, "is_mock", False))
+    cloud = providers.cloud_can_write(settings, serial=gw.serial,
+                                      serial_locked=bool(getattr(gw, "serial_locked", False)),
+                                      is_mock=mock)
+    skip = entities.source_skip(cloud=cloud, modbus=battery_control.is_enabled())
+    return skip | (entities.MOCK_ABSENT_KEYS if mock else frozenset())
+
+
 def _fmt_outage(seconds: float | None) -> str:
     """An outage length in words. '4920s' is a number; '1h 22m' is an answer."""
     if seconds is None:
@@ -236,14 +249,9 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
             except Exception as e:  # noqa: BLE001
                 log.warning("[%s] control %s failed: %s", gw.id, key, e)
 
-        skip = (entities.MOCK_ABSENT_KEYS if getattr(gw, "is_mock", False) else frozenset())
-        if not providers.cloud_can_write(settings, serial=gw.serial,
-                                         serial_locked=bool(getattr(gw, "serial_locked", False)),
-                                         is_mock=bool(getattr(gw, "is_mock", False))):
-            skip = skip | entities.RESERVE_KEYS       # C2: only when the cloud can write it
         pub = MqttPublisher(settings, node, device, command_handler=_on_control,
                             groups=entities.enabled_from_store(get_store(settings)),
-                            skip=skip)
+                            skip=ha_skip(settings, gw))
         pub.start()
         return pub
 
@@ -343,6 +351,12 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                         gw.published_entities = len(pub.configs)
                         log.info("[%s] re-published HA discovery (UI request)", gw.id)
                         gw.republish_requested = False
+                    # A source switched on or off since the last cycle (#711): cloud
+                    # sign-in or sign-out, the Modbus client on or off. Adds or clears
+                    # just those entities; nothing is sent when nothing changed.
+                    if not gw.unpublish_requested:
+                        await asyncio.to_thread(pub.set_skip, ha_skip(settings, gw))
+                        gw.published_entities = len(pub.configs)
                     if gw.unpublish_requested:
                         await asyncio.to_thread(pub.clear_discovery)
                         log.info("[%s] cleared HA discovery entities (UI request)", gw.id)

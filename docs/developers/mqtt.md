@@ -30,9 +30,16 @@ case.
 | `HA_DISCOVERY_PREFIX` | `homeassistant` | Needs a restart to change. |
 
 **`publish_ha` is per gateway.** It is a field of the gateway (`state.py`, stored with a
-database default of on). A gateway created over the API as a mock defaults to off
-(`app.py`, gateway create). With `publish_ha` off, the gateway is still polled and
-recorded, but its poller never starts a publisher (`run_gateway()` in `poller.py`).
+database default of on). A mock is always off (#711): `GatewayState.__post_init__` forces
+it, gateway create stores it off, and PATCH and Republish refuse to turn it on. With
+`publish_ha` off, the gateway is still polled and recorded, but its poller never starts a
+publisher, and purges what was retained for it (`run_gateway()` in `poller.py`).
+
+**Each entity has a `source`** (`publish/entities.py`, #711): `local`, `cloud` or `modbus`.
+`poller.ha_skip()` leaves out the cloud ones unless `providers.cloud_can_write()` and the
+Modbus ones unless `battery_control.is_enabled()`, and runs every cycle;
+`MqttPublisher.set_skip()` publishes the configs that gained a source and clears (empty
+retained payload) those that lost one.
 
 **One MQTT client per gateway.** `MqttPublisher` in `publish/mqtt_publisher.py` uses the
 client id `franklinwh-direct-connect-bridge-<node>`.

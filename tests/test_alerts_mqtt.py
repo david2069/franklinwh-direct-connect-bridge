@@ -153,6 +153,7 @@ class _Pub:
     def is_connected(self): return True
     def publish_state(self, st): pass
     def publish_availability(self, online): pass
+    def set_skip(self, skip): pass
     def publish_alerts(self, payload): _Pub.sent.append(payload)
 
 

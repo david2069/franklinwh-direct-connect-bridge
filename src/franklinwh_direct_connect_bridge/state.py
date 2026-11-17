@@ -19,7 +19,7 @@ class GatewayState:
     active_host: str | None = None      # overrides configured_host once re-discovered
     port: int = 9000                    # per-gateway port (9000 real; ephemeral for in-proc mock)
     is_mock: bool = False               # in-process emulator gateway (Phase 2)
-    publish_ha: bool = True             # publish this gateway to MQTT/HA (mocks default off)
+    publish_ha: bool = True             # publish this gateway to MQTT/HA (never a mock, #711)
     serial: str | None = None           # the LOCKED serial once the roster has one (#381)
     serial_locked: bool = False
     #: Why this gateway was stopped: its aGate reported a serial other than the locked one,
@@ -67,6 +67,12 @@ class GatewayState:
     published_entities: int | None = None  # count actually published to HA via MQTT discovery
     sy_hd_version: int | None = None    # 1101 SyHdVersion -> gateway model (devicedb)
     cloud_ts: float = 0.0               # when the cloud value was last read (freshness)
+
+    def __post_init__(self) -> None:
+        # A mock is never published to Home Assistant (#711): its synthetic energy would
+        # put a fake FranklinWH device, and its statistics, in the user's HA.
+        if self.is_mock:
+            self.publish_ha = False
 
 
 # -- ordered registry (module-level; the app/poller/REST layer share one) --------

@@ -31,6 +31,7 @@ class _Pub:
     def is_connected(self): return _Pub.connected
     def publish_state(self, st): pass
     def publish_availability(self, online): pass
+    def set_skip(self, skip): pass
     def publish_alerts(self, payload): pass
 
 
@@ -46,7 +47,7 @@ def _poll(monkeypatch, summ: dict, *, host="127.0.0.1:1", mqtt=False, publish_ha
     monkeypatch.setattr(poller.client, "summary", lambda *a, **k: dict(summ))
     import franklinwh_direct_connect_bridge.ha_supervisor as hs
     monkeypatch.setattr(hs, "apply_supervisor_mqtt", lambda *a, **k: None)
-    gw = GatewayState(id="g271", label="test", is_mock=True, publish_ha=publish_ha,
+    gw = GatewayState(id="g271", label="test", publish_ha=publish_ha,
                       configured_host=host, active_host=host)
 
     async def go():

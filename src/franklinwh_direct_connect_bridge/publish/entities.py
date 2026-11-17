@@ -133,9 +133,9 @@ CONTROLS: list[dict[str, Any]] = [
     # already makes. Names follow the Modbus Bridge's. No Emergency Backup number: that
     # mode's reserve is fixed at 100 % and can't be changed, so a control would do nothing.
     {"key": "reserve_soc_tou", "name": "TOU Reserve SOC", "ha_type": "number",
-     "state_key": "reserve_tou_pct", "reserve_mode": "tou"},
+     "state_key": "reserve_tou_pct", "reserve_mode": "tou", "source": "cloud"},
     {"key": "reserve_soc_self", "name": "Self-Consumption Reserve SOC", "ha_type": "number",
-     "state_key": "reserve_self_pct", "reserve_mode": "self"},
+     "state_key": "reserve_self_pct", "reserve_mode": "self", "source": "cloud"},
     # Go off-grid / reconnect (1723), as Control → Off-grid does, without its confirm step
     # (owner, 2026-11-03). State is 1723 offgridSet, what was REQUESTED: an outage islands
     # the house with the switch off, and Grid Status says which it is.
@@ -146,20 +146,41 @@ CONTROLS: list[dict[str, Any]] = [
     # power setpoint, with the bridge's watchdog) and stage into its values.
     {"key": "battery_command", "name": "Battery Command", "ha_type": "select",
      "options": ["Not Active", "Force Charge", "Force Discharge", "Force Standby", "Release"],
-     "state_key": "battery_command_state", "battery": True},
+     "state_key": "battery_command_state", "battery": True, "source": "modbus"},
     {"key": "battery_command_power", "name": "Command Power", "ha_type": "number",
      "state_key": "battery_command_power_w", "unit": "W", "device_class": "power",
-     "min": 0, "max": 5000, "step": 100, "battery": True},
+     "min": 0, "max": 5000, "step": 100, "battery": True, "source": "modbus"},
     {"key": "battery_command_power_pct", "name": "Command Power %", "ha_type": "number",
      "state_key": "battery_command_power_pct", "unit": "%", "min": 0, "max": 100, "step": 5,
-     "battery": True},
+     "battery": True, "source": "modbus"},
     {"key": "battery_command_duration", "name": "Command Duration", "ha_type": "number",
      "state_key": "battery_command_duration_s", "unit": "s", "device_class": "duration",
-     "min": 0, "max": 7200, "step": 60, "battery": True},
+     "min": 0, "max": 7200, "step": 60, "battery": True, "source": "modbus"},
     {"key": "battery_command_target_soc", "name": "Target SoC", "ha_type": "number",
      "state_key": "battery_command_target_soc", "unit": "%", "min": 0, "max": 100, "step": 5,
-     "battery": True},
+     "battery": True, "source": "modbus"},
 ]
+
+#: Where each entity's value comes from, or where a control writes (#711): ``local`` the
+#: aGate's Direct Connect API, ``cloud`` the FranklinWH cloud, ``modbus`` this bridge's
+#: Modbus client. An entity is published only while its source is set up and active; the
+#: guide's entity tables give it as the Source column. Unmarked entries are local.
+SOURCES = ("local", "cloud", "modbus")
+for _e in ENTITIES + CONTROLS:
+    _e.setdefault("source", "local")
+
+
+def source_keys(source: str) -> frozenset:
+    """The keys of every entity and control that come from ``source``."""
+    return frozenset(e["key"] for e in ENTITIES + CONTROLS if e["source"] == source)
+
+
+def source_skip(*, cloud: bool, modbus: bool) -> frozenset:
+    """The keys to leave out of discovery while the cloud or the Modbus client isn't
+    active for a gateway (#711). The local API is the gateway itself: always active."""
+    return ((frozenset() if cloud else source_keys("cloud"))
+            | (frozenset() if modbus else source_keys("modbus")))
+
 
 #: The Battery Command entities (#705). A mock has no Modbus TCP Server, so none for it.
 BATTERY_KEYS = frozenset(c["key"] for c in CONTROLS if c.get("battery"))

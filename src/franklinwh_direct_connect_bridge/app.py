@@ -2288,7 +2288,7 @@ def create_app() -> FastAPI:
             "enabled": bool(row.get("enabled")),
             "is_mock": bool(row.get("is_mock")),
             "mock_units": row.get("mock_units"),
-            "publish_ha": bool(row.get("publish_ha")),
+            "publish_ha": bool(row.get("publish_ha")) and not row.get("is_mock"),
             "is_default": bool(row.get("is_default")),
             "meter_id": row.get("meter_id"),
             "description": row.get("description") or "",
@@ -2416,7 +2416,9 @@ def create_app() -> FastAPI:
         import uuid
         gid = uuid.uuid4().hex[:12]
         seed = mockgw.seed_for(gid, req.mock_seed) if req.is_mock else None
-        publish_ha = (not req.is_mock) if req.publish_ha is None else bool(req.publish_ha)
+        # A mock is never published (#711); a real gateway is unless the caller says not.
+        publish_ha = False if req.is_mock else (True if req.publish_ha is None
+                                                else bool(req.publish_ha))
         row = st.create_gateway(
             gw_id=gid, label=req.label, host=("127.0.0.1" if req.is_mock else req.host),
             port=req.port, is_default=(current is None), enabled=(req.enabled or current is None),
@@ -2447,6 +2449,8 @@ def create_app() -> FastAPI:
                 f"'{before['label']}' is the default gateway. Make another gateway the "
                 "default first." if is_default else _default_taken(_default_row(st))))
         fields.pop("is_default", None)
+        if before.get("is_mock") and fields.get("publish_ha"):
+            raise HTTPException(422, "A mock gateway is never published to Home Assistant.")
         released = None
         if fields.get("enabled") is False and before.get("enabled"):
             if is_default:
@@ -7323,6 +7327,8 @@ def create_app() -> FastAPI:
         gw = _gw_or_404(gateway)
         if not s.mqtt_enabled:
             return {"ok": False, "detail": "MQTT is disabled"}
+        if gw.is_mock:
+            return {"ok": False, "detail": "A mock gateway is never published to Home Assistant."}
         st = _gw_store()
         row = st.gateway(gw.id) if st is not None else None
         if row is not None and not row.get("publish_ha"):

@@ -69,6 +69,7 @@ class _FakePub:
     def publish_alerts(self, payload): pass
     def publish_state(self, st): _FakePub.states.append(dict(st))
     def publish_availability(self, online): pass
+    def set_skip(self, skip): pass
 
 
 class _FakeStore:
@@ -108,8 +109,11 @@ def _run(monkeypatch, frames):
     monkeypatch.setattr(poller.client, "summary", _summary)
     import franklinwh_direct_connect_bridge.ha_supervisor as hs
     monkeypatch.setattr(hs, "apply_supervisor_mqtt", lambda *a, **k: None)
-    gw = GatewayState(id="g309", label="mock", is_mock=True, publish_ha=True,
+    gw = GatewayState(id="g309", label="mock", is_mock=True,
                       configured_host="127.0.0.1:1", active_host="127.0.0.1:1")
+    # A publishing gateway. A mock is never published (#711); it's one here only so the
+    # poll skips the reads a real aGate gets, which this stub doesn't answer.
+    gw.publish_ha = True
 
     async def go():
         stop = asyncio.Event()

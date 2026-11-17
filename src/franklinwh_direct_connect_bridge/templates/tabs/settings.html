@@ -521,12 +521,12 @@
           <summary class="text-xs uppercase tracking-wide cursor-pointer" style="color:var(--text-secondary)">Add a mock gateway (testing) <span class="text-[9px] px-1.5 rounded ml-1" style="background:rgba(167,139,250,.2);color:#c4b5fd">OPTIONAL</span></summary>
           <p class="text-[11px] text-slate-500 my-2 leading-relaxed">
             A <strong>mock</strong> is an in-process emulated aGate — no hardware, no network, running inside
-            the bridge — for trying the UI, dashboards and HA discovery. Each mock is a deterministic
+            the bridge — for trying the UI and dashboards. Each mock is a deterministic
             <em>seed-derived</em> site: it simulates <strong>battery + aPowers, live power flow, operating
             modes, Smart Circuits and daily energy history</strong>. It does <strong>not</strong> simulate a
             Generator or V2L (those read as absent). Set the number of aPowers (1–8); an optional seed makes
-            the profile reproducible (leave blank for a random one). <strong>Publish to Home Assistant</strong>
-            is off by default so synthetic data never pollutes your HA statistics. Remove it anytime with the
+            the profile reproducible (leave blank for a random one). A mock is <strong>never published to
+            Home Assistant</strong>, so synthetic data never pollutes your HA statistics. Remove it anytime with the
             gateway's <em>Edit → Remove</em>.
           </p>
           <div class="flex flex-wrap items-end gap-3">
@@ -536,7 +536,6 @@
               <input type="number" min="1" max="8" class="form-control form-control-sm block mt-1" style="width:5rem" x-model.number="mockForm.units"></label>
             <label class="text-xs" style="color:var(--text-secondary)">Seed <span class="text-slate-600">(optional)</span>
               <input type="number" class="form-control form-control-sm block mt-1" style="width:6rem" x-model="mockForm.seed" placeholder="random"></label>
-            <div class="flex items-center justify-between gap-2 text-xs pb-1.5" style="color:var(--text-secondary)"><span>Publish to Home Assistant</span><button type="button" @click="mockForm.publish_ha = !mockForm.publish_ha" role="switch" :aria-checked="mockForm.publish_ha" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="mockForm.publish_ha ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="mockForm.publish_ha ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
             <button class="btn btn-primary btn-sm" @click="saveMockGateway()">Add mock</button>
           </div>
         </details>
@@ -590,7 +589,7 @@
         <label class="text-xs block" style="color:var(--text-secondary)">Description
           <input class="form-control form-control-sm block mt-1 w-full" x-model="gwEdit.description" placeholder="optional"></label>
         <div class="space-y-1.5 text-xs" style="color:var(--text-secondary)">
-          <div class="flex items-center justify-between gap-2"><span>Publish to Home Assistant (MQTT)</span><button type="button" @click="gwEdit.publish_ha = !gwEdit.publish_ha" role="switch" :aria-checked="gwEdit.publish_ha" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="gwEdit.publish_ha ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="gwEdit.publish_ha ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
+          <div x-show="!gwEdit.is_mock" class="flex items-center justify-between gap-2"><span>Publish to Home Assistant (MQTT)</span><button type="button" @click="gwEdit.publish_ha = !gwEdit.publish_ha" role="switch" :aria-checked="gwEdit.publish_ha" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="gwEdit.publish_ha ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="gwEdit.publish_ha ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
           <div class="flex items-center justify-between gap-2"><span>Enabled</span><button type="button" @click="gwEdit.enabled = !gwEdit.enabled" :disabled="gwEdit.is_default" role="switch" :aria-checked="gwEdit.enabled" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="[gwEdit.enabled ? 'bg-emerald-500' : 'bg-slate-600', gwEdit.is_default ? 'opacity-50 cursor-not-allowed' : '']"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="gwEdit.enabled ? 'translate-x-5' : 'translate-x-0.5'"></span></button></div>
           <p x-show="gwEdit.is_default" class="text-[10px]" style="color:var(--text-faint)">The default gateway can't be disabled. Make another gateway the default first.</p>
           <div class="flex items-center justify-between gap-2"><span>Default gateway</span>
@@ -599,7 +598,7 @@
                     :disabled="!gwEdit.was_enabled" @click="makeDefaultGateway()">Make default</button></div>
           <p class="text-[10px]" style="color:var(--text-faint)">The default gateway is listed first and is the active gateway when the page opens, and whenever the active one is disabled or offline.<span x-show="!gwEdit.is_default && !gwEdit.was_enabled"> Enable this gateway before making it the default.</span></p>
         </div>
-        <p x-show="gwEdit.is_mock" class="text-[10px]" style="color:var(--text-faint)">Mock host/port are managed by the in-process emulator. Changing aPowers restarts it. Publishing synthetic energy to HA is discouraged.</p>
+        <p x-show="gwEdit.is_mock" class="text-[10px]" style="color:var(--text-faint)">Mock host/port are managed by the in-process emulator. Changing aPowers restarts it. A mock is never published to Home Assistant.</p>
         <p class="text-[10px]" style="color:var(--text-faint)">Poll interval &amp; timeout are global (Connection, above) and apply on reconnect.</p>
         <div class="flex items-center gap-2 pt-1">
           <button class="btn btn-primary btn-sm" @click="saveEditGateway()">Save Changes</button>
