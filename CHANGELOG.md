@@ -11,108 +11,21 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
-### Added
-
-- FranklinWH TOU schedule: the copy keeps each block's **buy and sell rate**, per day type
-  (a band can cost one thing on weekdays and another at weekends), shown on Scheduler →
-  FranklinWH TOU with the unit marked *please confirm*. The schedule is also **re-read once
-  a day**. Home Assistant gets **TOU Schedule, TOU Dispatch Now / Next and TOU Tariff Now /
-  Next**, worked out from the copy each minute with no cloud read, and published only while
-  the cloud is set up for that gateway (#656, #421)
-  ([guide](docs/guide/scheduler/index.md#franklinwh-tou-schedule),
-  [Home Assistant](docs/guide/home-assistant.md#sensors)).
-
-- Settings → Gateways: **HEMS setup**, opt-in (#713, hems 0.2.0). Describe the home for
-  energy planning: the always-on load and the high, medium and low usage periods, filled in
-  from your own history to confirm, and each heavy load (how it is measured, when it runs,
-  its circuit, and whether it is deferrable, sheddable or soaks up spare solar, and an EV
-  charger's details), checked against what this bridge can control. Answers only: nothing is
-  switched from them yet ([guide](docs/guide/energy-and-costs.md#hems-setup)).
-- Settings → Gateways: **Battery warranty & wear** (#713, hems 0.2.0). Warranty end and
-  throughput (filled from the FranklinWH cloud when signed in, marked *Please confirm*), the
-  guaranteed end SoH, install date and replacement value give the wear cost per kWh
-  discharged, the throughput used and left, and the daily pace that lasts the warranty;
-  with SoH and the round-trip efficiency from full cycles on the aGate's own counters. Each
-  charge and discharge block is recorded. Nothing is written to the aGate
-  ([guide](docs/guide/health-report.md#battery-warranty-and-wear)).
-- Home Assistant: **Load Forecast** (#713). The home load expected this hour, in kW, with
-  the next 48 hours as HAEO's `forecast` attribute (every 30 minutes), learnt by hems 0.2.0
-  from the gateway's own hourly home load and the site's temperatures. Published every half
-  hour; no aGate read ([guide](docs/guide/home-assistant.md)).
-- Health: the weekly battery report shows **how far off the load forecast was** over the last
-  90 days, against "same as the day before" (#713) ([guide](docs/guide/health-report.md)).
-- System view: **several aPowers are one battery** with the count and the aGate's charge and
-  power; its hover and details list each aPower (aP1, aP2 …: charge, current, BMS state,
-  and state of health in the details), read once a minute with the Battery tab's reads
-  (#703; franklinwh-system-view 0.4.1) ([guide](docs/guide/tour.md)).
-
-### Changed
-
-- Scheduler → FranklinWH TOU: **clashes on a timeline**. Under today's TOU bar a second
-  bar, *This bridge's schedules*, shows today's mode and Force schedules on the same
-  24 h scale with hour marks, the clashing minutes marked on both bars; hover or tap a
-  span for its name and times. The long uppercase heading is now **Clashes today**, and
-  with none there is one line, *No clashes today.* What counts as a clash is unchanged
-  (#421) ([guide](docs/guide/scheduler/index.md#franklinwh-tou-schedule)).
-
-- Scheduler → FranklinWH TOU: **today and each season's day types are tables** (Time,
-  Dispatch, Band, Buy, Sell) instead of run-on lines, which were hard to read; a band with
-  a rate but no block that day keeps its own row (#421)
-  ([guide](docs/guide/scheduler/index.md#franklinwh-tou-schedule)).
-
-- Solar forecast: **learns from your system** and allows for hot panels (#713). Each day
-  the forecast is compared with the solar your site's gateways measured; after five sunny
-  days it is scaled by measured ÷ forecast over the last 30 days. Hot panels make less, and
-  the forecast now allows for it. The maths come from hems 0.2.0 (the shared engine); the
-  card, the sensors and the solar-fill warning are unchanged
-  ([guide](docs/guide/energy-and-costs.md#solar-forecast)).
-- Home Assistant: **an entity is published only while its source is active** (#711). Each
-  entity now has a source: the aGate's Direct Connect API (*local*), the FranklinWH cloud
-  (*cloud*) or this bridge's Modbus client (*modbus*). The **Battery Command** controls
-  appear only while the Modbus client is on, as the reserve numbers already did only with
-  cloud credentials for the gateway; both now follow a change at once, without a restart,
-  and are removed from Home Assistant (not left *unavailable*) when their source goes away.
-  The guide's entity tables have a **Source** column, and list every entity
-  ([guide](docs/guide/home-assistant.md#source)).
-- Settings: **a mock gateway is never published to Home Assistant** (#711). Its *Publish to
-  Home Assistant* switch is gone, from **Add mock** and its Edit dialog, and anything a mock
-  published before is removed from Home Assistant when it starts
-  ([guide](docs/guide/multi-gateway.md)).
-
-### Fixed
-
-- **Plans & meters: a plan starting today showed as future in the Australian morning**
-  (#722). The plan list took today as the UTC date, so the meter said "No tariff in force";
-  it now uses the site's date, as Analytics does ([guide](docs/guide/energy-and-costs.md)).
-
-- **System view said "Battery" for a gateway with four aPowers** (#703). The count came only
-  from the power-flow read, which leaves it out on this firmware; it now also comes from the
-  aGate's list of aPowers in its login reply ([guide](docs/guide/tour.md)).
-
-- Home Assistant: **Bridge Version** on the bridge's own device (#706). Its state is this
-  bridge's version; its attributes give the install type (HA add-on, Docker, Podman, pip),
-  the Home Assistant version for the add-on, the platform (OS, CPU, Python), the
-  integrations in use (local gateways, FranklinWH cloud signed in, Modbus client, MQTT,
-  Home Assistant instances) and the installed version of each FranklinWH and shared
-  library. Sent on connect, with every heartbeat and when an integration changes; no
-  serial, address, account or install id
-  ([guide](docs/guide/home-assistant.md#the-bridges-own-device)).
-
-- Home Assistant: **VPP Active, Off-Grid Reason and Off-Grid Duration**, **Smart Circuit
-  1–3 Power and Energy Today**, **V2L Power, Export and Import Energy**, **Generator State,
-  Enabled and Today**, and **Active Alarms** (#704). All come from reads the bridge already
-  makes: every poll, and the 60-second smart-circuit, V2L and generator read. A value that
-  isn't read is unknown in Home Assistant, never 0
-  ([guide](docs/guide/home-assistant.md#sensors)).
-- Home Assistant: **Battery Command**, **Command Power**, **Command Power %**, **Command
-  Duration** and **Target SoC** controls, as the Modbus Bridge has them (#705). They run
-  the Battery tab's Battery Command on that gateway and share its staged values; they need
-  Allow writes and the Modbus client on, and mock gateways don't have them
-  ([guide](docs/guide/home-assistant.md#controls-writable)).
-
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
+
+## 2026-11-18
+
+### [0.5.51](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.51.md)
+
+Added 9 · Changed 5 · Fixed 2
+
+- Energy planning (hems 0.2.0): a solar forecast that learns from your system, a Home…
+- FranklinWH TOU: buy and sell rates per day type, daily re-read, tables, clashes on a…
+- Home Assistant: Battery Command controls, Bridge Version, VPP, off-grid, smart circuit…
+- System view: several aPowers show as one battery with the count, each aPower in the hover…
+- Billing: a plan starting today is in force on an Australian morning
 
 ## 2026-11-17
 
