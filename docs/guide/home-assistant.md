@@ -236,7 +236,8 @@ against the FranklinWH app.
 
 The bridge checks every poll. When a source turns on, its entities appear in Home
 Assistant; when it turns off, they are removed (not left *unavailable*). Mock gateways are
-never published to Home Assistant.
+never published to Home Assistant; the setup wizard's **Yes** to publishing turns it on for
+real gateways only.
 
 ### Entity groups
 
