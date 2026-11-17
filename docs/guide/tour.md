@@ -149,6 +149,12 @@ Circuits tab does. **Options → Customise diagram** changes a name or picks a p
 the diagram only; with several gateways, its **Gateway** picker shows one gateway at a time,
 starting on the one shown.
 
+**Several aPowers on one gateway** are one battery, labelled *Batteries ×4* (the count the
+aGate reports), with the aGate's charge and power. Hover over it (or tap it) for each aPower
+on its own line: aP1, aP2 … with its charge, current and BMS state, as on the Battery tab;
+its details add each one's state of health. The bridge reads each aPower once a minute
+(#703).
+
 **A site with several gateways** is one diagram. Gateways whose meters belong to the same
 site (Billing & Utilities → Plans & meters; see `docs/guide/multi-gateway.md`) are drawn
 together: the grid and the site's service meter on the left, then one row per aGate with
