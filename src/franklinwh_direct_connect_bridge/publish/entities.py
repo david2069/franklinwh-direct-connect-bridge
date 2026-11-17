@@ -65,7 +65,37 @@ ENTITIES: list[dict[str, Any]] = [
     {"key": "relay_main2", "name": "Main Relay 2", "ha_type": "binary_sensor", "unit": None, "device_class": "power", "state_class": None, "group": "diagnostic"},
     {"key": "relay_grid2", "name": "Grid Relay 2", "ha_type": "binary_sensor", "unit": None, "device_class": "power", "state_class": None, "group": "diagnostic"},
     {"key": "relay_black_start", "name": "Black Start Relay", "ha_type": "binary_sensor", "unit": None, "device_class": "power", "state_class": None, "group": "diagnostic"},
+    # #704: readings the bridge already has. VPP and off-grid from every poll; the reason
+    # and minutes only while off-grid (the scheduler's grid.offgrid_reason / _min).
+    {"key": "status_vpp", "name": "VPP Active", "ha_type": "binary_sensor", "unit": None, "device_class": None, "state_class": None, "group": "core"},
+    {"key": "offgrid_reason", "name": "Off-Grid Reason", "unit": None, "device_class": None, "state_class": None, "group": "core"},
+    {"key": "offgrid_min", "name": "Off-Grid Duration", "unit": "min", "device_class": "duration", "state_class": "measurement", "group": "core"},
+    {"key": "generator_today_kwh", "name": "Generator Today", "unit": "kWh", "device_class": "energy", "state_class": "total_increasing", "group": "energy"},
+    # Smart circuits, V2L and the generator from the 60 s device read (#700). All three
+    # circuits, as the Smart Circuit 1-3 switches are; a circuit not read is unknown.
+    *[e for n in (1, 2, 3) for e in (
+        {"key": f"circuit_{n}_power_w", "name": f"Smart Circuit {n} Power", "unit": "W", "device_class": "power", "state_class": "measurement", "group": "power"},
+        {"key": f"circuit_{n}_today_kwh", "name": f"Smart Circuit {n} Energy Today", "unit": "kWh", "device_class": "energy", "state_class": "total_increasing", "group": "energy"},
+    )],
+    {"key": "v2l_power_w", "name": "V2L Power", "unit": "W", "device_class": "power", "state_class": "measurement", "group": "power"},
+    {"key": "v2l_export_kwh", "name": "V2L Export Energy", "unit": "kWh", "device_class": "energy", "state_class": "total_increasing", "group": "energy"},
+    {"key": "v2l_import_kwh", "name": "V2L Import Energy", "unit": "kWh", "device_class": "energy", "state_class": "total_increasing", "group": "energy"},
+    {"key": "generator_state", "name": "Generator State", "unit": None, "device_class": None, "state_class": None, "group": "power"},
+    {"key": "generator_enabled", "name": "Generator Enabled", "ha_type": "binary_sensor", "unit": None, "device_class": None, "state_class": None, "group": "diagnostic"},
+    # The gateway's alarms as System view lists them: the devices' own and the bridge's
+    # open alerts for it.
+    {"key": "active_alarms", "name": "Active Alarms", "unit": None, "device_class": None, "state_class": "measurement", "group": "diagnostic"},
 ]
+
+#: Scheduler device sensor (scheduler.device_snapshot, #698) -> its HA state key (#704).
+DEVICE_KEYS = {
+    **{f"circuit.{n}.power_w": f"circuit_{n}_power_w" for n in (1, 2, 3)},
+    **{f"circuit.{n}.today_kwh": f"circuit_{n}_today_kwh" for n in (1, 2, 3)},
+    "v2l.power_w": "v2l_power_w",
+    "v2l.export_kwh": "v2l_export_kwh",
+    "v2l.import_kwh": "v2l_import_kwh",
+    "generator.state_desc": "generator_state",
+}
 
 #: 1707 field -> relay entity key. raw 1 is FranklinWH's "OPEN", which is conducting
 #: (solar.py _relay; mainRelay1Status read 0 through a real island, docs/OFFGRID_DESIGN.md).
@@ -301,7 +331,11 @@ _HA_KEYS = {
     "kwh_fhp_di": "battery_discharge_today_kwh",
     "kwh_load": "load_today_kwh",
     "grid_freq_hz": "grid_frequency_hz",
+    "kwh_gen": "generator_today_kwh",
 }
+
+#: off_grid_kind -> Off-Grid Reason, the words the scheduler and notifications use.
+OFFGRID_REASON = {"simulated": "user requested", "outage": "grid outage"}
 
 
 def state_payload(summary: dict) -> dict[str, Any]:
@@ -330,6 +364,11 @@ def state_payload(summary: dict) -> dict[str, Any]:
     if og is not None:
         st["status_grid_status"] = (GRID_STATUS.get(st.get("off_grid_kind"), "OffGrid")
                                     if og else "Connected")
+    if og:
+        st["offgrid_reason"] = OFFGRID_REASON.get(st.get("off_grid_kind"), "unknown")
+    vpp = st.get("vpp")
+    if vpp is not None:
+        st["status_vpp"] = "ON" if vpp else "OFF"
     active = next((m for m in (summary.get("mode") or {}).get("modes") or []
                    if m.get("active")), None)
     if active and active.get("reserved_soc") is not None:
@@ -351,6 +390,29 @@ def state_payload(summary: dict) -> dict[str, Any]:
         st["battery_status"] = ("charging" if bw < 0 else "discharging" if bw > 0
                                 else "standby")
     return st
+
+
+def device_payload(snap: dict) -> dict[str, Any]:
+    """Smart circuits, V2L and the generator for HA (#704), from the scheduler's device
+    snapshot (#698). A value not read is left out, so HA shows unknown, never 0."""
+    out = {ha: snap[k] for k, ha in DEVICE_KEYS.items() if snap.get(k) is not None}
+    en = snap.get("generator.enabled")
+    if en is not None:
+        out["generator_enabled"] = "ON" if en else "OFF"
+    return out
+
+
+def late_state(st: dict, *, now: float, alarms: int | None) -> dict[str, Any]:
+    """What the poller knows only after the state is built (#704): minutes off-grid, from
+    the period's start it keeps in ``st`` (#463), and the active alarms count."""
+    from ..scheduler import offgrid_min
+    out: dict[str, Any] = {}
+    mins = offgrid_min(st, now)
+    if mins is not None:
+        out["offgrid_min"] = mins
+    if alarms is not None:
+        out["active_alarms"] = alarms
+    return out
 
 
 def display_precision(e: dict) -> int | None:
@@ -412,8 +474,13 @@ def device_info(node: str, serial: str, firmware: str | None = None, *,
 
 #: Keys that only a REAL gateway has a source for (the emulator models no network, #134).
 NETWORK_KEYS = frozenset(e["key"] for e in ENTITIES if e["key"].startswith("net_"))
+#: ...nor the smart-circuit and V2L meter (1411, #704): the emulator reports no meter
+#: fields, so a mock has no watts or kWh for them.
+METER_KEYS = frozenset(v for k, v in DEVICE_KEYS.items() if not k.startswith("generator."))
 #: ...nor the 1707 relays (#386). A mock gateway publishes none of these.
-MOCK_ABSENT_KEYS = NETWORK_KEYS | frozenset(RELAY_KEYS.values()) | RESERVE_KEYS
+MOCK_ABSENT_KEYS = NETWORK_KEYS | frozenset(RELAY_KEYS.values()) | RESERVE_KEYS | METER_KEYS
+#: Published only while the gateway is off-grid (#704); absent (unknown) on the grid.
+OFF_GRID_ONLY_KEYS = frozenset({"offgrid_reason", "offgrid_min"})
 
 
 def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: str, groups=None,

@@ -33,6 +33,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   serial, address, account or install id
   ([guide](docs/guide/home-assistant.md#the-bridges-own-device)).
 
+- Home Assistant: **VPP Active, Off-Grid Reason and Off-Grid Duration**, **Smart Circuit
+  1–3 Power and Energy Today**, **V2L Power, Export and Import Energy**, **Generator State,
+  Enabled and Today**, and **Active Alarms** (#704). All come from reads the bridge already
+  makes: every poll, and the 60-second smart-circuit, V2L and generator read. A value that
+  isn't read is unknown in Home Assistant, never 0
+  ([guide](docs/guide/home-assistant.md#sensors)).
+
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.

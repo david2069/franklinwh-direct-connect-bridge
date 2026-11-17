@@ -7,9 +7,11 @@ value in Home Assistant, on real gateways and mocks alike. The old tests passed 
 they called ``build_state`` directly; these build the payload the way the POLLER does,
 from a real poll of the library's in-process Emulator.
 """
+import time
+
 import pytest
 
-from franklinwh_direct_connect_bridge import client, config, mockgw
+from franklinwh_direct_connect_bridge import client, config, mockgw, scheduler
 from franklinwh_direct_connect_bridge.publish import entities
 
 #: Every control's state key is in the poll (C1 added the 1409 circuit read). Go Off-Grid's
@@ -21,9 +23,18 @@ NOT_IN_POLL: set = set()
 def mock_summary():
     host = mockgw.start_mock("t96", seed=4242, units=1)
     try:
-        yield client.summary(config.get_settings(), host, mock=True)
+        yield client.summary(config.get_settings(), host, mock=True, extras=True)
     finally:
         mockgw.stop_mock("t96")
+
+
+def _poller_state(summ: dict) -> dict:
+    """The state as the poller builds it: the summary's keys, then the 60 s device read
+    and the alarm count (#704)."""
+    st = entities.state_payload(summ)
+    st.update(entities.device_payload(scheduler.device_snapshot(summ, summ.get("device_extras"))))
+    st.update(entities.late_state(st, now=time.time(), alarms=0))
+    return st
 
 
 def test_the_poll_succeeds(mock_summary):
@@ -31,18 +42,21 @@ def test_the_poll_succeeds(mock_summary):
 
 
 def test_every_sensor_template_key_is_published(mock_summary):
-    st = entities.state_payload(mock_summary)
-    # A mock publishes no network (#134) or relay (#386) entities: no source.
+    st = _poller_state(mock_summary)
+    # A mock publishes no network (#134), relay (#386) or meter (#704) entities: no
+    # source. The mock is on the grid, so it has no off-grid reason or duration.
     missing = [e["key"] for e in entities.ENTITIES
-               if e["key"] not in st and e["key"] not in entities.MOCK_ABSENT_KEYS]
+               if e["key"] not in st and e["key"] not in entities.MOCK_ABSENT_KEYS
+               and e["key"] not in entities.OFF_GRID_ONLY_KEYS]
     assert not missing, f"entities whose template key is never published: {missing}"
 
 
 def test_published_values_are_real_values_not_none(mock_summary):
     """A key that is present but always None is the same defect in disguise."""
-    st = entities.state_payload(mock_summary)
+    st = _poller_state(mock_summary)
     nones = [e["key"] for e in entities.ENTITIES
-             if st.get(e["key"]) is None and e["key"] not in entities.MOCK_ABSENT_KEYS]
+             if st.get(e["key"]) is None and e["key"] not in entities.MOCK_ABSENT_KEYS
+             and e["key"] not in entities.OFF_GRID_ONLY_KEYS]
     assert not nones, f"published as null: {nones}"
 
 

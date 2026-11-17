@@ -449,6 +449,18 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                 from .scheduler import off_grid_since as _ogs
                 off_grid_since = _ogs(off_grid_since, st.get("off_grid"), time.time())
                 st["off_grid_since"] = off_grid_since
+                # Home Assistant (#704): circuits, V2L and the generator from the 60 s read,
+                # minutes off-grid, and the alarms System view lists. Never breaks the poll.
+                try:
+                    from . import system_view as _sv
+                    from .scheduler import device_snapshot as _dsnap
+                    st.update(entities.device_payload(
+                        _dsnap(summ, getattr(gw, "device_extras", None))))
+                    _alarm_n = len(_sv.gateway_alarms(gw, store, time.time()))
+                except Exception as e:  # noqa: BLE001
+                    log.debug("[%s] HA extras not worked out: %s", gw.id, e)
+                    _alarm_n = None
+                st.update(entities.late_state(st, now=time.time(), alarms=_alarm_n))
                 gw.last_state = st
                 # Only a poll that READ the gateway makes the snapshot fresh (#284). A
                 # failed poll stored an empty snapshot as new, so the scheduler kept

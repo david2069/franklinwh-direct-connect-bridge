@@ -178,16 +178,22 @@ def gateway_payload(gw, store=None) -> dict:
     energy = _energy(summ)
     if energy:
         out["energy_today"] = energy
-    alarms = _device_alarms(gw, time.time())
+    alarms = gateway_alarms(gw, store, time.time())
+    if store is not None or alarms:
+        out["alarms"] = alarms
+    return out
+
+
+def gateway_alarms(gw, store, now: float) -> list[dict]:
+    """The gateway's alarms as the diagram lists them: the devices' own, then the
+    bridge's open alerts for it. Home Assistant's Active Alarms counts these (#704)."""
+    alarms = _device_alarms(gw, now)
     if store is not None:
         try:
             alarms += _alarms(store, gw.id)
         except Exception as e:  # noqa: BLE001 - the view is still worth drawing without them
             log.debug("system view: alerts unread: %s", e)
-        out["alarms"] = alarms
-    elif alarms:
-        out["alarms"] = alarms
-    return out
+    return alarms
 
 
 # ── the site: its name from the location, and the weather now ─────────────────
