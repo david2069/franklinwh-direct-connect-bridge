@@ -814,11 +814,14 @@ def _tou_tiers_from_power_flow(pf: dict) -> dict:
             if isinstance(pf.get(k), list)}
 
 
-def _battery_from_power_flow(pf: dict[str, Any] | None) -> dict[str, Any]:
+def _battery_from_power_flow(pf: dict[str, Any] | None,
+                             manifest: dict[str, Any] | None = None) -> dict[str, Any]:
     """Extract a battery summary block from a single ``power_flow`` (1301) payload — SoC,
     run status (+ label), ambient temp, module count and per-module rows. Pure + None-safe:
     missing/empty per-module arrays (``fhpSn``/``fhpSoc``/``fhpPower``) yield an empty
-    ``modules`` list, never an error. NO device round-trip — the caller already has ``pf``."""
+    ``modules`` list, never an error. NO device round-trip — the caller already has ``pf``.
+    When 1301 carries no count, the login ``manifest``'s aPower serial list (``FHP_SN``)
+    gives it (#703)."""
     pf = pf or {}
     sns = pf.get("fhpSn") or []
     socs = pf.get("fhpSoc") or []
@@ -830,7 +833,8 @@ def _battery_from_power_flow(pf: dict[str, Any] | None) -> dict[str, Any]:
             "soc": socs[i] if i < len(socs) else None,
             "power_kw": powers[i] if i < len(powers) else None,
         })
-    count = pf.get("devNum") or len(sns) or None
+    fhp = (manifest or {}).get("FHP_SN")
+    count = pf.get("devNum") or len(sns) or (len(fhp) if isinstance(fhp, list) else 0) or None
     rs = pf.get("run_status")
     return {
         "soc": pf.get("soc"),
@@ -1075,12 +1079,40 @@ def _refusal(reply: Any) -> str | None:
     return f"result {reply.get('result')}, reason {reply.get('reason')}"
 
 
+def _apower_reads(c) -> list[dict[str, Any]]:
+    """Each aPower's SoC, state of health, current and BMS state, with the Battery tab's
+    reads (1705 battery_cells, 1835 device_states), for the System view (#703). The current
+    is its size; the BMS state says which way. A read that fails leaves its values None."""
+    from franklinwh_direct_connect_api import catalog as _cat
+    out = []
+    for dev_id in c.device_ids():
+        u: dict[str, Any] = {"id": dev_id, "soc_pct": None, "soh_pct": None,
+                             "current_a": None, "status": None}
+        try:
+            cells = c.battery_cells(dev_id) or {}
+            for key, src in (("soc_pct", "batSoc"), ("soh_pct", "batSoh"), ("current_a", "currGrp")):
+                v = cells.get(src)
+                if isinstance(v, (int, float)) and not isinstance(v, bool):
+                    u[key] = abs(float(v)) if key == "current_a" else float(v)
+        except (OSError, TransportError, TimeoutError, ValueError):
+            pass
+        try:
+            code = (c.device_states(dev_id) or {}).get("bmsState")
+            if isinstance(code, int) and not isinstance(code, bool):
+                u["status"] = _cat.bms_state_desc(code)
+        except (OSError, TransportError, TimeoutError, ValueError):
+            pass
+        out.append(u)
+    return out
+
+
 def device_extras(c, s: Settings, manifest: dict | None, cfg: dict | None) -> dict[str, Any]:
     """Smart-circuit and V2L metering (1411) and the generator (1901), for the scheduler
-    (#698), on an open session. Best-effort: a read that fails is None, never raised."""
+    (#698), and each aPower (#703), on an open session. Best-effort: a read that fails is
+    None, never raised."""
     from . import circuits as _circuits, devicedb, generator as _gen
     out: dict[str, Any] = {"meter": None, "carsw": None, "circuit_count": None,
-                           "generator": None}
+                           "generator": None, "apowers": None}
     try:
         mtr = c.smart_circuit_meter() or {}
     except (OSError, TransportError, TimeoutError, ValueError):
@@ -1095,6 +1127,10 @@ def device_extras(c, s: Settings, manifest: dict | None, cfg: dict | None) -> di
     try:
         out["generator"] = _gen.build(c.generator() or {})
     except (OSError, TransportError, TimeoutError, ValueError):
+        pass
+    try:
+        out["apowers"] = _apower_reads(c)
+    except Exception:  # noqa: BLE001 — the unit list is extra; it must never fail the poll
         pass
     return out
 
@@ -1192,7 +1228,7 @@ def summary(s: Settings, host: str | None = None, *, mock: bool = False,
             }
             # Richer, dashboard-parity blocks from the SAME power_flow read (no extra
             # device round-trip). power stays unchanged for back-compat.
-            out["battery"] = _battery_from_power_flow(pf)
+            out["battery"] = _battery_from_power_flow(pf, manifest)
             out["energy_today"] = _energy_today_from_power_flow(pf)
             # Tariff-tier accumulators, from the SAME read. Kept out of "power"
             # (and therefore out of the MQTT state payload) — they exist to be
