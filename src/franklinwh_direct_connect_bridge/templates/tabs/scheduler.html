@@ -298,8 +298,8 @@
         <p class="text-xs" style="color:var(--text-secondary)" x-text="tou.reason"></p>
       </template>
       <template x-if="tou && tou.available && !tou.latest">
-        <p class="text-xs" style="color:var(--text-secondary)">No copy yet. The bridge reads it at start-up and
-          whenever TOU mode is set; <b>Sync now</b> reads it now.</p>
+        <p class="text-xs" style="color:var(--text-secondary)">No copy yet. The bridge reads it at start-up,
+          whenever TOU mode is set and once a day; <b>Sync now</b> reads it now.</p>
       </template>
       <template x-if="tou && tou.latest">
         <div class="space-y-3">
@@ -320,12 +320,16 @@
               </template>
             </div>
             <div class="mt-2 space-y-0.5">
+              <p x-show="tou.today.some(b => b.buy != null || b.sell != null)" class="text-[11px]" style="color:var(--text-secondary)"
+                 data-testid="tou-rate-unit">Rates in <span x-text="tou.latest.schedule.rate_unit"></span>.</p>
               <template x-for="(b, i) in tou.today" :key="i">
-                <div class="text-xs flex items-center gap-2" style="color:var(--text-secondary)">
+                <div class="text-xs flex flex-wrap items-center gap-x-2" style="color:var(--text-secondary)">
                   <span class="inline-block w-2.5 h-2.5 rounded-sm shrink-0" :style="{ background: touColour(b.dispatch_id) }"></span>
                   <span class="font-mono" x-text="b.start + '–' + b.end"></span>
                   <span style="color:var(--text-primary)" x-text="b.dispatch"></span>
                   <span x-show="b.wave" x-text="'· ' + b.wave"></span>
+                  <span x-show="b.buy != null || b.sell != null" data-testid="tou-rates" class="whitespace-nowrap"
+                        x-text="'· buy ' + touRate(b.buy) + ' · sell ' + touRate(b.sell)"></span>
                 </div>
               </template>
             </div>
@@ -375,6 +379,8 @@
                   <div class="ml-3" style="color:var(--text-secondary)">
                     <span x-text="d.name + ': '"></span>
                     <span x-text="d.blocks.map(b => b.start + '–' + b.end + ' ' + b.dispatch).join('; ')"></span>
+                    <div x-show="d.rates && Object.keys(d.rates).length" class="ml-3"
+                         x-text="'Rates: ' + Object.entries(d.rates || {}).map(([k, r]) => k + ' buy ' + touRate(r.buy) + ' / sell ' + touRate(r.sell)).join('; ')"></div>
                   </div>
                 </template>
               </div>

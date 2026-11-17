@@ -1317,6 +1317,7 @@ def create_app() -> FastAPI:
             _last_status = None   # only log cloud status on a real CHANGE (see Logs policy)
             _fail_streak = 0      # for failure VISIBILITY without 5-min spam (onset + recovery)
             _tou_mode, _tou_synced = "", False   # the TOU schedule's copy (cloud_tou)
+            _tou_last_try = None                  # its last read, for the daily one (#656)
             while True:
                 _workers.registry.beat("cloud-status", state=_workers.WorkerState.RUNNING)
                 ok = False
@@ -1339,13 +1340,15 @@ def create_app() -> FastAPI:
                             # Logs policy: startup, state changes and errors). A transient unknown
                             # (empty mode -> "?") is skipped so it can't flap the log.
                             mode = data.get("effective_mode") or ""
-                            # A copy of the FranklinWH TOU schedule at start-up and when
-                            # TOU mode is set (owner 2026-11-16). One try each: a failure
-                            # is logged, not retried every pass.
+                            # A copy of the FranklinWH TOU schedule at start-up, when
+                            # TOU mode is set (owner 2026-11-16) and once a day (#656). One
+                            # try each: a failure is logged, not retried every pass.
                             from . import cloud_tou
-                            why = cloud_tou.sync_reason(mode, _tou_mode, _tou_synced)
+                            why = cloud_tou.sync_reason(mode, _tou_mode, _tou_synced,
+                                                        last_try=_tou_last_try, now=_t.time())
                             _tou_mode, _tou_synced = mode or _tou_mode, True
                             if why:
+                                _tou_last_try = _t.time()
                                 try:
                                     tou = cloud_tou.sync(db.get_store(get_settings()),
                                                          get_settings(), target.id,
@@ -5349,7 +5352,7 @@ def create_app() -> FastAPI:
         if cur is None:
             return out
         now = _site_now(gateway)
-        out.update(latest=cur, today=cloud_tou.blocks_on(cur["schedule"], now.date()),
+        out.update(latest=cur, today=cloud_tou.blocks_with_rates(cur["schedule"], now.date()),
                    conflicts=cloud_tou.conflicts(cur["schedule"], _ha_store().schedules(),
                                                  now, gateway),
                    history=st.cloud_tou_history(gateway))

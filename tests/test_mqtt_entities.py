@@ -15,8 +15,8 @@ def test_discovery_configs_filter_by_group():
     core_cfgs, _, _ = entities.discovery_configs("n", {}, "p", "d", ["core"])
     # core = soc + mode + grid status + active reserve (#386) + VPP active, off-grid
     # reason and duration (#704), plus the bridge-health pair that every group set
-    # carries (#271)
-    assert len(core_cfgs) == 7 + len(entities.BRIDGE_ENTITIES) and len(all_cfgs) > len(core_cfgs)
+    # carries (#271), and the five TOU entities (#421)
+    assert len(core_cfgs) == 7 + len(entities.TOU_KEYS) + len(entities.BRIDGE_ENTITIES) and len(all_cfgs) > len(core_cfgs)
     # controls only appear when the controls group is enabled
     no_ctrl, _, _ = entities.discovery_configs("n", {}, "p", "d", ["power"])
     assert not any("/switch/" in t or "/select/" in t for t, _ in no_ctrl)

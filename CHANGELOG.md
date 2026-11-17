@@ -13,6 +13,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- FranklinWH TOU schedule: the copy keeps each block's **buy and sell rate**, per day type
+  (a band can cost one thing on weekdays and another at weekends), shown on Scheduler →
+  FranklinWH TOU with the unit marked *please confirm*. The schedule is also **re-read once
+  a day**. Home Assistant gets **TOU Schedule, TOU Dispatch Now / Next and TOU Tariff Now /
+  Next**, worked out from the copy each minute with no cloud read, and published only while
+  the cloud is set up for that gateway (#656, #421)
+  ([guide](docs/guide/scheduler/index.md#franklinwh-tou-schedule),
+  [Home Assistant](docs/guide/home-assistant.md#sensors)).
+
 - Settings → Gateways: **HEMS setup**, opt-in (#713, hems 0.2.0). Describe the home for
   energy planning: the always-on load and the high, medium and low usage periods, filled in
   from your own history to confirm, and each heavy load (how it is measured, when it runs,

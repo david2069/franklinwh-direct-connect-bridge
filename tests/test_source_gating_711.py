@@ -24,8 +24,10 @@ def test_every_entity_and_control_names_its_source():
     for e in ALL:
         assert e.get("source") in entities.SOURCES, e["key"]
     src = {e["key"]: e["source"] for e in ALL}
-    # the reserve numbers write through the cloud (C2); Battery Command runs over Modbus
-    assert {k for k, v in src.items() if v == "cloud"} == set(entities.RESERVE_KEYS)
+    # the reserve numbers write through the cloud (C2), and the TOU schedule is read from
+    # it (#421); Battery Command runs over Modbus
+    assert {k for k, v in src.items() if v == "cloud"} == set(entities.RESERVE_KEYS
+                                                              | entities.TOU_KEYS)
     assert {k for k, v in src.items() if v == "modbus"} == set(entities.BATTERY_KEYS)
     # the aGate's own network reads, its cloud link included, are local reads
     assert src["net_cloud"] == "local" and src["operating_mode"] == "local"
@@ -33,10 +35,11 @@ def test_every_entity_and_control_names_its_source():
 
 def test_skip_follows_which_sources_are_active():
     both_off = entities.source_skip(cloud=False, modbus=False)
-    assert both_off == entities.RESERVE_KEYS | entities.BATTERY_KEYS
+    cloud = entities.RESERVE_KEYS | entities.TOU_KEYS
+    assert both_off == cloud | entities.BATTERY_KEYS
     assert entities.source_skip(cloud=True, modbus=True) == frozenset()
     assert entities.source_skip(cloud=True, modbus=False) == entities.BATTERY_KEYS
-    assert entities.source_skip(cloud=False, modbus=True) == entities.RESERVE_KEYS
+    assert entities.source_skip(cloud=False, modbus=True) == cloud
 
 
 class _Client:

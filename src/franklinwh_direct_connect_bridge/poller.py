@@ -104,6 +104,8 @@ NET_EVERY_S = 600
 #: How often the home-load forecast is worked out and published to HA (#713). No aGate
 #: read: hems on the stored history.
 LOAD_FORECAST_EVERY_S = 1800
+#: The TOU entities (#421) are worked out from the stored copy this often.
+TOU_EVERY_S = 60
 #: System view → Alarms: how often each aPower's 1705 alarmLevel and the aGate's 1829
 #: event count are read. Slow on purpose: the aGate is sensitive to load (#123).
 APOWER_ALARM_EVERY_S = 300
@@ -295,6 +297,7 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
     alarm_last = events_last = 0.0   # System view → Alarms (slow device reads)
     extras_last = 0.0                # scheduler's circuit/V2L/generator read (#698)
     load_fc_last = 0.0               # Load Forecast to HA (#713)
+    tou_last = 0.0                   # TOU entities to HA (#421)
     next_sweep = 0.0
     sweep_gap = SWEEP_GAP_MIN_S
     prev: dict | None = None
@@ -600,6 +603,20 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                                 pub.publish_load_forecast(lf)
                         except Exception as e:  # noqa: BLE001
                             log.debug("[%s] load forecast not published: %s", gw.id, e)
+                    # TOU entities (#421, #656): from the latest copy of the schedule,
+                    # no cloud read; only while the cloud is set up for this gateway.
+                    if (store is not None and time.time() - tou_last >= TOU_EVERY_S
+                            and "tou_schedule" not in ha_skip(settings, gw)):
+                        tou_last = time.time()
+                        try:
+                            from . import cloud_tou, site_time
+                            tp = cloud_tou.ha_payload(
+                                cloud_tou.latest(store, gw.id),
+                                site_time.now_known(gw.active_host or gw.configured_host))
+                            if tp is not None:
+                                pub.publish_tou(tp)
+                        except Exception as e:  # noqa: BLE001
+                            log.debug("[%s] TOU entities not published: %s", gw.id, e)
                 for title, msg in transitions(prev, summ, gw.label or gw.id):
                     await asyncio.to_thread(notifier.notify, title, msg)
                 # Configurable companion-push triggers + delivery log (FEAT-NOTIFY).
