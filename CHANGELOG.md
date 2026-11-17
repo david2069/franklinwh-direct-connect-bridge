@@ -11,6 +11,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+
+- Home Assistant: **Bridge Version** on the bridge's own device (#706). Its state is this
+  bridge's version; its attributes give the install type (HA add-on, Docker, Podman, pip),
+  the Home Assistant version for the add-on, the platform (OS, CPU, Python), the
+  integrations in use (local gateways, FranklinWH cloud signed in, Modbus client, MQTT,
+  Home Assistant instances) and the installed version of each FranklinWH and shared
+  library. Sent on connect, with every heartbeat and when an integration changes; no
+  serial, address, account or install id
+  ([guide](docs/guide/home-assistant.md#the-bridges-own-device)).
+
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
