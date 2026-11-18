@@ -24,7 +24,8 @@ Three ways, and they coexist:
    TCP 9000, where every real aGate listens. To find emulators, give a port, a list or a
    range in the port box (`9020`, `9000,9020` or `9020-9030`). Each open port is confirmed
    with a Direct Connect login and listed once per address and port, and **Add** keeps
-   that port. A result or gateway on any port but 9000, or with a serial starting `MOCK`,
+   that port; the bridge then reaches that gateway on it (#364). A gateway left on 9000
+   uses the `FWH_PORT` setting. A result or gateway on any port but 9000, or with a serial starting `MOCK`,
    is labelled **Emulator**. Hosts × ports is capped at 1024 probes; a bigger search asks
    you to narrow it. The Modbus TCP Server (aGate :502) is never probed.
 
