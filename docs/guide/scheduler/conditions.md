@@ -481,7 +481,8 @@ Open-Meteo. They need a location under **Settings → Location & Prices → Loca
 
 `solar_forecast.today_kwh`, `today_peak_kw`, `remaining_kwh`, `tomorrow_kwh` (Weather &
 Solar), and the tracker `solar_forecast.day_pct` / `vs_expected_pct` (Derived Battery). The
-PV size, tilt and azimuth shape the forecast.
+PV size, tilt and azimuth shape the forecast. See [HEMS → Scheduler](../hems/scheduler.md)
+for how they are worked out, with examples.
 
 ### Time
 
