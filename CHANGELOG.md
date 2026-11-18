@@ -11,6 +11,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+
+- **Troubleshoot showed the LAN answering while :9000 refused, and the 4G verdict without its
+  reading time** (#728). The Connection card took the link record, which stays "up" until three
+  failed probes, so for a few minutes it said "answering on :9000" while the Health check,
+  probing afresh, said refused; both now use one rule, and a link with no good poll lately
+  reads "not answering lately". The verdict says whose reading it is: the FranklinWH cloud
+  just now, or the aGate's own report and the time it was read (an aGate report older than
+  two network reads is not used). A cloud call that failed reads "asked, no answer", not
+  "not asked" ([guide](docs/guide/ha-setup-and-notifications.md#troubleshoot)).
+
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.

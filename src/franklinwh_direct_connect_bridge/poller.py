@@ -453,6 +453,7 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                                         nb.get("switches"), nb.get("cloud"))
                         # On 4G while the LAN works (#614): only the aGate's own
                         # report shows it, since :9000 keeps answering.
+                        gw.net_read_ts = time.time()   # the 4G verdict's reading time (#728)
                         troubleshoot.note_local_network(gw.id, True, net_state)
                     except Exception as e:  # noqa: BLE001 — a network read never breaks the poll
                         log.debug("[%s] network read failed: %s", gw.id, e)

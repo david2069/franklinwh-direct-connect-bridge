@@ -42,6 +42,9 @@ class GatewayState:
     #: Smart-circuit/V2L metering and the generator, read every 60 s for the scheduler
     #: (#698); None until read, or when the last read failed.
     device_extras: dict | None = None
+    #: When the poller last read the aGate's network (1118), so the Troubleshoot verdict
+    #: can say how old the aGate's own 4G report is (#728); None until read.
+    net_read_ts: float | None = None
     republish_requested: bool = False   # UI → poller: re-publish HA discovery
     unpublish_requested: bool = False   # UI → poller: clear entities from HA
     rediscover_requested: bool = False  # Re-discover button → poller: sweep on the next failure
