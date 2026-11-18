@@ -13,6 +13,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- **Network: Watch is a live ping until Stop, and drop-outs of the last 24 h** (#730). In the
+  Latency test, **Watch** pings the aGate's Local API (`:9000`) once a second until **Stop**,
+  with running min / avg / max / loss and each drop-out's start time and length. It stops by
+  itself after 15 minutes or when you leave the page, and only one runs per gateway at a time.
+  Below it, **Drop-outs in the last 24 h** lists what the bridge's own polls recorded, with
+  each drop-out's length and error, with no extra aGate traffic. Neither touches the Modbus
+  TCP Server (aGate `:502`) ([guide](docs/guide/tour.md)).
 - **Network: cloud requests, errors and a CloudFront PoP map** (#751). The CloudFront edge
   card gets a period (Today / 7 days / 30 days / All kept), a **Cloud requests** table (API
   calls, by HTTP verb) and an **Errors & retries** table (timeout, auth_401, server_5xx,

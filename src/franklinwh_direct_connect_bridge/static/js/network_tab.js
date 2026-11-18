@@ -21,10 +21,23 @@ function networkTab() {
     mapOpen: false,
     mapOffline: false,
     mapTransOpen: true,
-    // Watch: one ping every ~6s into a rolling latency sparkline (toggleWatch).
+    // Watch: a live ping until Stop (#730), one round-trip a second into a rolling strip;
+    // drop-outs marked with their start and length; stops by itself after 15 min or when
+    // the page is left; one run at a time per gateway (the server refuses a second).
     watching: false,
     latHistory: [],
     watchTick: 0,
+    watchRun: '',
+    watchStarted: 0,
+    watchSent: 0,
+    watchLost: 0,
+    watchMinMs: null,
+    watchMaxMs: null,
+    watchSumMs: 0,
+    watchDrops: [],
+    watchStopped: '',
+    // Drop-outs in the last 24 h, from the link history (no extra aGate traffic).
+    dropouts: null,
 
     init() {
       // Loads on first SHOW, not on page load — see lazyTab(). load() pulls the link
@@ -187,6 +200,7 @@ function networkTab() {
         if (!r.ok) throw new Error(r.statusText);
         this.link = await r.json();
         this.linkError = '';
+        this.loadDropouts();
       } catch (e) {
         const m = (e && e.message) || String(e);
         this.linkError = /load failed|failed to fetch|networkerror/i.test(m)
@@ -407,27 +421,76 @@ function networkTab() {
       } finally { this.pinging = false; }
     },
 
-    // Live "watch": one round-trip every ~6s → rolling latency sparkline; refresh PoP every 5th.
+    // Live ping (#730): Watch runs until Stop, one round-trip a second to the Local API.
     toggleWatch() {
-      this.watching = !this.watching;
-      if (this.watching) { this.latHistory = []; this.watchTick = 0; this._watchLoop(); }
+      if (this.watching) { this._stopWatch(''); return; }
+      this.watching = true; this.watchStopped = '';
+      this.latHistory = []; this.watchTick = 0; this.watchDrops = [];
+      this.watchSent = 0; this.watchLost = 0; this.watchMinMs = null; this.watchMaxMs = null; this.watchSumMs = 0;
+      this.watchStarted = Date.now();
+      this.watchRun = Math.random().toString(36).slice(2, 12);
+      this._watchLoop(this.watchRun);
     },
-    async _watchLoop() {
-      while (this.watching) {
-        // Pause polling while the tab isn't visible, but keep the watch armed.
-        if (this.$store.app.activeTab === 'network' && !document.hidden) {
-          try {
-            const r = await (await fetch('api/network/ping?count=1' + this.$store.app.gwQuery('&'))).json();
-            this.latHistory.push(r.samples ? r.samples[0] : null);
-            if (this.latHistory.length > 60) this.latHistory.shift();
-            if (++this.watchTick % 5 === 0) { await this.loadPop(); }
-          } catch (e) { this.latHistory.push(null); }
+    _stopWatch(why) {
+      if (!this.watching) return;
+      this.watching = false; this.watchStopped = why;
+      const open = this.watchDrops.find((d) => d.end == null);
+      if (open) open.end = Date.now();
+      fetch('api/network/ping/stop?run=' + this.watchRun + this.$store.app.gwQuery('&'),
+            { method: 'POST' }).catch(() => {});
+    },
+    async _watchLoop(run) {
+      while (this.watching && this.watchRun === run) {
+        if (this.$store.app.activeTab !== 'network' || document.hidden) {
+          this._stopWatch('Stopped: you left the page.'); break;
         }
-        for (let i = 0; i < 12 && this.watching; i++) await new Promise((res) => setTimeout(res, 500));
+        if (Date.now() - this.watchStarted > 15 * 60 * 1000) {
+          this._stopWatch('Stopped by itself after 15 minutes.'); break;
+        }
+        const t0 = Date.now();
+        let ms = null;
+        try {
+          const r = await fetch('api/network/ping?count=1&run=' + run + this.$store.app.gwQuery('&'));
+          if (r.status === 409 || r.status === 410) {
+            const j = await r.json().catch(() => ({}));
+            this._stopWatch('Stopped: ' + (j.detail || r.statusText) + '.'); break;
+          }
+          const j = await r.json();
+          ms = j.samples ? j.samples[0] : null;
+        } catch (e) { ms = null; }
+        if (!this.watching || this.watchRun !== run) break;
+        this._watchSample(ms, t0);
+        if (++this.watchTick % 30 === 0) { await this.loadPop(); }
+        const wait = Math.max(0, 1000 - (Date.now() - t0));
+        for (let i = 0; i < 10 && this.watching; i++) await new Promise((res) => setTimeout(res, wait / 10));
       }
+    },
+    _watchSample(ms, at) {
+      this.watchSent++;
+      this.latHistory.push(ms);
+      if (this.latHistory.length > 120) this.latHistory.shift();
+      const open = this.watchDrops.find((d) => d.end == null);
+      if (ms == null) {
+        this.watchLost++;
+        if (!open) this.watchDrops.unshift({ start: at, end: null });
+      } else {
+        this.watchSumMs += ms;
+        this.watchMinMs = this.watchMinMs == null ? ms : Math.min(this.watchMinMs, ms);
+        this.watchMaxMs = this.watchMaxMs == null ? ms : Math.max(this.watchMaxMs, ms);
+        if (open) open.end = at;
+      }
+    },
+    dropLen(d) { return this.dur(((d.end || Date.now()) - d.start) / 1000); },
+    get watchLoss() { return this.watchSent ? Math.round(1000 * this.watchLost / this.watchSent) / 10 : 0; },
+    get watchElapsed() { return this.dur((Date.now() - this.watchStarted) / 1000); },
+    async loadDropouts() {
+      try {
+        const r = await fetch('api/network/dropouts' + this.$store.app.gwQuery());
+        if (r.ok) this.dropouts = await r.json();
+      } catch (e) { /* optional */ }
     },
     get watchMax() { const v = this.latHistory.filter((x) => x != null); return v.length ? Math.max(...v) : 1; },
     get watchLast() { for (let i = this.latHistory.length - 1; i >= 0; i--) if (this.latHistory[i] != null) return this.latHistory[i]; return null; },
-    get watchAvg() { const v = this.latHistory.filter((x) => x != null); return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null; },
+    get watchAvg() { const n = this.watchSent - this.watchLost; return n ? Math.round(10 * this.watchSumMs / n) / 10 : null; },
   };
 }
