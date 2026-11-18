@@ -331,8 +331,7 @@ SoC %battery.soc_pct%%, mode %mode.name%, grid %grid.power_w%W
 layer could, but the scheduler calls it without a notifier, so failures reach History and
 the log only (#172). <!-- @b HAA-13 ;; src: scheduler.py:2409-2413, resilience.py:243-249 ;; untested ;; write: no ;; b: run_action_outcome is called without a notifier, so no failure notification is sent ;; test: unit: failing scheduled force with a notifier configured; assert one notification (fails today) -->
 The notification triggers under **Settings** (aGate offline, off-grid, dispatch, SoC) are a
-separate engine; the dispatch trigger has its own gaps (#173), and the push master switch does
-not stop every notification (#171).
+separate engine, and the push master switch does not stop every notification (#171).
 
 ### What is logged
 
