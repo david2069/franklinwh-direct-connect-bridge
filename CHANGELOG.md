@@ -117,6 +117,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   with cloud credentials. It now goes through the FranklinWH cloud for the schedule's own
   gateway, as the reserve control does, and is skipped with the reason only when the cloud
   can't write that gateway ([actions](docs/guide/scheduler/actions.md)).
+
+- **Scheduler: `%ha:<instance>:<entity>%` in a message is now replaced** (#169). Only
+  `%sensor.id%` was; a Home Assistant placeholder was sent as typed. The entity must be
+  exposed to the scheduler, or it prints `?`
+  ([actions](docs/guide/scheduler/actions.md#placeholders-in-notifications)).
 - **System view on an iPhone in Home Assistant: a blank band under the top bar, and Fit
   didn't fit** (owner 2026-11-19). The overlay added the phone's notch inset below the
   bridge's top bar. A site's diagram on a phone now shows whole with **Fit**, or with −
