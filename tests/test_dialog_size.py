@@ -14,8 +14,9 @@ def test_editor_uses_dialog_size():
 
 
 def test_never_taller_than_before():
-    # Taller than 90dvh puts Create Entry under the bottom nav on a phone.
-    assert "maxHeight: '90dvh'" in JS
+    # Taller than 90dvh puts Create Entry under the bottom nav on a phone; and never
+    # taller than the backdrop (#734).
+    assert "maxHeight: 'min(90dvh, calc(100% - 1rem))'" in JS
 
 
 def test_message_box_grows():

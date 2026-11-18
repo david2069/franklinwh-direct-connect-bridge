@@ -13,6 +13,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **On a phone, Edit schedule's Save and Cancel were under the bottom nav** (#734). The
+  schedule form and seven other dialogs (scheduler presets, imports and TOU import, smart
+  circuits, generator, Home Assistant, Modbus history import) sat below the bottom nav, so
+  on an iPhone a tap on Save hit a nav tab. Every dialog now opens above the nav; the
+  schedule form never grows past the screen, keeps clear of the iPhone's home bar, and its
+  body scrolls.
+
 - **"aGate is using 4G — Wi-Fi has no internet" claimed more than the aGate reports**
   (#728). The aGate and the FranklinWH cloud only say 4G is the active link and Wi-Fi is
   on standby; the alert, its help and the Troubleshoot verdict now read "aGate is using 4G —
