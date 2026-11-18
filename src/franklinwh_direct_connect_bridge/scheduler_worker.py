@@ -281,3 +281,24 @@ async def run(settings: Settings, stop: asyncio.Event, *, client) -> None:
         w.mark_stopped()
         _workers.registry.unregister(WORKER_NAME)
         log.info("scheduler worker stopped")
+
+
+async def stop_then_release(stop: asyncio.Event, task: asyncio.Task, *,
+                            timeout: float = 5.0, release=None) -> None:
+    """Shutdown order (#367): stop the scheduler and wait for its tick to finish, THEN
+    release the forces this bridge holds. A tick still running could otherwise arm a
+    force after the release had read the held hosts, and it would run on. Waits at most
+    ``timeout`` (Home Assistant stops an add-on 10 s after asking); the release runs
+    either way."""
+    stop.set()
+    try:
+        await asyncio.wait_for(task, timeout)
+    except asyncio.TimeoutError:
+        log.warning("scheduler still running after %.0f s at shutdown; releasing anyway",
+                    timeout)
+    except Exception as e:  # noqa: BLE001 — never block the release
+        log.warning("scheduler ended with %s at shutdown", e)
+    if release is None:
+        from . import battery_control
+        release = battery_control.release_held
+    release("shutdown")
