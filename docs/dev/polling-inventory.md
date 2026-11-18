@@ -189,7 +189,7 @@ it opens a session to the aGate.
 | Dashboard: solar-forecast card | forecast; solar split + charge band | 15 min; 120 s | `/api/solar/forecast` → Open-Meteo through the 15 min cache (N2); `/api/energy/flow`, `/api/metrics` → cache | **keeps polling** | `solar_forecast_card.js:12-17` |
 | Network | link history | 15 s | `/api/health/link` → cache | **keeps polling** (tab check only) | `network_tab.js:23` |
 | Network | probe bundle | first show, Refresh | `/api/network` → **device**: ping, M6, one :9000 session (5 requests) | — | `network_tab.js:19, 33-60` |
-| Network | Watch | ~6 s while on | `/api/network/ping?count=1` → **device**: 1 session, login + 1301 | paused | `network_tab.js:274-291` |
+| Network | Watch (live ping, #730) | 1 s while on, 15 min max | `/api/network/ping?count=1` → **device**: 1 session, login + 1301 | stops | `network_tab.js:274-291` |
 | Battery | Auto / Chart / Watch-live | 5 s by default (2–60 s), choice persisted | `/api/battery` → **device**: 1 session × 6 requests **per aPower** | paused | `battery_tab.js:46-52, 116-205` |
 | Circuits | Monitor "Auto" | 5 s | `/api/circuits/meter` → **device**: 1 session, login + 1411 | **keeps polling** (stops only on a tab switch) | `circuits_tab.js:19-58` |
 | Solar | "Auto" | 10 s | `/api/solar` → **device**: 1 session, login + 1903, 1301, 1707 | **keeps polling** (stops only on a tab switch) | `solar_tab.js:12-51` |

@@ -48,6 +48,16 @@ transport can do. [Interactive page](https://david2069.github.io/franklinwh-dire
 - The built-in **REST API** (`/docs` for the live OpenAPI inventory)
 - **MQTT**, as Home Assistant entities via discovery
 
+## Highlights
+
+- **[Setup wizard](docs/guide/tour.md#first-run-the-setup-wizard)**: Automatic, Mock or Custom setup: links Home Assistant, finds your aGate, offers the FranklinWH cloud and the Modbus client, and checks for an existing FranklinWH integration in Home Assistant.
+- **[Scheduler](docs/guide/scheduler/index.md)**: Daily, interval and cron triggers; entry and exit conditions over any sensor; priorities and conflict policy; and an explain view of why a window did or did not fire.
+- **[Analytics](docs/guide/energy-and-costs.md#analytics)**: Energy flows, battery use and self-sufficiency by day, week, month, year and lifetime, from the bridge's own store or the FranklinWH cloud, with CSV export.
+- **[Health](docs/guide/health-report.md)**: A daily health report with a colour, unusual changes flagged, a weekly battery report, and battery warranty and wear.
+- **[Network monitoring](docs/guide/tour.md#the-tabs)**: The connection end to end: latency to the aGate, MQTT, AWS IoT, the CloudFront edge your cloud calls reach (with a map), cloud errors and retries, and link history.
+- **[Notifications](docs/guide/ha-setup-and-notifications.md)**: Optional: alerts and schedule notifications pushed to your phones through Home Assistant, including actionable ones that ask before acting.
+- **[HEMS](docs/guide/hems/index.md)**: Energy planning: a calibrated solar forecast, a load forecast, the wear cost of each kWh through the battery, and a description of your home that planning works from.
+
 ## What it does
 
 **Monitor**

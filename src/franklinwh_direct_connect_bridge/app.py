@@ -5902,11 +5902,21 @@ def create_app() -> FastAPI:
         return troubleshoot.job(_gw_or_404(gateway).id)
 
     @app.get("/api/network/ping")
-    def api_network_ping(gateway: str = Depends(_gateway_q), count: int = Query(5, ge=1, le=20)):
+    def api_network_ping(gateway: str = Depends(_gateway_q), count: int = Query(5, ge=1, le=20),
+                         run: str = Query("", max_length=64)):
         """Latency test: N sendMqtt round-trips to the aGate in one session. Returns per-sample
-        ms + min/avg/max + loss%. The on-LAN equivalent of a ping to the Direct-Connect API."""
+        ms + min/avg/max + loss%. The on-LAN equivalent of a ping to the Direct-Connect API.
+        ``run``: the live ping's id (Watch, #730): one run per gateway (409 while another
+        is running), ended after 15 min (410)."""
+        from . import live_ping
         s = get_settings()
         host = _gw_host(gateway)
+        if run:
+            got = live_ping.claim_run(_gw_or_404(gateway).id, run)
+            if got == "busy":
+                raise HTTPException(409, "Another live ping is running for this gateway")
+            if got == "expired":
+                raise HTTPException(410, "The live ping stopped by itself after 15 minutes")
         samples: list = []
         try:
             with client._client(s, host) as c:
@@ -5926,6 +5936,30 @@ def create_app() -> FastAPI:
                 "avg": round(sum(ok) / len(ok), 1) if ok else None,
                 "max": max(ok) if ok else None,
                 "loss_pct": round(100 * (count - len(ok)) / count, 1) if count else 0}
+
+    @app.post("/api/network/ping/stop")
+    def api_network_ping_stop(gateway: str = Depends(_gateway_q), run: str = Query(..., max_length=64)):
+        """Stop a live ping (#730): frees the gateway for another run at once."""
+        from . import live_ping
+        live_ping.release_run(_gw_or_404(gateway).id, run)
+        return {"ok": True}
+
+    @app.get("/api/network/dropouts")
+    def api_network_dropouts(gateway: str = Depends(_gateway_q), hours: int = Query(24, ge=1, le=168)):
+        """Drop-outs of the aGate's Local API (:9000) in the last ``hours`` (#730), from the
+        link history the poll cycle already records: no extra aGate traffic. A drop-out is
+        recorded after ``LINK_STRIKES`` failed polls in a row; newest first."""
+        store = _ha_store()
+        gw = _gw_or_404(gateway).id
+        since = time.time() - hours * 3600
+        rows = []
+        for o in store.link_outages(gw, leg="local_9000", limit=500):
+            if o.get("ended_ts") is not None and float(o["ended_ts"]) < since:
+                continue
+            rows.append({"start": o["started_ts"], "end": o.get("ended_ts"),
+                         "duration_s": o.get("duration_s"), "open": o.get("ended_ts") is None,
+                         "attempts": o.get("attempts"), "error": o.get("last_error")})
+        return {"gateway_id": gw, "hours": hours, "strikes": store.LINK_STRIKES, "dropouts": rows}
 
     @app.get("/api/grid")
     def api_grid(gateway: str = Depends(_gateway_q)):
@@ -6296,7 +6330,12 @@ def create_app() -> FastAPI:
             circ = client.circuits(s, host=host, override=s.smart_circuit_count)
         except (OSError, TransportError, TimeoutError) as e:
             errors["circuits"] = str(e)
-        if getattr(gw, "generator_installed", False):
+        # Installed as System Setup has it: what the gateway reported, or your answer (#701)
+        try:
+            gen_on = bool(system_setup.values(db.get_store(s), s, gw.id, host).get("generator_input"))
+        except Exception:  # noqa: BLE001 — unknown: leave the generator rows out
+            gen_on = False
+        if gen_on:
             try:
                 gen = client.generator(s, host=host)
             except (OSError, TransportError, TimeoutError) as e:

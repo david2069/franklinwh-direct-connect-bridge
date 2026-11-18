@@ -3,6 +3,7 @@ health check, Reconnect to Wi-Fi, and the banner's recovery states. The Franklin
 always a fake here: no login, no aGate."""
 import logging
 import pathlib
+import re
 import time
 
 import pytest
@@ -196,7 +197,20 @@ def test_health_check_never_probes_502(env):
     d = env["c"].get("/api/troubleshoot/health?" + G).json()
     assert [x["key"] for x in d["checks"]] == ["lan", "local_api", "cloud_link", "last_good"]
     assert all(x["ok"] is True for x in d["checks"]), d
-    assert "502" not in str(d)
+    assert not _names_port_502(str(d)), d
+
+
+def _names_port_502(text):
+    """The Modbus TCP Server's port named in text (":502", "port 502"), not any "502":
+    a timestamp such as 1763502123 or 2026-11-18T15:02 is no probe (#733)."""
+    return bool(re.search(r"(?::|\bport\s*)502(?!\d)", text, re.I))
+
+
+def test_the_502_check_ignores_timestamps_and_numbers():
+    for text in ("ts 1763502123", "2026-11-18T15:02:00", "took 0.502 s", "id 25021"):
+        assert not _names_port_502(text), text
+    for text in ("connect 10.0.0.1:502 failed", "Modbus TCP Server (aGate :502)", "port 502"):
+        assert _names_port_502(text), text
 
 
 def test_health_check_fails_each_leg_on_a_dead_agate(env):
