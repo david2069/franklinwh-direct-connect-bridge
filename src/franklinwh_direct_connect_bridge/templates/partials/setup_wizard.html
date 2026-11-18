@@ -255,11 +255,13 @@
                   the same battery twice.</span>
                 <!-- Never disabled because the broker is already on (#264): that is the add-on
                      default, and Yes is still what opts THIS wizard's gateways in. -->
-                <button class="btn btn-sm" :disabled="ha.busy"
+                <button class="btn btn-sm"
                         :class="auto && haInv.other_same_agate ? 'btn-secondary' : 'btn-primary'"
+                        :disabled="ha.busy"
                         @click="publishYes()">Yes</button>
-                <button class="btn btn-sm" :disabled="ha.busy"
+                <button class="btn btn-sm"
                         :class="auto && haInv.other_same_agate ? 'btn-primary' : 'btn-secondary'"
+                        :disabled="ha.busy"
                         @click="publishNo()">No</button>
                 <span x-show="ha.publishing" class="chip ok" style="padding:0 6px;font-size:.6rem">ON</span>
               </div>
@@ -347,8 +349,8 @@
             <div class="space-y-3">
               <p x-show="auto && haInv.modbus_writer" class="text-xs rounded px-2 py-1.5"
                  style="background:var(--surface-2);color:#fbbf24">The Modbus Bridge already
-                publishes this aGate. Two Modbus writers on the aGate's Modbus TCP Server (:502)
-                can work against each other: skip this unless the other one's writes are off.</p>
+                publishes this aGate. Two Modbus writers on the aGate's Modbus TCP Server can
+                work against each other: skip this unless the other one's writes are off.</p>
               <p>This bridge's Modbus client reads battery ratings and sends force dispatch
                 through the Modbus TCP Server of the active gateway: an aGate or an emulator.</p>
               <div class="flex flex-wrap items-center gap-2">
