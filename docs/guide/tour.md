@@ -200,11 +200,18 @@ reordered, from **Topbar cog → Customise → Top bar** (Centre indicators / Ri
 site over the page: grid, aGate,
 home, solar, batteries and circuits, with the power flowing between them. **Options** is a
 drop-down over the diagram (zoom, Customise diagram, the switches below and Start on System
-view); a click outside it or Esc closes it. Four extras each have their own switch, off until
+view); a click outside it or Esc closes it. Five extras each have their own switch, off until
 you turn them on and remembered in that browser: **Voltage & frequency** under the grid, **Today's energy** in kWh under each
 picture (grid in and out, solar, home, battery charged and discharged), **Power on wires**
-(the kW on each wire, with an arrow the way it goes) and **Alarms** (a count on the device;
-tap it to list them).
+(the kW on each wire, with an arrow the way it goes), **Alarms** (a count on the device;
+tap it to list them) and **Solar forecast & actual**. That last one is a box on the diagram's
+left (above it on a phone) with today's solar forecast, the actual so far and what the
+forecast says is still to come, with a bar of actual against forecast. The forecast is the
+Solar tab's, for the gateway's site; without a site location and PV size there is no box.
+
+**Zoom:** − / Fit / + under Options, pinch, or Ctrl+wheel. A site's diagram on a phone opens
+as wide as the screen and scrolls down; **Fit** (or − from there) shows all of it, and +
+goes back to full width.
 
 **Smart circuits** is the other way round: shown until you switch it off, and the diagram is
 laid out again without them.

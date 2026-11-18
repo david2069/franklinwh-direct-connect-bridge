@@ -112,4 +112,4 @@ def test_one_apower_or_no_unit_reads_draw_as_before():
 
 def test_the_pin_is_the_release_with_the_rollup():
     deps = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["dependencies"]
-    assert "franklinwh-system-view==0.4.1" in deps
+    assert "franklinwh-system-view==0.5.1" in deps

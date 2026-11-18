@@ -229,6 +229,49 @@ def _forecast(cfg) -> dict | None:
     return hit[1] if hit else None
 
 
+_inflight: set[str] = set()
+
+
+def _site_forecast(cfg, store, gateway_id: str) -> dict | None:
+    """The gateway's site's solar forecast (the Solar tab's, calibrated), from the cache; a
+    stale or missing one is refreshed in the background, so a request never waits."""
+    from . import site_location, solar_forecast
+    try:
+        loc = site_location.for_gateway(cfg, store, gateway_id)
+    except Exception:  # noqa: BLE001 - no site, no forecast
+        return None
+    if not site_location.configured(loc) or not loc.get("kwp"):
+        return None
+    args = (loc["latitude"], loc["longitude"], loc["pv_tilt"], loc["pv_azimuth"], loc["kwp"])
+    key = solar_forecast.site_key(*args)
+    hit = solar_forecast._cache.get(key)
+    if (hit is None or time.time() - hit[0] >= solar_forecast.CACHE_S) and key not in _inflight:
+        _inflight.add(key)
+
+        def run():
+            try:
+                solar_forecast.forecast(args[0], args[1], kwp=args[4], tilt=args[2],
+                                        azimuth=args[3], store=store)
+            finally:
+                _inflight.discard(key)
+        threading.Thread(target=run, name="system-view-solar", daemon=True).start()
+    return hit[1] if hit else None
+
+
+def solar_forecast_today(cfg, store, gw) -> dict | None:
+    """Solar forecast & actual (owner 2026-11-19): today's forecast and what is still to
+    come, and the solar made so far from the summary. None without a forecast."""
+    from . import solar_forecast
+    fc = _site_forecast(cfg, store, gw.id)
+    s = solar_forecast.sensors(fc) if fc else {}
+    if s.get("solar_forecast.today_kwh") is None:
+        return None
+    actual = _n(((gw.last_summary or {}).get("energy_today") or {}).get("solar"))
+    return {"forecast_kwh": _n(s["solar_forecast.today_kwh"]),
+            "actual_kwh": round(actual, 1) if actual is not None else None,
+            "remaining_kwh": _n(s.get("solar_forecast.remaining_kwh"))}
+
+
 def place(tz: Any) -> str | None:
     """A timezone's place: ``Australia/Sydney`` → ``Sydney``."""
     if not isinstance(tz, str) or "/" not in tz:
@@ -316,6 +359,9 @@ def raw_payload(cfg=None, *, store=None) -> dict:
     out = []
     for g in gws:
         p = gateway_payload(g, store=store)
+        sf = solar_forecast_today(cfg, store, g) if p.get("online") else None
+        if sf:
+            p["solar_forecast"] = sf
         if g.id in members:
             p["site"] = members[g.id]
         out.append(p)
