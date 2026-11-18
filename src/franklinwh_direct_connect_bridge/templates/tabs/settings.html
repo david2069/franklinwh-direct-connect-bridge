@@ -314,6 +314,7 @@
               <span class="text-xs" style="color:var(--text-secondary)"><span x-text="label"></span>
                 <span x-show="wearConfirm(k)" class="text-[9px] uppercase tracking-wide ml-1" style="color:var(--warning)" :data-testid="'wear-confirm-' + k">Please confirm</span></span>
               <input :type="type" :step="step" min="0" class="form-control form-control-sm" x-model="wearForm[k]" :data-testid="'wear-' + k">
+              <span x-show="wear.fields[k] && wear.fields[k].estimated" class="text-[11px]" style="color:var(--warning)" :data-testid="'wear-estimated-' + k" x-text="wear.fields[k] && wear.fields[k].note"></span>
             </label>
           </template>
         </div>
@@ -322,10 +323,28 @@
           <span x-text="wear.cost ? `$${wear.cost.per_kwh.toFixed(4)} per kWh discharged: ${wear.cost.formula}` + (wear.cost.end_value.derived ? ' (end value = replacement × end SoH; please confirm)' : '') : 'needs replacement value, throughput and end SoH or value'"></span>
           <span style="color:var(--text-secondary)">Throughput used / left</span>
           <span x-text="wear.used_kwh == null ? 'counted from the daily snapshots; the first is taken after midnight' : `${wear.used_kwh.toFixed(0)} kWh` + ' / ' + (wear.remaining_kwh == null ? '–' : `${wear.remaining_kwh.toFixed(0)} kWh`)"></span>
+          <span style="color:var(--text-secondary)">Used, by source</span>
+          <span data-testid="wear-used-sources">
+            <template x-for="u in (wear.used_sources || [])" :key="u.source">
+              <span class="block"><span x-text="`${u.kwh.toFixed(0)} kWh`"></span> <span style="color:var(--text-faint)" x-text="'(' + u.label + (u.estimated ? '; estimated' : '') + ')'"></span></span>
+            </template>
+            <span x-show="!(wear.used_sources || []).length" style="color:var(--text-faint)">no source yet</span>
+          </span>
           <span style="color:var(--text-secondary)">Pace</span>
           <span x-text="wear.pace ? `${wear.pace.daily_kwh.toFixed(1)} kWh a day to last the warranty (${wear.pace.formula})` : (wear.remaining_kwh == null && wearForm.warranty_end && wearForm.warranted_throughput_mwh ? 'after the first daily snapshot' : 'needs the warranty end and throughput')"></span>
           <span style="color:var(--text-secondary)">State of health</span>
           <span x-text="wear.soh_pct == null ? 'not read yet' : `${wear.soh_pct}%`"></span>
+          <span style="color:var(--text-secondary)">Your use vs the allowance</span>
+          <span data-testid="wear-pace-compare" x-text="wear.pace_compare ? wear.pace_compare.text : 'needs the install date, the warranty end and throughput'"></span>
+          <span style="color:var(--text-secondary)">SoH vs the warranty</span>
+          <span data-testid="wear-soh-compare" x-text="wear.soh_compare ? wear.soh_compare.text : ''"></span>
+          <span style="color:var(--text-secondary)">Warranty end, each unit</span>
+          <span data-testid="wear-devices">
+            <template x-for="d in (wear.devices || [])" :key="(d.model || '') + (d.serial || '')">
+              <span class="block" x-text="`${d.model || 'Unit'} ${d.serial || ''}: ${d.expiry || '–'}` + (d.sub_module_expiry ? ` (modules ${d.sub_module_expiry})` : '')"></span>
+            </template>
+            <span x-show="!(wear.devices || []).length" style="color:var(--text-faint)">from the FranklinWH cloud when signed in</span>
+          </span>
           <span style="color:var(--text-secondary)">Round-trip efficiency</span>
           <span x-text="wear.efficiency && wear.efficiency.median != null ? `${(wear.efficiency.median * 100).toFixed(1)}% (median of ${wear.efficiency.n} cycles, ${wear.efficiency.days} days)` : 'no full cycle yet (3 kWh each way, back to the same SoC)'"></span>
         </div>

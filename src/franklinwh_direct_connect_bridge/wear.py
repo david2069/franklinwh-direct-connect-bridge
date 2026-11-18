@@ -6,6 +6,12 @@
   most once a day while the cloud is signed in, and only those figures are kept (no
   installer details).
 - **SoH** is the mean of the aPower SoH the alarm pass already reads.
+- **Usage against the allowance** (owner 2026-11-18): the FranklinWH cloud's energy
+  reports start at the manufacturing date with zeros and real data starts on the
+  commissioning date (observed on one site), so the first day with data pre-fills the
+  install date as an estimate (please confirm), and the cloud's discharge total since then is
+  shown beside the warranty's own "warranted − remaining". The actual kWh a day is compared
+  with the pace, and SoH with the guaranteed end SoH.
 - **Dispatch events:** each poll goes into ``hems.wear.add_sample``; the events it closes
   are kept in ``wear_events``.
 - **Round-trip efficiency** from ``hems.wear.soc_matched_cycles`` on the aGate's own daily
@@ -32,6 +38,10 @@ KEY = "wear:{gw}"
 CLOUD_KEY = "wear_cloud:{gw}"
 #: The cloud's warrantyInfo fields kept (no installer or contact details).
 CLOUD_FIELDS = ("expirationTime", "throughput", "remainThroughput")
+#: app_config: the cloud history figures (first day with data, discharged since), per gateway.
+HISTORY_KEY = "wear_history:{gw}"
+#: What the card says about an install date taken from the cloud's history.
+ESTIMATE_NOTE = "estimated: first day with data in the FranklinWH cloud (observed on one site)"
 #: A sample for the efficiency cycles at most this often (s).
 SAMPLE_EVERY_S = 300
 #: Samples are kept this long (s): the efficiency median spans 30 days, a cycle at most 7.
@@ -70,11 +80,34 @@ def save(store, gateway_id: str, body: dict) -> dict:
     return cur
 
 
+def _mask(sn) -> str | None:
+    """A serial as its last four characters, as the UI names aGates (no full serials)."""
+    sn = str(sn or "").strip()
+    return f"…{sn[-4:]}" if sn else None
+
+
+def _day(v) -> str | None:
+    """A date as YYYY-MM-DD from an ISO string or epoch seconds or milliseconds."""
+    if v in (None, ""):
+        return None
+    if isinstance(v, (int, float)):
+        s = v / 1000.0 if v > 1e11 else float(v)
+        return dt.datetime.fromtimestamp(s, dt.timezone.utc).date().isoformat()
+    return str(v)[:10]
+
+
 def cloud_subset(result: dict | None) -> dict | None:
-    """Only the warranty figures from a warrantyInfo ``result``."""
+    """Only the warranty figures from a warrantyInfo ``result``, and each unit's end dates
+    with its serial masked."""
     if not isinstance(result, dict):
         return None
     out = {k: result[k] for k in CLOUD_FIELDS if result.get(k) not in (None, "")}
+    devs = [{"model": d.get("model") or None, "serial": _mask(d.get("sn")),
+             "expiry": _day(d.get("expirationTime")),
+             "sub_module_expiry": _day(d.get("subModuleExpirationTime"))}
+            for d in (result.get("deviceExpirationList") or []) if isinstance(d, dict)]
+    if devs:
+        out["devices"] = devs
     return out or None
 
 
@@ -114,9 +147,99 @@ def cloud(store, settings, gateway_id: str, serial: str | None, now: float, *,
     return cur.get("warranty")
 
 
-def fields(store, gateway_id: str, *, cloud: dict | None = None) -> dict:
-    """hems's setup fields: the user's value, else the cloud's pre-fill to confirm."""
-    return hwear.setup_fields(values(store, gateway_id), cloud=cloud)
+def fields(store, gateway_id: str, *, cloud: dict | None = None,
+           history: dict | None = None) -> dict:
+    """hems's setup fields: the user's value, else the cloud's pre-fill to confirm. An
+    install date nobody gave is estimated from the cloud's first day with data."""
+    f = hwear.setup_fields(values(store, gateway_id), cloud=cloud)
+    first = (history or {}).get("first_day")
+    if f["install_date"]["source"] is None and first:
+        note = ESTIMATE_NOTE
+        act = (history or {}).get("activated")
+        if act:
+            note += f"; the cloud's activation date is {act}"
+        f["install_date"] = {"value": first, "source": "cloud_history", "confirm": True,
+                             "estimated": True, "note": note}
+    return f
+
+
+# ── The cloud's history: commissioning and discharged since ─────────────────────────
+
+def _bucket_has_data(payload: dict, i: int) -> bool:
+    for s in payload.get("series") or []:
+        vals = s.get("values") or []
+        if s.get("key") != "soc" and i < len(vals) and vals[i] not in (None, 0, 0.0):
+            return True
+    return False
+
+
+def _first_label(payload: dict | None) -> str | None:
+    p = payload or {}
+    for i, label in enumerate(p.get("labels") or []):
+        if _bucket_has_data(p, i):
+            return str(label)
+    return None
+
+
+def first_day_with_data(read) -> str | None:
+    """The first day the cloud's energy reports hold data: the first year with any in the
+    lifetime report, then its first month, then that month's first day. ``read(period,
+    on)`` returns a franklinwh-ha-cloud-analytics payload."""
+    year = _first_label(read("lifetime", None))
+    if not year:
+        return None
+    month = _first_label(read("year", dt.date(int(year[:4]), 1, 1)))
+    if not month:
+        return None
+    day = _first_label(read("month", dt.date(int(month[:4]), int(month[5:7]), 1)))
+    return day[:10] if day else None
+
+
+def _discharged(payload: dict | None) -> float | None:
+    for s in (payload or {}).get("series") or []:
+        if s.get("key") == "battery_discharge":
+            vals = [v for v in s.get("values") or [] if isinstance(v, (int, float))]
+            return round(sum(vals), 3) if vals else None
+    return None
+
+
+def _read_history(settings, serial: str, today: dt.date):
+    from . import cloud_status
+    return lambda period, on: cloud_status.read_energy(
+        settings.fwh_cloud_email, settings.fwh_cloud_password, serial, period,
+        on or today, today)
+
+
+def history(store, settings, gateway_id: str, serial: str | None, now: float, *,
+            read=None, since=None) -> dict | None:
+    """The cloud history figures for this gateway, read at most once a day while the cloud
+    is signed in (the analytics reads, cached): the first day with data (kept once found),
+    the activation date, and the discharge total since. The last good read otherwise.
+    Never raises."""
+    from . import providers
+    k = HISTORY_KEY.format(gw=gateway_id)
+    cur = _json(store, k)
+    today = dt.date.fromtimestamp(now)
+    signed_in = (providers.cloud_auth_status() or {}).get("state") == "valid"
+    if signed_in and serial and cur.get("day") != today.isoformat():
+        try:
+            rd = read or _read_history(settings, serial, today)
+            new = dict(cur.get("history") or {})
+            if not new.get("first_day"):
+                new["first_day"] = first_day_with_data(rd)
+            new["discharged_kwh"] = _discharged(rd("lifetime", None))
+            if not new.get("activated"):
+                try:
+                    from . import cloud_status
+                    new["activated"] = (since or (lambda: cloud_status.read_since(
+                        settings.fwh_cloud_email, settings.fwh_cloud_password, serial)))()
+                except Exception as e:                           # noqa: BLE001
+                    log.debug("wear: activation date not read: %s", e)
+            cur = {"day": today.isoformat(), "history": new}
+            store.set_config(k, json.dumps(cur))
+        except Exception as e:                                   # noqa: BLE001
+            log.debug("wear: cloud history not read: %s", e)
+    return cur.get("history")
 
 
 # ── Poll: dispatch events and efficiency samples ─────────────────────────────────
@@ -192,27 +315,99 @@ def _used_kwh(store, gateway_id: str, install_date: str | None) -> float | None:
     return round(sum(vals) / 1000, 3) if vals else None
 
 
+def used_sources(cloud_: dict | None, history_: dict | None, used: float | None) -> list[dict]:
+    """Throughput used, from each source that has it: the warranty's own figures
+    (warranted − remaining), the cloud's discharge total since its first day with data
+    (estimated), and the bridge's daily snapshots."""
+    out = []
+    c = cloud_ or {}
+    if isinstance(c.get("throughput"), (int, float)) and isinstance(c.get("remainThroughput"), (int, float)):
+        out.append({"source": "warranty", "kwh": round(c["throughput"] * 1000 - c["remainThroughput"], 2),
+                    "label": "FranklinWH warranty: warranted − remaining", "estimated": False})
+    h = history_ or {}
+    if isinstance(h.get("discharged_kwh"), (int, float)) and h.get("first_day"):
+        out.append({"source": "cloud_history", "kwh": h["discharged_kwh"],
+                    "label": f"FranklinWH cloud: discharged since {h['first_day']}",
+                    "estimated": True})
+    if used is not None:
+        out.append({"source": "bridge", "kwh": used,
+                    "label": "this bridge's daily snapshots", "estimated": False})
+    return out
+
+
+def pace_compare(sources: list[dict], install: dict, pace_: dict | None,
+                 today: dt.date) -> dict | None:
+    """The actual kWh a day since the install date against the pace (the allowance)."""
+    start = install.get("value")
+    if not sources or not start or not pace_:
+        return None
+    try:
+        days = (today - dt.date.fromisoformat(str(start)[:10])).days
+    except ValueError:
+        return None
+    if days <= 0:
+        return None
+    src = sources[0]
+    actual = src["kwh"] / days
+    allow = pace_["daily_kwh"]
+    est = bool(install.get("estimated") or src["estimated"])
+    text = (f"using {actual:.1f} kWh a day since {str(start)[:10]}; allowance {allow:.1f} kWh "
+            f"a day ({hwear.pace_ratio(used_kwh=src['kwh'], days=days, daily_kwh=allow):.2f}×)")
+    if est:
+        text += " — estimated"
+    return {"actual_kwh_per_day": round(actual, 4), "allowance_kwh_per_day": allow,
+            "days": days, "source": src["source"], "estimated": est, "text": text}
+
+
+def soh_compare(soh: float | None, end_soh) -> dict:
+    """SoH now against the warranty's guaranteed SoH at its end."""
+    try:
+        end = float(end_soh) if end_soh not in (None, "") else None
+    except (TypeError, ValueError):
+        end = None
+    if end is None:
+        return {"soh_pct": soh, "end_soh_pct": None, "margin_pts": None,
+                "text": "Enter the warranty's end SoH to compare."}
+    if soh is None:
+        return {"soh_pct": None, "end_soh_pct": end, "margin_pts": None,
+                "text": "SoH not read yet."}
+    m = round(soh - end, 2)
+    where = f"{abs(m):g} points {'above' if m >= 0 else 'below'}"
+    return {"soh_pct": soh, "end_soh_pct": end, "margin_pts": m,
+            "text": f"{soh:g}% now; guaranteed {end:g}% at the end of the warranty ({where})."}
+
+
 def report(store, settings, gateway_id: str, now: float | None = None, *,
-           cloud_fn=None) -> dict:
+           cloud_fn=None, history_fn=None) -> dict:
     """Everything the Battery warranty & wear card shows for this gateway."""
     from . import state
     now = time.time() if now is None else now
+    today = dt.date.fromtimestamp(now)
     gw = state.get_gateway(gateway_id)
-    cl = (cloud_fn or cloud)(store, settings, gateway_id, getattr(gw, "serial", None), now)
-    f = fields(store, gateway_id, cloud=cl)
+    serial = getattr(gw, "serial", None)
+    cl = (cloud_fn or cloud)(store, settings, gateway_id, serial, now)
+    hi = (history_fn or history)(store, settings, gateway_id, serial, now)
+    f = fields(store, gateway_id, cloud=cl, history=hi)
     used = _used_kwh(store, gateway_id, f["install_date"]["value"])
     remaining = hwear.remaining_kwh(
         f, used_kwh=used,
         cloud_remaining_kwh=(cl or {}).get("remainThroughput")
         if f["warranted_throughput_mwh"]["source"] != "user" else None)
+    pace_ = hwear.pace(remaining_kwh=remaining, today=today,
+                       warranty_end=f["warranty_end"]["value"])
+    sources = used_sources(cl, hi, used)
+    soh = _soh(gateway_id)
     return {
         "fields": f,
         "cost": hwear.cost_per_kwh(f),
         "used_kwh": used,
+        "used_sources": sources,
         "remaining_kwh": remaining,
-        "pace": hwear.pace(remaining_kwh=remaining, today=dt.date.fromtimestamp(now),
-                           warranty_end=f["warranty_end"]["value"]),
-        "soh_pct": _soh(gateway_id),
+        "pace": pace_,
+        "pace_compare": pace_compare(sources, f["install_date"], pace_, today),
+        "soh_pct": soh,
+        "soh_compare": soh_compare(soh, f["end_soh_pct"]["value"]),
+        "devices": (cl or {}).get("devices") or [],
         "efficiency": efficiency(store, gateway_id, now),
         "events": store.wear_events(gateway_id, limit=10),
     }
