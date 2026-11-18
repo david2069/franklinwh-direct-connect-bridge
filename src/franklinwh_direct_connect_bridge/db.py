@@ -2199,19 +2199,24 @@ class MetricsStore:
         )
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS ix_cloud_pop_ts ON cloud_pop_samples(ts DESC)")
+        # The poll's franklinwh-cloud call counters (JSON), kept with its edge sample.
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(cloud_pop_samples)")}
+        if "api" not in cols:
+            self._conn.execute("ALTER TABLE cloud_pop_samples ADD COLUMN api TEXT")
         self._conn.commit()
 
     def record_cloud_pop(self, *, pop, requests=0, hits=0, misses=0, trace_id=None,
+                         api: dict | None = None,
                          retain_days: int = 30, max_rows: int = 50000) -> None:
         """Append one CloudFront-edge sample (one per cloud poll). Disk-safe: purges rows older
         than ``retain_days`` AND caps the table at ``max_rows`` (oldest dropped). Never raises."""
         try:
             with self._lock:
                 self._conn.execute(
-                    "INSERT INTO cloud_pop_samples(ts, pop, requests, hits, misses, trace_id) "
-                    "VALUES (?,?,?,?,?,?)",
+                    "INSERT INTO cloud_pop_samples(ts, pop, requests, hits, misses, trace_id, api) "
+                    "VALUES (?,?,?,?,?,?,?)",
                     (float(time.time()), pop, int(requests or 0), int(hits or 0),
-                     int(misses or 0), trace_id))
+                     int(misses or 0), trace_id, json.dumps(api) if api else None))
                 if retain_days:
                     self._conn.execute("DELETE FROM cloud_pop_samples WHERE ts < ?",
                                        (time.time() - retain_days * 86400,))
@@ -2224,7 +2229,7 @@ class MetricsStore:
             pass
 
     def cloud_pop_samples(self, *, since_ts: float | None = None, limit: int = 20000) -> list[dict]:
-        q = "SELECT ts, pop, requests, hits, misses, trace_id FROM cloud_pop_samples"
+        q = "SELECT ts, pop, requests, hits, misses, trace_id, api FROM cloud_pop_samples"
         args: list = []
         if since_ts is not None:
             q += " WHERE ts >= ?"; args.append(float(since_ts))

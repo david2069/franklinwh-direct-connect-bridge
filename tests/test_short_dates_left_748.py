@@ -47,7 +47,7 @@ def test_edge_transitions_are_a_table_with_the_short_date_first():
     sec = NET.split("Recent edge transitions", 1)[1].split("</table>", 1)[0]
     assert "<table" in sec
     heads = [h.strip() for h in re.findall(r"<th[^>]*>([^<]+)</th>", sec)]
-    assert heads == ["When", "From", "To"]
+    assert heads[:3] == ["When", "From", "To"]          # then Stay (#751)
     row = sec.split('x-for="(t, i) in pop.transitions"', 1)[1]
     first = row.split("<td", 2)[1]
     assert "when-col" in first and "shortWhen(t.at, 'local')" in first

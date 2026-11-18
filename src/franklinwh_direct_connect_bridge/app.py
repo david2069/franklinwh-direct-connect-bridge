@@ -5769,13 +5769,16 @@ def create_app() -> FastAPI:
             return None
 
     @app.get("/api/cloud/pop")
-    def api_cloud_pop(window_days: int = Query(30, ge=1, le=90)):
+    def api_cloud_pop(window_days: int = Query(30, ge=1, le=90),
+                      period: str | None = Query(None, pattern="^(today|7d|30d|all)$")):
         """CloudFront PoP edge drill-down for the FleetView/Cloud API path — current PoP, PoP
-        distribution, edge transitions, cache-hit rate — aggregated from the background cloud
-        poll. ``samples:0`` until the poller (needs cloud creds) has run at least once."""
+        distribution, edge transitions, cache-hit rate — and the cloud call counters (``api``:
+        calls by verb, errors by type, retries, token refreshes), aggregated from the
+        background cloud poll. ``period`` (today / 7d / 30d / all kept) overrides
+        ``window_days``; ``locations`` places each PoP at its city for the map. ``samples:0`` until the poller (needs cloud creds) has run at least once."""
         from . import cloud_pop
         s = get_settings()
-        out = cloud_pop.summary(_ha_store(), window_days=window_days)
+        out = cloud_pop.summary(_ha_store(), window_days=window_days, period=period)
         out["cloud_creds"] = bool(s.fwh_cloud_email and s.fwh_cloud_password)
         return out
 
