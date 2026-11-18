@@ -2371,8 +2371,9 @@ document.addEventListener('alpine:init', () => {
       },
       applySize() {
         Object.assign(panel.style, DIALOG_SIZES[this.size], {
-          // 90dvh as before: on a phone the bottom nav covers anything taller.
-          maxWidth: 'calc(100vw - 1rem)', maxHeight: '90dvh',
+          // 90dvh as before, and never taller than the backdrop it sits in (less the
+          // panel's margins), so the footer stays on screen on a phone (#734).
+          maxWidth: 'calc(100vw - 1rem)', maxHeight: 'min(90dvh, calc(100% - 1rem))',
           resize: 'both', overflow: 'hidden',
         });
       },
