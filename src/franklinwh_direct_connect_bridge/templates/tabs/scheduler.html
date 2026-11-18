@@ -584,8 +584,8 @@
             <tbody>
               <template x-for="(e, i) in filteredLog" :key="i">
                 <tr>
-                  <td class="text-xs font-mono" style="color:var(--text-secondary);white-space:nowrap"
-                      x-text="when(e.ts)"></td>
+                  <td class="when-col font-mono" :title="$store.app.fullWhen(e.ts, 'host')"
+                      x-text="$store.app.shortWhen(e.ts, 'host')"></td>
                   <td>
                     <div class="text-sm" style="color:var(--text-primary)">
                       <span x-text="e.name"></span>

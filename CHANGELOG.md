@@ -31,6 +31,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Changed
 
+- **Short dates on the left** (#748). The Scheduler's activity log shows each time as
+  "18 Nov 18:01" in a narrow fixed-width column, with the full date and seconds on hover or
+  tap, so the message gets the row on a phone. Network → **PoP distribution** is a table
+  with PoP, Share and Requests headers (no "req" on every row), and **Recent edge
+  transitions** is a table with the short date first, then From → To
+  ([guide](docs/guide/scheduler/outcomes.md#activity-log-results)).
+
 - **HEMS has its own section in the guide** (#736). Nine pages under *HEMS (energy
   planning)*: what HEMS does and doesn't do yet, getting started, the solar forecast and its
   calibration, the load forecast and its backtest (with HAEO), battery warranty and wear,
