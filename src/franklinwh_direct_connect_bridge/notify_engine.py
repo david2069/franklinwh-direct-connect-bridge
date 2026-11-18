@@ -203,7 +203,7 @@ def _enabled(cfg: dict, key: str) -> bool:
 #: The event behind each trigger whose transition has two directions. Stats and the
 #: enable flag are per trigger.
 TRIGGER = {"aGate_online": "aGate_offline", "on_grid": "off_grid",
-           "dispatch_start": "dispatch", "dispatch_at_boot": "dispatch",
+           "dispatch_start": "dispatch", "dispatch_end": "dispatch", "dispatch_at_boot": "dispatch",
            "bridge_started": "bridge", "bridge_restarted": "bridge", "bridge_stopped": "bridge",
            "agate_on_wifi": "agate_on_4g"}
 
@@ -229,6 +229,9 @@ EVENTS = (
     Event("dispatch_start", "FranklinWH — battery dispatch started (VPP)",
           "{gateway}: Battery dispatch STARTED — VPP mode active (source: {source}; {metrics}).",
           ("source", "metrics")),
+    Event("dispatch_end", "FranklinWH — battery dispatch ended",
+          "{gateway}: Battery dispatch ENDED{took} — VPP mode cleared, battery back to normal "
+          "({metrics}).", ("took", "metrics")),
     Event("dispatch_reconcile", "FranklinWH — scheduled dispatch {action}",
           "{gateway}: {detail}", ("action", "detail")),
     Event("schedule_notify", "{title}", "{message} [{gateway}]", ("title", "message")),
