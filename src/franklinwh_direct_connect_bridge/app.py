@@ -6296,7 +6296,12 @@ def create_app() -> FastAPI:
             circ = client.circuits(s, host=host, override=s.smart_circuit_count)
         except (OSError, TransportError, TimeoutError) as e:
             errors["circuits"] = str(e)
-        if getattr(gw, "generator_installed", False):
+        # Installed as System Setup has it: what the gateway reported, or your answer (#701)
+        try:
+            gen_on = bool(system_setup.values(db.get_store(s), s, gw.id, host).get("generator_input"))
+        except Exception:  # noqa: BLE001 — unknown: leave the generator rows out
+            gen_on = False
+        if gen_on:
             try:
                 gen = client.generator(s, host=host)
             except (OSError, TransportError, TimeoutError) as e:
