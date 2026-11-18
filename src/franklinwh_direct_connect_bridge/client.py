@@ -52,8 +52,21 @@ def _split_hostport(h: str | None, default_port: int) -> tuple[str, int]:
     return (h or ""), default_port
 
 
+def _gateway_port(host: str, default_port: int) -> int:
+    """The port the roster set for the gateway at ``host`` (#364). The default (9000)
+    leaves the global setting in charge, so an install that set only FWH port keeps it."""
+    from . import state
+    for gw in state.gateways():
+        if host in (gw.active_host, gw.configured_host) and gw.port and gw.port != 9000:
+            return int(gw.port)
+    return default_port
+
+
 def _client(s: Settings, host: str | None = None) -> LocalClient:
-    h, port = _split_hostport(_need_host(host), s.fwh_port)
+    host = _need_host(host)
+    h, port = _split_hostport(host, s.fwh_port)
+    if h == host:                        # no port in the host string
+        port = _gateway_port(h, port)
     return LocalClient(h, port, timeout=s.fwh_timeout, retries=s.fwh_retries)
 
 
