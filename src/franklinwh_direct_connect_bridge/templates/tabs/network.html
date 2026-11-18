@@ -151,12 +151,13 @@
         <div class="flex items-center justify-between gap-3">
           <div>
             <div class="card-label" style="margin-bottom:0">Latency test</div>
-            <div class="text-[11px]" style="color:var(--text-faint)">5 round-trips to the aGate's Direct-Connect API (:<span x-text="$store.app.ports.dc"></span>).</div>
+            <div class="text-[11px]" style="color:var(--text-faint)"><b>Ping aGate</b>: 5 round-trips to the aGate's Direct-Connect API (:<span x-text="$store.app.ports.dc"></span>). <b>Watch</b>: one a second until Stop, to catch a drop-out.</div>
           </div>
           <div class="flex items-center gap-2">
-            <button class="btn btn-sm" :class="watching ? 'btn-primary' : 'btn-secondary'" @click="toggleWatch()">
+            <button class="btn btn-sm" :class="watching ? 'btn-primary' : 'btn-secondary'" @click="toggleWatch()"
+                    data-testid="live-ping-stop" :title="watching ? 'Stop the live ping' : 'Ping once a second until Stop (stops by itself after 15 min)'">
               <span class="inline-block w-1.5 h-1.5 rounded-full mr-1" :style="watching ? 'background:#34d399;box-shadow:0 0 0 3px #34d39933' : 'background:var(--text-faint)'"></span>
-              <span x-text="watching ? 'Watching…' : 'Watch'"></span>
+              <span x-text="watching ? 'Stop' : 'Watch'"></span>
             </button>
             <button class="btn btn-secondary btn-sm" @click="runPing()" :disabled="pinging" x-text="pinging ? 'Pinging…' : 'Ping aGate'"></button>
           </div>
@@ -177,23 +178,52 @@
             </div>
           </div>
         </template>
-        <template x-if="watching">
-          <div class="mt-3 pt-3" style="border-top:1px solid var(--border)">
-            <div class="flex flex-wrap items-center gap-4 text-xs">
-              <span style="color:var(--text-secondary)">live <span class="font-mono tabular-nums" style="color:var(--text-primary)" x-text="watchLast!=null ? watchLast + ' ms' : '…'"></span></span>
-              <span style="color:var(--text-secondary)">avg <span class="font-mono tabular-nums" style="color:var(--text-primary)" x-text="watchAvg!=null ? watchAvg + ' ms' : '…'"></span></span>
-              <span style="color:var(--text-secondary)">max <span class="font-mono tabular-nums" style="color:var(--text-primary)" x-text="latHistory.some(x=>x!=null) ? watchMax + ' ms' : '…'"></span></span>
-              <span style="color:var(--text-faint)" x-text="latHistory.length + ' samples · every ~6s'"></span>
-            </div>
-            <div class="flex items-end gap-px mt-2 h-12">
-              <template x-for="(s, i) in latHistory" :key="i">
-                <div class="flex-1 rounded-t" style="min-width:2px" :style="'height:' + (s==null ? 100 : Math.max(4, Math.min(100, (s/(watchMax||1))*100))) + '%;background:' + (s==null ? '#ef4444' : 'var(--accent)')"
-                     :title="s==null ? 'lost' : s + ' ms'"></div>
-              </template>
-              <template x-if="!latHistory.length"><span class="text-[11px]" style="color:var(--text-faint)">waiting for first round-trip…</span></template>
-            </div>
+        <div class="mt-3 pt-3" style="border-top:1px solid var(--border)" x-show="watching || watchSent">
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs" data-testid="live-ping-stats">
+            <span style="color:var(--text-secondary)">live <span class="font-mono tabular-nums" style="color:var(--text-primary)" x-text="watching ? (latHistory.length && latHistory[latHistory.length-1]==null ? 'lost' : (watchLast!=null ? watchLast + ' ms' : '…')) : '—'"></span></span>
+            <span style="color:var(--text-secondary)">min <span class="font-mono tabular-nums" style="color:var(--text-primary)" x-text="watchMinMs!=null ? watchMinMs + ' ms' : '…'"></span></span>
+            <span style="color:var(--text-secondary)">avg <span class="font-mono tabular-nums" style="color:var(--text-primary)" x-text="watchAvg!=null ? watchAvg + ' ms' : '…'"></span></span>
+            <span style="color:var(--text-secondary)">max <span class="font-mono tabular-nums" style="color:var(--text-primary)" x-text="watchMaxMs!=null ? watchMaxMs + ' ms' : '…'"></span></span>
+            <span style="color:var(--text-secondary)">loss <span class="font-mono tabular-nums" :style="watchLost ? 'color:#ef4444' : 'color:#34d399'" x-text="watchLoss + '%'"></span></span>
+            <span style="color:var(--text-faint)" x-text="watchSent + ' sent · every 1 s · ' + watchElapsed + (watching ? ' · stops by itself at 15 min' : '')"></span>
           </div>
-        </template>
+          <div class="flex items-end gap-px mt-2 h-12">
+            <template x-for="(s, i) in latHistory" :key="i">
+              <div class="flex-1 rounded-t" style="min-width:2px" :style="'height:' + (s==null ? 100 : Math.max(4, Math.min(100, (s/(watchMax||1))*100))) + '%;background:' + (s==null ? '#ef4444' : 'var(--accent)')"
+                   :title="s==null ? 'lost' : s + ' ms'"></div>
+            </template>
+            <template x-if="watching && !latHistory.length"><span class="text-[11px]" style="color:var(--text-faint)">waiting for first round-trip…</span></template>
+          </div>
+          <p class="text-[11px] mt-1" style="color:var(--text-faint)" x-show="watchStopped" x-text="watchStopped"></p>
+          <div class="mt-2" data-testid="live-ping-drops">
+            <div class="text-[11px] font-semibold" style="color:var(--text-secondary)"
+                 x-text="watchDrops.length ? 'Drop-outs while watching (' + watchDrops.length + ')' : 'No drop-outs while watching'"></div>
+            <template x-for="(d, i) in watchDrops.slice(0, 10)" :key="d.start">
+              <div class="flex items-baseline justify-between gap-3 text-xs py-0.5">
+                <span class="font-mono" style="color:var(--text-secondary)" x-text="new Date(d.start).toLocaleTimeString('en-GB')"></span>
+                <span class="font-mono shrink-0" style="color:#ef4444" x-text="d.end ? dropLen(d) : 'ongoing · ' + dropLen(d)"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Drop-outs in the last 24 h (#730): from the link history, no extra aGate traffic -->
+        <div class="mt-3 pt-3" style="border-top:1px solid var(--border)" data-testid="dropouts-24h">
+          <div class="text-[11px] font-semibold" style="color:var(--text-secondary)">Drop-outs in the last 24 h</div>
+          <div class="text-[10px]" style="color:var(--text-faint)">
+            From the bridge's own polls of the Local API (:<span x-text="$store.app.ports.dc"></span>): a drop-out is recorded after
+            <span x-text="(dropouts && dropouts.strikes) || 3"></span> failed polls in a row.</div>
+          <template x-for="o in ((dropouts && dropouts.dropouts) || []).slice(0, 12)" :key="o.start">
+            <div class="flex items-baseline justify-between gap-3 text-xs py-1">
+              <span class="font-mono shrink-0" style="color:var(--text-secondary)" x-text="$store.app.shortWhen(o.start, 'local')"></span>
+              <span class="truncate text-[11px] flex-1" style="color:var(--text-faint)" x-text="o.error || ''" :title="o.error || ''"></span>
+              <span class="font-mono shrink-0" :style="o.open ? 'color:var(--danger)' : ''"
+                    x-text="o.open ? 'ongoing' : dur(o.duration_s)"></span>
+            </div>
+          </template>
+          <p class="text-[11px] mt-1" style="color:var(--text-faint)"
+             x-show="dropouts && !dropouts.dropouts.length">None in the last 24 h.</p>
+        </div>
       </div>
 
       <!-- Connectivity chain: router → internet → cloud -->
