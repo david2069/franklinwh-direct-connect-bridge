@@ -50,6 +50,14 @@ window.setupWizard = function setupWizard() {
     mode: { value: '', options: [], msg: '', busy: false },
     // A FranklinWH Gateway Emulator, added as a gateway at its address and port.
     emu: { label: 'Gateway Emulator', host: '', port: window.FWH_BOOT.ports.dc, msg: '', ok: false, busy: false },
+    // Automatic (#741): one aGate and its aPower, then each remaining part in turn. A step
+    // already done is passed over; each one asked has a Skip.
+    auto: false,
+    AUTO_STEPS: ['timezone', 'find', 'confirm', 'halink', 'cloud', 'modbus', 'publish', 'summary'],
+    setupSteps: [],
+    // Home Assistant link, asked early in Automatic: the same instance Settings → Integrations
+    // keeps. The token is never read back.
+    hal: { name: 'Home Assistant', base_url: '', token: '', msg: '', ok: false, saved: false, busy: false },
     // Where the Modbus client connects (the active gateway's, or an override).
     mb: { enabled: true, host: '', port: '', resolved: '', msg: '', ok: false, test: null, busy: false },
 
@@ -123,6 +131,7 @@ window.setupWizard = function setupWizard() {
         if (!r.ok) return;
         const s = await r.json();
         this.tasks = s.tasks || [];
+        this.setupSteps = s.steps || [];
         this.setupState = s.state || this.setupState;
       } catch (e) { /* the list keeps what it had */ }
     },
@@ -312,7 +321,10 @@ window.setupWizard = function setupWizard() {
       if (this.step === 'cloud') return this.cloud.state === 'ok' ? 'Continue' : 'Skip for now';
       if (this.step === 'demo') return '';
       if (this.step === 'confirm') return 'Continue';
-      if (this.step === 'publish') return 'Finish';
+      if (this.step === 'publish') return this.auto ? 'Continue' : 'Finish';
+      if (this.step === 'halink') return this.hal.saved ? 'Continue' : 'Skip';
+      if (this.step === 'modbus' && this.auto) return this.mb.enabled ? 'Continue' : 'Skip';
+      if (this.step === 'summary') return 'Finish';
       return '';
     },
 
@@ -337,10 +349,14 @@ window.setupWizard = function setupWizard() {
       if (this.fromHub) { this.toHub(); return; }
       if (this.step === 'hardware') { await this.saveCounts(); return; }
       if (this.step === 'timezone') { await this.saveTimezone(); return; }
-      if (this.step === 'find') { this.go('cloud'); return; }
-      if (this.step === 'cloud') { this.go('confirm'); return; }
-      if (this.step === 'confirm') { this.go('publish'); return; }
+      if (this.step === 'find') { this._advance('find', 'cloud'); return; }
+      if (this.step === 'cloud') { this._advance('cloud', 'confirm'); return; }
+      if (this.step === 'confirm') { this._advance('confirm', 'publish'); return; }
+      if (this.auto && ['halink', 'modbus', 'publish'].includes(this.step)) {
+        this._advance(this.step, ''); return;
+      }
       if (this.step === 'publish') { await this.finish('done'); return; }
+      if (this.step === 'summary') { await this.finish('done'); return; }
     },
 
     async saveCounts() {
@@ -367,7 +383,7 @@ window.setupWizard = function setupWizard() {
         });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) { this.error = d.detail || `HTTP ${r.status}`; return; }
-        this.go(this.intent === 'demo' ? 'demo' : 'find');
+        this._advance('timezone', this.intent === 'demo' ? 'demo' : 'find');
       } catch (e) { this.error = String(e); } finally { this.busy = false; }
     },
 
@@ -421,7 +437,7 @@ window.setupWizard = function setupWizard() {
         const d = await r.json().catch(() => ({}));
         if (!r.ok) { this.error = d.detail || `Could not add it (HTTP ${r.status}).`; return; }
         if (d.id) this.createdIds.push(d.id);
-        this.go('cloud');
+        this._advance('find', 'cloud');
       } catch (e) { this.error = String(e); } finally { this.busy = false; }
     },
 
@@ -507,7 +523,8 @@ window.setupWizard = function setupWizard() {
         // flag says so. Set it for the gateways this wizard added (the user just said Yes).
         // From the setup list, Yes is for every real gateway: none was added in this run.
         const a = (window.Alpine && Alpine.store('app')) || null;
-        const ids = this.fromHub
+        // Automatic on a gateway added earlier: Yes is for every real gateway, as from the list.
+        const ids = (this.fromHub || (this.auto && !this.createdIds.length))
           ? ((a && a.gateways) || []).filter(g => g && g.id && !g.is_mock).map(g => g.id)
           : this.createdIds;
         if (r.ok) {
@@ -562,11 +579,101 @@ window.setupWizard = function setupWizard() {
 
     // The setup list's three ways in (#741). Automatic and Mock run the first-run paths
     // from the list; Custom is the list itself.
-    startAutomatic() {
-      this.fromHub = false; this.intent = 'hardware'; this.go('hardware');
+    async startAutomatic() {
+      this.fromHub = false; this.auto = true; this.intent = 'hardware';
+      this.hal = { ...this.hal, msg: '', ok: false, saved: false };
+      await Promise.all([this.loadTasks(), this.loadModbus()]);
+      this.goAuto(this._autoNext(null));
     },
     startMock() {
-      this.fromHub = false; this.intent = 'demo'; this.go('hardware');
+      this.fromHub = false; this.auto = false; this.intent = 'demo'; this.go('hardware');
+    },
+
+    _realGateways() {
+      const a = (window.Alpine && Alpine.store('app')) || null;
+      return ((a && a.gateways) || []).filter(g => g && g.id && !g.is_mock);
+    },
+    _task(id) { return (this.tasks.find(x => x.id === id) || {}).satisfied === true; },
+
+    // Whether an Automatic step has nothing left to do.
+    _autoDone(step) {
+      if (step === 'timezone') return !!(this.setupSteps.find(s => s.id === 'timezone') || {}).satisfied;
+      if (step === 'find') return this._realGateways().length > 0;
+      if (step === 'halink') return this._task('home_assistant');
+      if (step === 'cloud') return this._task('cloud');
+      if (step === 'modbus') return this.mb.enabled;
+      // A gateway added in this run is still asked about, even with publishing already on.
+      if (step === 'publish') return this._task('mqtt') && !this.createdIds.length;
+      return false;
+    },
+    _autoNext(from) {
+      const i = from ? this.AUTO_STEPS.indexOf(from) : -1;
+      for (const s of this.AUTO_STEPS.slice(i + 1)) if (!this._autoDone(s)) return s;
+      return 'summary';
+    },
+    goAuto(step) {
+      if (step === 'modbus') this.loadModbus();
+      if (step === 'summary') this.loadTasks();
+      this.go(step);
+    },
+    // The next step: Automatic's order, or the first-run order it was called with.
+    _advance(from, normal) {
+      if (this.auto) { this.goAuto(this._autoNext(from)); return; }
+      this.go(normal);
+    },
+
+    async testHaLink() {
+      const h = this.hal;
+      if (!h.base_url.trim()) return;
+      h.busy = true; h.msg = ''; h.ok = false;
+      try {
+        const r = await fetch('api/ha/test', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ base_url: h.base_url.trim(), token: h.token || null }),
+        });
+        const d = await r.json().catch(() => ({}));
+        h.ok = !!d.ok;
+        h.msg = d.ok ? 'Home Assistant answered.' : (d.detail || d.error || `No answer (HTTP ${r.status}).`);
+      } catch (e) { h.msg = String(e); } finally { h.busy = false; }
+    },
+    async saveHaLink() {
+      const h = this.hal;
+      if (!h.base_url.trim()) return;
+      h.busy = true; h.msg = '';
+      try {
+        const r = await fetch('api/ha/instances', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: h.name || 'Home Assistant', base_url: h.base_url.trim(),
+                                 token: h.token || null, is_default: true, enabled: true }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { h.msg = `Not saved: ${d.detail || r.status}`; return; }
+        h.saved = true; h.token = '';
+        h.msg = 'Saved. Settings → Integrations has it too.';
+        await this.loadTasks();
+      } catch (e) { h.msg = `Not saved: ${e.message || e}`; } finally { h.busy = false; }
+    },
+
+    // What Automatic leaves set up, from the same facts the setup list shows.
+    get autoSummary() {
+      const real = this._realGateways().length;
+      return [
+        { part: 'aGate', done: real > 0, note: real ? `${real} connected` : 'not added' },
+        { part: 'Home Assistant link', done: this._task('home_assistant') },
+        { part: 'FranklinWH cloud', done: this._task('cloud') },
+        { part: 'Modbus client', done: !!this.mb.enabled },
+        { part: 'Publish to Home Assistant', done: this._task('mqtt') },
+      ];
+    },
+    // More than the one aGate and aPower Automatic assumes: said, never guessed.
+    get multiUnit() {
+      const exp = (this.setupSteps.find(s => s.id === 'expected') || {}).found || {};
+      const agates = Math.max(this._realGateways().length, (this.found || []).length);
+      const apowers = exp.apowers || 0;
+      const out = [];
+      if (apowers > 1) out.push(`${apowers} aPowers report through this aGate; all of them are read.`);
+      if (agates > 1) out.push(`${agates} aGates were found. Automatic sets up one; add the others from Custom.`);
+      return out;
     },
     showList() {
       const el = document.querySelector('[data-testid="setup-list"]');

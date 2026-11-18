@@ -18,6 +18,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   behind "Start again from the first steps". Three cards now head the list: **Automatic**
   (the guided path for one aGate and its aPower), **Mock** (a simulated gateway, never
   published) and **Custom** (the list itself, unchanged) ([guide](docs/guide/tour.md)).
+- **Setup: Automatic asks for the rest in turn** (#741). After the aGate is found and
+  confirmed, Automatic asks only for what is not done yet, each with a Skip: link Home
+  Assistant (address and token, asked early), sign in to the FranklinWH cloud, turn on the
+  Modbus client, publish to Home Assistant. It ends on a summary of what is set up, says
+  when more than one aGate or aPower was found, and links to Custom for the rest
+  ([guide](docs/guide/tour.md)).
 
 ### Fixed
 
