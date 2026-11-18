@@ -18,13 +18,14 @@ def test_the_list_and_its_order():
     ess = [x["id"] for x in t if x["group"] == "essential"]
     adv = [x["id"] for x in t if x["group"] == "advanced"]
     assert ess == ["cloud", "mqtt", "home_assistant", "billing", "default_mode", "automation"]
-    assert adv == ["notifications", "security", "accounts", "system_view", "emulator", "modbus"]
+    assert adv == ["notifications", "security", "accounts", "system_view", "hems", "emulator",
+                   "modbus"]
     for x in t:
         assert x["title"] and x["detail"]
         assert bool(x.get("inline")) != bool(x.get("open")), x["id"]   # one way in, not two
     assert {x["id"]: x["inline"] for x in t if x.get("inline")} == {
         "cloud": "cloud", "mqtt": "publish", "default_mode": "mode",
-        "emulator": "emulator", "modbus": "modbus"}
+        "emulator": "emulator", "modbus": "modbus", "hems": "hems"}
 
 
 def test_done_follows_the_facts():
