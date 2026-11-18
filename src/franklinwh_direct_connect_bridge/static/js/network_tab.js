@@ -21,6 +21,10 @@ function networkTab() {
     mapOpen: false,
     mapOffline: false,
     mapTransOpen: true,
+    // Watch: one ping every ~6s into a rolling latency sparkline (toggleWatch).
+    watching: false,
+    latHistory: [],
+    watchTick: 0,
 
     init() {
       // Loads on first SHOW, not on page load — see lazyTab(). load() pulls the link
