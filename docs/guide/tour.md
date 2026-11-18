@@ -40,6 +40,14 @@ setting up, each marked **Done** or **To do**. Reopening the wizard on a bridge 
 has a gateway (Settings → Setup → **Run the wizard**, or the dashboard banner) goes straight
 to it, and closing it is not declining setup.
 
+Three cards head the list (#741):
+
+- **Automatic** runs the guided path for one aGate and its aPower: find it, connect, then
+  each remaining step in turn.
+- **Mock** runs the mock path: a simulated gateway to look around, never published to Home
+  Assistant.
+- **Custom** (advanced) is the list itself: set up each part yourself.
+
 - **Essentials**: Connect to FranklinWH Cloud · Publish to Home Assistant (MQTT) · Connect
   to Home Assistant · Electricity utility, pricing & billing · Default operating mode ·
   Automatic scheduling.

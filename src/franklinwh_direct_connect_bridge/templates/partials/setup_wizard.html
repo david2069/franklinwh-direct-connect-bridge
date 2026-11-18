@@ -550,6 +550,28 @@
           <!-- The setup list (owner, 2026-11-11): everything else worth setting up. -->
           <template x-if="step === 'hub'">
             <div class="space-y-3" data-testid="setup-hub">
+              <!-- Three ways in (#741): Automatic, Mock, or Custom — the list below. -->
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button type="button" data-testid="setup-entry-automatic" @click="startAutomatic()"
+                        class="text-left rounded-lg border px-3 py-2" style="border-color:var(--accent)">
+                  <p class="font-semibold" style="color:var(--accent)">Automatic</p>
+                  <p class="text-xs" style="color:var(--text-faint)">One aGate and its aPower:
+                    find it, connect, then the rest step by step.</p>
+                </button>
+                <button type="button" data-testid="setup-entry-mock" @click="startMock()"
+                        class="text-left rounded-lg border px-3 py-2" style="border-color:var(--border)">
+                  <p class="font-semibold" style="color:var(--text-primary)">Mock</p>
+                  <p class="text-xs" style="color:var(--text-faint)">A simulated gateway to look
+                    around. Never published to Home Assistant.</p>
+                </button>
+                <button type="button" data-testid="setup-entry-custom" @click="showList()"
+                        class="text-left rounded-lg border px-3 py-2" style="border-color:var(--border)">
+                  <p class="font-semibold" style="color:var(--text-primary)">Custom</p>
+                  <p class="text-xs" style="color:var(--text-faint)">Advanced: set up each part
+                    yourself from the list below.</p>
+                </button>
+              </div>
+              <div class="space-y-3" data-testid="setup-list">
               <template x-for="g in [['essential', 'Essentials'], ['advanced', 'Advanced']]" :key="g[0]">
                 <div class="space-y-1.5">
                   <div class="text-[10px] font-semibold uppercase tracking-wide"
@@ -572,6 +594,7 @@
                   </template>
                 </div>
               </template>
+              </div>
               <button type="button" class="text-xs underline" style="color:var(--text-faint)"
                       @click="history = []; fromHub = false; step = 'intent'">
                 Start again from the first steps</button>
