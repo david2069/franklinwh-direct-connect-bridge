@@ -117,6 +117,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   release ran while a tick could still be running, so a force it started kept going. The
   bridge now waits for the scheduler to stop (up to 5 s) before releasing
   ([battery dispatch](docs/guide/battery-dispatch.md)).
+
+- **Gateways: a gateway's own port is used** (#364). The roster kept a per-gateway port, but
+  every request went to the global port, so a gateway added on another port (an emulator,
+  say) wasn't reached on it ([multi-gateway](docs/guide/multi-gateway.md)).
 - **Logs: the filter row's controls are one height** (owner 2026-11-19). The search box
   and drop-downs were taller than the Live, Refresh and Export buttons beside them.
 - **Audit trail: the aGate Modbus TCP Server switch and Home Assistant mode changes are
