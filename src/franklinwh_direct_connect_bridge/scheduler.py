@@ -3239,6 +3239,9 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
             if occ.get("status") in store.OCC_TERMINAL:
                 mon[entry["id"]] = ("done", f"this occurrence is settled ({occ.get('status')})")
                 continue                       # already settled this occurrence
+            if occ.get("status") == "paused":  # held by the user until Resume (#200)
+                mon[entry["id"]] = ("paused", "paused by user; Resume to run it again")
+                continue
             now_ts = now.timestamp()
             if occ.get("status") == "failed" and not retry_due(occ, now_ts):
                 n = int(occ.get("attempts") or 0)

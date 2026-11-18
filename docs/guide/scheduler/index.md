@@ -358,15 +358,12 @@ send `name` (required) and `enabled`: without `enabled` the schedule is switched
 |---|---|
 | Release a **battery dispatch** this schedule started, and leave the rule enabled | `stop` |
 | Stop the rule from **firing at all** until further notice | `PUT` with `"name"` and `"enabled": false` |
-| Hold the current run and resume it later | `pause` / `resume` exist, but **do not work as intended**; see the warning |
+| Hold the current run and resume it later | `pause`, then `resume` while its window is open |
 
-!!! warning "Pause and Resume do not hold a run"
-    `POST /api/schedules/{id}/pause` only finds a run that has **not yet succeeded** (pending
-    or failed). For a force that is running it answers "no run is open for this schedule"
-    and does nothing. For a failed run it marks it *paused*, but the next tick retries it
-    anyway: the tick does not check for *paused*. Use `stop` or disable the schedule. Issue
-    #200; see [Outcomes and audit](outcomes.md#run-now-and-stop).
-<!-- @b IDX-12 ;; src: app.py:3169-3204, db.py:2133-2146, scheduler.py:2147-2156 ;; unclear ;; write: yes ;; b: Pause finds only pending/failed runs, and the tick does not skip a paused run, so pause neither holds a running force nor stops retries ;; test: unit: pause a failed run, tick inside the window; assert no attempt (fails today) -->
+`pause` releases the run's force and holds the run; the scheduler leaves it alone until
+`resume`, which runs it again while its window is open (#200). See
+[Outcomes and audit](outcomes.md#run-now-and-stop).
+<!-- @b IDX-12 ;; src: app.py (pause, resume), scheduler.py (tick: paused) ;; tested: tests/test_pause_holds_200.py ;; write: yes ;; b: Pause holds a run and Resume re-enters it ;; test: — -->
 
 **Run means real actions.** `run` does what the schedule does: a mode change, a smart
 circuit, off-grid, or a battery force. Test a new rule with `POST /api/schedules/{id}/test`

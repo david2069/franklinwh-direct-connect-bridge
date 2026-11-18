@@ -290,12 +290,8 @@ schedule from firing at all, disable it: **Turn off** on the card.
 <!-- @b OUT-37 ;; src: app.py:3205-3229, db.py:2055-2078 ;; tested: tests/test_occurrences.py::test_resume_refuses_once_the_window_has_closed ;; write: no ;; b: Resume re-opens a paused run only while its window is open, else refuses (store level) -->
 <!-- @b OUT-38 ;; src: scheduler_worker.py:190-200, db.py:2080-2100 ;; tested: tests/test_occurrences.py::test_a_restart_while_paused_resolves_to_terminal ;; write: no ;; b: At worker start every paused run is resolved to stopped -->
 
-!!! danger "Pause does not hold a run"
-    - A run that **succeeded** is not "open", so Pause on a schedule whose force is running
-      answers "no run is open for this schedule" and releases nothing.
-    - A run that **failed** can be paused, but the scheduler does not check for *paused*: on
-      its next attempt it runs the action again and the run becomes *failed* or *ok*.
-
-    Measured with a mock on 2026-10-17. Use **Stop** to release a schedule's force, and
-    disable the schedule to keep it from firing. Issue #200.
-    <!-- @b OUT-36 ;; src: app.py:3169-3203, db.py:2133-2146, scheduler.py:2147-2156 ;; unclear ;; write: yes ;; b: Pause only finds pending/failed runs (never a succeeded one) and the tick does not skip paused runs, so a paused run is attempted again ;; test: unit: pause a failed run, tick inside the window, assert no attempt (fails today); pause after a successful force, assert it is released (fails today) -->
+**Pause holds the run** (#200). It finds the run of the window that is open, whether it
+is still to run, being retried, or has already run (a force that is running), releases
+its force and marks it *paused*. The scheduler leaves a paused run alone; **Resume** runs
+it again, including a run that had already fired.
+    <!-- @b OUT-36 ;; src: app.py (_open_run, resume), scheduler.py (tick: paused) ;; tested: tests/test_pause_holds_200.py ;; write: yes ;; b: Pause finds the open window's run (pending, failed or ok); the tick skips paused runs; Resume re-enters a fired run ;; test: — -->

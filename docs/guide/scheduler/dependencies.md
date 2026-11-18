@@ -142,7 +142,7 @@ Start with two tools on the Scheduler tab:
 | Wrong gateway | a schedule runs only on the gateway it names, or every gateway with **All gateways** | Check the gateway picker. See [Targets](targets.md). |
 | Stale gateway data | the gateway has not polled for three poll intervals (at least 90 s); its schedules are skipped silently | Check the **Network** and **Health** tabs. |
 | The window was short | the scheduler ticks every 15 s by default; a one-minute window is always seen | — |
-| Paused | `pause` does not hold a run: the next tick tries it again (#200) | Disable the schedule instead. |
+| Paused | a paused run waits for **Resume** | Resume it while its window is open. |
 
 ### A Home Assistant action did not run
 
