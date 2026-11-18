@@ -152,7 +152,7 @@ Start with two tools on the Scheduler tab:
 - Check its guard. An action whose guard is false at that moment is skipped without a
   History row of its own.
 - A value in the message that cannot be read shows as `?`; the message is still sent.
-  `%ha:…%` placeholders are not replaced (#169).
+  A `%ha:…%` placeholder needs its entity exposed to the scheduler.
 - A notify device that is switched off, or whose instance is gone, is skipped: the fired
   row's text says "notify skipped: …".
 - The **Push notifications** switch does not stop schedule notifications (#171).

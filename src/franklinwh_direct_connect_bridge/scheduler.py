@@ -189,11 +189,12 @@ def _apply_op(op: str, live: Any, value: Any, value2: Any = None) -> bool:
         return hit if op == "like" else not hit
     return False
 
-_VAR = re.compile(r"%([a-zA-Z0-9_.]+)%")
+#: ``%sensor.id%``, and ``%ha:<instance>:<entity>%`` for an exposed HA entity (#169).
+_VAR = re.compile(r"%([a-zA-Z0-9_.]+(?::[a-zA-Z0-9_.-]+){0,2})%")
 
 
 def substitute(text: str, snapshot: dict) -> str:
-    """Replace ``%sensor.id%`` with live values.
+    """Replace ``%sensor.id%`` (and ``%ha:<instance>:<entity>%``) with live values.
 
     An unreadable value renders as ``?`` rather than blocking the message: a
     notification that arrives with one field missing is far more useful than one

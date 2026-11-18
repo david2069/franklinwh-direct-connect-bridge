@@ -306,8 +306,9 @@ SoC %battery.soc_pct%%, mode %mode.name%, grid %grid.power_w%W
 - A sensor with no value, or an unknown id, prints `?`. The message is still sent.
   <!-- @b HAA-09 ;; src: scheduler.py:191-204 ;; tested: tests/test_scheduler.py::test_unreadable_variable_renders_as_question_mark_not_a_failure ;; write: no ;; b: %id% is replaced by the snapshot value, or ? when missing ;; test: — -->
 - Numbers print as stored (no rounding).
-- Ids with more than one dot work; `ha:` ids do not, because the colon is not matched, so
-  `%ha:…%` is left as typed (#169). <!-- @b HAA-10 ;; src: scheduler.py:191 ;; untested ;; write: no ;; b: The placeholder pattern allows letters, digits, _ and dots, not colons ;; test: unit: substitute("%ha:i1:sensor.x%") is left unchanged today -->
+- Ids with more than one dot work, and so do Home Assistant ids,
+  `%ha:<instance>:<entity>%`, for an entity exposed to the scheduler (#169). An entity that
+  isn't exposed prints `?`. <!-- @b HAA-10 ;; src: scheduler.py:_VAR ;; tested: tests/test_substitute_ha_169.py ;; write: no ;; b: The placeholder pattern allows ha:<instance>:<entity> ids ;; test: — -->
 - **Direct Connect only: placeholders also work in a service call.** They are filled in the
   entity id and in every text value of the data. <!-- @b HAA-14 ;; src: scheduler.py:1835-1841 ;; tested: tests/test_scheduler.py::test_ha_service_action_calls_the_service ;; write: no ;; b: Placeholders are substituted in a service call's entity_id and string data values ;; test: — -->
 - **Direct Connect only: run variables.** `%schedule.name%`, `%schedule.id%`,
