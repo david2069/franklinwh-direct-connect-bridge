@@ -189,6 +189,7 @@ nav:
       - VALUE_SOURCES_DESIGN.md
       - WHAT_THE_ENGINE_IS.md
   - Changelog:
+      - 0.5.53: changelog/0.5.53.md
       - 0.5.52: changelog/0.5.52.md
       - 0.5.50: changelog/0.5.50.md
       - 0.5.49: changelog/0.5.49.md
