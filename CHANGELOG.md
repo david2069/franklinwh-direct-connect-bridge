@@ -113,6 +113,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Audit trail: the aGate Modbus TCP Server switch and Home Assistant mode changes are
+  recorded** (#130). Neither wrote an entry. They are `der_comms` and `set_mode` (source
+  `ha`) ([control](docs/guide/control.md)).
+
 - **Scheduler: Stop no longer forgets a force it failed to release** (#366). It ended the
   dispatch whether the release worked or not; now, like Delete, a failed release keeps the
   dispatch active and Stop reports the failure

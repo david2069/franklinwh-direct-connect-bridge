@@ -7269,12 +7269,21 @@ def create_app() -> FastAPI:
                        "To silence only this bridge use PUT /api/modbus. If you really "
                        "mean the gateway, repeat with confirm=true.")
         host = _gw_host(gateway)   # SAFETY: the write must hit the SELECTED gateway
+        _onoff = {True: "on", False: "off"}
+        detail = ", ".join(f"{k}={_onoff[v]}" for k, v in
+                           (("sunspec_modbus", req.sunspec_modbus), ("ieee2030_5", req.ieee2030_5))
+                           if v is not None)
         try:
-            return client.set_der_comms(get_settings(),
-                                        sunspec_modbus=req.sunspec_modbus,
-                                        ieee2030_5=req.ieee2030_5, host=host)
+            out = client.set_der_comms(get_settings(),
+                                       sunspec_modbus=req.sunspec_modbus,
+                                       ieee2030_5=req.ieee2030_5, host=host)
         except (OSError, TransportError, TimeoutError) as e:
+            _audit("der_comms", gateway=gateway, detail=detail, result=str(e), ok=False)
             raise HTTPException(status_code=502, detail=str(e))
+        ok = bool(out.get("ok", True)) if isinstance(out, dict) else True
+        _audit("der_comms", gateway=gateway, detail=detail,
+               result="sent (applies after a delay)" if ok else str(out), ok=ok)
+        return out
 
     @app.post("/api/reboot")
     def api_reboot(req: RebootReq, gateway: str = Depends(_gateway_q)):

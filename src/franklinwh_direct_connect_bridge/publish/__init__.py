@@ -16,7 +16,15 @@ def handle_command(key: str, payload: str, *, settings, client, store=None,
         if not alias:
             return f"unknown mode '{payload}'"
         out = client.set_mode(settings, alias, host=host)
-        return f"mode -> {payload}: {'ok' if out.get('ok', True) else out}"
+        ok = bool(out.get("ok", True))
+        res = f"mode -> {payload}: {'ok' if ok else out}"
+        # The Audit trail records it like the Control tab's mode change (#130).
+        st = store if store is not None else _store(settings)
+        if st is not None:
+            st.log_control_event("set_mode", gateway_id=getattr(gateway, "id", None),
+                                 source="ha", detail=f"mode={payload}",
+                                 result=res[:200], ok=ok)
+        return res
 
     if key.startswith("smart_circuit_"):
         try:
