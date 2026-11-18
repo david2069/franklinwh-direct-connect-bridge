@@ -33,8 +33,9 @@ One page per gateway, scoped to whichever gateway the top-bar selector names.
   left at the current usage, and **Go on-grid (reconnect)** for an off-grid you requested.
   **Details** expands mode, SoC, battery (charging / discharging), grid, solar, home, the
   smart circuits (on/off and watts), and the generator (state, kW, kWh today) and V2L
-  (on/off, kW) when installed. Opening Details reads the circuits (and generator) from the
-  aGate; a read that fails is shown, and the rest still appears.
+  (on/off, kW) when installed. Installed is what **System Setup** says: what the gateway
+  reported, or your answer there. Opening Details reads the circuits (and generator) from
+  the aGate; a read that fails is shown, and the rest still appears.
 - The go-off-grid and reconnect dialogs name the aGate, and each switch is saved in the
   Audit Trail with the same snapshot (from the last poll; nothing extra is read before the
   write).

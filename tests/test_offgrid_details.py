@@ -78,8 +78,9 @@ def _app(tmp_path, monkeypatch):
 
 def test_details_endpoint_reads_circuits_and_generator(tmp_path, monkeypatch):
     from franklinwh_direct_connect_bridge import client
-    c, gw, _ = _app(tmp_path, monkeypatch)
-    gw.generator_installed = True
+    from franklinwh_direct_connect_bridge import system_setup
+    c, gw, store = _app(tmp_path, monkeypatch)
+    system_setup.update(store, "g1", {"generator_input": True})
     monkeypatch.setattr(client, "circuits", lambda s, host=None, override=None: CIRCUITS)
     monkeypatch.setattr(client, "generator", lambda s, host=None: GEN)
     r = c.get("/api/offgrid/details?gateway=g1").json()
@@ -108,3 +109,21 @@ def test_switch_logs_the_snapshot(tmp_path, monkeypatch):
     c.post("/api/offgrid?gateway=g1", json={"on": True, "soc": 5, "confirm": True})
     detail = store.control_log(limit=1)[0]["detail"]
     assert detail.startswith("reconnect_soc=5% · Mode Self-Consumption; SoC 36%")
+
+
+def test_generator_installed_comes_from_system_setup(tmp_path, monkeypatch):
+    """#701: Gateway.generator_installed was never set, so the dialog never read 1901.
+    Installed is System Setup's generator_input: what the gateway reported, or your answer."""
+    from franklinwh_direct_connect_bridge import client, system_setup
+    c, gw, store = _app(tmp_path, monkeypatch)
+    reads = []
+    monkeypatch.setattr(client, "circuits", lambda s, host=None, override=None: CIRCUITS)
+    monkeypatch.setattr(client, "generator", lambda s, host=None: reads.append(1) or GEN)
+    # reported by the gateway (System Setup's derived value), no answer from the user
+    monkeypatch.setattr(system_setup, "_derive", lambda settings, host: {"generator_input": True})
+    got = {x["key"] for x in c.get("/api/offgrid/details?gateway=g1").json()["rows"]}
+    assert "generator" in got and reads == [1]
+    # your answer "Not installed" wins: no 1901 read, no row
+    system_setup.update(store, "g1", {"generator_input": False})
+    got = {x["key"] for x in c.get("/api/offgrid/details?gateway=g1").json()["rows"]}
+    assert "generator" not in got and reads == [1]

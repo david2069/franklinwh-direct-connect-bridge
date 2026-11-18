@@ -90,6 +90,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **The OFF-GRID dialog's Details never showed the generator** (#701). It checked a flag
+  that nothing set. It now uses System Setup's generator input, which is what the gateway
+  reported, or your answer there, so an installed generator's state, kW and kWh today appear
+  ([guide](docs/guide/control.md)).
 - **Scheduler: ticking Actionable on a newly added notification threw errors** (#739).
   A notification added in the editor lacked its buttons, recipients and wait, so the
   Actionable section couldn't show them until the schedule was saved and reopened. It now
