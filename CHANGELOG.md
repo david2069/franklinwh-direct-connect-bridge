@@ -13,6 +13,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- **System view: Solar forecast & actual** (owner 2026-11-19). A new switch under
+  **Options**, off until turned on. It shows a box on the diagram's left (above it on a
+  phone) with today's solar forecast for the gateway's site, the actual so far and what is
+  still to come. The forecast is the Solar tab's and is read from its cache, so opening the
+  view never waits on Open-Meteo ([tour](docs/guide/tour.md)).
 - **Network: cloud requests, errors and a CloudFront PoP map** (#751). The CloudFront edge
   card gets a period (Today / 7 days / 30 days / All kept), a **Cloud requests** table (API
   calls, by HTTP verb) and an **Errors & retries** table (timeout, auth_401, server_5xx,
@@ -90,6 +95,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **System view on an iPhone in Home Assistant: a blank band under the top bar, and Fit
+  didn't fit** (owner 2026-11-19). The overlay added the phone's notch inset below the
+  bridge's top bar. A site's diagram on a phone now shows whole with **Fit**, or with −
+  from its full-width view. franklinwh-system-view 0.4.1 → 0.5.1
+  ([tour](docs/guide/tour.md)).
 - **The OFF-GRID dialog's Details never showed the generator** (#701). It checked a flag
   that nothing set. It now uses System Setup's generator input, which is what the gateway
   reported, or your answer there, so an installed generator's state, kW and kWh today appear
