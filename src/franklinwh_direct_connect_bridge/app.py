@@ -1478,7 +1478,8 @@ def create_app() -> FastAPI:
             # First, because Home Assistant kills an add-on 10 s after asking it to stop;
             # after the scheduler's last tick, so it can't arm a force behind it (#367).
             try:
-                await scheduler_worker.stop_then_release(_sched_stop, _sched_task)
+                await scheduler_worker.stop_then_release(_sched_stop, _sched_task,
+                                                         store=db.get_store(s))
             except Exception as e:  # noqa: BLE001
                 log.error("battery shutdown release failed: %s", e)
             # Bridge stopped: recorded (so the next start says restarted), then sent while
