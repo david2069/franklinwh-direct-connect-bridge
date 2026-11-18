@@ -42,6 +42,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Changed
 
+- **Import opens a window first: Choose file…, Paste JSON, Cancel** (#752). On Android the
+  file picker is the system's full-screen file browser with no Cancel, so Scheduler →
+  Import now opens the bridge's own window; pasted JSON goes through the same import as a
+  file, and errors show in the window. The tariff import window gains a **Cancel** button.
+  Validation and the dry-run report are unchanged
+  ([guide](docs/guide/scheduler/index.md)).
+
 - **Short dates on the left** (#748). The Scheduler's activity log shows each time as
   "18 Nov 18:01" in a narrow fixed-width column, with the full date and seconds on hover or
   tap, so the message gets the row on a phone. Network → **PoP distribution** is a table

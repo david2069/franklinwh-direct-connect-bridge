@@ -333,7 +333,7 @@ than the gateway.)
 
 **Import tariff** takes a tariff as JSON (`franklinwh-bridge/tariff-profile`, the same
 format a tariff's Export writes and the Modbus Bridge uses): paste it into the box or
-choose a file. **Check** shows what it contains (retailer, network, plan, seasons, fixed
+choose a file, or **Cancel**. **Check** shows what it contains (retailer, network, plan, seasons, fixed
 charges); **Import** adds it as a plan of the default meter (rules below). In the
 preview (`POST /api/tariffs/import?dry_run=true`), `has_demand` is true only when the peak
 demand charge is on: `has_peak_demand` is not 0 and `demand_rate` is not 0. Every Modbus

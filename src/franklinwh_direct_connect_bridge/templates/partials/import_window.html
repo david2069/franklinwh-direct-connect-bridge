@@ -1,0 +1,30 @@
+{#- The import window (owner 2026-11-18). Shared by every import button: Choose file…, Paste
+    JSON and Cancel, so a phone never lands in the system file picker without a way back.
+    The host component spreads importWindowMixin('<its import method>') (static/js/app.js)
+    and may set iw_title / iw_hint before the include. Errors stay in the window. -#}
+<div x-show="impWin.open" x-cloak data-testid="import-window"
+     class="fixed inset-0 z-[110] flex items-start sm:items-center justify-center p-3"
+     style="background:rgba(0,0,0,.6);padding-bottom:max(.75rem,env(safe-area-inset-bottom))"
+     @keydown.escape.window="impWin.open && closeImportWindow()" @click.self="closeImportWindow()">
+  <div class="card w-full p-0 my-2 flex flex-col" style="max-width:32rem;max-height:min(90dvh, calc(100% - 1rem))">
+    <div class="px-5 pt-4 pb-3 shrink-0 border-b flex items-center justify-between gap-2" style="border-color:var(--border)">
+      <h3 class="text-base font-semibold" style="color:var(--text-primary)">{{ iw_title | default('Import') }}</h3>
+    </div>
+    <div class="flex-1 overflow-y-auto px-5 py-4 space-y-3" style="min-height:0;-webkit-overflow-scrolling:touch;overscroll-behavior:contain">
+      <div class="text-xs" style="color:var(--text-secondary)">{{ iw_hint | default('Choose a JSON file, or paste its text.') }}</div>
+      <input type="file" accept="application/json,.json" class="hidden" x-ref="impWinFile" @change="impFileChosen($event)">
+      <button type="button" data-testid="import-choose-file" class="btn btn-secondary btn-sm w-full"
+              :disabled="impWin.busy" @click="impPickFile()">Choose file…</button>
+      <div class="text-[11px] text-center" style="color:var(--text-faint)">or paste JSON</div>
+      <textarea data-testid="import-paste" x-model="impWin.text" rows="7" @input="impWin.msg = ''"
+                class="form-control w-full font-mono text-xs" placeholder="{ … }"></textarea>
+      <div data-testid="import-msg" x-show="impWin.msg" class="text-sm" style="color:var(--danger,#f87171)" x-text="impWin.msg"></div>
+    </div>
+    <div class="px-5 py-3 shrink-0 border-t flex justify-end gap-2" style="border-color:var(--border)">
+      <button type="button" data-testid="import-cancel" class="btn btn-secondary btn-sm" @click="closeImportWindow()">Cancel</button>
+      <button type="button" data-testid="import-paste-submit" class="btn btn-primary btn-sm"
+              :disabled="impWin.busy || !impWin.text.trim()" @click="impPasteSubmit()"
+              x-text="impWin.busy ? 'Checking…' : 'Import pasted JSON'"></button>
+    </div>
+  </div>
+</div>
