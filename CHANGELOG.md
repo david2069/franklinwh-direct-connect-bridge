@@ -42,6 +42,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Changed
 
+- **Highlights in the README and on the documentation home** (owner 2026-11-19). One
+  line each, with a link to its guide page, for the setup wizard, Scheduler, Analytics,
+  Health, Network monitoring, notifications and HEMS.
 - **Import opens a window first: Choose file…, Paste JSON, Cancel** (#752). On Android the
   file picker is the system's full-screen file browser with no Cancel, so Scheduler →
   Import now opens the bridge's own window; pasted JSON goes through the same import as a
