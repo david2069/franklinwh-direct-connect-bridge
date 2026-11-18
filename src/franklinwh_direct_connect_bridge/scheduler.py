@@ -10,8 +10,8 @@ difference recorded up front:
   of the modbus-bridge service. When Modbus is unreachable the action is listed with
   the reason rather than firing blind. Everything else — operating mode, smart
   circuits, off-grid — runs over the local channel and is hardware-verified. A
-  reserve-SoC action is offered only when a cloud provider is configured, because
-  the local write does not work (see BACKLOG RESEARCH-RESERVE-SOC).
+  reserve-SoC action goes through the cloud provider (#129), because the local write
+  does not work (see BACKLOG RESEARCH-RESERVE-SOC).
 
 Offering a control that silently does nothing is worse than not offering it, so
 unavailable actions are listed with the reason instead of being hidden or faked.
@@ -59,7 +59,7 @@ ACTIONS: dict[str, dict[str, Any]] = {
         "label": "Set reserve SoC",
         "params": ["mode", "soc"],
         "requires_provider": "cloud",
-        "note": "No local write path exists; needs cloud credentials.",
+        "note": "No local write path exists; set through the FranklinWH cloud credentials.",
     },
     "force": {
         "label": "Force charge / discharge / standby",
@@ -2791,8 +2791,35 @@ def _run_action_body(action: dict, *, settings, client, store, snapshot: dict,
                     f"{'ok' if res.get('ok') else res.get('error')}")
 
         if kind == "reserve_soc":
-            return ("reserve_soc skipped: no local write path exists "
-                    "(see RESEARCH-RESERVE-SOC); needs a cloud provider")
+            # The aGate discards a local reserve write; the cloud provider sets it, for
+            # this schedule's own gateway, as POST /api/cloud/reserve does (#129).
+            from . import providers
+            from . import state as _state
+            mode = action.get("mode")
+            try:
+                soc = int(round(float(action.get("soc"))))
+            except (TypeError, ValueError):
+                return f"reserve_soc skipped: not a number: {action.get('soc')!r}"
+            gw = _state.get_gateway(gateway_id) if gateway_id else _state.default_gateway()
+            if gw is None:
+                return "reserve_soc skipped: no gateway"
+            if dry_run:
+                return f"reserve {mode} -> {soc}% (dry run): not sent"
+            has_provider = any(c.get("available") for c in
+                               providers.reserve_provider(settings).get("candidates", []))
+            refused = providers.cloud_target_refusal(
+                settings, serial=gw.serial, serial_locked=bool(getattr(gw, "serial_locked", False)),
+                is_mock=bool(getattr(gw, "is_mock", False))) if has_provider else None
+            if refused:
+                return f"reserve_soc skipped: {refused}"
+            try:
+                out = providers.set_reserve(settings, mode, soc, serial=(gw.serial or "").upper())
+            except providers.ReserveUnavailable as e:
+                return f"reserve_soc skipped: {e}"
+            except Exception as e:  # noqa: BLE001 — the result IS the answer
+                return f"reserve {mode} -> {soc}%: failed: {type(e).__name__}: {e}"
+            ok = out.get("ok", True) if isinstance(out, dict) else True
+            return f"reserve {mode} -> {soc}%: {'applied via cloud' if ok else f'failed: {out}'}"
 
         if kind in UNAVAILABLE:
             return f"{kind} skipped: {UNAVAILABLE[kind]}"

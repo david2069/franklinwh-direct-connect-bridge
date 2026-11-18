@@ -113,6 +113,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Scheduler: Set reserve SoC now sets the reserve** (#129). It was always skipped, even
+  with cloud credentials. It now goes through the FranklinWH cloud for the schedule's own
+  gateway, as the reserve control does, and is skipped with the reason only when the cloud
+  can't write that gateway ([actions](docs/guide/scheduler/actions.md)).
 - **System view on an iPhone in Home Assistant: a blank band under the top bar, and Fit
   didn't fit** (owner 2026-11-19). The overlay added the phone's notch inset below the
   bridge's top bar. A site's diagram on a phone now shows whole with **Fit**, or with −
