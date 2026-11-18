@@ -249,11 +249,17 @@
 
               <div class="flex flex-wrap items-center gap-2">
                 <span>Publish this gateway's entities to Home Assistant?</span>
+                <span x-show="auto && haInv.other_same_agate" data-testid="publish-other-integration"
+                      class="text-xs w-full" style="color:#fbbf24">Another integration already
+                  publishes this aGate to Home Assistant, so No is suggested: both would show
+                  the same battery twice.</span>
                 <!-- Never disabled because the broker is already on (#264): that is the add-on
                      default, and Yes is still what opts THIS wizard's gateways in. -->
-                <button class="btn btn-primary btn-sm" :disabled="ha.busy"
+                <button class="btn btn-sm" :disabled="ha.busy"
+                        :class="auto && haInv.other_same_agate ? 'btn-secondary' : 'btn-primary'"
                         @click="publishYes()">Yes</button>
-                <button class="btn btn-secondary btn-sm" :disabled="ha.busy"
+                <button class="btn btn-sm" :disabled="ha.busy"
+                        :class="auto && haInv.other_same_agate ? 'btn-primary' : 'btn-secondary'"
                         @click="publishNo()">No</button>
                 <span x-show="ha.publishing" class="chip ok" style="padding:0 6px;font-size:.6rem">ON</span>
               </div>
@@ -339,6 +345,10 @@
           <!-- Modbus TCP: where the Modbus client connects. -->
           <template x-if="step === 'modbus'">
             <div class="space-y-3">
+              <p x-show="auto && haInv.modbus_writer" class="text-xs rounded px-2 py-1.5"
+                 style="background:var(--surface-2);color:#fbbf24">The Modbus Bridge already
+                publishes this aGate. Two Modbus writers on the aGate's Modbus TCP Server (:502)
+                can work against each other: skip this unless the other one's writes are off.</p>
               <p>This bridge's Modbus client reads battery ratings and sends force dispatch
                 through the Modbus TCP Server of the active gateway: an aGate or an emulator.</p>
               <div class="flex flex-wrap items-center gap-2">
@@ -391,6 +401,61 @@
               </div>
               <p x-show="hal.msg" class="text-xs" :style="(hal.ok || hal.saved) ? { color: '#86efac' } : { color: '#fca5a5' }"
                  x-text="hal.msg"></p>
+            </div>
+          </template>
+
+          <!-- What Home Assistant already has (#741). Only this bridge's own leftovers can
+               be removed here; every other integration's entities are reported only. -->
+          <template x-if="step === 'haentities'">
+            <div class="space-y-3" data-testid="setup-haentities">
+              <p>FranklinWH entities already in Home Assistant. Old ones from this bridge can be
+                removed; other integrations are only reported, never changed.</p>
+              <p x-show="haInvBusy" class="text-xs" style="color:var(--text-faint)">Checking…</p>
+              <div class="space-y-1">
+                <template x-for="r in haInv.rows" :key="r.kind + r.who + r.what">
+                  <div class="rounded px-2 py-1.5 text-xs" data-testid="ha-entities-row"
+                       style="background:var(--surface-2)">
+                    <div class="flex items-center gap-2">
+                      <span class="flex-1" style="color:var(--text-primary)" x-text="r.who"></span>
+                      <span style="color:var(--text-faint)" x-text="r.entities + ' entities'"></span>
+                      <button x-show="r.action === 'remove'" type="button" class="btn btn-sm"
+                              :class="removeArmed ? 'btn-primary' : 'btn-secondary'" :disabled="haInvBusy"
+                              @click="removeOrphans(r)"
+                              x-text="removeArmed ? ('Remove ' + r.expect + ' — confirm') : ('Remove (' + r.expect + ')')"></button>
+                    </div>
+                    <div x-show="r.what" style="color:var(--text-faint)" x-text="r.what"></div>
+                    <div style="color:#fbbf24" x-text="r.advice"></div>
+                  </div>
+                </template>
+                <p x-show="!haInvBusy && !haInv.rows.length" class="text-xs" style="color:var(--text-faint)">
+                  None found.</p>
+              </div>
+              <p class="text-xs" style="color:var(--text-faint)">
+                <span x-text="haInv.broker && haInv.broker.checked ? 'Broker: checked.' : ('Broker: not checked — ' + ((haInv.broker || {}).why || '') + '.')"></span>
+                <span x-text="haInv.registry && haInv.registry.checked ? 'Home Assistant: checked.' : ('Home Assistant: not checked — ' + ((haInv.registry || {}).why || '') + '.')"></span>
+              </p>
+              <p x-show="haInvMsg" class="text-xs" style="color:var(--text-secondary)" x-text="haInvMsg"></p>
+
+              <!-- Richo's cloud integration: an optional note, never forced (owner, 2026-11-18). -->
+              <template x-if="haInv.richo && haInv.richo.show">
+                <div class="rounded-lg border px-3 py-2 text-xs space-y-1" data-testid="richo-note"
+                     style="border-color:var(--border);color:var(--text-secondary)">
+                  <p style="color:var(--text-primary)">You use the FranklinWH integration (richo).
+                    You can keep it — both work side by side. Later you'll be able to move to the
+                    bridge and keep your entity names and history.</p>
+                  <p>What the bridge adds:</p>
+                  <ul class="list-disc pl-4">
+                    <template x-for="a in haInv.richo.adds" :key="a"><li x-text="a"></li></template>
+                  </ul>
+                  <div class="flex gap-2 pt-1">
+                    <button type="button" class="btn btn-secondary btn-sm" @click="keepBoth()">Keep both</button>
+                    <a class="btn btn-secondary btn-sm" target="_blank" rel="noopener"
+                       :href="$store.app.guideUrl('tour/#the-franklinwh-integration-richo')">Tell me more</a>
+                  </div>
+                </div>
+              </template>
+              <button class="btn btn-secondary btn-sm" :disabled="haInvBusy" @click="loadHaInventory()">
+                Check again</button>
             </div>
           </template>
 

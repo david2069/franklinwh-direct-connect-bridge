@@ -330,6 +330,10 @@ class SetupCloudReq(BaseModel):
     save: bool = True
 
 
+class RichoNoteReq(BaseModel):
+    keep_both: bool = True
+
+
 class SetupStateReq(BaseModel):
     """``done`` when the user finishes, ``skipped`` when they decline."""
     state: str
@@ -4129,6 +4133,59 @@ def create_app() -> FastAPI:
                 "gateways": res.get("gateways") or [], "gateway": res.get("gateway"),
                 "rejected": bool(res.get("rejected")), "held": bool(res.get("held")),
                 "hold": providers.cloud_hold()}
+
+    @app.get("/api/setup/ha-entities")
+    def api_setup_ha_entities():
+        """FranklinWH entities Home Assistant already has (#741): the broker's retained
+        discovery configs and, when HA is linked, its registry. Read-only."""
+        import copy
+        from . import ha_entities
+        from .publish import mqtt_scan
+        s = get_settings()
+        st = db.get_store(s)
+        # The broker: the one publishing uses, or the add-on's before publishing is on.
+        broker = None
+        bs = s if s.mqtt_enabled else None
+        if bs is None:
+            sup = discover_mqtt()
+            if sup.get("found"):
+                bs = copy.copy(s)
+                bs.mqtt_host = sup.get("host") or s.mqtt_host
+                bs.mqtt_port = int(sup.get("port") or s.mqtt_port)
+                bs.mqtt_username = sup.get("username") or ""
+                bs.mqtt_password = sup.get("password") or ""
+        if bs is not None:
+            try:
+                broker = mqtt_scan.scan_orphans(bs, _live_nodes())
+            except Exception as e:  # noqa: BLE001 — a check, never a failure
+                broker = {"ok": False, "error": str(e)}
+        else:
+            broker = {"ok": False, "error": "no broker set up yet"}
+        # The registry and loaded components, from the linked Home Assistant.
+        inst = next((i for i in (st.ha_instances() if st else []) if i.get("enabled", 1)), None)
+        registry, comps = None, []
+        if inst and inst.get("token"):
+            try:
+                registry = ha_instances.franklin_devices(inst["base_url"], inst.get("token"))
+            except Exception:  # noqa: BLE001
+                registry = None
+            comps = ha_instances.components(inst["base_url"], inst.get("token"))
+        serials = [g.serial for g in (get_gateways() or [])
+                   if g.serial and not getattr(g, "is_mock", False)]
+        dismissed = bool(st and st.get_config(ha_entities.RICHO_KEY, "") == "keep_both")
+        return ha_entities.inventory(broker=broker, registry=registry, components=comps,
+                                     serials=serials, richo_dismissed=dismissed,
+                                     purge_ready=bool(s.mqtt_enabled))
+
+    @app.post("/api/setup/ha-entities/richo-note")
+    def api_setup_richo_note(req: RichoNoteReq):
+        """Keep both: the richo note is not shown again. Changes nothing in HA."""
+        from . import ha_entities
+        st = db.get_store(get_settings())
+        if st is None:
+            raise HTTPException(status_code=503, detail="metrics store is disabled")
+        st.set_config(ha_entities.RICHO_KEY, "keep_both" if req.keep_both else "")
+        return {"ok": True, "keep_both": req.keep_both}
 
     @app.get("/api/setup/ha-checks")
     def api_setup_ha_checks(gateway: str | None = Depends(_gateway_opt)):
