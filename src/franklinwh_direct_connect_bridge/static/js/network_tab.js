@@ -6,12 +6,21 @@
  * AWS-IoT endpoint/region (1121, credentials redacted server-side).
  */
 function networkTab() {
+  // The Leaflet map stays out of the reactive data: Alpine's proxy breaks Leaflet objects.
+  let leafletP = null, map = null, layer = null;
   return {
     net: null,
     loading: false,
     pingResult: null,
     pinging: false,
     pop: null,
+    // CloudFront edge period (Today / 7 days / 30 days / All kept) — the tables and the map.
+    popPeriod: '30d',
+    // PoP map dialog (Leaflet, vendored; online tiles). Offline = the tiles or Leaflet
+    // couldn't load: the dialog says so and the tables still work.
+    mapOpen: false,
+    mapOffline: false,
+    mapTransOpen: true,
 
     init() {
       // Loads on first SHOW, not on page load — see lazyTab(). load() pulls the link
@@ -31,6 +40,110 @@ function networkTab() {
 
     error: '',
 
+    async loadPop() {
+      try {
+        const pr = await this.$store.app.fetchTimeout('api/cloud/pop?period=' + this.popPeriod, 10000);
+        this.pop = await pr.json();
+        if (this.mapOpen) this.drawMap();
+      } catch (e) { /* optional */ }
+    },
+
+    setPopPeriod(p) { this.popPeriod = p; this.loadPop(); },
+
+    // "1.5m", "3.2h", "2.1d": how long the edge stayed on a PoP.
+    stayText(s) {
+      if (s == null) return '—';
+      if (s < 3600) return (s / 60).toFixed(1) + 'm';
+      if (s < 86400) return (s / 3600).toFixed(1) + 'h';
+      return (s / 86400).toFixed(1) + 'd';
+    },
+
+    // Errors & retries rows: each library error category, then refreshes / retries / logins.
+    errorRows() {
+      const a = (this.pop && this.pop.api) || null;
+      if (!a) return [];
+      const rows = Object.entries(a.errors_by_type || {}).map(([k, v]) => ({ k, label: k, n: v, err: true }));
+      rows.push({ k: 'refresh', label: 'Token refreshes', n: a.token_refresh_count, err: false });
+      rows.push({ k: 'retry', label: 'Retries (401 → refresh)', n: a.retry_count, err: false });
+      rows.push({ k: 'login', label: 'Logins', n: a.login_count, err: false });
+      return rows;
+    },
+
+    homePop() {
+      const d = (this.pop && this.pop.distribution) || {};
+      return Object.keys(d)[0] || null;        // distribution is sorted, most requests first
+    },
+
+    // Leaflet is loaded on first use only (it's ~150 kB), from the bridge itself.
+    _ensureLeaflet() {
+      if (window.L) return Promise.resolve(window.L);
+      if (leafletP) return leafletP;
+      leafletP = new Promise((resolve, reject) => {
+        const css = document.createElement('link');
+        css.rel = 'stylesheet'; css.href = 'static/css/leaflet-1.9.4.css';
+        document.head.appendChild(css);
+        const s = document.createElement('script');
+        s.src = 'static/js/leaflet-1.9.4.min.js';
+        s.onload = () => resolve(window.L);
+        s.onerror = () => { leafletP = null; reject(new Error('Leaflet did not load')); };
+        document.head.appendChild(s);
+      });
+      return leafletP;
+    },
+
+    async openMap() {
+      this.mapOpen = true;
+      this.mapTransOpen = window.innerWidth >= 640;     // folded on a phone: the map first
+      this.mapOffline = false;
+      await this.$nextTick();
+      try {
+        const L = await this._ensureLeaflet();
+        const el = document.getElementById('pop-map');
+        if (!map) {
+          map = L.map(el, { worldCopyJump: true }).setView([0, 150], 2);
+          const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 8,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+          });
+          let bad = 0;
+          tiles.on('tileerror', () => { if (++bad >= 4) this.mapOffline = true; });
+          tiles.on('tileload', () => { bad = 0; this.mapOffline = false; });
+          tiles.addTo(map);
+        }
+        setTimeout(() => map && map.invalidateSize(), 50);
+        this.drawMap();
+      } catch (e) {
+        this.mapOffline = true;
+      }
+    },
+
+    closeMap() { this.mapOpen = false; },
+
+    drawMap() {
+      const L = window.L;
+      if (!L || !map || !this.pop) return;
+      if (layer) layer.remove();
+      layer = L.layerGroup().addTo(map);
+      const dist = this.pop.distribution || {};
+      const locs = this.pop.locations || {};
+      const max = Math.max(1, ...Object.values(dist));
+      const home = this.homePop();
+      const pts = [];
+      for (const [pp, n] of Object.entries(dist)) {
+        const g = locs[pp];
+        if (!g) continue;                       // unknown code: in the table, not on the map
+        const isHome = pp === home;
+        L.circleMarker([g.lat, g.lon], {
+          radius: 6 + 22 * Math.sqrt(n / max),
+          color: isHome ? '#f59e0b' : '#3b82f6', weight: 2,
+          fillColor: isHome ? '#f59e0b' : '#3b82f6', fillOpacity: isHome ? 0.45 : 0.35,
+        }).bindTooltip(pp + ' · ' + g.city + ' · ' + n + ' requests' + (isHome ? ' · home' : ''))
+          .addTo(layer);
+        pts.push([g.lat, g.lon]);
+      }
+      if (pts.length) map.fitBounds(pts, { padding: [40, 40], maxZoom: 5 });
+    },
+
     async load() {
       this.loading = true;
       this.error = '';
@@ -43,10 +156,7 @@ function networkTab() {
           'api/network' + this.$store.app.gwQuery('?'), 45000);
         if (!r.ok) throw new Error('HTTP ' + r.status);
         this.net = await r.json();
-        try {
-          const pr = await this.$store.app.fetchTimeout('api/cloud/pop', 10000);
-          this.pop = await pr.json();
-        } catch (e) { /* optional */ }
+        await this.loadPop();
         this.ranAt = Date.now();
         this.ranMs = this.ranAt - t0;
       } catch (e) {
@@ -306,7 +416,7 @@ function networkTab() {
             const r = await (await fetch('api/network/ping?count=1' + this.$store.app.gwQuery('&'))).json();
             this.latHistory.push(r.samples ? r.samples[0] : null);
             if (this.latHistory.length > 60) this.latHistory.shift();
-            if (++this.watchTick % 5 === 0) { try { this.pop = await (await fetch('api/cloud/pop')).json(); } catch (e) { /* opt */ } }
+            if (++this.watchTick % 5 === 0) { await this.loadPop(); }
           } catch (e) { this.latHistory.push(null); }
         }
         for (let i = 0; i < 12 && this.watching; i++) await new Promise((res) => setTimeout(res, 500));

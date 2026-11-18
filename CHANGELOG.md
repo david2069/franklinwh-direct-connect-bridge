@@ -13,6 +13,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- **Network: cloud requests, errors and a CloudFront PoP map** (#751). The CloudFront edge
+  card gets a period (Today / 7 days / 30 days / All kept), a **Cloud requests** table (API
+  calls, by HTTP verb) and an **Errors & retries** table (timeout, auth_401, server_5xx,
+  network, parse, with non-zero counts in red, then token refreshes, retries and logins).
+  These are the franklinwh-cloud library's own counters from the same cloud polls, so
+  there is no extra cloud traffic. Edge transitions show how long the edge stayed on each
+  PoP. **Map** opens each PoP at its city, sized by requests, the home PoP highlighted, with
+  the transitions over it; a PoP code the bridge doesn't know is listed but not plotted.
+  The map's tiles are OpenStreetMap's and need internet; offline, it says so and the tables
+  still work ([guide](docs/guide/tour.md)).
+
 - **Battery warranty & wear compares your use with the allowance** (#746). The card now
   shows throughput used from each source (the FranklinWH warranty's warranted − remaining,
   the cloud's discharge total since its first day with data, the bridge's snapshots), your
