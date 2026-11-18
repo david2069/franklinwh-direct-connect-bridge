@@ -11,193 +11,22 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
-### Added
-
-- **Notifications: operating mode changed, aGate on 4G, and off-grid reminders; Send to a
-  role** (#763, owner 2026-11-19). Three Auto-notify triggers, off until you turn them on:
-  **Operating mode changed**, **aGate on 4G mobile / off 4G** (when the 4G alert opens or
-  clears), and **Still off-grid: remind every** 15 minutes (5 minutes to a day), saying
-  **user requested** or **grid outage**, how long, and the battery figures; a restart keeps
-  its count. On a phone with buttons, the mode and 4G ones carry **Turn off** (Settings
-  then says it was turned off from a notification), and the reminder **Stop reminders**
-  until back on-grid. **Send to** gains **A role** (Admins, Users, Viewers) for triggers,
-  critical alerts and Release / Keep: the enabled devices whose new **Account** has that
-  role ([guide](docs/guide/ha-setup-and-notifications.md#send-to)).
-- **System view: Solar forecast & actual** (owner 2026-11-19). A new switch under
-  **Options**, off until turned on. It shows a box on the diagram's left (above it on a
-  phone) with today's solar forecast for the gateway's site, the actual so far and what is
-  still to come. The forecast is the Solar tab's and is read from its cache, so opening the
-  view never waits on Open-Meteo ([tour](docs/guide/tour.md)).
-
-- **Network: Watch is a live ping until Stop, and drop-outs of the last 24 h** (#730). In the
-  Latency test, **Watch** pings the aGate's Local API (`:9000`) once a second until **Stop**,
-  with running min / avg / max / loss and each drop-out's start time and length. It stops by
-  itself after 15 minutes or when you leave the page, and only one runs per gateway at a time.
-  Below it, **Drop-outs in the last 24 h** lists what the bridge's own polls recorded, with
-  each drop-out's length and error, with no extra aGate traffic. Neither touches the Modbus
-  TCP Server (aGate `:502`) ([guide](docs/guide/tour.md)).
-- **Network: cloud requests, errors and a CloudFront PoP map** (#751). The CloudFront edge
-  card gets a period (Today / 7 days / 30 days / All kept), a **Cloud requests** table (API
-  calls, by HTTP verb) and an **Errors & retries** table (timeout, auth_401, server_5xx,
-  network, parse, with non-zero counts in red, then token refreshes, retries and logins).
-  These are the franklinwh-cloud library's own counters from the same cloud polls, so
-  there is no extra cloud traffic. Edge transitions show how long the edge stayed on each
-  PoP. **Map** opens each PoP at its city, sized by requests, the home PoP highlighted, with
-  the transitions over it; a PoP code the bridge doesn't know is listed but not plotted.
-  The map's tiles are OpenStreetMap's and need internet; offline, it says so and the tables
-  still work ([guide](docs/guide/tour.md)).
-
-- **Battery warranty & wear compares your use with the allowance** (#746). The card now
-  shows throughput used from each source (the FranklinWH warranty's warranted − remaining,
-  the cloud's discharge total since its first day with data, the bridge's snapshots), your
-  kWh a day since the install date against **Pace**, SoH against the guaranteed end SoH, and
-  each unit's warranty end with its serial masked. A blank install date is **estimated**
-  from the first day with data in the FranklinWH cloud (observed on one site), marked
-  please confirm ([guide](docs/guide/hems/battery-wear.md)).
-- **Set up HEMS in the setup wizard** (#736). **Energy planning (HEMS)**, under Advanced in
-  the setup list, walks through opting in, the site's location and array (it links to
-  Location & Solar rather than asking again), the battery warranty, your home's usage and
-  heavy loads, then a **Check** of what will be saved, with each load checked against what
-  this bridge can control. **Save** writes the Battery warranty & wear and HEMS setup cards'
-  settings, never the aGate or the cloud, and the result shows in the dialog. Both cards have
-  a **Set up HEMS** link, and the setup list shows it Done once HEMS setup is on. The loads'
-  choice lists read in plain words ([guide](docs/guide/hems/getting-started.md#the-set-up-hems-wizard)).
-
-### Changed
-
-- **Highlights in the README and on the documentation home** (owner 2026-11-19). One
-  line each, with a link to its guide page, for the setup wizard, Scheduler, Analytics,
-  Health, Network monitoring, notifications and HEMS.
-- **Import opens a window first: Choose file…, Paste JSON, Cancel** (#752). On Android the
-  file picker is the system's full-screen file browser with no Cancel, so Scheduler →
-  Import now opens the bridge's own window; pasted JSON goes through the same import as a
-  file, and errors show in the window. The tariff import window gains a **Cancel** button.
-  Validation and the dry-run report are unchanged
-  ([guide](docs/guide/scheduler/index.md)).
-
-- **Short dates on the left** (#748). The Scheduler's activity log shows each time as
-  "18 Nov 18:01" in a narrow fixed-width column, with the full date and seconds on hover or
-  tap, so the message gets the row on a phone. Network → **PoP distribution** is a table
-  with PoP, Share and Requests headers (no "req" on every row), and **Recent edge
-  transitions** is a table with the short date first, then From → To
-  ([guide](docs/guide/scheduler/outcomes.md#activity-log-results)).
-
-- **HEMS has its own section in the guide** (#736). Nine pages under *HEMS (energy
-  planning)*: what HEMS does and doesn't do yet, getting started, the solar forecast and its
-  calibration, the load forecast and its backtest (with HAEO), battery warranty and wear,
-  loads and what this bridge can control, the scheduler sensors with examples, the Home
-  Assistant entity, and troubleshooting. The HEMS setup, battery wear and Load Forecast texts
-  moved there; their old places keep a summary and a link, and the cards' **Guide** links
-  open the new pages ([guide](docs/guide/hems/index.md)).
-
-- **Setup: Automatic, Mock and Custom at the top of the setup list** (#741). Once a
-  gateway exists the wizard opens on the setup list, and the first-run choices were only
-  behind "Start again from the first steps". Three cards now head the list: **Automatic**
-  (the guided path for one aGate and its aPower), **Mock** (a simulated gateway, never
-  published) and **Custom** (the list itself, unchanged) ([guide](docs/guide/tour.md)).
-- **Setup: Automatic asks for the rest in turn** (#741). After the aGate is found and
-  confirmed, Automatic asks only for what is not done yet, each with a Skip: link Home
-  Assistant (address and token, asked early), sign in to the FranklinWH cloud, turn on the
-  Modbus client, publish to Home Assistant. It ends on a summary of what is set up, says
-  when more than one aGate or aPower was found, and links to Custom for the rest
-  ([guide](docs/guide/tour.md)).
-- **Setup: existing Home Assistant entities** (#741). Before anything is published,
-  Automatic and the setup list show the FranklinWH entities Home Assistant already has: from
-  the broker's retained discovery messages and, when Home Assistant is linked, its registry
-  (including true `_2` duplicates). This bridge's own leftovers can be removed after a
-  second click; other integrations' entities are only reported. When another integration
-  publishes the same aGate, Publish suggests No and the Modbus step warns of a second
-  Modbus writer. With richo's FranklinWH integration loaded, an optional note says both can
-  run side by side and lists what the bridge adds; **Keep both** hides it for good
-  ([guide](docs/guide/tour.md)).
-
-### Fixed
-
-- **Scheduler: Pause holds a run, and Resume runs it again** (#200). Pause didn't find a
-  run that had already fired (a running force), and the scheduler retried a paused run on
-  its next tick. Now Pause releases and holds the open window's run, the scheduler leaves it
-  alone, and Resume re-enters it ([outcomes](docs/guide/scheduler/outcomes.md#run-now-and-stop)).
-- **Shutdown: a force started by the scheduler's last tick is released too** (#367). The
-  release ran while a tick could still be running, so a force it started kept going. The
-  bridge now waits for the scheduler to stop (up to 5 s) before releasing
-  ([battery dispatch](docs/guide/battery-dispatch.md)).
-
-- **Gateways: a gateway's own port is used** (#364). The roster kept a per-gateway port, but
-  every request went to the global port, so a gateway added on another port (an emulator,
-  say) wasn't reached on it ([multi-gateway](docs/guide/multi-gateway.md)).
-- **Logs: the filter row's controls are one height** (owner 2026-11-19). The search box
-  and drop-downs were taller than the Live, Refresh and Export buttons beside them.
-- **Audit trail: the aGate Modbus TCP Server switch and Home Assistant mode changes are
-  recorded** (#130). Neither wrote an entry. They are `der_comms` and `set_mode` (source
-  `ha`) ([control](docs/guide/control.md)).
-
-- **Scheduler: Stop no longer forgets a force it failed to release** (#366). It ended the
-  dispatch whether the release worked or not; now, like Delete, a failed release keeps the
-  dispatch active and Stop reports the failure
-  ([exit and conflicts](docs/guide/scheduler/exit-and-conflicts.md)).
-- **Scheduler: Set reserve SoC now sets the reserve** (#129). It was always skipped, even
-  with cloud credentials. It now goes through the FranklinWH cloud for the schedule's own
-  gateway, as the reserve control does, and is skipped with the reason only when the cloud
-  can't write that gateway ([actions](docs/guide/scheduler/actions.md)).
-
-- **Scheduler: `%ha:<instance>:<entity>%` in a message is now replaced** (#169). Only
-  `%sensor.id%` was; a Home Assistant placeholder was sent as typed. The entity must be
-  exposed to the scheduler, or it prints `?`
-  ([actions](docs/guide/scheduler/actions.md#placeholders-in-notifications)).
-
-- **Notifications: "Battery dispatch started / ended" now sends "ended", and covers this
-  bridge's own forces** (#173). Only "started" was sent, and only for a dispatch this
-  bridge didn't start. "Ended" gives the site's power and how long it ran
-  ([guide](docs/guide/ha-setup-and-notifications.md)).
-- **System view on an iPhone in Home Assistant: a blank band under the top bar, and Fit
-  didn't fit** (owner 2026-11-19). The overlay added the phone's notch inset below the
-  bridge's top bar. A site's diagram on a phone now shows whole with **Fit**, or with −
-  from its full-width view. franklinwh-system-view 0.4.1 → 0.5.1
-  ([tour](docs/guide/tour.md)).
-- **The OFF-GRID dialog's Details never showed the generator** (#701). It checked a flag
-  that nothing set. It now uses System Setup's generator input, which is what the gateway
-  reported, or your answer there, so an installed generator's state, kW and kWh today appear
-  ([guide](docs/guide/control.md)).
-- **Scheduler: ticking Actionable on a newly added notification threw errors** (#739).
-  A notification added in the editor lacked its buttons, recipients and wait, so the
-  Actionable section couldn't show them until the schedule was saved and reopened. It now
-  starts with the same defaults as a saved one (Yes / No, all enabled phones, 5 minutes).
-- **The Network tab threw "watching is not defined" on load** (#750). The Watch
-  button's state was never declared, so the browser console filled with errors and Watch
-  showed nothing until pressed. It now starts off, as intended.
-- **On a phone, Edit schedule's Save and Cancel were under the bottom nav** (#734). The
-  schedule form and seven other dialogs (scheduler presets, imports and TOU import, smart
-  circuits, generator, Home Assistant, Modbus history import) sat below the bottom nav, so
-  on an iPhone a tap on Save hit a nav tab. Every dialog now opens above the nav; the
-  schedule form never grows past the screen, keeps clear of the iPhone's home bar, and its
-  body scrolls.
-
-- **"aGate is using 4G — Wi-Fi has no internet" claimed more than the aGate reports**
-  (#728). The aGate and the FranklinWH cloud only say 4G is the active link and Wi-Fi is
-  on standby; the alert, its help and the Troubleshoot verdict now read "aGate is using 4G —
-  Wi-Fi is on standby". Its code, severity and timing are unchanged. Alert and Troubleshoot
-  times, which are in the site's time, now name the site's zone (e.g. "UTC+11") when your
-  device is in another zone, so a time is not misread as hours old
-  ([guide](docs/guide/ha-setup-and-notifications.md)).
-- **The alert bar under the top bar could not be closed** (#727). After an alert such as
-  "aGate is using 4G" was acknowledged, its bar stayed until the fault cleared, cut off on
-  a phone and naming the gateway by its id. The bar now has **×** and the alert list has
-  **Dismiss**, which hide it for everyone until the condition clears (a new occurrence
-  shows again); the bar wraps its full text and names the gateway
-  ([guide](docs/guide/ha-setup-and-notifications.md#alerts)).
-
-- **Troubleshoot showed the LAN answering while :9000 refused, and the 4G verdict without its
-  reading time** (#728). The Connection card took the link record, which stays "up" until three
-  failed probes, so for a few minutes it said "answering on :9000" while the Health check,
-  probing afresh, said refused; both now use one rule, and a link with no good poll lately
-  reads "not answering lately". The verdict says whose reading it is: the FranklinWH cloud
-  just now, or the aGate's own report and the time it was read (an aGate report older than
-  two network reads is not used). A cloud call that failed reads "asked, no answer", not
-  "not asked" ([guide](docs/guide/ha-setup-and-notifications.md#troubleshoot)).
-
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
+
+## 2026-11-19
+
+### [0.5.53](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.53.md)
+
+Added 6 · Changed 7 · Fixed 17
+
+- Notifications: operating mode changed, aGate on 4G and off-grid reminders, Send to a…
+- Scheduler: Set reserve SoC sets the reserve
+- Setup and HEMS: Automatic, Mock and Custom at the top of the setup list, existing Home…
+- Network: a live Watch ping with drop-outs of the last 24 h, cloud requests and a…
+- System view: Solar forecast & actual, and a blank band and Fit fixed on an iPhone in Home…
+- Fixes: each gateway's own port used
 
 ## 2026-11-18
 
