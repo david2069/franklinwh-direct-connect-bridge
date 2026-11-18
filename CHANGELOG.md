@@ -113,6 +113,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Notifications: "Battery dispatch started / ended" now sends "ended", and covers this
+  bridge's own forces** (#173). Only "started" was sent, and only for a dispatch this
+  bridge didn't start. "Ended" gives the site's power and how long it ran
+  ([guide](docs/guide/ha-setup-and-notifications.md)).
 - **System view on an iPhone in Home Assistant: a blank band under the top bar, and Fit
   didn't fit** (owner 2026-11-19). The overlay added the phone's notch inset below the
   bridge's top bar. A site's diagram on a phone now shows whole with **Fit**, or with −

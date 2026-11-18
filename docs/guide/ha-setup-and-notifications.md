@@ -243,7 +243,7 @@ off-grid reminder an interval in minutes.
 |---|---|---|---|
 | aGate offline / online | on | The gateway stops or starts answering polls. A poll the aGate refuses (its login or power-flow read answers `result 1`) counts as not answering, and the log gives the reason. | "aGate is UNREACHABLE [gateway] — check network / WiFi / power." / "aGate is reachable again [gateway]." |
 | Off-grid started / ended | on | The off-grid flag changes. The message says why, in the top bar's words: **user requested** (someone asked for off-grid) or **grid outage** (no request was made); **reason unknown** when that wasn't read. It also gives the SoC, stored kWh, home load and solar, and how long the battery will last at the **current** usage: SoC × **Battery capacity** (Automation constants) ÷ (home − solar − generator). An off-grid you requested runs only to the **Reconnect SoC**, when the aGate returns to the grid, so its time is to that. The FranklinWH app estimates from historical usage instead. Without a Battery capacity there is no estimate; when solar covers the home it says so. | "Gateway went OFF-GRID [gateway] (grid outage) — running on battery: SoC 80%, stored 10.9 kWh, home 2.0 kW — about 5 h 26 min left at current usage." / "Gateway is back ON-GRID [gateway]." |
-| Battery dispatch (VPP / force) started / ended | on | A dispatch is found active at start-up, or one starts that **this bridge did not start**. | "FranklinWH — VPP dispatch active at startup" / "FranklinWH — battery dispatch started (VPP)" |
+| Battery dispatch (VPP / force) started / ended | on | A dispatch is found active at start-up, one starts (from a VPP programme, the app, the Modbus Bridge, or a force from this bridge), or one ends. The message names the source and gives the site's power; "ended" says how long it ran when its start was seen (#173). | "FranklinWH — VPP dispatch active at startup" / "FranklinWH — battery dispatch started (VPP)" / "FranklinWH — battery dispatch ended" |
 | Battery SoC drops below | off, 20 % | SoC crosses the threshold downward. | "Battery SoC dropped below 20% [gateway] (now N%)." |
 | Battery SoC reaches | off, 100 % | SoC crosses the threshold upward. | "Battery SoC reached 100% [gateway] (now N%)." |
 | Bridge started / restarted / stopped | on | The bridge starts or stops. A start after a clean stop is a **restart**: it says how long the bridge was down and, after an update, the version it came from. A start with no clean stop before it (first run, or a crash or power cut) is **started**. | "Bridge started (v0.5.36)." / "Bridge restarted (v0.5.36, updated from 0.5.35) after 1 min 35 s down." / "Bridge stopping (v0.5.36) — no polling or notifications until it starts again." |
@@ -687,13 +687,9 @@ tokens.
 
 ## Not yet available
 
-- **No "dispatch ended" notification**, although the trigger is labelled "started /
-  ended". A dispatch that this bridge started itself is not notified at its start
-  either.
 - **No push for** the Modbus TCP Server (aGate :502) going down, a firmware change, the
   aGate moving, or rejected cloud credentials. These are persistent notifications only,
   with no switch.
-- **No targeting by user or role** (#470). **Send to** is all devices or chosen devices.
 - **No quiet hours, cooldown or rate limit.**
 - **No filter for phones.** The service list shows every `notify.*` service, not only
   `mobile_app_*`.
