@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Direct Connect Bridge Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a left-to-right rail of setup columns grouped into three bands (Run it / Reach the aGate / Into your home), then a transport capability matrix. */
+:root {
+  --bg: #f3f6f5;
+  --surface: #ffffff;
+  --surface-2: #eaf0ee;
+  --fg: #0f1d1a;
+  --muted: #56655f;
+  --line: #d5dfdb;
+  --accent: #10a874;          /* Bridge green, from the add-on logo */
+  --accent-ink: #0a7c55;
+  --accent-soft: #dcf4ea;
+  --ha: #1a9fd8;  --ha-soft: #e0f3fc;
+  --mqtt: #8b3fd9; --mqtt-soft: #f1e7fc;
+  --cloud: #2d5fd1; --cloud-soft: #e5ecfb;
+  --modbus: #c67a06; --modbus-soft: #fcf0d9;
+  --mock: #6b7a74; --mock-soft: #eef1f0;
+  --yes: #10a874; --part: #c67a06; --can: #8a9a94; --no: #c4413a;
+  --f-display: "Sora", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Helvetica Neue", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0b1311; --surface: #121d1a; --surface-2: #18251f; --fg: #e6efec; --muted: #93a49e; --line: #26352f;
+  --accent: #2fd196; --accent-ink: #5be0ad; --accent-soft: #123a2b;
+  --ha: #54c4f5; --ha-soft: #10303f; --mqtt: #b98af0; --mqtt-soft: #2a1a3e;
+  --cloud: #7ea2f5; --cloud-soft: #17233f; --modbus: #f0a940; --modbus-soft: #35260d;
+  --mock: #9fb0aa; --mock-soft: #1c2824;
+  --yes: #2fd196; --part: #f0a940; --can: #6f817a; --no: #f0776f;
+  color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #0b1311; --surface: #121d1a; --surface-2: #18251f; --fg: #e6efec; --muted: #93a49e; --line: #26352f;
+  --accent: #2fd196; --accent-ink: #5be0ad; --accent-soft: #123a2b;
+  --ha: #54c4f5; --ha-soft: #10303f; --mqtt: #b98af0; --mqtt-soft: #2a1a3e;
+  --cloud: #7ea2f5; --cloud-soft: #17233f; --modbus: #f0a940; --modbus-soft: #35260d;
+  --mock: #9fb0aa; --mock-soft: #1c2824;
+  --yes: #2fd196; --part: #f0a940; --can: #6f817a; --no: #f0776f;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+img { max-width: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1480px; margin: 0 auto; padding-block: 40px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 48px; }
+.wrap > * { min-width: 0; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+.mono { font-family: var(--f-mono); }
+
+/* Header */
+header { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: center; }
+.brand-mark { width: 72px; height: 72px; }
+.eyebrow { font: 500 12px/1 var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--accent-ink); }
+header h1 { font-size: clamp(26px, 3.6vw, 40px); font-weight: 700; letter-spacing: -.02em; margin-top: 8px; }
+header p { margin: 8px 0 0; color: var(--muted); max-width: 72ch; }
+.flow { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; font: 500 13px var(--f-mono); color: var(--muted); }
+.flow .node { padding: 6px 10px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line); color: var(--fg); }
+.flow .node.hub { background: var(--accent); border-color: var(--accent); color: #fff; }
+.flow .arrow { color: var(--accent); }
+
+/* Section heading */
+.sec-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 8px 24px; margin-bottom: 18px; }
+.sec-head h2 { font-size: 22px; font-weight: 600; letter-spacing: -.01em; }
+.sec-head p { margin: 4px 0 0; color: var(--muted); max-width: 70ch; }
+
+/* Rail of columns */
+.rail-scroll { overflow-x: auto; padding-bottom: 8px; scroll-snap-type: x proximity; }
+.rail { display: grid; grid-template-columns: repeat(7, minmax(196px, 1fr)); column-gap: 12px; row-gap: 10px; min-width: 1500px; }
+@media (min-width: 1500px) { .rail { min-width: 0; } }
+.band { font: 600 11px/1 var(--f-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted);
+  display: flex; align-items: center; gap: 10px; padding-bottom: 2px; }
+.band::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.band.b1 { grid-column: 1 / span 2; } .band.b2 { grid-column: 3 / span 2; } .band.b3 { grid-column: 5 / span 3; }
+.band .tag { padding: 4px 7px; border-radius: 4px; background: var(--surface-2); color: var(--fg); letter-spacing: .08em; }
+
+.col { --c: var(--accent); --cs: var(--accent-soft);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 16px 16px;
+  display: grid; grid-template-rows: auto auto auto 1fr auto; gap: 12px; scroll-snap-align: start; min-width: 0; position: relative; }
+.col::before { content: ""; position: absolute; left: 16px; right: 16px; top: -1px; height: 3px; border-radius: 0 0 3px 3px; background: var(--c); }
+.col.mock { --c: var(--mock); --cs: var(--mock-soft); border-style: dashed; }
+.col.cloud { --c: var(--cloud); --cs: var(--cloud-soft); }
+.col.modbus { --c: var(--modbus); --cs: var(--modbus-soft); }
+.col.mqtt { --c: var(--mqtt); --cs: var(--mqtt-soft); }
+.col.ha, .col.notify { --c: var(--ha); --cs: var(--ha-soft); }
+.col-top { display: flex; align-items: center; gap: 12px; }
+.logo { width: 46px; height: 46px; flex: none; border-radius: 11px; background: var(--cs); display: grid; place-items: center; }
+.logo svg { width: 30px; height: 30px; }
+.kind { font: 500 10.5px/1 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--c); }
+.col h3 { font-size: 16.5px; font-weight: 600; line-height: 1.2; margin-top: 4px; }
+.what { margin: 0; color: var(--muted); font-size: 13.5px; }
+.need { font-size: 12.5px; background: var(--surface-2); border-radius: 8px; padding: 8px 10px; }
+.need b { font: 600 10.5px var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: 2px; }
+ul.gains { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; font-size: 13.5px; align-content: start; }
+ul.gains li { display: grid; grid-template-columns: 16px 1fr; gap: 6px; }
+ul.gains li::before { content: ""; width: 9px; height: 9px; margin-top: 6px; border-radius: 2px; background: var(--c); transform: rotate(45deg); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
+.chip { font: 500 11.5px var(--f-mono); padding: 3px 7px; border-radius: 5px; background: var(--cs); color: var(--fg); white-space: nowrap; }
+
+/* Matrix */
+.matrix-scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; min-width: 860px; font-size: 14px; }
+thead th { text-align: left; vertical-align: bottom; padding: 18px 16px 14px; border-bottom: 1px solid var(--line); font-weight: 400; }
+thead th:first-child { width: 30%; }
+.th-name { display: flex; align-items: center; gap: 10px; }
+.th-name .logo { width: 38px; height: 38px; border-radius: 9px; }
+.th-name .logo svg { width: 24px; height: 24px; }
+.th-name strong { font-family: var(--f-display); font-size: 15px; font-weight: 600; display: block; line-height: 1.2; }
+.th-role { font: 500 10.5px var(--f-mono); letter-spacing: .1em; text-transform: uppercase; }
+.th-sub { display: block; margin-top: 8px; font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+th.t-dc .th-role { color: var(--accent-ink); } th.t-cloud .th-role { color: var(--cloud); } th.t-mb .th-role { color: var(--modbus); }
+th.t-dc .logo { background: var(--accent-soft); } th.t-cloud .logo { background: var(--cloud-soft); } th.t-mb .logo { background: var(--modbus-soft); }
+tbody th { text-align: left; font-weight: 500; padding: 10px 16px; vertical-align: top; }
+tbody td { padding: 10px 16px; vertical-align: top; color: var(--muted); font-size: 13px; }
+tbody tr + tr > * { border-top: 1px solid var(--line); }
+tr.grp th { padding: 18px 16px 8px; font: 600 11px var(--f-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); }
+td.t-dc { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+.st { display: inline-flex; align-items: center; gap: 7px; font-weight: 500; color: var(--fg); font-size: 13.5px; }
+.st i { width: 12px; height: 12px; border-radius: 50%; flex: none; display: inline-block; }
+.st.yes i { background: var(--yes); }
+.st.part i { background: linear-gradient(90deg, var(--part) 50%, transparent 50%); border: 2px solid var(--part); }
+.st.can i { border: 2px solid var(--can); }
+.st.can { color: var(--muted); }
+.st.no i { background: transparent; position: relative; }
+.st.no i::before, .st.no i::after { content: ""; position: absolute; left: 5px; top: -1px; width: 2px; height: 14px; background: var(--no); border-radius: 1px; transform: rotate(45deg); }
+.st.no i::after { transform: rotate(-45deg); }
+.st.no { color: var(--no); }
+td small { display: block; margin-top: 2px; line-height: 1.4; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; color: var(--muted); }
+.answer { margin-top: 16px; background: var(--cloud-soft); border-radius: 10px; padding: 14px 16px; font-size: 14px; max-width: 100ch; }
+.answer b { font-family: var(--f-display); }
+
+/* Origin slide: one deliberately dark panel in both themes */
+.slide { --s-bg: #0c1a16; --s-panel: #13261f; --s-line: #24413a; --s-fg: #e8f2ee; --s-muted: #9db3ab; --s-green: #33d69b; --s-gold: #f2b544;
+  background: var(--s-bg); color: var(--s-fg); border-radius: 18px; overflow: hidden;
+  padding-block: 32px 28px; padding-left: clamp(16px, 3vw, 40px); padding-right: clamp(16px, 3vw, 40px);
+  display: grid; gap: 28px; }
+.slide .eyebrow { color: var(--s-green); }
+.slide h2 { font-size: clamp(22px, 2.8vw, 32px); font-weight: 700; letter-spacing: -.02em; margin-top: 8px; }
+.slide .lede { margin: 10px 0 0; color: var(--s-muted); max-width: 78ch; font-size: 15.5px; }
+.purpose { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; }
+.p-step { background: var(--s-panel); border: 1px solid var(--s-line); padding: 14px 16px; position: relative; min-width: 0; }
+.p-step:first-child { border-radius: 10px 0 0 10px; } .p-step:last-child { border-radius: 0 10px 10px 0; }
+.p-step + .p-step { border-left: 0; }
+.p-step + .p-step::before { content: ""; position: absolute; left: -8px; top: 50%; width: 14px; height: 14px; margin-top: -7px;
+  background: var(--s-bg); border-top: 2px solid var(--s-green); border-right: 2px solid var(--s-green); transform: rotate(45deg); }
+.p-step b { display: block; font: 500 10.5px var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--s-green); margin-bottom: 4px; }
+.p-step span { font-family: var(--f-display); font-weight: 600; font-size: 15px; line-height: 1.3; display: block; }
+.p-step small { display: block; color: var(--s-muted); font-size: 12.5px; margin-top: 4px; }
+@media (max-width: 760px) {
+  .purpose { grid-template-columns: 1fr; }
+  .p-step:first-child { border-radius: 10px 10px 0 0; } .p-step:last-child { border-radius: 0 0 10px 10px; }
+  .p-step + .p-step { border-left: 1px solid var(--s-line); border-top: 0; }
+  .p-step + .p-step::before { left: 50%; top: -8px; margin: 0 0 0 -7px; transform: rotate(135deg); }
+}
+.tl-scroll { overflow-x: auto; padding-bottom: 6px; }
+.tl { display: grid; grid-template-columns: repeat(6, minmax(190px, 1fr)); gap: 0 14px; min-width: 1200px; position: relative; padding-top: 30px; }
+.tl::before { content: ""; position: absolute; left: 0; right: 0; top: 9px; height: 2px; background: linear-gradient(90deg, var(--s-line), var(--s-green)); }
+.ph { position: relative; display: grid; align-content: start; gap: 8px; }
+.ph::before { content: ""; position: absolute; top: -27px; left: 0; width: 14px; height: 14px; border-radius: 50%; background: var(--s-bg); border: 3px solid var(--s-green); }
+.ph .when { font: 500 12px var(--f-mono); color: var(--s-muted); letter-spacing: .04em; }
+.ph h3 { font-size: 16px; font-weight: 600; }
+.ph ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; font-size: 13px; color: var(--s-fg); }
+.ph li { padding-left: 12px; border-left: 2px solid var(--s-line); line-height: 1.4; }
+.ph li em { font-style: normal; font: 500 11px var(--f-mono); color: var(--s-muted); display: block; }
+.ph.core { background: color-mix(in srgb, var(--s-gold) 10%, transparent); border: 1px solid color-mix(in srgb, var(--s-gold) 45%, transparent);
+  border-radius: 12px; padding: 12px; margin-top: -12px; }
+.ph.core::before { border-color: var(--s-gold); background: var(--s-gold); top: -15px; left: 12px; }
+.ph.core li { border-left-color: var(--s-gold); }
+.core-tag { justify-self: start; font: 600 10.5px var(--f-mono); letter-spacing: .12em; text-transform: uppercase; background: var(--s-gold); color: #241a04; padding: 3px 7px; border-radius: 4px; }
+.slide-foot { font-size: 12px; color: var(--s-muted); border-top: 1px solid var(--s-line); padding-top: 14px; }
+.slide code { background: var(--s-panel); color: var(--s-fg); }
+
+.th-sub a, .answer a { color: var(--cloud); text-decoration: underline; text-underline-offset: 2px; }
+.th-sub a:focus-visible, .answer a:focus-visible { outline: 2px solid var(--cloud); outline-offset: 2px; border-radius: 2px; }
+header .repo { margin-top: 6px; font: 500 13px var(--f-mono); }
+header .repo a, footer a { color: var(--accent-ink); text-underline-offset: 2px; }
+footer .repos { margin: 0 0 8px; color: var(--fg); }
+footer a:focus-visible, header .repo a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+footer { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 18px; max-width: 110ch; }
+code { font-family: var(--f-mono); font-size: .9em; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+@media (max-width: 560px) { header { grid-template-columns: 1fr; } .brand-mark { width: 56px; height: 56px; } }
+</style>
+</head>
+<body>
+
+<!-- Icon library -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-bridge" viewBox="0 0 48 48">
+      <rect x="2" y="2" width="44" height="44" rx="11" fill="#12b57d"/>
+      <path d="M27.5 7 13 27h10l-3 14 15-21H25z" fill="#fff"/>
+    </symbol>
+    <symbol id="i-mock" viewBox="0 0 48 48">
+      <rect x="3" y="3" width="42" height="42" rx="10" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="6 5"/>
+      <path d="M27.5 9 14.5 27h9l-2.7 12.5L34 21h-9z" fill="currentColor" opacity=".85"/>
+    </symbol>
+    <symbol id="i-cloud" viewBox="0 0 48 48">
+      <path d="M14 38h22a9 9 0 0 0 1.6-17.85A12 12 0 0 0 14.4 17.6 10.2 10.2 0 0 0 14 38z" fill="currentColor"/>
+      <path d="M26.5 17 19 28h5.5l-1.6 7 7.6-11H25z" fill="#fff"/>
+    </symbol>
+    <symbol id="i-modbus" viewBox="0 0 48 48">
+      <rect x="6" y="8" width="36" height="32" rx="5" fill="none" stroke="currentColor" stroke-width="3.2"/>
+      <rect x="12" y="15" width="24" height="4" rx="2" fill="currentColor"/>
+      <rect x="12" y="22" width="17" height="4" rx="2" fill="currentColor" opacity=".7"/>
+      <rect x="12" y="29" width="21" height="4" rx="2" fill="currentColor" opacity=".45"/>
+    </symbol>
+    <symbol id="i-mqtt" viewBox="0 0 320 320">
+      <path fill="#8b3fd9" d="M7.1,180.6v117.1c0,8.4,6.8,15.3,15.3,15.3H142C141,239.8,80.9,180.7,7.1,180.6z"/>
+      <path fill="#8b3fd9" d="M7.1,84.1v49.8c99,0.9,179.4,80.7,180.4,179.1h51.7C238.2,186.6,134.5,84.2,7.1,84.1z"/>
+      <path fill="#8b3fd9" d="M312.9,297.6V193.5C278.1,107.2,207.3,38.9,119,7.1H22.4c-8.4,0-15.3,6.8-15.3,15.3v15c152.6,0.9,276.6,124,277.6,275.6h13C306.1,312.9,312.9,306.1,312.9,297.6z"/>
+      <path fill="#8b3fd9" d="M272.6,49.8c14.5,14.4,28.6,31.7,40.4,47.8V22.4c0-8.4-6.8-15.3-15.3-15.3h-77.3C238.4,19.7,256.6,33.9,272.6,49.8z"/>
+    </symbol>
+    <symbol id="i-ha" viewBox="0 0 100 100">
+      <path fill="#41BDF5" d="M50,4C53,4 98,37 98,43L98,88Q98,96 90,96L10,96Q2,96 2,88L2,43C2,37 47,4 50,4Z"/>
+      <line x1="50" y1="33" x2="50" y2="66" stroke="#EEF6FF" stroke-width="8" stroke-linecap="round"/>
+      <line x1="50" y1="64" x2="29" y2="80" stroke="#EEF6FF" stroke-width="8" stroke-linecap="round"/>
+      <line x1="50" y1="55" x2="67" y2="64" stroke="#EEF6FF" stroke-width="8" stroke-linecap="round"/>
+      <circle cx="50" cy="31" r="8" fill="#EEF6FF"/><circle cx="28" cy="82" r="8" fill="#EEF6FF"/><circle cx="68" cy="65" r="8" fill="#EEF6FF"/>
+    </symbol>
+    <symbol id="i-ha-bell" viewBox="0 0 100 100">
+      <use href="#i-ha"/>
+      <circle cx="78" cy="24" r="21" fill="#f2a516"/>
+      <path d="M78 12c-5.5 0-9 4-9 9v6l-3 4h24l-3-4v-6c0-5-3.5-9-9-9zm-4 21a4 4 0 0 0 8 0z" fill="#fff"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+
+<header>
+  <svg class="brand-mark" aria-hidden="true"><use href="#i-bridge"/></svg>
+  <div>
+    <div class="eyebrow">FranklinWH Direct Connect Bridge</div>
+    <h1>One bridge, layered setups</h1>
+    <p>The Bridge always talks to your aGate over the local Direct Connect API. Everything to the right is optional: switch on another transport when you need a write the local API can't do, or publish into Home Assistant.</p>
+    <p class="repo"><a href="https://github.com/david2069/franklinwh-direct-connect-bridge" target="_blank" rel="noopener">github.com/david2069/franklinwh-direct-connect-bridge</a></p>
+  </div>
+  <div class="flow" aria-label="Data flow">
+    <span class="node">aGate · aPower</span>
+    <span class="arrow">⇄ Direct Connect · + Cloud · + Modbus</span>
+    <span class="node hub">Direct Connect Bridge</span>
+    <span class="arrow">→</span>
+    <span class="node">Web UI · REST API</span>
+    <span class="node">MQTT → Home Assistant</span>
+    <span class="node">Phone notifications</span>
+  </div>
+</header>
+
+<section class="slide" aria-labelledby="why-h">
+  <div>
+    <div class="eyebrow">Why the Bridge exists</div>
+    <h2 id="why-h">A working example of the Direct Connect API, grown into a full app</h2>
+    <p class="lede">The Bridge started as a reference implementation of FranklinWH's local Direct Connect API. The goal was a REST API with an OpenAPI specification that a user interface could be built on, to run and administer an aGate and its aPowers: first one gateway, then several. Home Assistant support and scheduling were built on that foundation.</p>
+  </div>
+
+  <div class="purpose">
+    <div class="p-step"><b>Library</b><span>Direct Connect API</span><small>Reverse-engineered from Wireshark packet captures</small></div>
+    <div class="p-step"><b>Working example</b><span>The Bridge</span><small>Shows the library in real use, against real hardware</small></div>
+    <div class="p-step"><b>Contract</b><span>REST API + OpenAPI spec</span><small>Every feature available to other apps</small></div>
+    <div class="p-step"><b>Product</b><span>A UI to run aGate and aPower</span><small>One gateway first, then several from one install</small></div>
+  </div>
+
+  <div class="tl-scroll">
+    <div class="tl">
+      <div class="ph">
+        <div class="when">2–5 Aug 2026</div>
+        <h3>Foundation</h3>
+        <ul>
+          <li>Live dashboard and REST API, all reads in one session<em>2 Aug</em></li>
+          <li>MQTT with Home Assistant discovery, verified on the real aGate<em>2 Aug</em></li>
+          <li>Finds the aGate again when its IP changes; firmware and moved notices to HA<em>5 Aug</em></li>
+        </ul>
+      </div>
+      <div class="ph">
+        <div class="when">7–8 Aug 2026</div>
+        <h3>One gateway to many</h3>
+        <ul>
+          <li>Mock aGate emulator and demo mode<em>7 Aug</em></li>
+          <li>Multi-gateway monitoring<em>8 Aug</em></li>
+          <li>Cloud-aligned API and gated writes<em>8 Aug</em></li>
+        </ul>
+      </div>
+      <div class="ph">
+        <div class="when">Aug – 14 Sep 2026</div>
+        <h3>History and transports</h3>
+        <ul>
+          <li>SQLite metrics and logs<em>by 10 Sep</em></li>
+          <li>Cloud transport for reserve SoC<em>by 10 Sep</em></li>
+          <li>Generator writes verified on hardware<em>14 Sep</em></li>
+        </ul>
+      </div>
+      <div class="ph core">
+        <span class="core-tag">Core</span>
+        <div class="when">15–22 Sep 2026</div>
+        <h3>Scheduling</h3>
+        <ul>
+          <li>Scheduler v1 with Home Assistant actions<em>15 Sep</em></li>
+          <li>Multiple HA instances and phone notification devices<em>15 Sep</em></li>
+          <li>Interval and cron triggers, priority, exit conditions<em>22 Sep</em></li>
+          <li>Scheduled force charge and discharge<em>22 Sep</em></li>
+        </ul>
+      </div>
+      <div class="ph">
+        <div class="when">25–27 Sep 2026</div>
+        <h3>Operate and account</h3>
+        <ul>
+          <li>Database backup and restore<em>25 Sep</em></li>
+          <li>Push-notification triggers and billing periods<em>26 Sep</em></li>
+          <li>Setup wizard with broker conflict check<em>27 Sep</em></li>
+        </ul>
+      </div>
+      <div class="ph">
+        <div class="when">4 Oct – 18 Nov 2026</div>
+        <h3>Public and Home Assistant app</h3>
+        <ul>
+          <li>Public release on GitHub<em>4 Oct</em></li>
+          <li>First live HA add-on install; install guide on HA OS with 0.5.0<em>15–16 Oct</em></li>
+          <li>System view overlay<em>0.5.22, 1 Nov</em></li>
+          <li>Current release<em>0.5.52, 18 Nov</em></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="slide-foot">Dates come from the original roadmap in BACKLOG.md, completion dates in BACKLOG_ARCHIVE.md, CHANGELOG.md and git history. Work before 4 Oct happened in a private repository, so those dates are as recorded in the backlog. "By 10 Sep" marks features first reported in the 10 Sep API comparison without an exact landing date.</div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <div>
+      <h2>Installation types, left to right</h2>
+      <p>Start with the default setup (or the mock gateways if you have no hardware yet), then add layers. Each column says what it needs and what you get.</p>
+    </div>
+  </div>
+  <div class="rail-scroll">
+    <div class="rail">
+      <div class="band b1"><span class="tag">Run it</span></div>
+      <div class="band b2"><span class="tag">Reach the aGate</span></div>
+      <div class="band b3"><span class="tag">Into your home</span></div>
+
+      <!-- Default -->
+      <article class="col">
+        <div class="col-top"><div class="logo"><svg><use href="#i-bridge"/></svg></div>
+          <div><div class="kind">Baseline</div><h3>Default setup</h3></div></div>
+        <p class="what">Bridge + your aGate over the local Direct Connect API. No cloud account, no broker.</p>
+        <div class="need"><b>You need</b>aGate on the LAN with a fixed IP. Nothing to enable on the gateway.</div>
+        <ul class="gains">
+          <li>Live power flow, SoC, mode and run status</li>
+          <li>Per-cell BMS voltages and temperatures, with recorded sessions</li>
+          <li>Several gateways from one install, with LAN discovery</li>
+          <li>Local SQLite history, charts, Analytics and CSV export</li>
+          <li>Scheduler, tariffs and billing, solar forecast</li>
+          <li>Writes stay off until you enable them</li>
+        </ul>
+        <div class="chips"><span class="chip">HA add-on</span><span class="chip">Docker</span><span class="chip">Python 3.11+</span></div>
+      </article>
+
+      <!-- Mock -->
+      <article class="col mock">
+        <div class="col-top"><div class="logo" style="color:var(--mock)"><svg><use href="#i-mock"/></svg></div>
+          <div><div class="kind">No hardware</div><h3>Mock setup</h3></div></div>
+        <p class="what">Seeded emulated aGates bundled in the image, with solar, battery and load that follow the time of day.</p>
+        <div class="need"><b>You need</b>Docker. One demo command starts it.</div>
+        <ul class="gains">
+          <li>See the whole UI working before you connect real hardware</li>
+          <li>Two mock gateways ready for multi-gateway testing</li>
+          <li>Control buttons enabled safely against the mock</li>
+          <li>Kept apart from a real install, with its own data and MQTT off</li>
+          <li>Good for demos, screenshots and UI work</li>
+        </ul>
+              </article>
+
+      <!-- Cloud -->
+      <article class="col cloud">
+        <div class="col-top"><div class="logo" style="color:var(--cloud)"><svg><use href="#i-cloud"/></svg></div>
+          <div><div class="kind">Optional transport</div><h3>FranklinWH Cloud</h3></div></div>
+        <p class="what">The FranklinWH cloud API. Used only where the local API can't reach.</p>
+        <div class="need"><b>You need</b>A FranklinWH account and internet. Included in the add-on and Docker image.</div>
+        <ul class="gains">
+          <li>Reserve SoC write (the aGate discards it locally)</li>
+          <li>Cloud-native mode and smart-circuit setters</li>
+                    <li>The Bridge shows which transport handles each feature</li>
+        </ul>
+              </article>
+
+      <!-- Modbus -->
+      <article class="col modbus">
+        <div class="col-top"><div class="logo" style="color:var(--modbus)"><svg><use href="#i-modbus"/></svg></div>
+          <div><div class="kind">Optional transport</div><h3>Modbus TCP</h3></div></div>
+        <p class="what">SunSpec Modbus on the aGate, from FranklinWH's published PICS plus register extensions FranklinWH supplied.</p>
+        <div class="need"><b>You need</b>Modbus switched on in the aGate, and the Bridge's Modbus client turned on in Settings.</div>
+        <ul class="gains">
+          <li>Force charge or discharge at a set power</li>
+          <li>Optional target SoC to stop at</li>
+          <li>Bridge watchdog and a global Release, so a dropped link can't leave the battery dispatched</li>
+          <li>No separate Modbus Bridge service needed</li>
+          <li>Modbus reachability shown in Health</li>
+        </ul>
+              </article>
+
+      <!-- MQTT -->
+      <article class="col mqtt">
+        <div class="col-top"><div class="logo"><svg><use href="#i-mqtt"/></svg></div>
+          <div><div class="kind">Publish out</div><h3>MQTT broker</h3></div></div>
+        <p class="what">Publishes each aGate as a native Home Assistant device through MQTT discovery. No custom integration.</p>
+        <div class="need"><b>You need</b>A broker. As an add-on it auto-configures from Mosquitto, even one installed later.</div>
+        <ul class="gains">
+          <li>Sensors, binary sensors, selects and switches in HA</li>
+          <li>Offline gateways show as unavailable, not stale</li>
+          <li>Republish, unpublish and per-group entity control</li>
+          <li>Broker scan for other FranklinWH publishers</li>
+        </ul>
+              </article>
+
+      <!-- HA Integration -->
+      <article class="col ha">
+        <div class="col-top"><div class="logo"><svg><use href="#i-ha"/></svg></div>
+          <div><div class="kind">Read in</div><h3>Home Assistant integration</h3></div></div>
+        <p class="what">The Bridge links to one or more HA instances over HA's REST API and reads from them.</p>
+        <div class="need"><b>You need</b>Nothing as an add-on (linked automatically). Elsewhere: HA URL and a long-lived token.</div>
+        <ul class="gains">
+          <li>Use any HA entity as a Scheduler entry or exit condition</li>
+          <li>Call HA services from schedules</li>
+          <li>Setup checks that tell you what is missing</li>
+          <li>Dashboard-card YAML generator</li>
+        </ul>
+              </article>
+
+      <!-- HA Notifications -->
+      <article class="col notify">
+        <div class="col-top"><div class="logo"><svg><use href="#i-ha-bell"/></svg></div>
+          <div><div class="kind">Alert you</div><h3>Home Assistant notifications</h3></div></div>
+        <p class="what">Pushes to your phone through the HA Companion app, plus persistent notices in HA.</p>
+        <div class="need"><b>You need</b>A linked Home Assistant and the Companion app on your phone.</div>
+        <ul class="gains">
+          <li>aGate offline or back online</li>
+          <li>Off-grid started or ended</li>
+          <li>Battery dispatch the Bridge didn't start (VPP)</li>
+          <li>SoC below or above your thresholds</li>
+          <li>In HA: Modbus down, cloud sign-in rejected, firmware changed, aGate moved IP</li>
+        </ul>
+              </article>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <div>
+      <h2>Capabilities by transport</h2>
+      <p>Everything is built on the Direct Connect API. The two optional transports each fill a gap the local API physically can't.</p>
+    </div>
+    <div class="legend">
+      <span class="st yes"><i></i>Used by the Bridge</span>
+      <span class="st part"><i></i>Partial</span>
+      <span class="st can"><i></i>Transport can, Bridge doesn't use it</span>
+      <span class="st no"><i></i>Not possible</span>
+    </div>
+  </div>
+
+  <div class="matrix-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th></th>
+          <th class="t-dc"><div class="th-name"><div class="logo"><svg><use href="#i-bridge"/></svg></div>
+            <div><span class="th-role">Baseline · always on</span><strong>Direct Connect API</strong></div></div>
+            <span class="th-sub">Local network. Undocumented, reverse-engineered from Wireshark packet captures. Library: <a href="https://github.com/david2069/franklinwh-direct-connect-api" target="_blank" rel="noopener">franklinwh-direct-connect-api</a>.</span></th>
+          <th class="t-cloud"><div class="th-name"><div class="logo" style="color:var(--cloud)"><svg><use href="#i-cloud"/></svg></div>
+            <div><span class="th-role">Optional</span><strong>FranklinWH Cloud API</strong></div></div>
+            <span class="th-sub">The private API the FranklinWH app uses. Built on richo's <a href="https://github.com/richo/franklinwh-python" target="_blank" rel="noopener">franklinwh-python</a> and the <a href="https://github.com/richo/homeassistant-franklinwh" target="_blank" rel="noopener">ha-franklinwh</a> HACS integration; most endpoints found with HTTP Toolkit. Library: <a href="https://github.com/david2069/franklinwh-cloud" target="_blank" rel="noopener">franklinwh-cloud</a>.</span></th>
+          <th class="t-mb"><div class="th-name"><div class="logo" style="color:var(--modbus)"><svg><use href="#i-modbus"/></svg></div>
+            <div><span class="th-role">Optional</span><strong>Modbus TCP</strong></div></div>
+            <span class="th-sub">Local network. Built from FranklinWH's PICS, published by the SunSpec Alliance, plus non-SunSpec register extensions supplied by FranklinWH. Library: <a href="https://github.com/david2069/franklinwh-modbus" target="_blank" rel="noopener">franklinwh-modbus</a>.</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="grp"><th colspan="4">Monitor</th></tr>
+        <tr><th>Power flow, SoC, mode, run status</th>
+          <td class="t-dc"><span class="st yes"><i></i>Yes</span></td>
+          <td><span class="st can"><i></i>Available</span></td>
+          <td><span class="st can"><i></i>Available</span></td></tr>
+        <tr><th>Per-aPower battery and per-cell BMS</th>
+          <td class="t-dc"><span class="st yes"><i></i>Yes</span><small>Cell voltages and temperatures</small></td>
+          <td><span class="st can"><i></i>Module level</span></td>
+          <td><span class="st can"><i></i>Module level</span></td></tr>
+        <tr><th>Smart circuits, live V / I / P, EV</th>
+          <td class="t-dc"><span class="st yes"><i></i>Yes</span></td>
+          <td><span class="st can"><i></i>Available</span></td>
+          <td><span class="st no"><i></i>No</span></td></tr>
+        <tr><th>Grid compliance profile</th>
+          <td class="t-dc"><span class="st yes"><i></i>Yes</span><small>Full parity with cloud</small></td>
+          <td><span class="st can"><i></i>Available</span></td>
+          <td><span class="st part"><i></i>Partial</span></td></tr>
+        <tr><th>Inverter AC electricals (V, I, Hz, PF)</th>
+          <td class="t-dc"><span class="st part"><i></i>Partial</span><small>Per-circuit meter only</small></td>
+          <td><span class="st can"><i></i>Available</span></td>
+          <td><span class="st can"><i></i>Register level</span></td></tr>
+        <tr><th>Device, network, Wi-Fi, firmware info</th>
+          <td class="t-dc"><span class="st yes"><i></i>Yes</span></td>
+          <td><span class="st can"><i></i>Available</span></td>
+          <td><span class="st part"><i></i>Partial</span></td></tr>
+
+        <tr class="grp"><th colspan="4">Control (all writes gated off by default)</th></tr>
+        <tr><th>Operating mode switch</th>
+          <td class="t-dc"><span class="st yes"><i></i>Yes</span><small>Hardware-verified</small></td>
+          <td><span class="st yes"><i></i>Yes</span><small>Cloud-native setter</small></td>
+          <td><span class="st can"><i></i>Available</span></td></tr>
+        <tr><th>Off-grid / reconnect</th>
+          <td class="t-dc"><span class="st yes"><i></i>Yes</span></td>
+          <td><span class="st can"><i></i>Available</span></td>
+          <td><span class="st can"><i></i>Available</span></td></tr>
+        <tr><th>Reserve SoC (read / write)</th>
+          <td class="t-dc"><span class="st part"><i></i>Read only</span><small>The aGate silently discards a local write</small></td>
+          <td><span class="st yes"><i></i>Write</span></td>
+          <td><span class="st can"><i></i>Register</span></td></tr>
+        <tr><th>Smart circuit switch and schedule</th>
+          <td class="t-dc"><span class="st part"><i></i>Partial</span><small>Schedule write tested in the library</small></td>
+          <td><span class="st yes"><i></i>Yes</span><small>Live-verified</small></td>
+          <td><span class="st no"><i></i>No</span></td></tr>
+        <tr><th>Battery dispatch: force charge / discharge at W, target SoC</th>
+          <td class="t-dc"><span class="st no"><i></i>No</span><small>No local setpoint command</small></td>
+          <td><span class="st can"><i></i>Exists, not wired</span></td>
+          <td><span class="st yes"><i></i>Yes</span></td></tr>
+        <tr><th>Generator: enable, mode, exercise, start SoC</th>
+          <td class="t-dc"><span class="st yes"><i></i>Yes</span></td>
+          <td><span class="st can"><i></i>Available</span></td>
+          <td><span class="st no"><i></i>No</span></td></tr>
+        <tr><th>SunSpec enable toggle (DER comms)</th>
+          <td class="t-dc"><span class="st yes"><i></i>Yes</span><small>Turns Modbus on</small></td>
+          <td><span class="st no"><i></i>No</span></td>
+          <td><span class="st no"><i></i>No</span><small>Must be on first</small></td></tr>
+        <tr><th>Reboot</th>
+          <td class="t-dc"><span class="st yes"><i></i>Yes</span><small>Double-gated</small></td>
+          <td><span class="st can"><i></i>Available</span></td>
+          <td><span class="st no"><i></i>No</span></td></tr>
+
+        <tr class="grp"><th colspan="4">What it takes</th></tr>
+        <tr><th>Account or internet</th>
+          <td class="t-dc">None. LAN only.</td>
+          <td>FranklinWH sign-in, internet</td>
+          <td>None. LAN only.</td></tr>
+        <tr><th>If it's missing</th>
+          <td class="t-dc">The Bridge can't run</td>
+          <td>Cloud features show as unavailable</td>
+          <td>Dispatch reports unavailable</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="answer"><b>Which FranklinWH API?</b> The cloud transport is FranklinWH's own cloud API, the same one the FranklinWH app uses, reached through the <a href="https://github.com/david2069/franklinwh-cloud" target="_blank" rel="noopener">franklinwh-cloud</a> library. That library was based on and inspired by richo's <a href="https://github.com/richo/franklinwh-python" target="_blank" rel="noopener">franklinwh-python</a> library and the <a href="https://github.com/richo/homeassistant-franklinwh" target="_blank" rel="noopener">ha-franklinwh</a> HACS integration, with most endpoints discovered using HTTP Toolkit. It comes with the add-on and Docker image.</div>
+</section>
+
+<footer><p class="repos">Repositories: <a href="https://github.com/david2069/franklinwh-direct-connect-bridge" target="_blank" rel="noopener">franklinwh-direct-connect-bridge</a> · <a href="https://github.com/david2069/franklinwh-direct-connect-api" target="_blank" rel="noopener">franklinwh-direct-connect-api</a> · <a href="https://github.com/david2069/franklinwh-cloud" target="_blank" rel="noopener">franklinwh-cloud</a> · <a href="https://github.com/david2069/franklinwh-modbus" target="_blank" rel="noopener">franklinwh-modbus</a></p>Unofficial software, not affiliated with or endorsed by FranklinWH. The Direct Connect and cloud APIs are undocumented and may change. Home Assistant and MQTT marks belong to their owners.</footer>
+</div>
+</body>
+</html>

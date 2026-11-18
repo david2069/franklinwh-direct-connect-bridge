@@ -110,6 +110,7 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - At a glance: overview/index.md
   - User guide:
       - guide/index.md
       - guide/installing.md
