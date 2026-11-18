@@ -113,7 +113,7 @@ def test_cloud_says_4g_while_the_lan_works_is_a_warning(env):
     assert f["bad"] is True
     spec = alerts.CATALOGUE["AGATE_ON_4G"]
     assert spec["severity"] == alerts.WARNING and spec["kind"] == alerts.CONDITION
-    assert spec["title"] == "aGate is using 4G — Wi-Fi has no internet"
+    assert spec["title"] == "aGate is using 4G — Wi-Fi is on standby"   # #728
     opened = alerts.evaluate(env["store"], now=f["since"] + spec["open_s"])
     assert [(x["code"], x["change"]) for x in opened] == [("AGATE_ON_4G", "opened")]
 

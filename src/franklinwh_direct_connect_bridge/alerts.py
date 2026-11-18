@@ -45,11 +45,12 @@ CATALOGUE: dict[str, dict] = {
     "GATEWAY_UNREACHABLE": {"kind": CONDITION, "severity": CRITICAL,
                             "open_s": 300, "resolve_s": 120,
                             "title": "aGate unreachable"},
-    # The LAN works but the aGate's internet goes over 4G (#614): its Wi-Fi has no route
-    # out. Held 5 min, so a transport dip during roaming (seconds) never raises it.
+    # The LAN works but the aGate's internet goes over 4G (#614): 4G is its active link and
+    # Wi-Fi is on standby (1118 / the cloud say no more than that, #728). Held 5 min, so a
+    # transport dip during roaming (seconds) never raises it.
     "AGATE_ON_4G": {"kind": CONDITION, "severity": WARNING,
                     "open_s": 300, "resolve_s": 120,
-                    "title": "aGate is using 4G — Wi-Fi has no internet"},
+                    "title": "aGate is using 4G — Wi-Fi is on standby"},
     "LIVE_DATA_MISSING": {"kind": CONDITION, "severity": CRITICAL,
                           "open_s": 120, "resolve_s": 60,
                           "title": "Live data missing"},

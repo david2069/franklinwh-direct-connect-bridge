@@ -13,6 +13,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **"aGate is using 4G — Wi-Fi has no internet" claimed more than the aGate reports**
+  (#728). The aGate and the FranklinWH cloud only say 4G is the active link and Wi-Fi is
+  on standby; the alert, its help and the Troubleshoot verdict now read "aGate is using 4G —
+  Wi-Fi is on standby". Its code, severity and timing are unchanged. Alert and Troubleshoot
+  times, which are in the site's time, now name the site's zone (e.g. "UTC+11") when your
+  device is in another zone, so a time is not misread as hours old
+  ([guide](docs/guide/ha-setup-and-notifications.md)).
 - **The alert bar under the top bar could not be closed** (#727). After an alert such as
   "aGate is using 4G" was acknowledged, its bar stayed until the fault cleared, cut off on
   a phone and naming the gateway by its id. The bar now has **×** and the alert list has

@@ -326,7 +326,10 @@ rather than raising a new one. The other codes in the shared list (`COMMAND_UNCO
 `INTERNAL_ERROR`) are defined, but nothing in this bridge raises them yet.
 
 **In the bridge.** A critical alert opens a window that stays until it is acknowledged.
-It shows what happened, when (in the site's time), what it means and what to do. Tick
+It shows what happened, when (in the site's time), what it means and what to do. When your
+device is in a different time zone from the site, alert and Troubleshoot times carry the
+site's zone, for example "12:29 pm UTC+11" (the aGate reports an offset, so that is usually
+how it is named); in the same zone they show no label. Tick
 **I understand** for each alert, then **OK**. Escape and clicking outside do not close it.
 An alert raised while no browser was open, by a schedule for example, is shown on the next
 visit, and a condition that came and went shows as "09:54–13:27, resolved". While an
@@ -392,7 +395,8 @@ together:
 - **Connection** — the bridge's own link to the aGate on the LAN, and, when a FranklinWH
   cloud account is set up (Settings → Integrations), what the cloud says the aGate is
   connected through: Wi-Fi, Ethernet or 4G, or offline. The verdict reads, for example,
-  "aGate is using 4G — Wi-Fi has no internet", "aGate is online via 4G (cloud) but not on
+  "aGate is using 4G — Wi-Fi is on standby" (4G is the aGate's active link; it does not
+  say why it left Wi-Fi), "aGate is online via 4G (cloud) but not on
   your LAN — it has left Wi-Fi" or "aGate is offline everywhere". The cloud is asked when the
   panel opens and on **Check again**, never in the background. Only the connection type
   and status are read, plus the name of the Wi-Fi network the aGate stores. Its password is

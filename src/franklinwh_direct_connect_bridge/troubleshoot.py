@@ -37,8 +37,9 @@ def note_local_network(gateway_id: str, lan_ok: bool, net_state: dict | None,
         return                       # not read this cycle: the last fact stands
     alerts.set_condition(gateway_id, "AGATE_ON_4G", bool(lan_ok and via == "4G"), now=now,
                          detail="The aGate answers on your LAN, but its internet goes over "
-                                "4G (its own report, 1118). Its Wi-Fi has no route out — "
-                                "check the router, or reconnect it to Wi-Fi.")
+                                "4G (its own report, 1118); Wi-Fi is on standby. If it "
+                                "should be on Wi-Fi, check the router, or reconnect it to "
+                                "Wi-Fi.")
 
 
 def fresh(last_ok_ts, poll_interval_s: float, now: float | None = None) -> bool:
@@ -122,7 +123,7 @@ def _verdict(lan: dict, cloud: dict, local_via, local_ts, now) -> dict:
     if conn == "4g":
         if up:
             return {"code": "on_4g", "severity": "warning", "_local": local,
-                    "text": "aGate is using 4G — Wi-Fi has no internet. The bridge still "
+                    "text": "aGate is using 4G — Wi-Fi is on standby. The bridge still "
                             "reaches it on your LAN."}
         return {"code": "left_wifi", "severity": "critical",
                 "text": "aGate is online via 4G (cloud) but not on your LAN — it has left "
