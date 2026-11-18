@@ -529,7 +529,12 @@ class AlertMonitor:
         if store is None:
             return
         check_workers(self.registry, now=ts)
-        evaluate(store, now=ts)
+        changes = evaluate(store, now=ts)
+        try:            # aGate on 4G / off 4G as an optional push (#763)
+            from . import notify_engine
+            notify_engine.on_alert_changes(store, changes)
+        except Exception as e:  # noqa: BLE001 — a push never stops the monitor
+            log.debug("alert change push failed: %s", e)
         try:
             self.problem_once(store, now=ts)
         except Exception as e:  # noqa: BLE001 — publishing never stops the monitor
