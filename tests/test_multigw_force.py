@@ -141,3 +141,21 @@ def test_scope_all_fires_once_on_each_gateway_per_occurrence(st, sent):
     assert sent == [("Force Discharge", "10.0.0.1"), ("Force Discharge", "10.0.0.2")]
     fired = [e["gateway_id"] for e in st.schedule_log(schedule_id="all") if e["status"] == "fired"]
     assert sorted(fired) == ["gw-a", "gw-b"]
+
+
+# ── #366 ─────────────────────────────────────────────────────────────────────
+
+def test_a_failed_stop_keeps_the_dispatch_row_active(st, monkeypatch):
+    """Like DELETE (#195): when Release fails the force may still run, so its row stays
+    active for the boot reconcile and the conflict check, and the failure is reported."""
+    monkeypatch.setattr(db, "get_store", lambda s: st)
+    monkeypatch.setattr(bc, "execute", lambda cmd, **kw: {"ok": False, "result": "timed out"})
+    st.create_schedule(sid="b", name="on b", spec={"gateway_id": "gw-b", "fire_at": "14:00",
+                                                  "duration_min": 60, "action": dict(FORCE)})
+    st.record_dispatch(schedule_id="b", name="on b", gateway_id="gw-b", host="10.0.0.2",
+                       direction="discharge", watts=-50, power_mode="pct", target_soc=0,
+                       window_start_ts=1, window_end_ts=None)
+    out = TestClient(app_module.create_app()).post("/api/schedules/b/stop").json()
+    assert out["stopped"] is False and "timed out" in out["result"]
+    assert [d["schedule_id"] for d in st.active_dispatches()] == ["b"]
+    assert st.schedule_log(schedule_id="b")[0]["status"] == "error"

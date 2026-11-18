@@ -41,6 +41,7 @@ own watchdog releases it. The ways a force ends:
 | **Duration reached** (the watchdog's time limit, taken from **Duration (min)**) | *dispatch-end* — "released — duration Ns reached" (under the **battery** chip) | at the next occurrence |
 | **Target SoC** reached | *dispatch-end* — "released — target reached (SoC …)" | at the next occurrence |
 | **Stop** on the card | *stopped* — "dispatch released by user" | at the next occurrence |
+| **Stop** when the release fails | *error* — "stop: release failed, the force may still be running"; the dispatch stays active, so a restart and the conflict check still see it (#366) | — |
 | Schedule **disabled** | *exit* — "window closed: force release: …", on the next tick | when enabled, at the next occurrence |
 | Schedule **deleted** | *deleted* — "removed; force released: …" | never |
 | **Bridge shuts down** | application log only | see [Bridge shutdown](#bridge-shutdown) |
