@@ -108,7 +108,7 @@ def test_force_without_dispatch_path_skips_safely():
 def test_reserve_soc_says_it_needs_a_provider():
     out = sch.run_action({"kind": "reserve_soc"}, settings=None, client=None,
                          store=None, snapshot={})
-    assert "no local write path" in out
+    assert "reserve_soc skipped" in out
 
 
 def test_smart_circuit_schedule_is_not_offered():

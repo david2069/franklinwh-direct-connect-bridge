@@ -288,9 +288,6 @@ Checked with `gh issue view` on 2026-10-17. All four are open.
   (`site_time.now_site()`). If the container's time zone differs from the site's,
   `next_fire` and the Timeline are off by the difference. The schedule itself fires at
   the right site time.
-- **#129: `reserve_soc` is always skipped.** `run_action()` returns "reserve_soc skipped:
-  no local write path exists ... needs a cloud provider" without checking for one, even
-  with cloud credentials configured. Do not build on a `reserve_soc` action yet.
 - **#128: the Scheduler in Home Assistant.** The REST half (create, update, delete, run,
   test, stop, pause, resume) exists, and the user guide has `rest_command` examples
   ([Using schedules from Home Assistant](../guide/scheduler/index.md#using-schedules-from-home-assistant-direct-connect-only)).

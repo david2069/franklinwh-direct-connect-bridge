@@ -113,6 +113,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Scheduler: Set reserve SoC now sets the reserve** (#129). It was always skipped, even
+  with cloud credentials. It now goes through the FranklinWH cloud for the schedule's own
+  gateway, as the reserve control does, and is skipped with the reason only when the cloud
+  can't write that gateway ([actions](docs/guide/scheduler/actions.md)).
+
+- **Scheduler: `%ha:<instance>:<entity>%` in a message is now replaced** (#169). Only
+  `%sensor.id%` was; a Home Assistant placeholder was sent as typed. The entity must be
+  exposed to the scheduler, or it prints `?`
+  ([actions](docs/guide/scheduler/actions.md#placeholders-in-notifications)).
+
 - **Notifications: "Battery dispatch started / ended" now sends "ended", and covers this
   bridge's own forces** (#173). Only "started" was sent, and only for a dispatch this
   bridge didn't start. "Ended" gives the site's power and how long it ran

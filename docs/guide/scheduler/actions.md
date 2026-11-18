@@ -19,7 +19,7 @@ action shows a note from the code under the list.
 | Set operating mode | `set_mode` | `mode`: `tou`, `self` or `backup` | an operating-mode change (Direct Connect 1727) |
 | Smart circuit on/off | `smart_circuit` | `circuit` (1–3), `on` | a smart-circuit write (1409, read back) — **Direct Connect only** |
 | Go off-grid / reconnect | `offgrid` | `on`, `soc` | an off-grid switch (1723) — **Direct Connect only** |
-| Set reserve SoC | `reserve_soc` | `mode`, `soc` | nothing: always skipped (see below, #129) |
+| Set reserve SoC | `reserve_soc` | `mode`, `soc` | the reserve for that mode, through the FranklinWH cloud (see below) |
 | Force charge / discharge / standby | `force` | `direction`, `power`, `unit`, `target_soc` | a WSet power setpoint through the Modbus client (this bridge) to the Modbus TCP Server (aGate :502) |
 | No gateway action (HA only) | `""` (empty) | — | nothing; only the Home Assistant actions run |
 
@@ -181,7 +181,7 @@ or target SoC, or by the **Release** control on the Control tab.
 
     | Param | Values |
     |---|---|
-    | `mode`, SoC (%) (`soc`) | shown in the form, but never written |
+    | `mode`, SoC (%) (`soc`) | Self-Consumption or Time-of-Use, and the reserve to set (0–100 %) |
 
 The mode picker lists the gateway's own mode names, stored by work mode (1 → `tou`,
 2 → `self`, 3 → `backup`); with no gateway data it offers Time-of-Use, Self-Consumption and
@@ -193,10 +193,13 @@ only when the aGate answers result 0. A rejection is logged *error* as *"mode ->
 failed: {'ok': False, 'result': 3}"* and retried while the window is open (#191). Off-grid
 behaves the same. A smart-circuit write counts *NOT confirmed* as a failure. <!-- @b ACT-24 ;; src: scheduler.py:2020-2034 ;; tested: tests/test_force_ownership.py::test_a_rejected_mode_write_is_a_failed_run ;; write: yes ;; b: set_mode and offgrid results with ok False return text containing 'failed', so the run is failed and retried -->
 
-**Set reserve SoC never writes.** It is always skipped with *"reserve_soc skipped: no local
-write path exists … needs a cloud provider"*, even when cloud credentials are set up and
-`POST /api/cloud/reserve` works. A skip counts as success, so it is logged *fired* (#129).
-<!-- @b ACT-32 ;; src: scheduler.py:1847-1849, scheduler.py:2424-2429 ;; tested: tests/test_fire_entry_outcomes.py::test_a_skipped_action_is_not_a_failure ;; write: yes ;; b: reserve_soc is always skipped and a skipped verdict is recorded as a successful run ;; test: — -->
+**Set reserve SoC goes through the FranklinWH cloud** (#129). The aGate discards a local
+reserve write, so the schedule sets it the way **POST /api/cloud/reserve** does: on the
+schedule's own gateway, with the cloud credentials in Settings. It is logged *"reserve tou
+-> 25%: applied via cloud"*. With no cloud credentials, or when the credentials are for a
+different gateway, it is skipped with the reason (*"reserve_soc skipped: …"*); a skip counts
+as success. A cloud error is a failed run, tried once: a failing sign-in is never retried.
+<!-- @b ACT-32 ;; src: scheduler.py (_run_action_body reserve_soc) ;; tested: tests/test_scheduler_reserve_soc_129.py ;; write: yes ;; b: reserve_soc is set through providers.set_reserve for the schedule's gateway; no provider or another gateway is a skip ;; test: — -->
 
 **Not in this bridge: mode-write-locked.** The Modbus Bridge marks a gateway whose mode
 writes are ignored. This bridge does not.
@@ -306,8 +309,9 @@ SoC %battery.soc_pct%%, mode %mode.name%, grid %grid.power_w%W
 - A sensor with no value, or an unknown id, prints `?`. The message is still sent.
   <!-- @b HAA-09 ;; src: scheduler.py:191-204 ;; tested: tests/test_scheduler.py::test_unreadable_variable_renders_as_question_mark_not_a_failure ;; write: no ;; b: %id% is replaced by the snapshot value, or ? when missing ;; test: — -->
 - Numbers print as stored (no rounding).
-- Ids with more than one dot work; `ha:` ids do not, because the colon is not matched, so
-  `%ha:…%` is left as typed (#169). <!-- @b HAA-10 ;; src: scheduler.py:191 ;; untested ;; write: no ;; b: The placeholder pattern allows letters, digits, _ and dots, not colons ;; test: unit: substitute("%ha:i1:sensor.x%") is left unchanged today -->
+- Ids with more than one dot work, and so do Home Assistant ids,
+  `%ha:<instance>:<entity>%`, for an entity exposed to the scheduler (#169). An entity that
+  isn't exposed prints `?`. <!-- @b HAA-10 ;; src: scheduler.py:_VAR ;; tested: tests/test_substitute_ha_169.py ;; write: no ;; b: The placeholder pattern allows ha:<instance>:<entity> ids ;; test: — -->
 - **Direct Connect only: placeholders also work in a service call.** They are filled in the
   entity id and in every text value of the data. <!-- @b HAA-14 ;; src: scheduler.py:1835-1841 ;; tested: tests/test_scheduler.py::test_ha_service_action_calls_the_service ;; write: no ;; b: Placeholders are substituted in a service call's entity_id and string data values ;; test: — -->
 - **Direct Connect only: run variables.** `%schedule.name%`, `%schedule.id%`,
@@ -344,7 +348,7 @@ confirmed* does, and the HA helpers report errors as *HTTP 500* or *token reject
 | Set operating mode | the gateway reachable over Direct Connect |
 | Smart circuit on/off | the gateway reachable over Direct Connect, and the circuit installed |
 | Go off-grid / reconnect | the gateway reachable over Direct Connect |
-| Set reserve SoC | nothing works today (#129) |
+| Set reserve SoC | FranklinWH cloud credentials for this gateway (Settings) |
 | Force charge / discharge / standby | the Modbus client (this bridge) switched on (**Control → Modbus client**), and the Modbus TCP Server (aGate :502) answering SunSpec |
 | HA action: notify | a notification device |
 | HA action: entity | a Home Assistant instance, and the entity exposed (guided) |
