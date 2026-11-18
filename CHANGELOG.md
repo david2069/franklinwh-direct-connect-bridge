@@ -87,6 +87,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **The Network tab threw "watching is not defined" on load** (#750). The Watch
+  button's state was never declared, so the browser console filled with errors and Watch
+  showed nothing until pressed. It now starts off, as intended.
 - **On a phone, Edit schedule's Save and Cancel were under the bottom nav** (#734). The
   schedule form and seven other dialogs (scheduler presets, imports and TOU import, smart
   circuits, generator, Home Assistant, Modbus history import) sat below the bottom nav, so
