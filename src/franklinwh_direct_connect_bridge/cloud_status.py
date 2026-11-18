@@ -118,7 +118,11 @@ def _read_sync(email: str, password: str, gateway: str | None) -> tuple:
                 prog = []
             edge = None
             try:
-                edge = (cloud.get_metrics() or {}).get("edge")   # CloudFront PoP snapshot
+                m = cloud.get_metrics() or {}
+                edge = m.get("edge")                  # CloudFront PoP snapshot
+                if isinstance(edge, dict):            # + this poll's call counters
+                    from . import cloud_pop
+                    edge = {**edge, "api": cloud_pop.api_counters(m)}
             except Exception:  # noqa: BLE001 — edge metrics are a nice-to-have
                 edge = None
             # System view → Alarms: the app's active gateway alarms. None when the read
