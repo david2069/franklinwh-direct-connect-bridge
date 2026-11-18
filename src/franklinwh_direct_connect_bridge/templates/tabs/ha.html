@@ -245,7 +245,7 @@
        throws while form is null and Alpine stops updating the whole subtree — which
        is why typing into the fields did nothing. -->
   <template x-if="form">
-  <div class="fixed inset-0 z-50 flex items-center justify-center p-4"
+  <div class="fixed inset-0 z-[100] flex items-center justify-center p-4"
        style="background:rgba(0,0,0,.6)" @click.self="closeForm()">
     <div class="card w-full max-w-md p-5 space-y-3">
       <h3 class="text-lg font-semibold" style="color:var(--text-primary)"

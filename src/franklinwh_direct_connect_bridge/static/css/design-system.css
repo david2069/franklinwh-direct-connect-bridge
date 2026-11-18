@@ -769,3 +769,7 @@ input[type="date"].form-control {
   min-height: calc(1.5em + 12px); display: block; text-align: left;
 }
 input[type="date"].form-control::-webkit-date-and-time-value { text-align: left; }
+
+/* Sized dialogs (dialogSize, #337): the inline max-height is 90dvh. A browser without dvh
+   (iOS Safari < 15.4) drops it, so cap at 90vh here (#734). */
+[x-data^="dialogSize"] { max-height: 90vh; }

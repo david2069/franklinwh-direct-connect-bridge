@@ -466,7 +466,7 @@
   </div>
 
   <!-- Import the FranklinWH TOU schedule: asks first, with the trade-off; the result stays here -->
-  <div x-show="touImp.open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+  <div x-show="touImp.open" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center p-4"
        style="background:rgba(0,0,0,.6)" data-testid="tou-import">
     <div class="card w-full max-w-lg space-y-3 overflow-auto" style="max-height:90dvh">
       <div class="flex items-center justify-between">
@@ -615,7 +615,7 @@
   </div>
 
   <!-- Load preset -->
-  <div x-show="presetOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+  <div x-show="presetOpen" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center p-4"
        style="background:rgba(0,0,0,.6)" @click.self="presetOpen = false">
     <div class="card w-full max-w-lg p-5 space-y-3">
       <div class="flex items-center justify-between">
@@ -648,7 +648,7 @@
   </div>
 
   <!-- Import review -->
-  <div x-show="importReport" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+  <div x-show="importReport" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center p-4"
        style="background:rgba(0,0,0,.6)" @click.self="importReport = null">
     <div class="card w-full max-w-lg p-5 space-y-3">
       <h3 class="text-lg font-semibold" style="color:var(--text-primary)">Import schedules <a :href="$store.app.guideUrl('scheduler/#templates-export-and-import')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></h3>
@@ -691,8 +691,8 @@
   <!-- The backdrop does NOT close this. A schedule form is minutes of work — conditions,
        windows, HA actions — and a stray click outside threw all of it away with no warning
        and no undo. Cancel and Escape ask first when anything has changed. -->
-  <div class="fixed inset-0 z-50 flex items-start justify-center p-2 sm:p-4 overflow-y-auto"
-       style="background:rgba(0,0,0,.6)" @keydown.escape.window="varPick.open ? closeVarPicker() : closeForm()">
+  <div class="fixed inset-0 z-[100] flex items-start justify-center p-2 sm:p-4 overflow-y-auto"
+       style="background:rgba(0,0,0,.6);padding-bottom:max(.5rem,env(safe-area-inset-bottom))" @keydown.escape.window="varPick.open ? closeVarPicker() : closeForm()">
     <div x-data="dialogSize('fwh-dlg-schedule-edit')"
          class="card w-full p-0 my-2 sm:my-8 flex flex-col" style="max-height:90dvh">
       <div class="px-5 pt-4 pb-3 shrink-0 border-b flex items-center justify-between gap-2" style="border-color:var(--border)">
@@ -707,7 +707,7 @@
           </template>
         </div>
       </div>
-      <div class="flex-1 overflow-y-auto px-5 py-4 space-y-3" style="min-height:0">
+      <div class="flex-1 overflow-y-auto px-5 py-4 space-y-3" style="min-height:0;-webkit-overflow-scrolling:touch;overscroll-behavior:contain">
       <label class="block text-xs" style="color:var(--text-secondary)">Name
         <input class="form-control form-control-sm w-full mt-1" x-model="form.name"
                placeholder="Evening export"></label>
