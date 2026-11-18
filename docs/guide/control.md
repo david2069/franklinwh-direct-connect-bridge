@@ -46,7 +46,9 @@ One page per gateway, scoped to whichever gateway the top-bar selector names.
 Every consequential control is recorded **twice**: once as a structured row in the
 **Audit trail** (Logs → Audit trail: each action and its result, newest first, in
 bridge-host time), and once as a line in **Logs → Bridge log**, so there is a single place to look even
-when the action came from the scheduler rather than from you.
+when the action came from the scheduler rather than from you. That includes switching the
+aGate Modbus TCP Server (:502) on or off (`der_comms`) and an operating-mode change from the
+Home Assistant select (`set_mode`, source `ha`) (#130).
 
 Billing & Utilities changes are recorded the same way: adding, editing and deleting a site
 (`site_add`, `site_edit`, `site_delete`), meter (`meter_*`), retailer (`retailer_*`) or

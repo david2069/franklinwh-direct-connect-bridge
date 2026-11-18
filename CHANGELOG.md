@@ -113,6 +113,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Audit trail: the aGate Modbus TCP Server switch and Home Assistant mode changes are
+  recorded** (#130). Neither wrote an entry. They are `der_comms` and `set_mode` (source
+  `ha`) ([control](docs/guide/control.md)).
 - **Scheduler: Set reserve SoC now sets the reserve** (#129). It was always skipped, even
   with cloud credentials. It now goes through the FranklinWH cloud for the schedule's own
   gateway, as the reserve control does, and is skipped with the reason only when the cloud
