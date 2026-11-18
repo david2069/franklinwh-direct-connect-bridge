@@ -109,18 +109,17 @@ gateway's host (the `dispatches` table), and ignores the schedule's own:
 <!-- @b PRI-09 ;; src: scheduler.py:2139-2140 ;; tested: tests/test_scheduler.py::test_conflict_override_takes_control ;; write: yes ;; b: override sends its own force over another schedule's running dispatch -->
 <!-- @b PRI-16 ;; src: scheduler.py:2135-2138 ;; tested: tests/test_scheduler.py::test_conflict_wait_retries_not_fired ;; write: yes ;; b: wait does not mark the entry fired, logs waiting and retries on the next tick -->
 
-After a deferred schedule's day is marked done, it does not take over when the other force
+After a deferred schedule's occurrence is settled, it does not take over when the other force
 ends. A *wait* schedule does: it fires on the first tick after the other force's record is
 closed, if its window is still open.
 <!-- @b PRI-10 ;; src: scheduler.py:2130-2138 ;; untested ;; write: yes ;; b: defer gives up for the day; wait re-tries every tick and fires once the other dispatch row is closed ;; test: unit: busy row, wait entry ticks waiting, close the row, next tick sends -->
 
-!!! warning "*wait* logs every tick; *defer* can repeat on interval, cron and second windows"
+!!! warning "*wait* logs every tick"
     *wait* writes a *waiting* row on every tick (every 15 s) while the battery is busy.
-    *defer* marks today's **date** as done, but the occurrence of an *Every N minutes*,
-    *Custom cron* or second-or-later *Recurring windows* window is not a date, so such a
-    schedule is deferred, and logged, again on every tick. From a code read; not tested.
-    Issue #204.
-    <!-- @b PRI-19 ;; src: scheduler.py:2131, scheduler.py:540 ;; unclear ;; write: no ;; b: defer marks last_fired_day with the date, which matches only date-keyed occurrences, so interval, cron and window #n entries are deferred and logged every tick ;; test: unit: interval force entry with defer and a busy row, two ticks, assert one deferred row (fails today) -->
+    *defer* settles the occurrence it lost, once: an *Every N minutes*, *Custom cron* or
+    second *Recurring windows* window is deferred and logged once, and its next slot or
+    window is considered again (#204).
+    <!-- @b PRI-19 ;; src: scheduler.py (_settle_loser: entry _wkey) ;; tested: tests/test_defer_per_occurrence_204.py ;; write: no ;; b: defer settles the occurrence key (slot or window), so interval, cron and window #n entries defer once per occurrence ;; test: — -->
 
 ### What the bridge cannot see
 
