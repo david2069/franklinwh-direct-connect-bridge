@@ -34,6 +34,8 @@
                data-testid="troubleshoot-verdict">
             <div class="font-semibold" :style="{color: $store.troubleshoot.verdictColor}"
                  x-text="$store.troubleshoot.data.verdict.text"></div>
+            <div class="text-xs" style="color:var(--text-secondary)" x-show="$store.troubleshoot.verdictSource"
+                 x-text="$store.troubleshoot.verdictSource" data-testid="troubleshoot-verdict-source"></div>
             <div class="text-xs" style="color:var(--text-secondary)" x-text="$store.troubleshoot.lanLine"></div>
             <div class="text-xs" style="color:var(--text-secondary)" x-text="$store.troubleshoot.cloudLine"></div>
           </div>

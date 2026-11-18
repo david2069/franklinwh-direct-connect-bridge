@@ -38,10 +38,11 @@ def test_both_default_to_all_devices_and_keep_a_choice(more):
     assert notify_engine.config(more)["asks"]["alert"]["target"] == {"type": "all"}
 
 
-def test_roles_are_refused(more):
+def test_only_known_roles(more):
+    """#763: a role is a target; an unknown one is refused."""
     with pytest.raises(ValueError):
         notify_engine.set_config(more, {"asks": {"alert": {"target": {"type": "role",
-                                                                      "role": "admin"}}}})
+                                                                      "role": "owner"}}}})
 
 
 def test_release_goes_to_every_enabled_device_by_default(running, sent, more):  # noqa: F811
@@ -75,7 +76,7 @@ def test_the_api_saves_and_refuses_roles(c):  # noqa: F811
     assert r.status_code == 200 and r.json()["config"]["asks"]["force_running"]["target"] == t
     assert c.get("/api/notify/triggers").json()["config"]["asks"]["force_running"]["target"] == t
     r = c.put("/api/notify/triggers",
-              json={"asks": {"alert": {"target": {"type": "role", "role": "admin"}}}})
+              json={"asks": {"alert": {"target": {"type": "role", "role": "api"}}}})
     assert r.status_code == 422
 
 

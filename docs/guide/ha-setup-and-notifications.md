@@ -174,7 +174,10 @@ notifications and access from away](phone-and-remote-access.md).
 ![The Add companion device form after Discover: the notify services, when each was last seen, and a duplicate marked](../images/ha-setup-and-notifications/06-add-device-discover.png)
 
 Each saved device has an on/off switch, an icon for its kind (phone, tablet, TV, speaker
-or other, guessed from the service name), **Edit**, **Test**, and remove. A device on an
+or other, guessed from the service name), **Edit**, **Test**, and remove. In **Edit**,
+**Account** says whose device it is: one of the bridge's sign-in accounts (Settings →
+Security), shown on the row as "name (role)". It is what **Send to → A role** uses; an
+admin sets it. A device on an
 instance that is switched off is marked **instance disabled**, and receives nothing.
 
 - **Test** sends one plain message straight to that service. It goes out even while the
@@ -219,32 +222,44 @@ Every notification that goes to your devices has a **Send to** choice:
 - **All devices**, the default: every enabled device on an enabled instance.
 - **Chosen devices**: tick one or more. A chosen device that is switched off, or on a
   switched-off instance, gets nothing.
+- **A role** (Admins, Users or Viewers): the enabled devices whose **Account** has that
+  role. Set each device's Account under Companion Devices first; a role no enabled device
+  belongs to says so, and sends to no one.
 
 You set it on each Auto-notify trigger, on **Critical alerts** and **Release / Keep a
 running force** (the two rows under the triggers), and on a schedule's **Ask before
-continuing** step. Devices that show buttons are marked **buttons**. Targeting by user
-or role is not available yet.
+continuing** step. Devices that show buttons are marked **buttons**. **A role** is not
+available on a schedule's step yet, and there is no Send to a single user.
 
 ![Auto-notify triggers: aGate offline / online set to Chosen devices, with the device list open and Phone and Tablet ticked](../images/ha-setup-and-notifications/07-triggers-send-to.png)
 
 ### Push to your notification devices
 
 Set these under **Settings → Integrations → Notifications → Auto-notify triggers**. Each
-has a switch and a **Send to**; the two SoC triggers also have a threshold.
+has a switch and a **Send to**; the two SoC triggers also have a threshold, and the
+off-grid reminder an interval in minutes.
 
 | Trigger | Default | Sent when | Message |
 |---|---|---|---|
 | aGate offline / online | on | The gateway stops or starts answering polls. A poll the aGate refuses (its login or power-flow read answers `result 1`) counts as not answering, and the log gives the reason. | "aGate is UNREACHABLE [gateway] — check network / WiFi / power." / "aGate is reachable again [gateway]." |
 | Off-grid started / ended | on | The off-grid flag changes. The message says why, in the top bar's words: **user requested** (someone asked for off-grid) or **grid outage** (no request was made); **reason unknown** when that wasn't read. It also gives the SoC, stored kWh, home load and solar, and how long the battery will last at the **current** usage: SoC × **Battery capacity** (Automation constants) ÷ (home − solar − generator). An off-grid you requested runs only to the **Reconnect SoC**, when the aGate returns to the grid, so its time is to that. The FranklinWH app estimates from historical usage instead. Without a Battery capacity there is no estimate; when solar covers the home it says so. | "Gateway went OFF-GRID [gateway] (grid outage) — running on battery: SoC 80%, stored 10.9 kWh, home 2.0 kW — about 5 h 26 min left at current usage." / "Gateway is back ON-GRID [gateway]." |
-| Battery dispatch (VPP / force) started / ended | on | A dispatch is found active at start-up, or one starts that **this bridge did not start**. | "FranklinWH — VPP dispatch active at startup" / "FranklinWH — battery dispatch started (VPP)" |
+| Battery dispatch (VPP / force) started / ended | on | A dispatch is found active at start-up, one starts (from a VPP programme, the app, the Modbus Bridge, or a force from this bridge), or one ends. The message names the source and gives the site's power; "ended" says how long it ran when its start was seen (#173). | "FranklinWH — VPP dispatch active at startup" / "FranklinWH — battery dispatch started (VPP)" / "FranklinWH — battery dispatch ended" |
 | Battery SoC drops below | off, 20 % | SoC crosses the threshold downward. | "Battery SoC dropped below 20% [gateway] (now N%)." |
 | Battery SoC reaches | off, 100 % | SoC crosses the threshold upward. | "Battery SoC reached 100% [gateway] (now N%)." |
 | Bridge started / restarted / stopped | on | The bridge starts or stops. A start after a clean stop is a **restart**: it says how long the bridge was down and, after an update, the version it came from. A start with no clean stop before it (first run, or a crash or power cut) is **started**. | "Bridge started (v0.5.36)." / "Bridge restarted (v0.5.36, updated from 0.5.35) after 1 min 35 s down." / "Bridge stopping (v0.5.36) — no polling or notifications until it starts again." |
 | Daily health report amber or red | on | The 07:00 [health report](health-report.md) is amber or red. | "FranklinWH bridge: health amber" and the reasons. |
 | Today's solar won't fill the battery | on | While solar is still forecast today, the solar left won't take the battery to 100 % ([Solar forecast](energy-and-costs.md#solar-forecast)). Once a day per gateway. | "Today's solar won't fill the battery [Home]: about 3.5 kWh left, and it needs 10.9 kWh to reach 100% (now 20%)." |
 
+| Operating mode changed | off | The operating mode read from the aGate changes, between two readings that both name a mode. Button: **Turn off**. | "Operating mode changed [gateway]: Self-Consumption → Time-of-Use." |
+| aGate on 4G mobile / off 4G | off | The **aGate is using 4G** alert opens or clears (both held 5 minutes, see [Alerts](#alerts)). Button: **Turn off**. | "aGate is using 4G mobile [gateway]: Wi-Fi is on standby." / "aGate is no longer on 4G [gateway]." |
+| Still off-grid: remind every | off, 15 min | While off-grid, every interval after **Off-grid started** (5 minutes to a day). It says why, as Off-grid started does: **user requested** (simulated off-grid you asked for) or **grid outage**, how long so far, and the same figures. Button: **Stop reminders**: none for that gateway until it is back on-grid. A restart keeps the count. | "Still OFF-GRID [gateway] (user requested) for 30 min — running on battery: SoC 80%, …" |
+
+**Turn off** switches that trigger off; its row then says "Turned off from a notification"
+and when, until you turn it on again. On a phone that doesn't show buttons the message
+comes without one.
+
 A trigger fires on a **change** between one poll and the next, not on every poll. There
-is no other rate limit.
+is no other rate limit; the off-grid reminder repeats at its interval.
 
 #### Scheduler
 
@@ -304,7 +319,7 @@ There are two kinds:
 - an **event**, such as a command that was refused, stays open until it is acknowledged;
 - a **condition**, such as the aGate being unreachable, is active while the fault lasts and
   is marked resolved when it clears. Acknowledging a condition stops the alert window,
-  not the red bar.
+  not the red bar; **Dismiss** hides the bar until it clears.
 
 What raises one today:
 
@@ -326,11 +341,17 @@ rather than raising a new one. The other codes in the shared list (`COMMAND_UNCO
 `INTERNAL_ERROR`) are defined, but nothing in this bridge raises them yet.
 
 **In the bridge.** A critical alert opens a window that stays until it is acknowledged.
-It shows what happened, when (in the site's time), what it means and what to do. Tick
+It shows what happened, when (in the site's time), what it means and what to do. When your
+device is in a different time zone from the site, alert and Troubleshoot times carry the
+site's zone, for example "12:29 pm UTC+11" (the aGate reports an offset, so that is usually
+how it is named); in the same zone they show no label. Tick
 **I understand** for each alert, then **OK**. Escape and clicking outside do not close it.
 An alert raised while no browser was open, by a schedule for example, is shown on the next
 visit, and a condition that came and went shows as "09:54–13:27, resolved". While an
-acknowledged condition is still active, a red bar stays under the top bar. A badge in the
+acknowledged condition is still active, a bar stays under the top bar, naming the gateway
+and giving the full message. Its **×** dismisses it for everyone until the condition clears;
+a new occurrence shows again. **Dismiss** in the list does the same and also acknowledges
+the alert, which stays in the list until it resolves. A badge in the
 top bar counts open alerts and opens the list, where warnings are acknowledged. The
 acknowledgement applies for everyone. Each alert in the list starts with a line giving its
 severity, a short time (for example `15 Nov 2:30–3:32 PM`) and its state (resolved,
@@ -389,11 +410,18 @@ together:
 - **Connection** — the bridge's own link to the aGate on the LAN, and, when a FranklinWH
   cloud account is set up (Settings → Integrations), what the cloud says the aGate is
   connected through: Wi-Fi, Ethernet or 4G, or offline. The verdict reads, for example,
-  "aGate is using 4G — Wi-Fi has no internet", "aGate is online via 4G (cloud) but not on
+  "aGate is using 4G — Wi-Fi is on standby" (4G is the aGate's active link; it does not
+  say why it left Wi-Fi), "aGate is online via 4G (cloud) but not on
   your LAN — it has left Wi-Fi" or "aGate is offline everywhere". The cloud is asked when the
   panel opens and on **Check again**, never in the background. Only the connection type
   and status are read, plus the name of the Wi-Fi network the aGate stores. Its password is
-  never read into the bridge.
+  never read into the bridge. Under the verdict it says whose reading it rests on: the
+  FranklinWH cloud just now, or, when the cloud is not set up or didn't answer, the aGate's
+  own report (1118 `currentNetType`, read every 10 minutes) with the time it was read. An
+  aGate report older than two reads is not used. The LAN line says "not answering lately"
+  as soon as there has been no good poll for three poll intervals (at least 2 minutes),
+  the same rule as the Health check's last good poll, even before the link is marked down.
+  A cloud call that failed reads "asked, no answer".
 - **Health check** — LAN reachability (ping), the local API on :9000, the aGate's own cloud
   link (1118 `awsStatus`) and the last good poll, each pass or fail. It does not touch the
   Modbus TCP Server (aGate :502).
@@ -659,13 +687,9 @@ tokens.
 
 ## Not yet available
 
-- **No "dispatch ended" notification**, although the trigger is labelled "started /
-  ended". A dispatch that this bridge started itself is not notified at its start
-  either.
 - **No push for** the Modbus TCP Server (aGate :502) going down, a firmware change, the
   aGate moving, or rejected cloud credentials. These are persistent notifications only,
   with no switch.
-- **No targeting by user or role** (#470). **Send to** is all devices or chosen devices.
 - **No quiet hours, cooldown or rate limit.**
 - **No filter for phones.** The service list shows every `notify.*` service, not only
   `mobile_app_*`.
@@ -685,7 +709,7 @@ tokens.
 | Push notifications switch | `ha_notify` setting; `actionable.build()` | — |
 | Triggers and Send to | `notify_engine.py`; `actionable.targets()` | `PUT /api/notify/triggers` (`target`, and `asks` for alerts and Release / Keep), `POST /api/notify/triggers/test`, `GET /api/notify/log` |
 | Persistent notifications | `Notifier` in `notify.py`; `poller.py` | `POST /api/notify/test` |
-| Alerts | `alerts.py` (`alerts` table) | `GET /api/alerts` (`open=1`, `kind=event\|condition`, `since=<epoch>`), `POST /api/alerts/{id}/ack` (`source`: `ui`, `api`, `ha`), `GET /api/status` (`alerts`) |
+| Alerts | `alerts.py` (`alerts` table) | `GET /api/alerts` (`open=1`, `kind=event\|condition`, `since=<epoch>`), `POST /api/alerts/{id}/ack` (`source`: `ui`, `api`, `ha`), `POST /api/alerts/{id}/dismiss` (same `source`; also acknowledges), `GET /api/status` (`alerts`) |
 | Buttons | `notify_buttons.py` (`ask_alert()`, `ask_release()`), `actionable.py`; `franklinwh-ha-notify` (`send.py`, `listener.py`, `notify_requests` and `notify_ledger` tables) | — |
 | Running force at start-up | `vpp_monitor.py`; `reconcile_interrupted()` in `battery_control.py` (`dispatch_interrupt_policy`) | — |
 | Schedules | `_ask_step()` and the templates in `scheduler.py` | `ask` on the schedule: `question`, `timeout_min`, `if_no_reply` (`skip`/`continue`), `choices` (`label`, `then`: `run`/`skip`, `reply`), `send_to` |

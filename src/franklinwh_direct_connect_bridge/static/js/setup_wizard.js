@@ -50,8 +50,38 @@ window.setupWizard = function setupWizard() {
     mode: { value: '', options: [], msg: '', busy: false },
     // A FranklinWH Gateway Emulator, added as a gateway at its address and port.
     emu: { label: 'Gateway Emulator', host: '', port: window.FWH_BOOT.ports.dc, msg: '', ok: false, busy: false },
+    // Automatic (#741): one aGate and its aPower, then each remaining part in turn. A step
+    // already done is passed over; each one asked has a Skip.
+    auto: false,
+    AUTO_STEPS: ['timezone', 'find', 'confirm', 'halink', 'haentities', 'cloud', 'modbus', 'publish',
+                 'summary'],
+    // FranklinWH entities Home Assistant already has (#741), and the two-step Remove.
+    haInv: { rows: [], broker: {}, registry: {}, richo: { show: false, adds: [] },
+             other_same_agate: false, modbus_writer: false },
+    haInvBusy: false, haInvMsg: '', removeArmed: false,
+    setupSteps: [],
+    // Home Assistant link, asked early in Automatic: the same instance Settings → Integrations
+    // keeps. The token is never read back.
+    hal: { name: 'Home Assistant', base_url: '', token: '', msg: '', ok: false, saved: false, busy: false },
     // Where the Modbus client connects (the active gateway's, or an override).
     mb: { enabled: true, host: '', port: '', resolved: '', msg: '', ok: false, test: null, busy: false },
+    // Energy planning (HEMS), #736: its own steps inside the wizard. Saved at the end through
+    // the APIs the Settings cards use; nothing is written to the aGate or the cloud.
+    hems: { step: 'optin', view: null, wear: null, solar: null, form: null, wearForm: {},
+            skipWarranty: false, noLoads: false, checked: null, busy: false, msg: '', ok: false,
+            saved: false },
+    HEMS_STEPS: ['optin', 'solar', 'warranty', 'usage', 'loads', 'check'],
+    // The hems choice lists in plain words; anything not listed shows as it is.
+    HEMS_LABELS: {
+      ha_power: 'Home Assistant power sensor', ha_energy: 'Home Assistant energy sensor',
+      nameplate: 'Its rated power (nameplate)',
+      smart_circuit: 'A smart circuit', controlled_load: 'Controlled load (off-peak circuit)',
+      general: 'A general circuit',
+      deferrable: 'Can wait (needs its energy by a time)',
+      sheddable: 'Can be switched off for a while', soak: 'Soaks up spare solar',
+      ha_switch: 'A Home Assistant switch', ha_climate: 'A Home Assistant climate entity',
+      ha_number: 'A Home Assistant number entity',
+    },
 
     // ONE profile per gateway. Solar, generator and backup wiring are per-gateway facts:
     // a site can have an aGate with 6.6 kW of PV and another with none, and showing a
@@ -123,6 +153,7 @@ window.setupWizard = function setupWizard() {
         if (!r.ok) return;
         const s = await r.json();
         this.tasks = s.tasks || [];
+        this.setupSteps = s.steps || [];
         this.setupState = s.state || this.setupState;
       } catch (e) { /* the list keeps what it had */ }
     },
@@ -144,7 +175,9 @@ window.setupWizard = function setupWizard() {
         this.fromHub = true;
         if (t.inline === 'mode') this.loadModes();
         if (t.inline === 'modbus') this.loadModbus();
+        if (t.inline === 'hems') this.loadHems();
         if (t.inline === 'emulator') this.emu.msg = '';
+        if (t.inline === 'haentities') this.loadHaInventory();
         this.go(t.inline);
         return;
       }
@@ -249,6 +282,133 @@ window.setupWizard = function setupWizard() {
       finally { m.busy = false; }
     },
 
+    hemsLabel(id) { return this.HEMS_LABELS[id] || id; },
+
+    async loadHems() {
+      const h = this.hems;
+      Object.assign(h, { step: 'optin', checked: null, msg: '', ok: false, saved: false,
+                         skipWarranty: false, noLoads: false });
+      const q = this._gwq();
+      try {
+        const [v, w, s] = await Promise.all([
+          fetch('api/hems/setup' + q).then(r => r.json()),
+          fetch('api/wear' + q).then(r => (r.ok ? r.json() : null)),
+          fetch('api/solar/forecast' + q).then(r => (r.ok ? r.json() : null)).catch(() => null),
+        ]);
+        h.view = v; h.wear = w; h.solar = s;
+        const ao = v.always_on;
+        h.form = {
+          opted_in: !!v.opted_in,
+          always_on_kw: ao && ao.value_kw != null ? ao.value_kw : '',
+          periods_confirmed: !!(v.periods && v.periods.confirm === false),
+          loads: (v.loads || []).map(({ problems, expected_kwh_today, ...ld }) => ({
+            ...ld, measurement: ld.measurement || { kind: 'nameplate' }, switch: ld.switch || {},
+            _runsText: Array.isArray(ld.runs) ? ld.runs.map(r => `${r.start}-${r.end}`).join(', ') : '',
+            _weather: ld.runs === 'weather',
+            _entities: ((ld.measurement || {}).entities || []).join(', ') })),
+        };
+        h.noLoads = false;
+        h.wearForm = Object.fromEntries(Object.entries((w && w.fields) || {})
+          .map(([k, f]) => [k, f.value ?? '']));
+      } catch (e) { h.msg = `Could not read the HEMS setup: ${e.message || e}`; }
+    },
+
+    hemsConfirm(k) {
+      const f = this.hems.wear && this.hems.wear.fields[k];
+      return !!(f && f.confirm && f.value != null);
+    },
+
+    hemsAddLoad() {
+      this.hems.noLoads = false;
+      this.hems.form.loads.push({ name: '', device_type: '', measurement: { kind: 'nameplate' },
+        power_kw: null, duration_h: null, _runsText: '', _weather: false, circuit: '',
+        control: null, switch: {}, _entities: '' });
+    },
+
+    /** A wizard load as hems.loads expects it (the same shape the HEMS setup card saves). */
+    _hemsLoad(l) {
+      const { _weather, _runsText, _entities, ...ld } = l;
+      ld.runs = _weather ? 'weather' : (_runsText || '').split(',').map(x => x.trim()).filter(Boolean)
+        .map(x => { const [start, end] = x.split('-').map(y => y.trim()); return { start, end }; });
+      if (!_weather && !ld.runs.length) ld.runs = null;
+      const m = { kind: (ld.measurement || {}).kind || 'nameplate' };
+      if (m.kind !== 'nameplate') m.entities = (_entities || '').split(',').map(x => x.trim()).filter(Boolean);
+      ld.measurement = m;
+      for (const k of ['power_kw', 'duration_h']) ld[k] = ld[k] === '' || ld[k] == null ? null : Number(ld[k]);
+      if (!ld.control || !ld.control.type) { delete ld.control; if (!Object.keys(ld.switch || {}).length) delete ld.switch; }
+      return ld;
+    },
+
+    _hemsBody() {
+      const f = this.hems.form;
+      if (!f.opted_in) return { opted_in: false };
+      return { opted_in: true,
+        always_on_kw: f.always_on_kw === '' || f.always_on_kw == null ? null : Number(f.always_on_kw),
+        periods_confirmed: !!f.periods_confirmed,
+        loads: this.hems.noLoads ? [] : f.loads.map(l => this._hemsLoad(l)) };
+    },
+
+    get hemsIndex() { return this.HEMS_STEPS.indexOf(this.hems.step); },
+
+    // Off: nothing else to answer, so straight to Check.
+    async hemsNext() {
+      const h = this.hems;
+      if (h.saved) { this.toHub(); return; }
+      if (h.step === 'check') { await this.saveHemsWizard(); return; }
+      const nxt = h.step === 'optin' && !h.form.opted_in ? 'check' : this.HEMS_STEPS[this.hemsIndex + 1];
+      if (nxt === 'check') await this.checkHems();
+      h.step = nxt;
+    },
+
+    hemsBack() {
+      const h = this.hems;
+      h.saved = false; h.msg = '';
+      h.step = h.step === 'check' && !h.form.opted_in ? 'optin' : this.HEMS_STEPS[this.hemsIndex - 1];
+    },
+
+    async checkHems() {
+      const h = this.hems;
+      h.checked = null;
+      if (!h.form.opted_in) return;
+      try {
+        const r = await fetch('api/hems/setup/check' + this._gwq(), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this._hemsBody()) });
+        if (r.ok) h.checked = await r.json();
+      } catch (e) { /* Check shows what it has */ }
+    },
+
+    // Saves the warranty (unless skipped) and the HEMS setup, then says so here.
+    async saveHemsWizard() {
+      const h = this.hems;
+      h.busy = true; this.busy = true; h.msg = ''; h.ok = false;
+      const q = this._gwq();
+      try {
+        if (h.form.opted_in && !h.skipWarranty) {
+          const body = Object.fromEntries(Object.entries(h.wearForm).map(([k, v]) => [k, v === '' ? null : v]));
+          const r = await fetch('api/wear' + q, { method: 'PUT',
+            headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) { h.msg = `Warranty not saved: ${d.detail || r.status}`; return; }
+          h.wear = d;
+        }
+        const r = await fetch('api/hems/setup' + q, { method: 'PUT',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this._hemsBody()) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { h.msg = `HEMS setup not saved: ${d.detail || r.status}`; return; }
+        h.view = d; h.ok = true; h.saved = true;
+        h.msg = h.form.opted_in ? 'Saved. Change any of it later on the Settings → Gateways cards.'
+                                : 'Saved: HEMS setup is off.';
+        this.loadTasks();
+      } catch (e) { h.msg = `Not saved: ${e.message || e}`; }
+      finally { h.busy = false; this.busy = false; }
+    },
+
+    // Location & Solar has its own card: open it rather than asking for the same fields here.
+    openLocationSolar() {
+      this.openTask({ open: { sub: 'billing', card: 'settings-location' } });
+    },
+
     async saveMode(v) {
       this.mode.busy = true; this.mode.msg = '';
       try {
@@ -304,6 +464,11 @@ window.setupWizard = function setupWizard() {
 
     get nextLabel() {
       if (this.step === 'hub') return 'Close';
+      if (this.step === 'hems') {
+        if (!this.hems.form) return '';
+        if (this.hems.saved) return 'Done';
+        return this.hems.step === 'check' ? 'Save' : 'Next';
+      }
       if (this.fromHub) return 'Done';
       if (this.step === 'intent') return '';
       if (this.step === 'hardware') return 'Continue';
@@ -312,7 +477,11 @@ window.setupWizard = function setupWizard() {
       if (this.step === 'cloud') return this.cloud.state === 'ok' ? 'Continue' : 'Skip for now';
       if (this.step === 'demo') return '';
       if (this.step === 'confirm') return 'Continue';
-      if (this.step === 'publish') return 'Finish';
+      if (this.step === 'publish') return this.auto ? 'Continue' : 'Finish';
+      if (this.step === 'halink') return this.hal.saved ? 'Continue' : 'Skip';
+      if (this.step === 'modbus' && this.auto) return this.mb.enabled ? 'Continue' : 'Skip';
+      if (this.step === 'haentities') return 'Continue';
+      if (this.step === 'summary') return 'Finish';
       return '';
     },
 
@@ -327,6 +496,7 @@ window.setupWizard = function setupWizard() {
 
     back() {
       this.error = '';
+      if (this.step === 'hems' && this.hemsIndex > 0) { this.hemsBack(); return; }
       const prev = this.history.pop() || 'intent';
       if (prev === 'hub') { this.toHub(); return; }
       this.step = prev;
@@ -334,13 +504,18 @@ window.setupWizard = function setupWizard() {
 
     async next() {
       if (this.step === 'hub') { this.hide(); return; }
+      if (this.step === 'hems') { await this.hemsNext(); return; }
       if (this.fromHub) { this.toHub(); return; }
       if (this.step === 'hardware') { await this.saveCounts(); return; }
       if (this.step === 'timezone') { await this.saveTimezone(); return; }
-      if (this.step === 'find') { this.go('cloud'); return; }
-      if (this.step === 'cloud') { this.go('confirm'); return; }
-      if (this.step === 'confirm') { this.go('publish'); return; }
+      if (this.step === 'find') { this._advance('find', 'cloud'); return; }
+      if (this.step === 'cloud') { this._advance('cloud', 'confirm'); return; }
+      if (this.step === 'confirm') { this._advance('confirm', 'publish'); return; }
+      if (this.auto && ['halink', 'haentities', 'modbus', 'publish'].includes(this.step)) {
+        this._advance(this.step, ''); return;
+      }
       if (this.step === 'publish') { await this.finish('done'); return; }
+      if (this.step === 'summary') { await this.finish('done'); return; }
     },
 
     async saveCounts() {
@@ -367,7 +542,7 @@ window.setupWizard = function setupWizard() {
         });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) { this.error = d.detail || `HTTP ${r.status}`; return; }
-        this.go(this.intent === 'demo' ? 'demo' : 'find');
+        this._advance('timezone', this.intent === 'demo' ? 'demo' : 'find');
       } catch (e) { this.error = String(e); } finally { this.busy = false; }
     },
 
@@ -421,7 +596,7 @@ window.setupWizard = function setupWizard() {
         const d = await r.json().catch(() => ({}));
         if (!r.ok) { this.error = d.detail || `Could not add it (HTTP ${r.status}).`; return; }
         if (d.id) this.createdIds.push(d.id);
-        this.go('cloud');
+        this._advance('find', 'cloud');
       } catch (e) { this.error = String(e); } finally { this.busy = false; }
     },
 
@@ -507,7 +682,8 @@ window.setupWizard = function setupWizard() {
         // flag says so. Set it for the gateways this wizard added (the user just said Yes).
         // From the setup list, Yes is for every real gateway: none was added in this run.
         const a = (window.Alpine && Alpine.store('app')) || null;
-        const ids = this.fromHub
+        // Automatic on a gateway added earlier: Yes is for every real gateway, as from the list.
+        const ids = (this.fromHub || (this.auto && !this.createdIds.length))
           ? ((a && a.gateways) || []).filter(g => g && g.id && !g.is_mock).map(g => g.id)
           : this.createdIds;
         if (r.ok) {
@@ -558,6 +734,143 @@ window.setupWizard = function setupWizard() {
           a.selectGateway(first.id);
         }
       } catch (e) { /* a missed selection is cosmetic; never fail the finish */ }
+    },
+
+    // The setup list's three ways in (#741). Automatic and Mock run the first-run paths
+    // from the list; Custom is the list itself.
+    async startAutomatic() {
+      this.fromHub = false; this.auto = true; this.intent = 'hardware';
+      this.hal = { ...this.hal, msg: '', ok: false, saved: false };
+      await Promise.all([this.loadTasks(), this.loadModbus()]);
+      this.goAuto(this._autoNext(null));
+    },
+    startMock() {
+      this.fromHub = false; this.auto = false; this.intent = 'demo'; this.go('hardware');
+    },
+
+    _realGateways() {
+      const a = (window.Alpine && Alpine.store('app')) || null;
+      return ((a && a.gateways) || []).filter(g => g && g.id && !g.is_mock);
+    },
+    _task(id) { return (this.tasks.find(x => x.id === id) || {}).satisfied === true; },
+
+    // Whether an Automatic step has nothing left to do.
+    _autoDone(step) {
+      if (step === 'timezone') return !!(this.setupSteps.find(s => s.id === 'timezone') || {}).satisfied;
+      if (step === 'find') return this._realGateways().length > 0;
+      if (step === 'halink') return this._task('home_assistant');
+      if (step === 'cloud') return this._task('cloud');
+      if (step === 'modbus') return this.mb.enabled;
+      // A gateway added in this run is still asked about, even with publishing already on.
+      if (step === 'publish') return this._task('mqtt') && !this.createdIds.length;
+      return false;
+    },
+    _autoNext(from) {
+      const i = from ? this.AUTO_STEPS.indexOf(from) : -1;
+      for (const s of this.AUTO_STEPS.slice(i + 1)) if (!this._autoDone(s)) return s;
+      return 'summary';
+    },
+    goAuto(step) {
+      if (step === 'modbus') this.loadModbus();
+      if (step === 'summary') this.loadTasks();
+      if (step === 'haentities') this.loadHaInventory();
+      this.go(step);
+    },
+    // The next step: Automatic's order, or the first-run order it was called with.
+    _advance(from, normal) {
+      if (this.auto) { this.goAuto(this._autoNext(from)); return; }
+      this.go(normal);
+    },
+
+    async testHaLink() {
+      const h = this.hal;
+      if (!h.base_url.trim()) return;
+      h.busy = true; h.msg = ''; h.ok = false;
+      try {
+        const r = await fetch('api/ha/test', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ base_url: h.base_url.trim(), token: h.token || null }),
+        });
+        const d = await r.json().catch(() => ({}));
+        h.ok = !!d.ok;
+        h.msg = d.ok ? 'Home Assistant answered.' : (d.detail || d.error || `No answer (HTTP ${r.status}).`);
+      } catch (e) { h.msg = String(e); } finally { h.busy = false; }
+    },
+    async saveHaLink() {
+      const h = this.hal;
+      if (!h.base_url.trim()) return;
+      h.busy = true; h.msg = '';
+      try {
+        const r = await fetch('api/ha/instances', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: h.name || 'Home Assistant', base_url: h.base_url.trim(),
+                                 token: h.token || null, is_default: true, enabled: true }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { h.msg = `Not saved: ${d.detail || r.status}`; return; }
+        h.saved = true; h.token = '';
+        h.msg = 'Saved. Settings → Integrations has it too.';
+        await this.loadTasks();
+      } catch (e) { h.msg = `Not saved: ${e.message || e}`; } finally { h.busy = false; }
+    },
+
+    async loadHaInventory() {
+      this.haInvBusy = true; this.haInvMsg = ''; this.removeArmed = false;
+      try {
+        const r = await fetch('api/setup/ha-entities');
+        if (r.ok) this.haInv = await r.json();
+        else this.haInvMsg = `Could not check (HTTP ${r.status}).`;
+      } catch (e) { this.haInvMsg = String(e); } finally { this.haInvBusy = false; }
+    },
+    // This bridge's own leftovers only, through the guarded purge: the first click arms it,
+    // the second removes exactly the count that was shown.
+    async removeOrphans(row) {
+      if (!this.removeArmed) { this.removeArmed = true; return; }
+      this.haInvBusy = true; this.removeArmed = false;
+      try {
+        const r = await fetch(`api/mqtt/orphans/purge?expect=${encodeURIComponent(row.expect)}&confirm=true`,
+                              { method: 'POST' });
+        const d = await r.json().catch(() => ({}));
+        this.haInvMsg = d.ok ? `Removed ${d.cleared || row.expect} old entities.`
+                             : (d.error || d.detail || `Not removed (HTTP ${r.status}).`);
+      } catch (e) { this.haInvMsg = String(e); }
+      finally { this.haInvBusy = false; await this.loadHaInventory(); }
+    },
+    // Keep both: the richo note is not shown again. Nothing in Home Assistant changes.
+    async keepBoth() {
+      try {
+        await fetch('api/setup/ha-entities/richo-note', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keep_both: true }),
+        });
+      } catch (e) { /* hidden for this visit anyway */ }
+      this.haInv.richo = { ...this.haInv.richo, show: false };
+    },
+
+    // What Automatic leaves set up, from the same facts the setup list shows.
+    get autoSummary() {
+      const real = this._realGateways().length;
+      return [
+        { part: 'aGate', done: real > 0, note: real ? `${real} connected` : 'not added' },
+        { part: 'Home Assistant link', done: this._task('home_assistant') },
+        { part: 'FranklinWH cloud', done: this._task('cloud') },
+        { part: 'Modbus client', done: !!this.mb.enabled },
+        { part: 'Publish to Home Assistant', done: this._task('mqtt') },
+      ];
+    },
+    // More than the one aGate and aPower Automatic assumes: said, never guessed.
+    get multiUnit() {
+      const exp = (this.setupSteps.find(s => s.id === 'expected') || {}).found || {};
+      const agates = Math.max(this._realGateways().length, (this.found || []).length);
+      const apowers = exp.apowers || 0;
+      const out = [];
+      if (apowers > 1) out.push(`${apowers} aPowers report through this aGate; all of them are read.`);
+      if (agates > 1) out.push(`${agates} aGates were found. Automatic sets up one; add the others from Custom.`);
+      return out;
+    },
+    showList() {
+      const el = document.querySelector('[data-testid="setup-list"]');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     },
 
     async skip() { await this.finish('skipped'); this.hide(); },

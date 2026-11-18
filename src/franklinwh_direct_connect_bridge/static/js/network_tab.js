@@ -6,12 +6,38 @@
  * AWS-IoT endpoint/region (1121, credentials redacted server-side).
  */
 function networkTab() {
+  // The Leaflet map stays out of the reactive data: Alpine's proxy breaks Leaflet objects.
+  let leafletP = null, map = null, layer = null;
   return {
     net: null,
     loading: false,
     pingResult: null,
     pinging: false,
     pop: null,
+    // CloudFront edge period (Today / 7 days / 30 days / All kept) — the tables and the map.
+    popPeriod: '30d',
+    // PoP map dialog (Leaflet, vendored; online tiles). Offline = the tiles or Leaflet
+    // couldn't load: the dialog says so and the tables still work.
+    mapOpen: false,
+    mapOffline: false,
+    mapTransOpen: true,
+    // Watch: a live ping until Stop (#730), one round-trip a second into a rolling strip;
+    // drop-outs marked with their start and length; stops by itself after 15 min or when
+    // the page is left; one run at a time per gateway (the server refuses a second).
+    watching: false,
+    latHistory: [],
+    watchTick: 0,
+    watchRun: '',
+    watchStarted: 0,
+    watchSent: 0,
+    watchLost: 0,
+    watchMinMs: null,
+    watchMaxMs: null,
+    watchSumMs: 0,
+    watchDrops: [],
+    watchStopped: '',
+    // Drop-outs in the last 24 h, from the link history (no extra aGate traffic).
+    dropouts: null,
 
     init() {
       // Loads on first SHOW, not on page load — see lazyTab(). load() pulls the link
@@ -31,6 +57,110 @@ function networkTab() {
 
     error: '',
 
+    async loadPop() {
+      try {
+        const pr = await this.$store.app.fetchTimeout('api/cloud/pop?period=' + this.popPeriod, 10000);
+        this.pop = await pr.json();
+        if (this.mapOpen) this.drawMap();
+      } catch (e) { /* optional */ }
+    },
+
+    setPopPeriod(p) { this.popPeriod = p; this.loadPop(); },
+
+    // "1.5m", "3.2h", "2.1d": how long the edge stayed on a PoP.
+    stayText(s) {
+      if (s == null) return '—';
+      if (s < 3600) return (s / 60).toFixed(1) + 'm';
+      if (s < 86400) return (s / 3600).toFixed(1) + 'h';
+      return (s / 86400).toFixed(1) + 'd';
+    },
+
+    // Errors & retries rows: each library error category, then refreshes / retries / logins.
+    errorRows() {
+      const a = (this.pop && this.pop.api) || null;
+      if (!a) return [];
+      const rows = Object.entries(a.errors_by_type || {}).map(([k, v]) => ({ k, label: k, n: v, err: true }));
+      rows.push({ k: 'refresh', label: 'Token refreshes', n: a.token_refresh_count, err: false });
+      rows.push({ k: 'retry', label: 'Retries (401 → refresh)', n: a.retry_count, err: false });
+      rows.push({ k: 'login', label: 'Logins', n: a.login_count, err: false });
+      return rows;
+    },
+
+    homePop() {
+      const d = (this.pop && this.pop.distribution) || {};
+      return Object.keys(d)[0] || null;        // distribution is sorted, most requests first
+    },
+
+    // Leaflet is loaded on first use only (it's ~150 kB), from the bridge itself.
+    _ensureLeaflet() {
+      if (window.L) return Promise.resolve(window.L);
+      if (leafletP) return leafletP;
+      leafletP = new Promise((resolve, reject) => {
+        const css = document.createElement('link');
+        css.rel = 'stylesheet'; css.href = 'static/css/leaflet-1.9.4.css';
+        document.head.appendChild(css);
+        const s = document.createElement('script');
+        s.src = 'static/js/leaflet-1.9.4.min.js';
+        s.onload = () => resolve(window.L);
+        s.onerror = () => { leafletP = null; reject(new Error('Leaflet did not load')); };
+        document.head.appendChild(s);
+      });
+      return leafletP;
+    },
+
+    async openMap() {
+      this.mapOpen = true;
+      this.mapTransOpen = window.innerWidth >= 640;     // folded on a phone: the map first
+      this.mapOffline = false;
+      await this.$nextTick();
+      try {
+        const L = await this._ensureLeaflet();
+        const el = document.getElementById('pop-map');
+        if (!map) {
+          map = L.map(el, { worldCopyJump: true }).setView([0, 150], 2);
+          const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 8,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+          });
+          let bad = 0;
+          tiles.on('tileerror', () => { if (++bad >= 4) this.mapOffline = true; });
+          tiles.on('tileload', () => { bad = 0; this.mapOffline = false; });
+          tiles.addTo(map);
+        }
+        setTimeout(() => map && map.invalidateSize(), 50);
+        this.drawMap();
+      } catch (e) {
+        this.mapOffline = true;
+      }
+    },
+
+    closeMap() { this.mapOpen = false; },
+
+    drawMap() {
+      const L = window.L;
+      if (!L || !map || !this.pop) return;
+      if (layer) layer.remove();
+      layer = L.layerGroup().addTo(map);
+      const dist = this.pop.distribution || {};
+      const locs = this.pop.locations || {};
+      const max = Math.max(1, ...Object.values(dist));
+      const home = this.homePop();
+      const pts = [];
+      for (const [pp, n] of Object.entries(dist)) {
+        const g = locs[pp];
+        if (!g) continue;                       // unknown code: in the table, not on the map
+        const isHome = pp === home;
+        L.circleMarker([g.lat, g.lon], {
+          radius: 6 + 22 * Math.sqrt(n / max),
+          color: isHome ? '#f59e0b' : '#3b82f6', weight: 2,
+          fillColor: isHome ? '#f59e0b' : '#3b82f6', fillOpacity: isHome ? 0.45 : 0.35,
+        }).bindTooltip(pp + ' · ' + g.city + ' · ' + n + ' requests' + (isHome ? ' · home' : ''))
+          .addTo(layer);
+        pts.push([g.lat, g.lon]);
+      }
+      if (pts.length) map.fitBounds(pts, { padding: [40, 40], maxZoom: 5 });
+    },
+
     async load() {
       this.loading = true;
       this.error = '';
@@ -43,10 +173,7 @@ function networkTab() {
           'api/network' + this.$store.app.gwQuery('?'), 45000);
         if (!r.ok) throw new Error('HTTP ' + r.status);
         this.net = await r.json();
-        try {
-          const pr = await this.$store.app.fetchTimeout('api/cloud/pop', 10000);
-          this.pop = await pr.json();
-        } catch (e) { /* optional */ }
+        await this.loadPop();
         this.ranAt = Date.now();
         this.ranMs = this.ranAt - t0;
       } catch (e) {
@@ -73,6 +200,7 @@ function networkTab() {
         if (!r.ok) throw new Error(r.statusText);
         this.link = await r.json();
         this.linkError = '';
+        this.loadDropouts();
       } catch (e) {
         const m = (e && e.message) || String(e);
         this.linkError = /load failed|failed to fetch|networkerror/i.test(m)
@@ -293,27 +421,76 @@ function networkTab() {
       } finally { this.pinging = false; }
     },
 
-    // Live "watch": one round-trip every ~6s → rolling latency sparkline; refresh PoP every 5th.
+    // Live ping (#730): Watch runs until Stop, one round-trip a second to the Local API.
     toggleWatch() {
-      this.watching = !this.watching;
-      if (this.watching) { this.latHistory = []; this.watchTick = 0; this._watchLoop(); }
+      if (this.watching) { this._stopWatch(''); return; }
+      this.watching = true; this.watchStopped = '';
+      this.latHistory = []; this.watchTick = 0; this.watchDrops = [];
+      this.watchSent = 0; this.watchLost = 0; this.watchMinMs = null; this.watchMaxMs = null; this.watchSumMs = 0;
+      this.watchStarted = Date.now();
+      this.watchRun = Math.random().toString(36).slice(2, 12);
+      this._watchLoop(this.watchRun);
     },
-    async _watchLoop() {
-      while (this.watching) {
-        // Pause polling while the tab isn't visible, but keep the watch armed.
-        if (this.$store.app.activeTab === 'network' && !document.hidden) {
-          try {
-            const r = await (await fetch('api/network/ping?count=1' + this.$store.app.gwQuery('&'))).json();
-            this.latHistory.push(r.samples ? r.samples[0] : null);
-            if (this.latHistory.length > 60) this.latHistory.shift();
-            if (++this.watchTick % 5 === 0) { try { this.pop = await (await fetch('api/cloud/pop')).json(); } catch (e) { /* opt */ } }
-          } catch (e) { this.latHistory.push(null); }
+    _stopWatch(why) {
+      if (!this.watching) return;
+      this.watching = false; this.watchStopped = why;
+      const open = this.watchDrops.find((d) => d.end == null);
+      if (open) open.end = Date.now();
+      fetch('api/network/ping/stop?run=' + this.watchRun + this.$store.app.gwQuery('&'),
+            { method: 'POST' }).catch(() => {});
+    },
+    async _watchLoop(run) {
+      while (this.watching && this.watchRun === run) {
+        if (this.$store.app.activeTab !== 'network' || document.hidden) {
+          this._stopWatch('Stopped: you left the page.'); break;
         }
-        for (let i = 0; i < 12 && this.watching; i++) await new Promise((res) => setTimeout(res, 500));
+        if (Date.now() - this.watchStarted > 15 * 60 * 1000) {
+          this._stopWatch('Stopped by itself after 15 minutes.'); break;
+        }
+        const t0 = Date.now();
+        let ms = null;
+        try {
+          const r = await fetch('api/network/ping?count=1&run=' + run + this.$store.app.gwQuery('&'));
+          if (r.status === 409 || r.status === 410) {
+            const j = await r.json().catch(() => ({}));
+            this._stopWatch('Stopped: ' + (j.detail || r.statusText) + '.'); break;
+          }
+          const j = await r.json();
+          ms = j.samples ? j.samples[0] : null;
+        } catch (e) { ms = null; }
+        if (!this.watching || this.watchRun !== run) break;
+        this._watchSample(ms, t0);
+        if (++this.watchTick % 30 === 0) { await this.loadPop(); }
+        const wait = Math.max(0, 1000 - (Date.now() - t0));
+        for (let i = 0; i < 10 && this.watching; i++) await new Promise((res) => setTimeout(res, wait / 10));
       }
+    },
+    _watchSample(ms, at) {
+      this.watchSent++;
+      this.latHistory.push(ms);
+      if (this.latHistory.length > 120) this.latHistory.shift();
+      const open = this.watchDrops.find((d) => d.end == null);
+      if (ms == null) {
+        this.watchLost++;
+        if (!open) this.watchDrops.unshift({ start: at, end: null });
+      } else {
+        this.watchSumMs += ms;
+        this.watchMinMs = this.watchMinMs == null ? ms : Math.min(this.watchMinMs, ms);
+        this.watchMaxMs = this.watchMaxMs == null ? ms : Math.max(this.watchMaxMs, ms);
+        if (open) open.end = at;
+      }
+    },
+    dropLen(d) { return this.dur(((d.end || Date.now()) - d.start) / 1000); },
+    get watchLoss() { return this.watchSent ? Math.round(1000 * this.watchLost / this.watchSent) / 10 : 0; },
+    get watchElapsed() { return this.dur((Date.now() - this.watchStarted) / 1000); },
+    async loadDropouts() {
+      try {
+        const r = await fetch('api/network/dropouts' + this.$store.app.gwQuery());
+        if (r.ok) this.dropouts = await r.json();
+      } catch (e) { /* optional */ }
     },
     get watchMax() { const v = this.latHistory.filter((x) => x != null); return v.length ? Math.max(...v) : 1; },
     get watchLast() { for (let i = this.latHistory.length - 1; i >= 0; i--) if (this.latHistory[i] != null) return this.latHistory[i]; return null; },
-    get watchAvg() { const v = this.latHistory.filter((x) => x != null); return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null; },
+    get watchAvg() { const n = this.watchSent - this.watchLost; return n ? Math.round(10 * this.watchSumMs / n) / 10 : null; },
   };
 }

@@ -112,8 +112,8 @@ def check(host: str, store, *, boot: bool = False, notify: bool = True,
         msg = render("dispatch_start", gateway=gw_name, **vals)[1]
         log.warning(msg)
         _log_event(store, "vpp-start", msg)
-        # Only alert for dispatches WE did not start (ours already show in the widget/log).
-        if notify and not ours:
+        # Ours too (#173): the trigger is "VPP / force", and a force is this bridge's.
+        if notify:
             notify_engine.fire(store, "dispatch_start", gateway=gw_name, **vals)
         return {"vpp": vpp, "changed": True, "event": "start"}
 
@@ -124,6 +124,9 @@ def check(host: str, store, *, boot: bool = False, notify: bool = True,
                f"({_metrics(snap)}).")
         log.info(msg)
         _log_event(store, "vpp-stop", msg)
+        if notify:                         # #173: "started / ended" sends both
+            notify_engine.fire(store, "dispatch_end", gateway=gw_name, took=took,
+                               metrics=_metrics(snap))
         return {"vpp": vpp, "changed": True, "event": "stop"}
 
     return {"vpp": vpp, "changed": False}

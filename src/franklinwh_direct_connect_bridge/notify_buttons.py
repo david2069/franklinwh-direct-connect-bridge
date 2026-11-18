@@ -195,6 +195,55 @@ async def _on_alert(request, answer) -> str:
     return "acknowledged" if row else "alert not found"
 
 
+# ── Turn off / Stop reminders (#763) ────────────────────────────────────────────
+TURN_OFF, STOP = "TURN_OFF", "STOP_REMINDERS"
+#: The triggers whose notifications carry a button, and its label.
+TRIGGER_BUTTONS = {"mode_change": "Turn off", "agate_on_4g": "Turn off",
+                   "agate_on_wifi": "Turn off", "off_grid_reminder": "Stop reminders"}
+TRIGGER_TTL_S = 3600
+
+
+def ask_trigger(store, event: str, trigger: str, device_ids, *, gateway: str | None = None,
+                gateway_id: str | None = None, **values) -> bool:
+    """Send a trigger's notification with its button, to ``device_ids`` (None: all enabled
+    devices). True when it reached at least one."""
+    verb = STOP if event == "off_grid_reminder" else TURN_OFF
+    return _ask_from_thread(store, event, [Button(verb, TRIGGER_BUTTONS[event])], TRIGGER_TTL_S,
+                            ids=device_ids, gateway=gateway,
+                            meta={"trigger": trigger, "gateway_id": gateway_id or ""}, **values)
+
+
+async def _on_turn_off(request, answer) -> str:
+    """Turn off: the trigger is switched off (Settings shows when). Tapping it twice is
+    harmless."""
+    if answer.verb != TURN_OFF:
+        return "kept"
+    from . import notify_engine
+    key = request.meta.get("trigger")
+    st = _store()
+    if key not in notify_engine.DEFAULT_TRIGGERS or st is None:
+        return "not found"
+    if not notify_engine.config(st)["triggers"][key].get("enabled"):
+        return "already off"
+    await asyncio.to_thread(notify_engine.turn_off, st, key)
+    log.info("notifications '%s' turned off from a notification", key)
+    return "turned off"
+
+
+async def _on_stop_reminders(request, answer) -> str:
+    """Stop reminders: none for this gateway until its off-grid ends."""
+    if answer.verb != STOP:
+        return "kept"
+    from . import notify_engine
+    st = _store()
+    gid = request.meta.get("gateway_id") or ""
+    if st is None or not gid:
+        return "not found"
+    await asyncio.to_thread(notify_engine.mute_reminders, st, gid)
+    log.info("off-grid reminders stopped for %s until back on-grid", gid)
+    return "reminders stopped until back on-grid"
+
+
 # ── test round trip ──────────────────────────────────────────────────────────────
 async def _on_test(request, answer) -> str:
     said = "Yes" if answer.verb == YES else "No"
@@ -222,3 +271,6 @@ actionable.on(FORCE_RUNNING, _on_release)
 actionable.on(ALERT, _on_alert)
 actionable.on(TEST, _on_test)
 actionable.on(TEST_ALERT, _on_test_alert)
+for _ev in ("mode_change", "agate_on_4g", "agate_on_wifi"):
+    actionable.on(_ev, _on_turn_off)
+actionable.on("off_grid_reminder", _on_stop_reminders)

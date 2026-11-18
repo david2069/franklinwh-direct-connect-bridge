@@ -115,7 +115,7 @@ There is no WebSocket and no server-sent events. The UI polls. These are the tim
 | `app.js`, `checkBuild` | `api/version` | 60 s | Always. Tells you when the bridge was updated under you. |
 | `app.js`, offline | `poll()` | backs off 2, 2, 5, 5, 10, 15, 30 s | Only while offline. |
 | `network_tab.js` | `api/health/link` | 15 s | While the Network tab is shown. |
-| `network_tab.js`, watch mode | `api/network/ping?count=1`, and `api/cloud/pop` every 5th tick | about 6 s | Only when you switch **watch** on. |
+| `network_tab.js`, Watch (live ping, #730) | `api/network/ping?count=1&run=<id>`, and `api/cloud/pop` every 30th tick; `api/network/ping/stop` on Stop | 1 s | Only while **Watch** runs: until Stop, 15 minutes, or leaving the page. One run per gateway (409 for a second). |
 | `settings_tab.js` | gateways, sites and meters, tariffs | 15 s | While the Settings tab is shown. |
 | `logs_tab.js` | `api/logs?...` | 10 s | From start-up until paused. |
 | `battery_tab.js` | `api/battery?...` | 5 s | Only with Auto, Chart or Live on. |

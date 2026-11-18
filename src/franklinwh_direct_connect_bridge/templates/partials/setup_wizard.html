@@ -249,11 +249,19 @@
 
               <div class="flex flex-wrap items-center gap-2">
                 <span>Publish this gateway's entities to Home Assistant?</span>
+                <span x-show="auto && haInv.other_same_agate" data-testid="publish-other-integration"
+                      class="text-xs w-full" style="color:#fbbf24">Another integration already
+                  publishes this aGate to Home Assistant, so No is suggested: both would show
+                  the same battery twice.</span>
                 <!-- Never disabled because the broker is already on (#264): that is the add-on
                      default, and Yes is still what opts THIS wizard's gateways in. -->
-                <button class="btn btn-primary btn-sm" :disabled="ha.busy"
+                <button class="btn btn-sm"
+                        :class="auto && haInv.other_same_agate ? 'btn-secondary' : 'btn-primary'"
+                        :disabled="ha.busy"
                         @click="publishYes()">Yes</button>
-                <button class="btn btn-secondary btn-sm" :disabled="ha.busy"
+                <button class="btn btn-sm"
+                        :class="auto && haInv.other_same_agate ? 'btn-primary' : 'btn-secondary'"
+                        :disabled="ha.busy"
                         @click="publishNo()">No</button>
                 <span x-show="ha.publishing" class="chip ok" style="padding:0 6px;font-size:.6rem">ON</span>
               </div>
@@ -339,6 +347,10 @@
           <!-- Modbus TCP: where the Modbus client connects. -->
           <template x-if="step === 'modbus'">
             <div class="space-y-3">
+              <p x-show="auto && haInv.modbus_writer" class="text-xs rounded px-2 py-1.5"
+                 style="background:var(--surface-2);color:#fbbf24">The Modbus Bridge already
+                publishes this aGate. Two Modbus writers on the aGate's Modbus TCP Server can
+                work against each other: skip this unless the other one's writes are off.</p>
               <p>This bridge's Modbus client reads battery ratings and sends force dispatch
                 through the Modbus TCP Server of the active gateway: an aGate or an emulator.</p>
               <div class="flex flex-wrap items-center gap-2">
@@ -369,9 +381,316 @@
             </div>
           </template>
 
+          <!-- Automatic (#741): link Home Assistant early, so its check can run before
+               anything is published. Skippable. -->
+          <template x-if="step === 'halink'">
+            <div class="space-y-2" data-testid="setup-halink">
+              <p>Link your Home Assistant? The bridge uses it for notifications and to check
+                what Home Assistant already has before anything is published.</p>
+              <label class="block text-xs" style="color:var(--text-faint)">Address
+                <input type="url" x-model="hal.base_url" placeholder="http://homeassistant.local:8123"
+                       class="form-control form-control-sm block w-full mt-1" autocomplete="off"></label>
+              <label class="block text-xs" style="color:var(--text-faint)">Long-lived access token
+                <input type="password" x-model="hal.token" class="form-control form-control-sm block w-full mt-1"
+                       autocomplete="off"></label>
+              <p class="text-xs" style="color:var(--text-faint)">Home Assistant → your profile →
+                Security → Long-lived access tokens → Create token.</p>
+              <div class="flex flex-wrap gap-2">
+                <button type="button" class="btn btn-secondary btn-sm" :disabled="hal.busy || !hal.base_url"
+                        @click="testHaLink()">Test</button>
+                <button type="button" class="btn btn-primary btn-sm" :disabled="hal.busy || !hal.base_url || hal.saved"
+                        @click="saveHaLink()">Save</button>
+              </div>
+              <p x-show="hal.msg" class="text-xs" :style="(hal.ok || hal.saved) ? { color: '#86efac' } : { color: '#fca5a5' }"
+                 x-text="hal.msg"></p>
+            </div>
+          </template>
+
+          <!-- What Home Assistant already has (#741). Only this bridge's own leftovers can
+               be removed here; every other integration's entities are reported only. -->
+          <template x-if="step === 'haentities'">
+            <div class="space-y-3" data-testid="setup-haentities">
+              <p>FranklinWH entities already in Home Assistant. Old ones from this bridge can be
+                removed; other integrations are only reported, never changed.</p>
+              <p x-show="haInvBusy" class="text-xs" style="color:var(--text-faint)">Checking…</p>
+              <div class="space-y-1">
+                <template x-for="r in haInv.rows" :key="r.kind + r.who + r.what">
+                  <div class="rounded px-2 py-1.5 text-xs" data-testid="ha-entities-row"
+                       style="background:var(--surface-2)">
+                    <div class="flex items-center gap-2">
+                      <span class="flex-1" style="color:var(--text-primary)" x-text="r.who"></span>
+                      <span style="color:var(--text-faint)" x-text="r.entities + ' entities'"></span>
+                      <button x-show="r.action === 'remove'" type="button" class="btn btn-sm"
+                              :class="removeArmed ? 'btn-primary' : 'btn-secondary'" :disabled="haInvBusy"
+                              @click="removeOrphans(r)"
+                              x-text="removeArmed ? ('Remove ' + r.expect + ' — confirm') : ('Remove (' + r.expect + ')')"></button>
+                    </div>
+                    <div x-show="r.what" style="color:var(--text-faint)" x-text="r.what"></div>
+                    <div style="color:#fbbf24" x-text="r.advice"></div>
+                  </div>
+                </template>
+                <p x-show="!haInvBusy && !haInv.rows.length" class="text-xs" style="color:var(--text-faint)">
+                  None found.</p>
+              </div>
+              <p class="text-xs" style="color:var(--text-faint)">
+                <span x-text="haInv.broker && haInv.broker.checked ? 'Broker: checked.' : ('Broker: not checked — ' + ((haInv.broker || {}).why || '') + '.')"></span>
+                <span x-text="haInv.registry && haInv.registry.checked ? 'Home Assistant: checked.' : ('Home Assistant: not checked — ' + ((haInv.registry || {}).why || '') + '.')"></span>
+              </p>
+              <p x-show="haInvMsg" class="text-xs" style="color:var(--text-secondary)" x-text="haInvMsg"></p>
+
+              <!-- Richo's cloud integration: an optional note, never forced (owner, 2026-11-18). -->
+              <template x-if="haInv.richo && haInv.richo.show">
+                <div class="rounded-lg border px-3 py-2 text-xs space-y-1" data-testid="richo-note"
+                     style="border-color:var(--border);color:var(--text-secondary)">
+                  <p style="color:var(--text-primary)">You use the FranklinWH integration (richo).
+                    You can keep it — both work side by side. Later you'll be able to move to the
+                    bridge and keep your entity names and history.</p>
+                  <p>What the bridge adds:</p>
+                  <ul class="list-disc pl-4">
+                    <template x-for="a in haInv.richo.adds" :key="a"><li x-text="a"></li></template>
+                  </ul>
+                  <div class="flex gap-2 pt-1">
+                    <button type="button" class="btn btn-secondary btn-sm" @click="keepBoth()">Keep both</button>
+                    <a class="btn btn-secondary btn-sm" target="_blank" rel="noopener"
+                       :href="$store.app.guideUrl('tour/#the-franklinwh-integration-richo')">Tell me more</a>
+                  </div>
+                </div>
+              </template>
+              <button class="btn btn-secondary btn-sm" :disabled="haInvBusy" @click="loadHaInventory()">
+                Check again</button>
+            </div>
+          </template>
+
+          <!-- Automatic (#741): what it left set up, and the rest in Custom. -->
+          <template x-if="step === 'summary'">
+            <div class="space-y-3" data-testid="setup-summary">
+              <p>Automatic setup is finished. This is what is set up now:</p>
+              <div class="space-y-1">
+                <template x-for="r in autoSummary" :key="r.part">
+                  <div class="flex items-center gap-2 rounded px-2 py-1.5" style="background:var(--surface-2)">
+                    <span class="flex-1 text-sm" style="color:var(--text-primary)" x-text="r.part"></span>
+                    <span x-show="r.note" class="text-xs" style="color:var(--text-faint)" x-text="r.note"></span>
+                    <span class="chip" :class="r.done ? 'ok' : 'warn'" style="font-size:.6rem"
+                          x-text="r.done ? 'Done' : 'Skipped'"></span>
+                  </div>
+                </template>
+              </div>
+              <template x-if="multiUnit.length">
+                <div class="rounded-lg px-3 py-2 text-xs space-y-1" data-testid="setup-multi-unit"
+                     style="background:var(--surface-2);color:var(--text-secondary)">
+                  <template x-for="m in multiUnit" :key="m"><p x-text="m"></p></template>
+                </div>
+              </template>
+              <p class="text-xs" style="color:var(--text-faint)">Anything skipped, and everything
+                else (tariffs, notifications, security), is in
+                <button type="button" class="underline" style="color:var(--accent)"
+                        @click="auto = false; toHub()">Custom setup</button>.</p>
+            </div>
+          </template>
+
+          <!-- Energy planning (HEMS), #736: opt in → site & solar → warranty → usage → loads → Check. -->
+          <template x-if="step === 'hems'">
+            <div class="space-y-3 text-sm">
+              <div class="flex flex-wrap gap-1 text-[10px] uppercase tracking-wide" data-testid="hems-wiz-steps">
+                <template x-for="(s, i) in [['optin','Opt in'],['solar','Site & solar'],['warranty','Warranty'],['usage','Usage'],['loads','Heavy loads'],['check','Check']]" :key="s[0]">
+                  <span class="px-1.5 py-0.5 rounded"
+                        :style="hems.step === s[0] ? { background: 'var(--accent)', color: '#0b1220' } : { background: 'var(--surface-2)', color: 'var(--text-faint)' }"
+                        x-text="(i + 1) + ' ' + s[1]"></span>
+                </template>
+              </div>
+              <p x-show="!hems.form && !hems.msg" class="text-xs" style="color:var(--text-faint)">Reading the HEMS setup…</p>
+
+              <template x-if="hems.form && hems.step === 'optin'">
+                <div class="space-y-2" data-testid="hems-wiz-optin">
+                  <p>HEMS looks ahead for this gateway: solar and home-load forecasts, what each kWh
+                    through the battery costs in wear, and a description of your home that planning
+                    can work from. It never writes to the aGate or the FranklinWH cloud, and nothing
+                    is switched or scheduled from your answers yet.</p>
+                  <p class="font-medium" x-text="hems.view.notice"></p>
+                  <label class="inline-flex items-center gap-2">
+                    <input type="checkbox" x-model="hems.form.opted_in" data-testid="hems-wiz-optin-box">
+                    Describe this home for energy planning</label>
+                  <p class="text-xs" style="color:var(--text-faint)">Forecasts and wear figures work
+                    without this; switching it on adds your home's usage and heavy loads.
+                    <a :href="$store.app.guideUrl('hems/')" target="_blank" rel="noopener" class="underline">Guide</a></p>
+                </div>
+              </template>
+
+              <template x-if="hems.form && hems.step === 'solar'">
+                <div class="space-y-2" data-testid="hems-wiz-solar">
+                  <p>The solar forecast uses this site's location and array, set on
+                    <strong>Location &amp; Solar</strong>.</p>
+                  <p class="text-xs" x-show="hems.solar && hems.solar.configured"
+                     :style="{ color: '#86efac' }"
+                     x-text="hems.solar && hems.solar.configured ? `Set: ${hems.solar.pv.kwp} kWp, tilt ${hems.solar.pv.tilt}°, azimuth ${hems.solar.pv.azimuth}°` + ((hems.solar.days || [])[0] ? ` · today about ${hems.solar.days[0].total_kwh} kWh` : '') : ''"></p>
+                  <p class="text-xs" x-show="!(hems.solar && hems.solar.configured)" style="color:var(--warning)"
+                     x-text="(hems.solar && hems.solar.reason) || 'Not set yet.'"></p>
+                  <button type="button" class="btn btn-secondary btn-sm" @click="openLocationSolar()">Open Location &amp; Solar</button>
+                  <p class="text-xs" style="color:var(--text-faint)">No solar panels? Leave it unset and
+                    press Next: the load forecast and wear figures don't need it. This closes the
+                    wizard; come back to this task from the setup list.</p>
+                </div>
+              </template>
+
+              <template x-if="hems.form && hems.step === 'warranty'">
+                <div class="space-y-2" data-testid="hems-wiz-warranty">
+                  <p>From your battery warranty. When the FranklinWH cloud is signed in, the end date
+                    and warranted throughput are filled in: check them against your warranty.</p>
+                  <label class="inline-flex items-center gap-2 text-xs" data-testid="hems-wiz-skip-warranty">
+                    <input type="checkbox" x-model="hems.skipWarranty"> Skip for now (the wear figures stay blank)</label>
+                  <div x-show="!hems.skipWarranty" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <template x-for="[k, label, type, step] in [['warranty_end','Warranty end','date',null],['warranted_throughput_mwh','Warranted throughput (MWh)','number','0.1'],['end_soh_pct','Guaranteed SoH at the end (%)','number','1'],['install_date','Install date','date',null],['replacement_value','Replacement value ($)','number','1'],['end_value','Value at the end of warranty ($, optional)','number','1']]" :key="k">
+                      <label class="flex flex-col gap-1 text-xs">
+                        <span><span x-text="label"></span>
+                          <span x-show="hemsConfirm(k)" class="text-[9px] uppercase tracking-wide ml-1" style="color:var(--warning)">Please confirm</span></span>
+                        <input :type="type" :step="step" min="0" class="form-control form-control-sm" x-model="hems.wearForm[k]" :data-testid="'hems-wiz-' + k">
+                      </label>
+                    </template>
+                  </div>
+                </div>
+              </template>
+
+              <template x-if="hems.form && hems.step === 'usage'">
+                <div class="space-y-2" data-testid="hems-wiz-usage">
+                  <p>From the last four weeks of this gateway's home load.</p>
+                  <label class="flex flex-col gap-1 text-xs sm:w-1/2">
+                    <span>Always-on load (kW)
+                      <span x-show="hems.view.always_on && hems.view.always_on.confirm" class="text-[9px] uppercase tracking-wide ml-1" style="color:var(--warning)">Please confirm</span></span>
+                    <input type="number" step="0.01" min="0" class="form-control form-control-sm" x-model="hems.form.always_on_kw" data-testid="hems-wiz-always-on">
+                  </label>
+                  <template x-if="hems.view.periods.weekday.some(b => b) || hems.view.periods.weekend.some(b => b)">
+                    <div class="text-xs space-y-1">
+                      <div style="color:var(--text-secondary)">Usage periods (high · medium · low)</div>
+                      <template x-for="[day, label] in [['weekday','Weekday'],['weekend','Weekend']]" :key="day">
+                        <div class="flex items-center gap-2">
+                          <span class="w-16 shrink-0" style="color:var(--text-faint)" x-text="label"></span>
+                          <div class="flex flex-1 gap-px min-w-0">
+                            <template x-for="(b, hr) in hems.view.periods[day]" :key="hr">
+                              <span class="flex-1 h-3 rounded-sm" :title="`${String(hr).padStart(2,'0')}:00 ${b || 'no data'}`"
+                                    :style="{ background: b === 'high' ? 'var(--danger)' : b === 'medium' ? 'var(--warning)' : b === 'low' ? 'var(--accent)' : 'var(--border)' }"></span>
+                            </template>
+                          </div>
+                        </div>
+                      </template>
+                      <label class="inline-flex items-center gap-2"><input type="checkbox" x-model="hems.form.periods_confirmed"> These look right</label>
+                    </div>
+                  </template>
+                  <p x-show="!hems.view.periods.weekday.some(b => b) && !hems.view.periods.weekend.some(b => b)"
+                     class="text-xs" style="color:var(--text-faint)" data-testid="hems-wiz-no-history">Not enough
+                    history yet: these fill in on the HEMS setup card as the days build up. Press Next to carry on.</p>
+                </div>
+              </template>
+
+              <template x-if="hems.form && hems.step === 'loads'">
+                <div class="space-y-2" data-testid="hems-wiz-loads">
+                  <p>Each large appliance you want planned around. This bridge can control:
+                    <span x-text="hems.view.capabilities.join(', ')"></span>.</p>
+                  <label class="inline-flex items-center gap-2 text-xs" data-testid="hems-wiz-no-loads">
+                    <input type="checkbox" x-model="hems.noLoads"> None</label>
+                  <div x-show="!hems.noLoads" class="space-y-2">
+                    <template x-for="(l, i) in hems.form.loads" :key="i">
+                      <div class="rounded p-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs" style="border:1px solid var(--border)">
+                        <label class="flex flex-col gap-1">Name<input class="form-control form-control-sm" x-model="l.name"></label>
+                        <label class="flex flex-col gap-1">Device type<input class="form-control form-control-sm" x-model="l.device_type" placeholder="pool_pump, hot_water, ev_charger …"></label>
+                        <label class="flex flex-col gap-1">Measured by
+                          <select class="form-control form-control-sm" x-model="l.measurement.kind">
+                            <template x-for="m in hems.view.choices.measurement" :key="m"><option :value="m" x-text="hemsLabel(m)" :selected="m === l.measurement.kind"></option></template></select></label>
+                        <label class="flex flex-col gap-1" x-show="l.measurement.kind !== 'nameplate'">Home Assistant entities (comma-separated)<input class="form-control form-control-sm" x-model="l._entities"></label>
+                        <label class="flex flex-col gap-1">Power (kW)<input type="number" step="0.1" min="0" class="form-control form-control-sm" x-model="l.power_kw"></label>
+                        <label class="flex flex-col gap-1">Runs (HH:MM-HH:MM, …)<input class="form-control form-control-sm" x-model="l._runsText" :disabled="l._weather"></label>
+                        <label class="inline-flex items-center gap-2"><input type="checkbox" x-model="l._weather"> Follows the weather</label>
+                        <label class="flex flex-col gap-1">Circuit
+                          <select class="form-control form-control-sm" x-model="l.circuit"><option value="">—</option>
+                            <template x-for="c in hems.view.choices.circuit" :key="c"><option :value="c" x-text="hemsLabel(c)" :selected="c === l.circuit"></option></template></select></label>
+                        <label class="flex flex-col gap-1">Control
+                          <select class="form-control form-control-sm" :value="l.control ? l.control.type : ''"
+                                  @change="l.control = $event.target.value ? { ...(l.control || {}), type: $event.target.value } : null">
+                            <option value="">None (just measured)</option>
+                            <template x-for="c in hems.view.choices.control" :key="c"><option :value="c" x-text="hemsLabel(c)" :selected="l.control && c === l.control.type"></option></template></select></label>
+                        <label class="flex flex-col gap-1" x-show="l.control">Switched by
+                          <select class="form-control form-control-sm" :value="(l.switch || {}).kind || ''"
+                                  @change="l.switch = $event.target.value ? { ...(l.switch || {}), kind: $event.target.value } : {}">
+                            <option value="">—</option>
+                            <template x-for="c in hems.view.choices.switch" :key="c"><option :value="c" x-text="hemsLabel(c)" :selected="c === (l.switch || {}).kind"></option></template></select></label>
+                        <div class="sm:col-span-2 flex justify-end">
+                          <button type="button" class="btn btn-secondary btn-sm" @click="hems.form.loads.splice(i, 1)">Remove</button></div>
+                      </div>
+                    </template>
+                    <button type="button" class="btn btn-secondary btn-sm" @click="hemsAddLoad()">+ Add a load</button>
+                    <p class="text-xs" style="color:var(--text-faint)">A control's details (energy and
+                      deadline, off and on times, soak triggers, EV fields) are on the HEMS setup card.</p>
+                  </div>
+                </div>
+              </template>
+
+              <template x-if="hems.form && hems.step === 'check'">
+                <div class="space-y-2" data-testid="hems-wiz-check">
+                  <template x-if="!hems.form.opted_in">
+                    <p>HEMS setup stays <strong>off</strong>. Forecasts and wear figures still work.</p>
+                  </template>
+                  <template x-if="hems.form.opted_in">
+                    <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                      <span style="color:var(--text-secondary)">Site &amp; solar</span>
+                      <span x-text="hems.solar && hems.solar.configured ? `set · today about ${((hems.solar.days || [])[0] || {}).total_kwh ?? '–'} kWh, tomorrow ${((hems.solar.days || [])[1] || {}).total_kwh ?? '–'} kWh` : 'not set: no solar forecast'"></span>
+                      <span style="color:var(--text-secondary)">Warranty</span>
+                      <span x-text="hems.skipWarranty ? 'skipped' : (['warranty_end','warranted_throughput_mwh','install_date','replacement_value'].every(k => hems.wearForm[k] !== '' && hems.wearForm[k] != null) ? 'filled in' : 'some fields empty: some wear figures stay blank')"></span>
+                      <span style="color:var(--text-secondary)">Always-on load</span>
+                      <span x-text="hems.form.always_on_kw === '' || hems.form.always_on_kw == null ? 'not known yet' : `${hems.form.always_on_kw} kW`"></span>
+                      <span style="color:var(--text-secondary)">Usage periods</span>
+                      <span x-text="hems.form.periods_confirmed ? 'confirmed' : 'not confirmed'"></span>
+                      <span style="color:var(--text-secondary)">Heavy loads</span>
+                      <span x-text="hems.noLoads || !hems.form.loads.length ? 'none' : `${hems.form.loads.length}`"></span>
+                    </div>
+                  </template>
+                  <template x-if="hems.form.opted_in && hems.checked && !hems.noLoads">
+                    <div class="space-y-1 text-xs">
+                      <template x-for="l in hems.checked.loads" :key="l.name">
+                        <div>
+                          <span class="font-medium" x-text="l.name || '(no name)'"></span>:
+                          <span x-show="!l.problems.length" style="color:#86efac">fine</span>
+                          <span x-show="l.problems.length" style="color:var(--warning)" x-text="l.problems.join('; ')"></span>
+                        </div>
+                      </template>
+                      <p x-show="hems.checked.loads.some(l => l.problems.length)" style="color:var(--text-faint)">
+                        You can save with these open and finish a load's details on the HEMS setup card.</p>
+                    </div>
+                  </template>
+                  <p class="text-xs" style="color:var(--text-faint)">Save writes this bridge's settings
+                    only: the Battery warranty &amp; wear and HEMS setup cards, never the aGate or the cloud.
+                    The solar calibration and the load model improve by themselves over the next weeks.</p>
+                </div>
+              </template>
+
+              <p x-show="hems.msg" class="text-xs" data-testid="hems-wiz-result"
+                 :style="hems.ok ? { color: '#86efac' } : { color: '#fca5a5' }" x-text="hems.msg"></p>
+            </div>
+          </template><!-- /hems -->
+
           <!-- The setup list (owner, 2026-11-11): everything else worth setting up. -->
           <template x-if="step === 'hub'">
             <div class="space-y-3" data-testid="setup-hub">
+              <!-- Three ways in (#741): Automatic, Mock, or Custom — the list below. -->
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button type="button" data-testid="setup-entry-automatic" @click="startAutomatic()"
+                        class="text-left rounded-lg border px-3 py-2" style="border-color:var(--accent)">
+                  <p class="font-semibold" style="color:var(--accent)">Automatic</p>
+                  <p class="text-xs" style="color:var(--text-faint)">One aGate and its aPower:
+                    find it, connect, then the rest step by step.</p>
+                </button>
+                <button type="button" data-testid="setup-entry-mock" @click="startMock()"
+                        class="text-left rounded-lg border px-3 py-2" style="border-color:var(--border)">
+                  <p class="font-semibold" style="color:var(--text-primary)">Mock</p>
+                  <p class="text-xs" style="color:var(--text-faint)">A simulated gateway to look
+                    around. Never published to Home Assistant.</p>
+                </button>
+                <button type="button" data-testid="setup-entry-custom" @click="showList()"
+                        class="text-left rounded-lg border px-3 py-2" style="border-color:var(--border)">
+                  <p class="font-semibold" style="color:var(--text-primary)">Custom</p>
+                  <p class="text-xs" style="color:var(--text-faint)">Advanced: set up each part
+                    yourself from the list below.</p>
+                </button>
+              </div>
+              <div class="space-y-3" data-testid="setup-list">
               <template x-for="g in [['essential', 'Essentials'], ['advanced', 'Advanced']]" :key="g[0]">
                 <div class="space-y-1.5">
                   <div class="text-[10px] font-semibold uppercase tracking-wide"
@@ -394,6 +713,7 @@
                   </template>
                 </div>
               </template>
+              </div>
               <button type="button" class="text-xs underline" style="color:var(--text-faint)"
                       @click="history = []; fromHub = false; step = 'intent'">
                 Start again from the first steps</button>

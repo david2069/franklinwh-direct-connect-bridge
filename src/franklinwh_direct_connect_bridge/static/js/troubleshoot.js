@@ -130,17 +130,28 @@ document.addEventListener('alpine:init', () => {
     get cloudLine() {
       const c = this.data && this.data.cloud;
       if (!c) return '';
+      if (!c.available && c.asked) return 'FranklinWH cloud: asked, no answer — ' + (c.reason || '');
       if (!c.available) return 'FranklinWH cloud: not asked — ' + (c.reason || 'not available');
       if (c.reachable === false) return 'FranklinWH cloud: the aGate is offline to the cloud';
       return 'FranklinWH cloud: online via ' + (c.label || 'an unknown link')
         + (c.fallbacks && c.fallbacks.length ? ' · fallback ' + c.fallbacks.join(', ') : '');
     },
+    /** Whose reading the verdict rests on, and when (#728). */
+    get verdictSource() {
+      const v = this.data && this.data.verdict;
+      if (!v || !v.source) return '';
+      if (v.source === 'cloud') return 'From the FranklinWH cloud, just now.';
+      const al = Alpine.store('alerts');
+      return "From the aGate's own report" + (v.as_of_ts ? ' at ' + al.at(v.as_of_ts) + al.tzTag(v.as_of_ts) : '') + '.';
+    },
     get lanLine() {
       const l = this.data && this.data.lan;
       if (!l) return '';
-      const at = ts => Alpine.store('alerts').at(ts);
+      const al = Alpine.store('alerts'), at = ts => al.at(ts) + al.tzTag(ts);
       if (l.up) return 'LAN: answering on :' + window.FWH_BOOT.ports.dc + (l.last_ok_ts ? ' · last good ' + at(l.last_ok_ts) : '');
       if (l.state === 'down') return 'LAN: not answering since ' + at(l.down_since_ts);
+      // Still "up" in the link record, but no good poll lately (#728).
+      if (l.state === 'stale') return 'LAN: not answering lately · last good ' + at(l.last_ok_ts);
       return 'LAN: not known yet' + (l.last_ok_ts ? ' · last good ' + at(l.last_ok_ts) : '');
     },
     /** "Use the FranklinWH app": without the cloud, or when a reconnect did not work. */

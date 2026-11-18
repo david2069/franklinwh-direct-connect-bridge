@@ -330,6 +330,10 @@ class SetupCloudReq(BaseModel):
     save: bool = True
 
 
+class RichoNoteReq(BaseModel):
+    keep_both: bool = True
+
+
 class SetupStateReq(BaseModel):
     """``done`` when the user finishes, ``skipped`` when they decline."""
     state: str
@@ -698,6 +702,7 @@ class NotifyDeviceCreate(BaseModel):
     service: str
     enabled: bool = True
     kind: DeviceKind | None = None      # None: derived from the service (#281)
+    user_id: str | None = None          # its account, for Send to a role (#763)
 
 
 class NotifyDeviceUpdate(BaseModel):
@@ -706,6 +711,7 @@ class NotifyDeviceUpdate(BaseModel):
     service: str | None = None
     enabled: bool | None = None
     kind: DeviceKind | None = None
+    user_id: str | None = None          # its account (#763); "" unlinks it
 
 
 class NotifyTestReq(BaseModel):
@@ -1463,17 +1469,16 @@ def create_app() -> FastAPI:
         try:
             yield
         finally:
-            _sched_stop.set()
             _alert_stop.set()
             _health_stop.set()
             _sup_stop.set()
             _sup_task.cancel()
             # Release any dispatch WE are holding before the bridge stops — a running
             # bridge is the only thing that can release it (hardware timer is cosmetic).
-            # First, because Home Assistant kills an add-on 10 s after asking it to stop.
+            # First, because Home Assistant kills an add-on 10 s after asking it to stop;
+            # after the scheduler's last tick, so it can't arm a force behind it (#367).
             try:
-                from . import battery_control
-                battery_control.release_held("shutdown")
+                await scheduler_worker.stop_then_release(_sched_stop, _sched_task)
             except Exception as e:  # noqa: BLE001
                 log.error("battery shutdown release failed: %s", e)
             # Bridge stopped: recorded (so the next start says restarted), then sent while
@@ -3683,10 +3688,21 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=422,
                                 detail=f"no HA instance '{req.instance_id}'")
         from . import notify_engine
+        _check_device_account(st, req.user_id)
         return st.create_notify_device(
             dev_id=uuid.uuid4().hex[:12], alias=req.alias,
             instance_id=req.instance_id, service=req.service, enabled=req.enabled,
-            kind=req.kind or notify_engine.kind_of(req.service, req.alias))
+            kind=req.kind or notify_engine.kind_of(req.service, req.alias), user_id=req.user_id)
+
+    def _check_device_account(st, user_id: str | None) -> None:
+        """A device's account (#763) is one of this bridge's sign-in accounts; an API
+        token account has no phone. "" or None: no account."""
+        if not user_id:
+            return
+        from . import auth
+        u = next((x for x in auth.users(st) if str(x["id"]) == str(user_id)), None)
+        if u is None or u["role"] == "api":
+            raise HTTPException(status_code=422, detail=f"no sign-in account '{user_id}'")
 
     @app.patch("/api/ha/notify-devices/{dev_id}")
     def api_notify_device_update(dev_id: str, req: NotifyDeviceUpdate):
@@ -3696,6 +3712,7 @@ def create_app() -> FastAPI:
         st = _ha_store()
         if st.notify_device(dev_id) is None:
             raise HTTPException(status_code=404, detail=f"no device '{dev_id}'")
+        _check_device_account(st, req.user_id)
         return st.update_notify_device(dev_id, **req.model_dump(exclude_unset=True))
 
     @app.delete("/api/ha/notify-devices/{dev_id}")
@@ -4005,7 +4022,7 @@ def create_app() -> FastAPI:
     def _hub_facts(st) -> dict:
         """What is already set up, for the setup list. Each read is guarded: one store
         problem must not hide the whole list."""
-        from . import constants
+        from . import constants, hems_setup
         s = get_settings()
 
         def ok(fn):
@@ -4023,6 +4040,7 @@ def create_app() -> FastAPI:
             "notifications": ok(lambda: st.notify_devices()),
             "security": ok(lambda: security.enabled(st)),
             "accounts": ok(lambda: len(auth.users(st)) > 1 or auth.tokens(st)),
+            "hems": ok(lambda: hems_setup.configured(st)),
         }
 
     @app.post("/api/setup/state")
@@ -4129,6 +4147,59 @@ def create_app() -> FastAPI:
                 "gateways": res.get("gateways") or [], "gateway": res.get("gateway"),
                 "rejected": bool(res.get("rejected")), "held": bool(res.get("held")),
                 "hold": providers.cloud_hold()}
+
+    @app.get("/api/setup/ha-entities")
+    def api_setup_ha_entities():
+        """FranklinWH entities Home Assistant already has (#741): the broker's retained
+        discovery configs and, when HA is linked, its registry. Read-only."""
+        import copy
+        from . import ha_entities
+        from .publish import mqtt_scan
+        s = get_settings()
+        st = db.get_store(s)
+        # The broker: the one publishing uses, or the add-on's before publishing is on.
+        broker = None
+        bs = s if s.mqtt_enabled else None
+        if bs is None:
+            sup = discover_mqtt()
+            if sup.get("found"):
+                bs = copy.copy(s)
+                bs.mqtt_host = sup.get("host") or s.mqtt_host
+                bs.mqtt_port = int(sup.get("port") or s.mqtt_port)
+                bs.mqtt_username = sup.get("username") or ""
+                bs.mqtt_password = sup.get("password") or ""
+        if bs is not None:
+            try:
+                broker = mqtt_scan.scan_orphans(bs, _live_nodes())
+            except Exception as e:  # noqa: BLE001 — a check, never a failure
+                broker = {"ok": False, "error": str(e)}
+        else:
+            broker = {"ok": False, "error": "no broker set up yet"}
+        # The registry and loaded components, from the linked Home Assistant.
+        inst = next((i for i in (st.ha_instances() if st else []) if i.get("enabled", 1)), None)
+        registry, comps = None, []
+        if inst and inst.get("token"):
+            try:
+                registry = ha_instances.franklin_devices(inst["base_url"], inst.get("token"))
+            except Exception:  # noqa: BLE001
+                registry = None
+            comps = ha_instances.components(inst["base_url"], inst.get("token"))
+        serials = [g.serial for g in (get_gateways() or [])
+                   if g.serial and not getattr(g, "is_mock", False)]
+        dismissed = bool(st and st.get_config(ha_entities.RICHO_KEY, "") == "keep_both")
+        return ha_entities.inventory(broker=broker, registry=registry, components=comps,
+                                     serials=serials, richo_dismissed=dismissed,
+                                     purge_ready=bool(s.mqtt_enabled))
+
+    @app.post("/api/setup/ha-entities/richo-note")
+    def api_setup_richo_note(req: RichoNoteReq):
+        """Keep both: the richo note is not shown again. Changes nothing in HA."""
+        from . import ha_entities
+        st = db.get_store(get_settings())
+        if st is None:
+            raise HTTPException(status_code=503, detail="metrics store is disabled")
+        st.set_config(ha_entities.RICHO_KEY, "keep_both" if req.keep_both else "")
+        return {"ok": True, "keep_both": req.keep_both}
 
     @app.get("/api/setup/ha-checks")
     def api_setup_ha_checks(gateway: str | None = Depends(_gateway_opt)):
@@ -4318,6 +4389,20 @@ def create_app() -> FastAPI:
         if st is None:
             raise HTTPException(503, "metrics store is disabled")
         return hems_setup.view(st, get_settings(), gateway)
+
+    @app.post("/api/hems/setup/check")
+    def api_hems_setup_check(body: dict, gateway: str = Depends(_gateway_q)):
+        """The HEMS setup wizard's Check (#736): the answers given, checked by hems against
+        what this bridge can control, without saving them. No device read or write."""
+        from . import hems_setup
+        _gw_or_404(gateway)
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        bad = [k for k in body if k not in hems_setup.FIELDS]
+        if bad:
+            raise HTTPException(422, f"unknown HEMS setup field(s): {', '.join(bad)}")
+        return hems_setup.view(st, get_settings(), gateway, answers=body)
 
     @app.put("/api/hems/setup")
     def api_hems_setup_put(body: dict, gateway: str = Depends(_gateway_q)):
@@ -4696,9 +4781,20 @@ def create_app() -> FastAPI:
         mine = [d for d in st.active_dispatches()
                 if d.get("schedule_id") == sid and d.get("host")]
         if mine:
+            failed = []
             for d in mine:
                 out = battery_control.execute("Release", host=d["host"])
-                st.end_dispatch(d["id"], status="stopped")
+                # Like DELETE (#195): a failed release keeps the row active, so the boot
+                # reconcile and the conflict check still see the force (#366).
+                if out.get("ok"):
+                    st.end_dispatch(d["id"], status="stopped")
+                else:
+                    failed.append(out)
+            if failed:
+                why = failed[-1].get("result") or failed[-1].get("error") or "release failed"
+                st.log_schedule_event(sid, entry["name"], "error",
+                                      f"stop: release failed, the force may still be running: {why}")
+                return {"stopped": False, "result": f"release failed: {why}"}
             st.log_schedule_event(sid, entry["name"], "stopped",
                                   f"dispatch released by user: {out.get('result', '')}")
             scheduler.notify_run(st, "schedule_aborted", entry["name"],     # #581
@@ -4708,9 +4804,14 @@ def create_app() -> FastAPI:
         return {"stopped": False, "result": "no active dispatch for this schedule"}
 
     def _open_run(st, sid: str):
-        """This schedule's run for the window currently open, if any."""
+        """This schedule's run for the window currently open, if any: one still to run,
+        or one that already ran while its window is open (#200)."""
         for o in st.due_occurrences():
             if o["schedule_id"] == sid:
+                return o
+        now = time.time()
+        for o in st.occurrences_for(sid, status="ok"):
+            if o.get("window_end_ts") is not None and float(o["window_end_ts"]) > now:
                 return o
         return None
 
@@ -4762,6 +4863,9 @@ def create_app() -> FastAPI:
         if not ok:
             _audit("schedule_resume", detail=sid, result=f"refused: {why}", ok=False)
             raise HTTPException(409, why)
+        # A run that had fired before the pause is re-entered, not counted as done (#200).
+        if entry.get("last_fired_day") == occ.get("occurrence_key"):
+            st.mark_schedule_fired(sid, "", "resumed")
         st.log_schedule_event(sid, entry["name"], "resumed",
                               "resumed by user — window still open")
         _audit("schedule_resume", detail=sid, result="resumed", ok=True)
@@ -5697,13 +5801,16 @@ def create_app() -> FastAPI:
             return None
 
     @app.get("/api/cloud/pop")
-    def api_cloud_pop(window_days: int = Query(30, ge=1, le=90)):
+    def api_cloud_pop(window_days: int = Query(30, ge=1, le=90),
+                      period: str | None = Query(None, pattern="^(today|7d|30d|all)$")):
         """CloudFront PoP edge drill-down for the FleetView/Cloud API path — current PoP, PoP
-        distribution, edge transitions, cache-hit rate — aggregated from the background cloud
-        poll. ``samples:0`` until the poller (needs cloud creds) has run at least once."""
+        distribution, edge transitions, cache-hit rate — and the cloud call counters (``api``:
+        calls by verb, errors by type, retries, token refreshes), aggregated from the
+        background cloud poll. ``period`` (today / 7d / 30d / all kept) overrides
+        ``window_days``; ``locations`` places each PoP at its city for the map. ``samples:0`` until the poller (needs cloud creds) has run at least once."""
         from . import cloud_pop
         s = get_settings()
-        out = cloud_pop.summary(_ha_store(), window_days=window_days)
+        out = cloud_pop.summary(_ha_store(), window_days=window_days, period=period)
         out["cloud_creds"] = bool(s.fwh_cloud_email and s.fwh_cloud_password)
         return out
 
@@ -5754,9 +5861,10 @@ def create_app() -> FastAPI:
         Read-only: connection type and status, and the stored Wi-Fi network's NAME for
         Reconnect to Wi-Fi — never its password. A cloud failure is shown, never a 500."""
         gw = _gw_or_404(gateway)
-        lan = troubleshoot.lan_state(db.get_store(get_settings()), gw.id)
+        lan = troubleshoot.lan_state(db.get_store(get_settings()), gw.id,
+                                     poll_interval_s=get_settings().poll_interval)
         why = _cloud_why_not(gw)
-        got = None
+        got, asked = None, False
         if why is None:
             s = get_settings()
             try:
@@ -5765,9 +5873,10 @@ def create_app() -> FastAPI:
                                                      gw.serial)
             except Exception as e:  # noqa: BLE001 — shown in the panel
                 log.warning("cloud call failed: connectivity — %s: %s", type(e).__name__, e)
-                why = f"The FranklinWH cloud didn't answer: {type(e).__name__}"
-        cloud = troubleshoot.cloud_block(got, reason=why)
-        v = troubleshoot.verdict(lan, cloud, (gw.last_state or {}).get("net_cloud_via"))
+                why, asked = f"The FranklinWH cloud didn't answer: {type(e).__name__}", True
+        cloud = troubleshoot.cloud_block(got, reason=why, asked=asked)
+        v = troubleshoot.verdict(lan, cloud, (gw.last_state or {}).get("net_cloud_via"),
+                                 getattr(gw, "net_read_ts", None))
         troubleshoot.note_cloud_verdict(gw.id, v, cloud)
         ssid = (got or {}).get("stored_ssid") if cloud.get("connection") == "4g" else None
         return {"gateway": gw.id, "label": gw.label or gw.id, "lan": lan, "cloud": cloud,
@@ -5782,7 +5891,8 @@ def create_app() -> FastAPI:
         gw = _gw_or_404(gateway)
         s = get_settings()
         check = client.link_check(s, host=gw.active_host or gw.configured_host)
-        lan = troubleshoot.lan_state(db.get_store(get_settings()), gw.id)
+        lan = troubleshoot.lan_state(db.get_store(get_settings()), gw.id,
+                                     poll_interval_s=s.poll_interval)
         return {"gateway": gw.id, "checked_ts": time.time(),
                 "checks": troubleshoot.health(check, lan, s.poll_interval,
                                                 port=s.fwh_port)}
@@ -5824,11 +5934,21 @@ def create_app() -> FastAPI:
         return troubleshoot.job(_gw_or_404(gateway).id)
 
     @app.get("/api/network/ping")
-    def api_network_ping(gateway: str = Depends(_gateway_q), count: int = Query(5, ge=1, le=20)):
+    def api_network_ping(gateway: str = Depends(_gateway_q), count: int = Query(5, ge=1, le=20),
+                         run: str = Query("", max_length=64)):
         """Latency test: N sendMqtt round-trips to the aGate in one session. Returns per-sample
-        ms + min/avg/max + loss%. The on-LAN equivalent of a ping to the Direct-Connect API."""
+        ms + min/avg/max + loss%. The on-LAN equivalent of a ping to the Direct-Connect API.
+        ``run``: the live ping's id (Watch, #730): one run per gateway (409 while another
+        is running), ended after 15 min (410)."""
+        from . import live_ping
         s = get_settings()
         host = _gw_host(gateway)
+        if run:
+            got = live_ping.claim_run(_gw_or_404(gateway).id, run)
+            if got == "busy":
+                raise HTTPException(409, "Another live ping is running for this gateway")
+            if got == "expired":
+                raise HTTPException(410, "The live ping stopped by itself after 15 minutes")
         samples: list = []
         try:
             with client._client(s, host) as c:
@@ -5848,6 +5968,30 @@ def create_app() -> FastAPI:
                 "avg": round(sum(ok) / len(ok), 1) if ok else None,
                 "max": max(ok) if ok else None,
                 "loss_pct": round(100 * (count - len(ok)) / count, 1) if count else 0}
+
+    @app.post("/api/network/ping/stop")
+    def api_network_ping_stop(gateway: str = Depends(_gateway_q), run: str = Query(..., max_length=64)):
+        """Stop a live ping (#730): frees the gateway for another run at once."""
+        from . import live_ping
+        live_ping.release_run(_gw_or_404(gateway).id, run)
+        return {"ok": True}
+
+    @app.get("/api/network/dropouts")
+    def api_network_dropouts(gateway: str = Depends(_gateway_q), hours: int = Query(24, ge=1, le=168)):
+        """Drop-outs of the aGate's Local API (:9000) in the last ``hours`` (#730), from the
+        link history the poll cycle already records: no extra aGate traffic. A drop-out is
+        recorded after ``LINK_STRIKES`` failed polls in a row; newest first."""
+        store = _ha_store()
+        gw = _gw_or_404(gateway).id
+        since = time.time() - hours * 3600
+        rows = []
+        for o in store.link_outages(gw, leg="local_9000", limit=500):
+            if o.get("ended_ts") is not None and float(o["ended_ts"]) < since:
+                continue
+            rows.append({"start": o["started_ts"], "end": o.get("ended_ts"),
+                         "duration_s": o.get("duration_s"), "open": o.get("ended_ts") is None,
+                         "attempts": o.get("attempts"), "error": o.get("last_error")})
+        return {"gateway_id": gw, "hours": hours, "strikes": store.LINK_STRIKES, "dropouts": rows}
 
     @app.get("/api/grid")
     def api_grid(gateway: str = Depends(_gateway_q)):
@@ -6218,7 +6362,12 @@ def create_app() -> FastAPI:
             circ = client.circuits(s, host=host, override=s.smart_circuit_count)
         except (OSError, TransportError, TimeoutError) as e:
             errors["circuits"] = str(e)
-        if getattr(gw, "generator_installed", False):
+        # Installed as System Setup has it: what the gateway reported, or your answer (#701)
+        try:
+            gen_on = bool(system_setup.values(db.get_store(s), s, gw.id, host).get("generator_input"))
+        except Exception:  # noqa: BLE001 — unknown: leave the generator rows out
+            gen_on = False
+        if gen_on:
             try:
                 gen = client.generator(s, host=host)
             except (OSError, TransportError, TimeoutError) as e:
@@ -7127,12 +7276,21 @@ def create_app() -> FastAPI:
                        "To silence only this bridge use PUT /api/modbus. If you really "
                        "mean the gateway, repeat with confirm=true.")
         host = _gw_host(gateway)   # SAFETY: the write must hit the SELECTED gateway
+        _onoff = {True: "on", False: "off"}
+        detail = ", ".join(f"{k}={_onoff[v]}" for k, v in
+                           (("sunspec_modbus", req.sunspec_modbus), ("ieee2030_5", req.ieee2030_5))
+                           if v is not None)
         try:
-            return client.set_der_comms(get_settings(),
-                                        sunspec_modbus=req.sunspec_modbus,
-                                        ieee2030_5=req.ieee2030_5, host=host)
+            out = client.set_der_comms(get_settings(),
+                                       sunspec_modbus=req.sunspec_modbus,
+                                       ieee2030_5=req.ieee2030_5, host=host)
         except (OSError, TransportError, TimeoutError) as e:
+            _audit("der_comms", gateway=gateway, detail=detail, result=str(e), ok=False)
             raise HTTPException(status_code=502, detail=str(e))
+        ok = bool(out.get("ok", True)) if isinstance(out, dict) else True
+        _audit("der_comms", gateway=gateway, detail=detail,
+               result="sent (applies after a delay)" if ok else str(out), ok=ok)
+        return out
 
     @app.post("/api/reboot")
     def api_reboot(req: RebootReq, gateway: str = Depends(_gateway_q)):
@@ -7288,6 +7446,19 @@ def create_app() -> FastAPI:
             raise HTTPException(400, f"source must be one of {', '.join(alerts.ACK_SOURCES)}")
         st = _ha_store()
         row = alerts.ack(st, alert_id, source)
+        if row is None:
+            raise HTTPException(404, f"no alert {alert_id}")
+        return row
+
+    @app.post("/api/alerts/{alert_id}/dismiss")
+    def api_alert_dismiss(alert_id: int, req: AlertAck | None = None):
+        """Dismiss one alert's bar, for everyone (#727). Also acknowledges it. A condition
+        stays open and listed until it resolves; a new occurrence shows again."""
+        _guard_writes()
+        source = (req.source if req else "api") or "api"
+        if source not in alerts.ACK_SOURCES:
+            raise HTTPException(400, f"source must be one of {', '.join(alerts.ACK_SOURCES)}")
+        row = alerts.dismiss(_ha_store(), alert_id, source)
         if row is None:
             raise HTTPException(404, f"no alert {alert_id}")
         return row

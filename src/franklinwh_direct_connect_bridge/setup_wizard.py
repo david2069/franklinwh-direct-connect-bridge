@@ -365,12 +365,18 @@ _TASKS = (
     ("system_view", "advanced", "System View",
      "What the overlay shows: open it, then Options.",
      {"open": {"overlay": "systemview"}}),
+    ("hems", "advanced", "Energy planning (HEMS)",
+     "Battery warranty, your home's usage and heavy loads, for forecasts and planning.",
+     {"inline": "hems"}),
     ("emulator", "advanced", "Connect to FranklinWH Gateway Emulator",
      "Add an emulator as a gateway, by its address and Direct Connect port.",
      {"inline": "emulator"}),
     ("modbus", "advanced", "Modbus TCP",
      "Where this bridge reaches the Modbus TCP Server: an aGate or an emulator.",
      {"inline": "modbus"}),
+    ("ha_entities", "advanced", "Existing Home Assistant entities",
+     "FranklinWH entities Home Assistant already has: leftovers and other integrations.",
+     {"inline": "haentities"}),
 )
 
 

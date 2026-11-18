@@ -1119,8 +1119,8 @@ class MetricsStore:
                    created_at REAL NOT NULL DEFAULT 0,
                    updated_at REAL NOT NULL DEFAULT 0)"""
         )
-        # #281 device shape: `kind` sets the row's icon; `user_id` is for the users and
-        # roles a later release adds, unused until then.
+        # #281 device shape: `kind` sets the row's icon; `user_id` is the bridge account
+        # the device belongs to, for Send to a role (#763).
         cols = [r[1] for r in self._conn.execute("PRAGMA table_info(notify_devices)")]
         if "kind" not in cols:
             self._conn.execute(
@@ -1165,18 +1165,18 @@ class MetricsStore:
 
     def create_notify_device(self, *, dev_id: str, alias: str, instance_id: str,
                              service: str, enabled: bool = True, kind: str = "other",
-                             now: float | None = None) -> dict:
+                             now: float | None = None, user_id: str | None = None) -> dict:
         ts = float(now if now is not None else time.time())
         with self._lock:
             self._conn.execute(
                 "INSERT INTO notify_devices(id,alias,instance_id,service,enabled,kind,"
-                "created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)",
-                (dev_id, alias, instance_id, service, int(enabled), kind, ts, ts))
+                "created_at,updated_at,user_id) VALUES (?,?,?,?,?,?,?,?,?)",
+                (dev_id, alias, instance_id, service, int(enabled), kind, ts, ts, user_id or None))
             self._conn.commit()
         return self.notify_device(dev_id)
 
     def update_notify_device(self, dev_id: str, **fields) -> dict | None:
-        allowed = {"alias", "instance_id", "service", "enabled", "kind"}
+        allowed = {"alias", "instance_id", "service", "enabled", "kind", "user_id"}
         sets = {k: v for k, v in fields.items() if k in allowed and v is not None}
         if not sets:
             return self.notify_device(dev_id)
@@ -2199,19 +2199,24 @@ class MetricsStore:
         )
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS ix_cloud_pop_ts ON cloud_pop_samples(ts DESC)")
+        # The poll's franklinwh-cloud call counters (JSON), kept with its edge sample.
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(cloud_pop_samples)")}
+        if "api" not in cols:
+            self._conn.execute("ALTER TABLE cloud_pop_samples ADD COLUMN api TEXT")
         self._conn.commit()
 
     def record_cloud_pop(self, *, pop, requests=0, hits=0, misses=0, trace_id=None,
+                         api: dict | None = None,
                          retain_days: int = 30, max_rows: int = 50000) -> None:
         """Append one CloudFront-edge sample (one per cloud poll). Disk-safe: purges rows older
         than ``retain_days`` AND caps the table at ``max_rows`` (oldest dropped). Never raises."""
         try:
             with self._lock:
                 self._conn.execute(
-                    "INSERT INTO cloud_pop_samples(ts, pop, requests, hits, misses, trace_id) "
-                    "VALUES (?,?,?,?,?,?)",
+                    "INSERT INTO cloud_pop_samples(ts, pop, requests, hits, misses, trace_id, api) "
+                    "VALUES (?,?,?,?,?,?,?)",
                     (float(time.time()), pop, int(requests or 0), int(hits or 0),
-                     int(misses or 0), trace_id))
+                     int(misses or 0), trace_id, json.dumps(api) if api else None))
                 if retain_days:
                     self._conn.execute("DELETE FROM cloud_pop_samples WHERE ts < ?",
                                        (time.time() - retain_days * 86400,))
@@ -2224,7 +2229,7 @@ class MetricsStore:
             pass
 
     def cloud_pop_samples(self, *, since_ts: float | None = None, limit: int = 20000) -> list[dict]:
-        q = "SELECT ts, pop, requests, hits, misses, trace_id FROM cloud_pop_samples"
+        q = "SELECT ts, pop, requests, hits, misses, trace_id, api FROM cloud_pop_samples"
         args: list = []
         if since_ts is not None:
             q += " WHERE ts >= ?"; args.append(float(since_ts))
@@ -3022,6 +3027,13 @@ class MetricsStore:
                    acked_by TEXT,
                    acked_ts REAL)"""
         )
+        # Dismissed (#727): the bar of an acknowledged, still-active condition is hidden
+        # until it resolves. A new occurrence is a new row, so it shows again.
+        cols = [r[1] for r in self._conn.execute("PRAGMA table_info(alerts)").fetchall()]
+        if "dismissed_ts" not in cols:
+            self._conn.execute("ALTER TABLE alerts ADD COLUMN dismissed_ts REAL")
+        if "dismissed_by" not in cols:
+            self._conn.execute("ALTER TABLE alerts ADD COLUMN dismissed_by TEXT")
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS ix_alerts_code ON alerts(gateway_id, code, opened_ts DESC)")
         self._conn.execute(
@@ -3112,6 +3124,17 @@ class MetricsStore:
             self._conn.execute(
                 "UPDATE alerts SET acked_by=?, acked_ts=? WHERE id=? AND acked_ts IS NULL",
                 (acked_by, float(now), int(alert_id)))
+            self._conn.commit()
+            rows = self._alert_rows(self._conn.execute(
+                "SELECT * FROM alerts WHERE id=?", (int(alert_id),)))
+        return rows[0] if rows else None
+
+    def dismiss_alert(self, alert_id: int, *, dismissed_by: str, now: float) -> dict | None:
+        """Dismiss once (#727). Returns the row, or None if there is no such alert."""
+        with self._lock:
+            self._conn.execute(
+                "UPDATE alerts SET dismissed_by=?, dismissed_ts=? WHERE id=? AND dismissed_ts IS NULL",
+                (dismissed_by, float(now), int(alert_id)))
             self._conn.commit()
             rows = self._alert_rows(self._conn.execute(
                 "SELECT * FROM alerts WHERE id=?", (int(alert_id),)))

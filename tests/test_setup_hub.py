@@ -18,13 +18,14 @@ def test_the_list_and_its_order():
     ess = [x["id"] for x in t if x["group"] == "essential"]
     adv = [x["id"] for x in t if x["group"] == "advanced"]
     assert ess == ["cloud", "mqtt", "home_assistant", "billing", "default_mode", "automation"]
-    assert adv == ["notifications", "security", "accounts", "system_view", "emulator", "modbus"]
+    assert adv == ["notifications", "security", "accounts", "system_view", "hems", "emulator",
+                   "modbus", "ha_entities"]
     for x in t:
         assert x["title"] and x["detail"]
         assert bool(x.get("inline")) != bool(x.get("open")), x["id"]   # one way in, not two
     assert {x["id"]: x["inline"] for x in t if x.get("inline")} == {
         "cloud": "cloud", "mqtt": "publish", "default_mode": "mode",
-        "emulator": "emulator", "modbus": "modbus"}
+        "emulator": "emulator", "modbus": "modbus", "hems": "hems", "ha_entities": "haentities"}
 
 
 def test_done_follows_the_facts():
@@ -79,7 +80,7 @@ def test_the_wizard_has_the_hub():
 def test_emulator_and_modbus_are_advanced_tasks_answered_here():
     t = {x["id"]: x for x in setup_wizard.tasks(**FACTS)}
     adv = [x["id"] for x in setup_wizard.tasks(**FACTS) if x["group"] == "advanced"]
-    assert adv[-2:] == ["emulator", "modbus"]
+    assert adv[-3:-1] == ["emulator", "modbus"]
     assert t["emulator"]["inline"] == "emulator" and t["modbus"]["inline"] == "modbus"
     js = (ROOT / "static/js/setup_wizard.js").read_text()
     html = (ROOT / "templates/partials/setup_wizard.html").read_text()

@@ -62,6 +62,39 @@ function fetchErrorText(e, url) {
   return `${url}: ${m}`;
 }
 
+/**
+ * The import window (owner 2026-11-18): an import button opens this first — Choose file…,
+ * Paste JSON, Cancel — because on Android the file picker is the system's full-screen
+ * browser with no Cancel. Spread into a component with the name of its import method,
+ * which takes the JSON text and resolves to an error message (shown in the window) or
+ * null (done: the window closes). Markup: partials/import_window.html.
+ */
+function importWindowMixin(submit) {
+  return {
+    impWin: { open: false, text: '', msg: '', busy: false },
+    openImportWindow() { this.impWin = { open: true, text: '', msg: '', busy: false }; },
+    closeImportWindow() { this.impWin.open = false; },
+    impPickFile() { this.$refs.impWinFile.click(); },
+    async impFileChosen(ev) {
+      const file = ev.target.files[0];
+      ev.target.value = '';
+      if (!file) return;                       // the picker was backed out of: stay here
+      await this._impSubmit(await file.text());
+    },
+    async impPasteSubmit() { await this._impSubmit(this.impWin.text); },
+    async _impSubmit(text) {
+      this.impWin.busy = true;
+      this.impWin.msg = '';
+      try {
+        const err = await this[submit](text);
+        if (err) this.impWin.msg = err; else this.impWin.open = false;
+      } catch (e) {
+        this.impWin.msg = String((e && e.message) || e);
+      } finally { this.impWin.busy = false; }
+    },
+  };
+}
+
 function socColour(soc) {
   if (soc == null) return 'var(--text-muted)';
   if (soc >= 80) return 'var(--ok)';
@@ -870,6 +903,7 @@ document.addEventListener('alpine:init', () => {
     showRawKeys: localStorage.getItem('fwh-show-keys') === '1', // show raw key/cmdType by labels
     siteTzOffsetMin: null,   // aGate-local UTC offset (min) for time axes; null = fall back to browser tz
     siteTzLabel: '',
+    siteTzShort: '',         // the site zone's short name for alert/Troubleshoot times (#728)
     hostTzOffsetMin: null,   // integration-host UTC offset (min) for system-of-record times
     hostTzLabel: '',
 
@@ -2026,18 +2060,20 @@ document.addEventListener('alpine:init', () => {
     async loadSiteTz() {
       const key = this._siteTzKey();
       this._siteTzFor = key;
-      if (!this.selectedGateway) { this.siteTzOffsetMin = null; this.siteTzLabel = ''; return; }
+      if (!this.selectedGateway) { this.siteTzOffsetMin = null; this.siteTzLabel = ''; this.siteTzShort = ''; return; }
       try {
         const r = await (await fetch('api/site/timezone' + this.gwQuery('?'))).json();
         if (this._siteTzFor !== key) return;        // a newer selection's answer wins
         if (r && r.available && r.offset_minutes != null) {
           this.siteTzOffsetMin = r.offset_minutes;
           this.siteTzLabel = r.label + (r.tz_str ? ' \u00b7 ' + r.tz_str : '');
+          this.siteTzShort = this._tzShort(r);
         } else {
           // Never keep the PREVIOUS gateway's zone for this one (#144): the browser's zone
           // is the documented fallback.
           this.siteTzOffsetMin = null;
           this.siteTzLabel = '';
+          this.siteTzShort = '';
         }
         if (this._lastSeries) this.renderChart(this._lastSeries);   // re-render with correct tz
       } catch (e) { /* falls back to browser tz */ }
@@ -2059,6 +2095,48 @@ document.addEventListener('alpine:init', () => {
       const o = opts || { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true };
       if (this.hostTzOffsetMin == null) return new Date(ts * 1000).toLocaleString([], o);
       return new Date((ts + this.hostTzOffsetMin * 60) * 1000).toLocaleString('en-US', { ...o, timeZone: 'UTC' });
+    },
+    // The site zone's short name: "AEDT" when the aGate names its zone, else "UTC+11".
+    _tzShort(r) {
+      if (r.tz_str) {
+        try {
+          const n = new Intl.DateTimeFormat('en-AU', { timeZone: r.tz_str, timeZoneName: 'short' })
+            .formatToParts(new Date()).find(p => p.type === 'timeZoneName');
+          if (n && !/^(GMT|UTC)/.test(n.value)) return n.value;
+        } catch (e) { /* not an IANA name: the offset label below */ }
+      }
+      return r.label || '';
+    },
+    // #728: " UTC+11" after a SITE-zone time, only when the site's zone differs from the
+    // browser's at that moment; '' when they match or no site zone is known.
+    siteTzTag(ts) {
+      if (this.siteTzOffsetMin == null || !this.siteTzShort) return '';
+      const at = ts ? new Date(ts * 1000) : new Date();
+      return -at.getTimezoneOffset() === this.siteTzOffsetMin ? '' : ' ' + this.siteTzShort;
+    },
+    // #748: one short date for list columns, "18 Nov 18:01", in the zone the list already
+    // used: 'host' (bridge host), 'site' (aGate) or 'local' (this browser).
+    _zoneOffset(zone) {
+      return zone === 'host' ? this.hostTzOffsetMin : zone === 'site' ? this.siteTzOffsetMin : null;
+    },
+    shortWhen(ts, zone) {
+      if (ts == null || ts === '') return '';
+      const o = { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
+      const off = this._zoneOffset(zone);
+      const s = off == null ? new Date(ts * 1000).toLocaleString('en-GB', o)
+        : new Date((ts + off * 60) * 1000).toLocaleString('en-GB', { ...o, timeZone: 'UTC' });
+      return s.replace(',', '');
+    },
+    // The full timestamp behind a short one (its title), with the site's zone label when
+    // that zone differs from the browser's (#728).
+    fullWhen(ts, zone) {
+      if (ts == null || ts === '') return '';
+      if (zone === 'host') return this._fmtHostTime(ts);
+      if (zone === 'site') {
+        const o = { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true };
+        return this._fmtSiteTime(ts, o) + this.siteTzTag(ts);
+      }
+      return new Date(ts * 1000).toLocaleString();
     },
     // Format an epoch-seconds ts as HH:MM:SS in the SITE tz (shift epoch, render as UTC).
     _fmtSiteTime(ts, opts) {
@@ -2350,8 +2428,9 @@ document.addEventListener('alpine:init', () => {
       },
       applySize() {
         Object.assign(panel.style, DIALOG_SIZES[this.size], {
-          // 90dvh as before: on a phone the bottom nav covers anything taller.
-          maxWidth: 'calc(100vw - 1rem)', maxHeight: '90dvh',
+          // 90dvh as before, and never taller than the backdrop it sits in (less the
+          // panel's margins), so the footer stays on screen on a phone (#734).
+          maxWidth: 'calc(100vw - 1rem)', maxHeight: 'min(90dvh, calc(100% - 1rem))',
           resize: 'both', overflow: 'hidden',
         });
       },

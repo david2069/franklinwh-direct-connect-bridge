@@ -37,12 +37,23 @@ def note_local_network(gateway_id: str, lan_ok: bool, net_state: dict | None,
         return                       # not read this cycle: the last fact stands
     alerts.set_condition(gateway_id, "AGATE_ON_4G", bool(lan_ok and via == "4G"), now=now,
                          detail="The aGate answers on your LAN, but its internet goes over "
-                                "4G (its own report, 1118). Its Wi-Fi has no route out — "
-                                "check the router, or reconnect it to Wi-Fi.")
+                                "4G (its own report, 1118); Wi-Fi is on standby. If it "
+                                "should be on Wi-Fi, check the router, or reconnect it to "
+                                "Wi-Fi.")
 
 
-def lan_state(store, gateway_id: str) -> dict:
-    """The bridge's own link to the aGate on :9000, as the poller recorded it."""
+def fresh(last_ok_ts, poll_interval_s: float, now: float | None = None) -> bool:
+    """A last good poll recent enough to call the link answering: the card and the
+    health check's "Last good poll" use this one rule (#728)."""
+    ts = float(now if now is not None else time.time())
+    return bool(last_ok_ts) and ts - float(last_ok_ts) <= max(3 * float(poll_interval_s or 30), 120)
+
+
+def lan_state(store, gateway_id: str, poll_interval_s: float | None = None,
+              now: float | None = None) -> dict:
+    """The bridge's own link to the aGate on :9000, as the poller recorded it. The record
+    stays "up" until LINK_STRIKES failed probes; with ``poll_interval_s`` an "up" whose last
+    good poll is no longer fresh is "stale", not answering (#728)."""
     row = None
     if store is not None:
         try:
@@ -50,16 +61,20 @@ def lan_state(store, gateway_id: str) -> dict:
         except Exception:  # noqa: BLE001 — a missing record is "unknown", not an error
             row = None
     st = (row or {}).get("state") or "unknown"
+    if st == "up" and poll_interval_s is not None and \
+            not fresh((row or {}).get("last_ok_ts"), poll_interval_s, now):
+        st = "stale"
     return {"state": st, "up": st == "up", "last_ok_ts": (row or {}).get("last_ok_ts"),
             "down_since_ts": (row or {}).get("down_since_ts"),
             "last_error": (row or {}).get("last_error") or None}
 
 
-def cloud_block(got: dict | None, *, reason: str | None = None) -> dict:
-    """The cloud's answer, trimmed to what the panel shows: no MAC, no IP, no password."""
+def cloud_block(got: dict | None, *, reason: str | None = None, asked: bool = False) -> dict:
+    """The cloud's answer, trimmed to what the panel shows: no MAC, no IP, no password.
+    ``asked``: the cloud was asked and the call failed, as opposed to not asked (#728)."""
     if got is None:
         return {"available": False, "reason": reason, "reachable": None, "connection": None,
-                "label": None, "fallbacks": []}
+                "label": None, "fallbacks": [], "asked": asked}
     if not got.get("reachable"):
         return {"available": True, "reason": None, "reachable": False, "connection": None,
                 "label": None, "fallbacks": [], "detail": got.get("detail")}
@@ -72,11 +87,29 @@ def cloud_block(got: dict | None, *, reason: str | None = None) -> dict:
                           if k != key]}
 
 
-def verdict(lan: dict, cloud: dict, local_via: str | None = None) -> dict:
-    """One sentence for the banner and the panel, from the LAN and the cloud together.
-    ``local_via`` is the aGate's own 1118 report, used while the cloud is not available."""
+def verdict(lan: dict, cloud: dict, local_via: str | None = None,
+            local_ts: float | None = None, now: float | None = None) -> dict:
+    """One sentence for the banner and the panel, from the LAN and the cloud together, with
+    whose reading it rests on (``source``: cloud / agate) and, for the aGate's, when.
+    ``local_via`` is the aGate's own 1118 report (read at ``local_ts``), used while the
+    cloud is not available, and only while it is no older than two network reads (#728)."""
+    v = _verdict(lan, cloud, local_via, local_ts, now)
+    if cloud.get("available") and cloud.get("reachable") is not None:
+        v["source"] = "cloud"
+    elif v.get("_local"):
+        v["source"], v["as_of_ts"] = "agate", local_ts
+    v.pop("_local", None)
+    return v
+
+
+def _verdict(lan: dict, cloud: dict, local_via, local_ts, now) -> dict:
+    from .poller import NET_EVERY_S
+    ts = float(now if now is not None else time.time())
+    if not local_ts or ts - float(local_ts) > 2 * NET_EVERY_S:
+        local_via = None                 # no reading time, or too old to speak for now
     up = bool(lan.get("up"))
     conn = cloud.get("connection")
+    local = False
     if cloud.get("available") and cloud.get("reachable") is False:
         if up:
             return {"code": "no_cloud", "severity": "warning",
@@ -86,11 +119,11 @@ def verdict(lan: dict, cloud: dict, local_via: str | None = None) -> dict:
                 "text": "aGate is offline everywhere: not on your LAN and not on the "
                         "FranklinWH cloud. Check its power, then your internet."}
     if conn is None and up and local_via == "4G":
-        conn = "4g"
+        conn, local = "4g", True
     if conn == "4g":
         if up:
-            return {"code": "on_4g", "severity": "warning",
-                    "text": "aGate is using 4G — Wi-Fi has no internet. The bridge still "
+            return {"code": "on_4g", "severity": "warning", "_local": local,
+                    "text": "aGate is using 4G — Wi-Fi is on standby. The bridge still "
                             "reaches it on your LAN."}
         return {"code": "left_wifi", "severity": "critical",
                 "text": "aGate is online via 4G (cloud) but not on your LAN — it has left "
@@ -125,10 +158,9 @@ def health(check: dict, lan: dict, poll_interval_s: float, now: float | None = N
            port: int = 9000) -> list[dict]:
     """The panel's four pass/fail rows from :func:`client.link_check` and the link record.
     ``ok`` None is "not known", shown as such rather than as a failure."""
-    ts = float(now if now is not None else time.time())
     aws = check.get("aws_status")
     last = lan.get("last_ok_ts")
-    fresh = bool(last) and ts - float(last) <= max(3 * float(poll_interval_s or 30), 120)
+    ok_now = fresh(last, poll_interval_s, now)
     return [
         {"key": "lan", "label": "LAN reachability (ping)", "ok": bool(check.get("ping")),
          "detail": "answers ping" if check.get("ping") else "no ping reply"},
@@ -140,8 +172,8 @@ def health(check: dict, lan: dict, poll_interval_s: float, now: float | None = N
          "detail": ("not read — the local API didn't answer" if aws is None
                     else "connected to the FranklinWH cloud" if aws == 1
                     else "not connected to the FranklinWH cloud")},
-        {"key": "last_good", "label": "Last good poll", "ok": fresh, "ts": last,
-         "detail": "never" if not last else ("recent" if fresh else "not recent")},
+        {"key": "last_good", "label": "Last good poll", "ok": ok_now, "ts": last,
+         "detail": "never" if not last else ("recent" if ok_now else "not recent")},
     ]
 
 

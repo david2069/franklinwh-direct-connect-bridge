@@ -25,7 +25,7 @@ def test_record_has_every_spec_field(tmp_path):
     row = st.alert(aid)
     assert set(row) == {"id", "gateway_id", "kind", "severity", "code", "title", "message",
                         "opened_ts", "last_ts", "count", "resolved_ts", "acked_by",
-                        "acked_ts"}
+                        "acked_ts", "dismissed_ts", "dismissed_by"}   # + #727's dismiss
     assert row["count"] == 1 and row["last_ts"] == row["opened_ts"] == 1000.0
 
 

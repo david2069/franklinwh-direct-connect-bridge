@@ -245,6 +245,41 @@ def bridge_entity_counts(base_url: str, token: str | None) -> list[tuple[list[st
             for ids, n in rows]
 
 
+#: Every FranklinWH MQTT device in HA, whoever made it (#741): its identifiers, name,
+#: producer (sw_version), entity count, and how many of its entity ids are true ``_2``
+#: duplicates (``x_2`` while ``x`` exists too — ``circuit_2`` alone is not one).
+FRANKLIN_DEVICES_TEMPLATE = (
+    "{% set ns = namespace(o=[]) %}"
+    "{% for d in integration_entities('mqtt') | map('device_id') | reject('none') | unique %}"
+    "{% set ids = device_attr(d, 'identifiers') | list | map('list') | list %}"
+    "{% set man = (device_attr(d, 'manufacturer') or '') | lower %}"
+    "{% if 'franklin' in (ids | string | lower) or 'franklin' in man %}"
+    "{% set ents = device_entities(d) %}"
+    "{% set dups = ents | select('match', '.*_2$') | map('regex_replace', '_2$', '')"
+    " | select('in', ents) | list %}"
+    "{% set ns.o = ns.o + [[ids, device_attr(d, 'name') or '', device_attr(d, 'sw_version') or '',"
+    " ents | length, dups | length]] %}"
+    "{% endif %}{% endfor %}{{ ns.o | tojson }}"
+)
+
+
+def franklin_devices(base_url: str, token: str | None) -> list[dict[str, Any]]:
+    """FranklinWH MQTT devices in HA's registry, by any producer. Raises on any failure;
+    the caller says "could not be checked"."""
+    if not token:
+        raise PermissionError("no token configured for this instance")
+    req = urllib.request.Request(
+        base_url.rstrip("/") + "/api/template",
+        data=json.dumps({"template": FRANKLIN_DEVICES_TEMPLATE}).encode(),
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method="POST")
+    with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
+        rows = json.loads(resp.read().decode() or "[]")
+    return [{"identifiers": [str(i[1]) for i in ids if isinstance(i, list) and len(i) == 2],
+             "name": str(name), "sw_version": str(sw), "entities": int(n), "dup2": int(dup)}
+            for ids, name, sw, n, dup in rows]
+
+
 def call_service(base_url: str, token: str | None, domain: str, service: str,
                  data: dict | None = None) -> dict[str, Any]:
     """Call any Home Assistant service (``domain.service``) with a data payload.

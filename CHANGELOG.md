@@ -15,6 +15,19 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
 
+## 2026-11-19
+
+### [0.5.53](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.53.md)
+
+Added 6 · Changed 7 · Fixed 17
+
+- Notifications: operating mode changed, aGate on 4G and off-grid reminders, Send to a…
+- Scheduler: Set reserve SoC sets the reserve
+- Setup and HEMS: Automatic, Mock and Custom at the top of the setup list, existing Home…
+- Network: a live Watch ping with drop-outs of the last 24 h, cloud requests and a…
+- System view: Solar forecast & actual, and a blank band and Fit fixed on an iPhone in Home…
+- Fixes: each gateway's own port used
+
 ## 2026-11-18
 
 ### [0.5.52](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.52.md)

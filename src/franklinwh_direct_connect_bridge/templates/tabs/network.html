@@ -151,12 +151,13 @@
         <div class="flex items-center justify-between gap-3">
           <div>
             <div class="card-label" style="margin-bottom:0">Latency test</div>
-            <div class="text-[11px]" style="color:var(--text-faint)">5 round-trips to the aGate's Direct-Connect API (:<span x-text="$store.app.ports.dc"></span>).</div>
+            <div class="text-[11px]" style="color:var(--text-faint)"><b>Ping aGate</b>: 5 round-trips to the aGate's Direct-Connect API (:<span x-text="$store.app.ports.dc"></span>). <b>Watch</b>: one a second until Stop, to catch a drop-out.</div>
           </div>
           <div class="flex items-center gap-2">
-            <button class="btn btn-sm" :class="watching ? 'btn-primary' : 'btn-secondary'" @click="toggleWatch()">
+            <button class="btn btn-sm" :class="watching ? 'btn-primary' : 'btn-secondary'" @click="toggleWatch()"
+                    data-testid="live-ping-stop" :title="watching ? 'Stop the live ping' : 'Ping once a second until Stop (stops by itself after 15 min)'">
               <span class="inline-block w-1.5 h-1.5 rounded-full mr-1" :style="watching ? 'background:#34d399;box-shadow:0 0 0 3px #34d39933' : 'background:var(--text-faint)'"></span>
-              <span x-text="watching ? 'Watching…' : 'Watch'"></span>
+              <span x-text="watching ? 'Stop' : 'Watch'"></span>
             </button>
             <button class="btn btn-secondary btn-sm" @click="runPing()" :disabled="pinging" x-text="pinging ? 'Pinging…' : 'Ping aGate'"></button>
           </div>
@@ -177,23 +178,52 @@
             </div>
           </div>
         </template>
-        <template x-if="watching">
-          <div class="mt-3 pt-3" style="border-top:1px solid var(--border)">
-            <div class="flex flex-wrap items-center gap-4 text-xs">
-              <span style="color:var(--text-secondary)">live <span class="font-mono tabular-nums" style="color:var(--text-primary)" x-text="watchLast!=null ? watchLast + ' ms' : '…'"></span></span>
-              <span style="color:var(--text-secondary)">avg <span class="font-mono tabular-nums" style="color:var(--text-primary)" x-text="watchAvg!=null ? watchAvg + ' ms' : '…'"></span></span>
-              <span style="color:var(--text-secondary)">max <span class="font-mono tabular-nums" style="color:var(--text-primary)" x-text="latHistory.some(x=>x!=null) ? watchMax + ' ms' : '…'"></span></span>
-              <span style="color:var(--text-faint)" x-text="latHistory.length + ' samples · every ~6s'"></span>
-            </div>
-            <div class="flex items-end gap-px mt-2 h-12">
-              <template x-for="(s, i) in latHistory" :key="i">
-                <div class="flex-1 rounded-t" style="min-width:2px" :style="'height:' + (s==null ? 100 : Math.max(4, Math.min(100, (s/(watchMax||1))*100))) + '%;background:' + (s==null ? '#ef4444' : 'var(--accent)')"
-                     :title="s==null ? 'lost' : s + ' ms'"></div>
-              </template>
-              <template x-if="!latHistory.length"><span class="text-[11px]" style="color:var(--text-faint)">waiting for first round-trip…</span></template>
-            </div>
+        <div class="mt-3 pt-3" style="border-top:1px solid var(--border)" x-show="watching || watchSent">
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs" data-testid="live-ping-stats">
+            <span style="color:var(--text-secondary)">live <span class="font-mono tabular-nums" style="color:var(--text-primary)" x-text="watching ? (latHistory.length && latHistory[latHistory.length-1]==null ? 'lost' : (watchLast!=null ? watchLast + ' ms' : '…')) : '—'"></span></span>
+            <span style="color:var(--text-secondary)">min <span class="font-mono tabular-nums" style="color:var(--text-primary)" x-text="watchMinMs!=null ? watchMinMs + ' ms' : '…'"></span></span>
+            <span style="color:var(--text-secondary)">avg <span class="font-mono tabular-nums" style="color:var(--text-primary)" x-text="watchAvg!=null ? watchAvg + ' ms' : '…'"></span></span>
+            <span style="color:var(--text-secondary)">max <span class="font-mono tabular-nums" style="color:var(--text-primary)" x-text="watchMaxMs!=null ? watchMaxMs + ' ms' : '…'"></span></span>
+            <span style="color:var(--text-secondary)">loss <span class="font-mono tabular-nums" :style="watchLost ? 'color:#ef4444' : 'color:#34d399'" x-text="watchLoss + '%'"></span></span>
+            <span style="color:var(--text-faint)" x-text="watchSent + ' sent · every 1 s · ' + watchElapsed + (watching ? ' · stops by itself at 15 min' : '')"></span>
           </div>
-        </template>
+          <div class="flex items-end gap-px mt-2 h-12">
+            <template x-for="(s, i) in latHistory" :key="i">
+              <div class="flex-1 rounded-t" style="min-width:2px" :style="'height:' + (s==null ? 100 : Math.max(4, Math.min(100, (s/(watchMax||1))*100))) + '%;background:' + (s==null ? '#ef4444' : 'var(--accent)')"
+                   :title="s==null ? 'lost' : s + ' ms'"></div>
+            </template>
+            <template x-if="watching && !latHistory.length"><span class="text-[11px]" style="color:var(--text-faint)">waiting for first round-trip…</span></template>
+          </div>
+          <p class="text-[11px] mt-1" style="color:var(--text-faint)" x-show="watchStopped" x-text="watchStopped"></p>
+          <div class="mt-2" data-testid="live-ping-drops">
+            <div class="text-[11px] font-semibold" style="color:var(--text-secondary)"
+                 x-text="watchDrops.length ? 'Drop-outs while watching (' + watchDrops.length + ')' : 'No drop-outs while watching'"></div>
+            <template x-for="(d, i) in watchDrops.slice(0, 10)" :key="d.start">
+              <div class="flex items-baseline justify-between gap-3 text-xs py-0.5">
+                <span class="font-mono" style="color:var(--text-secondary)" x-text="new Date(d.start).toLocaleTimeString('en-GB')"></span>
+                <span class="font-mono shrink-0" style="color:#ef4444" x-text="d.end ? dropLen(d) : 'ongoing · ' + dropLen(d)"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Drop-outs in the last 24 h (#730): from the link history, no extra aGate traffic -->
+        <div class="mt-3 pt-3" style="border-top:1px solid var(--border)" data-testid="dropouts-24h">
+          <div class="text-[11px] font-semibold" style="color:var(--text-secondary)">Drop-outs in the last 24 h</div>
+          <div class="text-[10px]" style="color:var(--text-faint)">
+            From the bridge's own polls of the Local API (:<span x-text="$store.app.ports.dc"></span>): a drop-out is recorded after
+            <span x-text="(dropouts && dropouts.strikes) || 3"></span> failed polls in a row.</div>
+          <template x-for="o in ((dropouts && dropouts.dropouts) || []).slice(0, 12)" :key="o.start">
+            <div class="flex items-baseline justify-between gap-3 text-xs py-1">
+              <span class="font-mono shrink-0" style="color:var(--text-secondary)" x-text="$store.app.shortWhen(o.start, 'local')"></span>
+              <span class="truncate text-[11px] flex-1" style="color:var(--text-faint)" x-text="o.error || ''" :title="o.error || ''"></span>
+              <span class="font-mono shrink-0" :style="o.open ? 'color:var(--danger)' : ''"
+                    x-text="o.open ? 'ongoing' : dur(o.duration_s)"></span>
+            </div>
+          </template>
+          <p class="text-[11px] mt-1" style="color:var(--text-faint)"
+             x-show="dropouts && !dropouts.dropouts.length">None in the last 24 h.</p>
+        </div>
       </div>
 
       <!-- Connectivity chain: router → internet → cloud -->
@@ -259,6 +289,18 @@
           <div class="card-label" style="margin-bottom:0">CloudFront edge <span class="text-[10px] normal-case" style="color:var(--text-faint)">FleetView / Cloud API</span></div>
           <span class="text-[11px]" style="color:var(--text-secondary)" x-show="pop && pop.current_pop" x-text="(pop && pop.current_pop) ? ('current PoP: ' + pop.current_pop) : ''"></span>
         </div>
+        <!-- Period for the tables and the map. Samples are kept 30 days, so All = all kept. -->
+        <div class="flex items-center gap-2 flex-wrap mt-2" x-show="pop && pop.samples !== undefined">
+          <div class="flex items-center gap-1" role="group" aria-label="Period" data-testid="pop-period">
+            <template x-for="pp in [['today','Today'],['7d','7 days'],['30d','30 days'],['all','All kept']]" :key="pp[0]">
+              <button type="button" class="btn btn-sm" :class="popPeriod === pp[0] ? 'btn-primary' : 'btn-secondary'"
+                      style="padding:2px 8px;font-size:.7rem" :aria-pressed="popPeriod === pp[0]"
+                      @click="setPopPeriod(pp[0])" x-text="pp[1]"></button>
+            </template>
+          </div>
+          <button type="button" class="btn btn-sm btn-secondary" style="padding:2px 10px;font-size:.7rem"
+                  x-show="pop && pop.samples" @click="openMap()" data-testid="pop-map-open">Map</button>
+        </div>
         <template x-if="pop && !pop.cloud_creds && !pop.samples">
           <div class="text-xs mt-1" style="color:var(--text-secondary)">Cloud API not configured — set <span class="font-mono">FWH_CLOUD_EMAIL</span> / <span class="font-mono">FWH_CLOUD_PASSWORD</span> and the background cloud poll will capture CloudFront PoP metrics here.</div>
         </template>
@@ -271,37 +313,158 @@
               <span style="color:var(--text-secondary)">requests <span class="font-mono" style="color:var(--text-primary)" x-text="pop.total_requests"></span></span>
               <span style="color:var(--text-secondary)">cache hit <span class="font-mono" style="color:var(--text-primary)" x-text="pop.cache_hit_rate != null ? pop.cache_hit_rate + '%' : '–'"></span></span>
               <span style="color:var(--text-secondary)">transitions <span class="font-mono" style="color:var(--text-primary)" x-text="pop.transition_count"></span></span>
-              <span style="color:var(--text-faint)" x-text="pop.samples + ' samples · ' + pop.window_days + 'd'"></span>
+              <span style="color:var(--text-faint)" x-text="pop.samples + ' samples · ' + ({today: 'today', '7d': '7 days', '30d': '30 days', all: 'all kept (30 days)'}[pop.period] || (pop.window_days + 'd'))"></span>
             </div>
             <div>
               <div class="text-[10px] uppercase tracking-wide mb-1" style="color:var(--text-faint)">PoP distribution</div>
-              <div class="space-y-1">
-                <template x-for="[pp, n] in Object.entries(pop.distribution || {})" :key="pp">
-                  <div class="flex items-center gap-2 text-xs">
-                    <span class="font-mono w-24 shrink-0" style="color:var(--text-secondary)" x-text="pp"></span>
-                    <div class="flex-1 h-3 rounded overflow-hidden" style="background:var(--surface-2)">
-                      <div class="h-full rounded" style="background:var(--accent)" :style="'width:' + Math.max(3, (n / (pop.total_requests || 1) * 100)) + '%'"></div>
-                    </div>
-                    <span class="font-mono w-16 text-right" style="color:var(--text-faint)" x-text="n + ' req'"></span>
-                  </div>
-                </template>
-              </div>
+              <table class="w-full text-xs" style="table-layout:fixed">
+                <thead>
+                  <tr style="color:var(--text-faint)">
+                    <th class="text-left font-normal w-24">PoP</th>
+                    <th class="text-left font-normal">Share</th>
+                    <th class="text-right font-normal w-20">Requests</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="[pp, n] in Object.entries(pop.distribution || {})" :key="pp">
+                    <tr>
+                      <td class="font-mono py-0.5" style="color:var(--text-secondary)" x-text="pp"></td>
+                      <td class="py-0.5 pr-2">
+                        <div class="h-3 rounded overflow-hidden" style="background:var(--surface-2)">
+                          <div class="h-full rounded" :style="'background:var(--accent);width:' + Math.max(3, (n / (pop.total_requests || 1) * 100)) + '%'"></div>
+                        </div>
+                      </td>
+                      <td class="font-mono text-right py-0.5" style="color:var(--text-faint);font-variant-numeric:tabular-nums" x-text="n"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
             </div>
             <div x-show="pop.transitions && pop.transitions.length">
               <div class="text-[10px] uppercase tracking-wide mb-1" style="color:var(--text-faint)">Recent edge transitions</div>
-              <div class="space-y-0.5">
-                <template x-for="(t, i) in pop.transitions" :key="i">
-                  <div class="flex items-center gap-2 text-[11px]">
-                    <span class="font-mono" style="color:var(--text-secondary)" x-text="t.from"></span>
-                    <span style="color:var(--text-faint)">→</span>
-                    <span class="font-mono" style="color:var(--text-primary)" x-text="t.to"></span>
-                    <span style="color:var(--text-faint)" x-text="t.at ? new Date(t.at * 1000).toLocaleString() : ''"></span>
-                  </div>
-                </template>
+              <table class="text-[11px]">
+                <thead>
+                  <tr style="color:var(--text-faint)">
+                    <th class="text-left font-normal">When</th>
+                    <th class="text-left font-normal pr-3">From</th>
+                    <th class="text-left font-normal pr-3">To</th>
+                    <th class="text-right font-normal" title="How long the edge was on the From PoP">Stay</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="(t, i) in pop.transitions" :key="i">
+                    <tr>
+                      <td class="when-col font-mono py-0.5" :title="$store.app.fullWhen(t.at, 'local')"
+                          x-text="$store.app.shortWhen(t.at, 'local')"></td>
+                      <td class="font-mono py-0.5 pr-3" style="color:var(--text-secondary)" x-text="t.from"></td>
+                      <td class="font-mono py-0.5 pr-3" style="color:var(--text-primary)"><span style="color:var(--text-faint)">→ </span><span x-text="t.to"></span></td>
+                      <td class="font-mono text-right py-0.5" style="color:var(--text-faint);font-variant-numeric:tabular-nums" x-text="stayText(t.stay_s)"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <!-- The cloud calls behind those requests (franklinwh-cloud's own counters, from the
+                 same polls; no extra cloud traffic). -->
+            <div x-show="pop.api" class="grid gap-3 sm:grid-cols-2">
+              <div>
+                <div class="text-[10px] uppercase tracking-wide mb-1" style="color:var(--text-faint)">Cloud requests</div>
+                <table class="w-full text-xs" data-testid="cloud-requests">
+                  <thead>
+                    <tr style="color:var(--text-faint)">
+                      <th class="text-left font-normal">Metric</th>
+                      <th class="text-right font-normal w-20">Count</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td class="py-0.5" style="color:var(--text-secondary)">API calls</td>
+                      <td class="font-mono text-right py-0.5" style="color:var(--text-primary);font-variant-numeric:tabular-nums" x-text="pop.api ? pop.api.total_api_calls : ''"></td>
+                    </tr>
+                    <template x-for="[verb, n] in Object.entries((pop.api && pop.api.calls_by_method) || {})" :key="verb">
+                      <tr>
+                        <td class="py-0.5 pl-3 font-mono" style="color:var(--text-secondary)" x-text="verb"></td>
+                        <td class="font-mono text-right py-0.5" style="color:var(--text-faint);font-variant-numeric:tabular-nums" x-text="n"></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+              <div>
+                <div class="text-[10px] uppercase tracking-wide mb-1" style="color:var(--text-faint)">Errors &amp; retries</div>
+                <table class="w-full text-xs" data-testid="cloud-errors">
+                  <thead>
+                    <tr style="color:var(--text-faint)">
+                      <th class="text-left font-normal">Category</th>
+                      <th class="text-right font-normal w-20">Count</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template x-for="r in errorRows()" :key="r.k">
+                      <tr>
+                        <td class="py-0.5" :class="r.err ? 'font-mono' : ''" style="color:var(--text-secondary)" x-text="r.label"></td>
+                        <td class="font-mono text-right py-0.5" style="font-variant-numeric:tabular-nums"
+                            :style="(r.err && r.n > 0) ? 'color:var(--danger);font-weight:600' : 'color:var(--text-faint)'" x-text="r.n"></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
         </template>
+      </div>
+
+      <!-- PoP map: each PoP at its city, sized by requests, the home PoP highlighted; the
+           transitions over it. Leaflet is vendored; the tiles are OpenStreetMap's (online). -->
+      <div class="fixed inset-0 z-[100] flex items-start justify-center p-2 sm:p-4" x-show="mapOpen" x-cloak
+           style="background:rgba(0,0,0,.6);padding-bottom:max(.5rem,env(safe-area-inset-bottom))"
+           @keydown.escape.window="closeMap()" @click.self="closeMap()">
+        <div class="card w-full p-0 my-2 flex flex-col" data-testid="pop-map-dialog"
+             style="max-width:72rem;height:min(85dvh, calc(100% - 1rem));max-height:85vh">
+          <div class="px-4 pt-3 pb-2 shrink-0 border-b flex items-center justify-between gap-2 flex-wrap" style="border-color:var(--border)">
+            <div class="text-sm font-semibold" style="color:var(--text-primary)">CloudFront PoPs
+              <span class="text-[11px] font-normal" style="color:var(--text-faint)"
+                    x-text="pop ? ((pop.total_requests || 0) + ' requests' + (homePop() ? ' · home ' + homePop() : '')) : ''"></span></div>
+            <div class="flex items-center gap-1" role="group" aria-label="Period">
+              <template x-for="pp in [['today','Today'],['7d','7d'],['30d','30d'],['all','All']]" :key="pp[0]">
+                <button type="button" class="btn btn-sm" :class="popPeriod === pp[0] ? 'btn-primary' : 'btn-secondary'"
+                        style="padding:2px 8px;font-size:.7rem" @click="setPopPeriod(pp[0])" x-text="pp[1]"></button>
+              </template>
+              <button type="button" class="btn btn-sm btn-secondary ml-1" style="padding:2px 10px;font-size:.7rem" @click="closeMap()">Close</button>
+            </div>
+          </div>
+          <div class="relative flex-1" style="min-height:0">
+            <div id="pop-map" class="absolute inset-0" style="background:var(--surface-2)"></div>
+            <div x-show="mapOffline" data-testid="pop-map-offline"
+                 class="absolute inset-x-0 top-0 m-3 p-2 rounded text-xs z-[500]" style="background:var(--surface-0);color:var(--text-secondary);border:1px solid var(--border)">
+              The map tiles couldn't load (offline?). The tables on the Network tab still work.</div>
+            <div class="absolute left-0 bottom-0 m-2 rounded text-[11px] z-[500] overflow-hidden"
+                 style="background:var(--surface-0);border:1px solid var(--border);max-width:min(26rem, calc(100% - 1rem))"
+                 x-show="pop && pop.transitions && pop.transitions.length" data-testid="pop-map-transitions">
+              <button type="button" class="w-full flex items-center justify-between px-3 py-1.5" style="color:var(--text-secondary)"
+                      @click="mapTransOpen = !mapTransOpen">
+                <span>Transitions <span class="font-mono" x-text="pop ? pop.transition_count : ''"></span></span>
+                <span x-text="mapTransOpen ? '▾' : '▴'"></span>
+              </button>
+              <div x-show="mapTransOpen" class="overflow-y-auto px-3 pb-2" style="max-height:30dvh">
+                <table>
+                  <tbody>
+                    <template x-for="(t, i) in (pop ? pop.transitions : [])" :key="i">
+                      <tr>
+                        <td class="when-col font-mono py-0.5" :title="$store.app.fullWhen(t.at, 'local')"
+                            x-text="$store.app.shortWhen(t.at, 'local')"></td>
+                        <td class="font-mono py-0.5 pr-2" style="color:var(--text-secondary)" x-text="t.from"></td>
+                        <td class="font-mono py-0.5 pr-2" style="color:var(--text-primary)"><span style="color:var(--text-faint)">→ </span><span x-text="t.to"></span></td>
+                        <td class="font-mono text-right py-0.5" style="color:var(--text-faint)" x-text="stayText(t.stay_s)"></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Interfaces (cloud-CLI parity: enabled / link / active / available / signal) -->

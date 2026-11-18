@@ -89,11 +89,15 @@ def test_a_trigger_defaults_to_all_and_stores_a_device_target(st):
     assert st.alert_targets() == {}
 
 
-def test_roles_are_not_a_target_on_this_bridge_yet(st):
-    r = TestClient(app_module.create_app()).put(
-        "/api/notify/triggers",
-        json={"triggers": {"off_grid": {"target": {"type": "role", "role": "admin"}}}})
+def test_a_role_is_a_target_unknown_roles_are_not(st):
+    """#763 (owner 2026-11-19) made roles a target; an unknown role is still refused."""
+    c = TestClient(app_module.create_app())
+    r = c.put("/api/notify/triggers",
+              json={"triggers": {"off_grid": {"target": {"type": "role", "role": "owner"}}}})
     assert r.status_code == 422 and st.alert_targets() == {}
+    r = c.put("/api/notify/triggers",
+              json={"triggers": {"off_grid": {"target": {"type": "role", "role": "admin"}}}})
+    assert r.status_code == 200 and st.alert_targets() == {"off_grid": {"type": "role", "role": "admin"}}
 
 
 def test_a_trigger_sends_only_to_its_target(st, fake_notifier):

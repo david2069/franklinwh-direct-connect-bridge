@@ -33,8 +33,9 @@ One page per gateway, scoped to whichever gateway the top-bar selector names.
   left at the current usage, and **Go on-grid (reconnect)** for an off-grid you requested.
   **Details** expands mode, SoC, battery (charging / discharging), grid, solar, home, the
   smart circuits (on/off and watts), and the generator (state, kW, kWh today) and V2L
-  (on/off, kW) when installed. Opening Details reads the circuits (and generator) from the
-  aGate; a read that fails is shown, and the rest still appears.
+  (on/off, kW) when installed. Installed is what **System Setup** says: what the gateway
+  reported, or your answer there. Opening Details reads the circuits (and generator) from
+  the aGate; a read that fails is shown, and the rest still appears.
 - The go-off-grid and reconnect dialogs name the aGate, and each switch is saved in the
   Audit Trail with the same snapshot (from the last poll; nothing extra is read before the
   write).
@@ -45,7 +46,9 @@ One page per gateway, scoped to whichever gateway the top-bar selector names.
 Every consequential control is recorded **twice**: once as a structured row in the
 **Audit trail** (Logs → Audit trail: each action and its result, newest first, in
 bridge-host time), and once as a line in **Logs → Bridge log**, so there is a single place to look even
-when the action came from the scheduler rather than from you.
+when the action came from the scheduler rather than from you. That includes switching the
+aGate Modbus TCP Server (:502) on or off (`der_comms`) and an operating-mode change from the
+Home Assistant select (`set_mode`, source `ha`) (#130).
 
 Billing & Utilities changes are recorded the same way: adding, editing and deleting a site
 (`site_add`, `site_edit`, `site_delete`), meter (`meter_*`), retailer (`retailer_*`) or

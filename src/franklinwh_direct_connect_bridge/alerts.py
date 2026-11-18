@@ -45,11 +45,12 @@ CATALOGUE: dict[str, dict] = {
     "GATEWAY_UNREACHABLE": {"kind": CONDITION, "severity": CRITICAL,
                             "open_s": 300, "resolve_s": 120,
                             "title": "aGate unreachable"},
-    # The LAN works but the aGate's internet goes over 4G (#614): its Wi-Fi has no route
-    # out. Held 5 min, so a transport dip during roaming (seconds) never raises it.
+    # The LAN works but the aGate's internet goes over 4G (#614): 4G is its active link and
+    # Wi-Fi is on standby (1118 / the cloud say no more than that, #728). Held 5 min, so a
+    # transport dip during roaming (seconds) never raises it.
     "AGATE_ON_4G": {"kind": CONDITION, "severity": WARNING,
                     "open_s": 300, "resolve_s": 120,
-                    "title": "aGate is using 4G — Wi-Fi has no internet"},
+                    "title": "aGate is using 4G — Wi-Fi is on standby"},
     "LIVE_DATA_MISSING": {"kind": CONDITION, "severity": CRITICAL,
                           "open_s": 120, "resolve_s": 60,
                           "title": "Live data missing"},
@@ -325,6 +326,23 @@ def ack(store, alert_id: int, source: str, now: float | None = None) -> dict | N
     return row
 
 
+def dismiss(store, alert_id: int, source: str, now: float | None = None) -> dict | None:
+    """Dismiss one alert's bar for everyone (#727): it stays listed, and a condition stays
+    open until it resolves, but the bar under the top bar is hidden. A new occurrence is
+    a new alert, so it shows again. Dismissing also acknowledges."""
+    if source not in ACK_SOURCES:
+        raise ValueError(f"source must be one of {', '.join(ACK_SOURCES)}")
+    ts = float(now if now is not None else time.time())
+    if ack(store, alert_id, source, now=ts) is None:
+        return None
+    before = store.alert(alert_id)
+    row = store.dismiss_alert(alert_id, dismissed_by=f"source:{source}", now=ts)
+    if before.get("dismissed_ts") is None:
+        log.info("alert #%s %s %sdismissed by source:%s", alert_id, row["code"],
+                 _gw_tag(row["gateway_id"]), source)
+    return row
+
+
 # ── delivery (the outbox) ───────────────────────────────────────────────────────
 def retry_delay_s(attempts: int) -> float:
     if attempts <= 0:
@@ -511,7 +529,12 @@ class AlertMonitor:
         if store is None:
             return
         check_workers(self.registry, now=ts)
-        evaluate(store, now=ts)
+        changes = evaluate(store, now=ts)
+        try:            # aGate on 4G / off 4G as an optional push (#763)
+            from . import notify_engine
+            notify_engine.on_alert_changes(store, changes)
+        except Exception as e:  # noqa: BLE001 — a push never stops the monitor
+            log.debug("alert change push failed: %s", e)
         try:
             self.problem_once(store, now=ts)
         except Exception as e:  # noqa: BLE001 — publishing never stops the monitor

@@ -110,6 +110,7 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - At a glance: overview/index.md
   - User guide:
       - guide/index.md
       - guide/installing.md
@@ -137,6 +138,16 @@ nav:
       - guide/multi-gateway.md
       - guide/health-report.md
       - guide/energy-and-costs.md
+      - HEMS (energy planning):
+          - guide/hems/index.md
+          - guide/hems/getting-started.md
+          - guide/hems/solar-forecast.md
+          - guide/hems/load-forecast.md
+          - guide/hems/battery-wear.md
+          - guide/hems/loads.md
+          - guide/hems/scheduler.md
+          - guide/hems/home-assistant.md
+          - guide/hems/troubleshooting.md
       - USER_GUIDE.md
   - Developers Guide:
       - developers/index.md
@@ -178,6 +189,7 @@ nav:
       - VALUE_SOURCES_DESIGN.md
       - WHAT_THE_ENGINE_IS.md
   - Changelog:
+      - 0.5.53: changelog/0.5.53.md
       - 0.5.52: changelog/0.5.52.md
       - 0.5.50: changelog/0.5.50.md
       - 0.5.49: changelog/0.5.49.md

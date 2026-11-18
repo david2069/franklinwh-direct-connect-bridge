@@ -11,6 +11,7 @@ document.addEventListener('alpine:init', () => {
   // state: a proxied DOM element cannot be focused or have its selection set.
   let varTarget = null;
   Alpine.data('schedulerTab', () => ({
+    ...importWindowMixin('importText'),
     schedules: [], actions: {}, unavailable: {}, force_available: false, force_reason: '',
     sensors: [], ops: [], gateways: [],
     haNames: {},   // exposed HA entity_id -> friendly name (condition-label enrichment)
@@ -323,12 +324,17 @@ document.addEventListener('alpine:init', () => {
       const file = ev.target.files[0];
       ev.target.value = '';
       if (!file) return;
+      const err = await this.importText(await file.text());
+      if (err) this.$store.app.toast(err, 'error');
+    },
+    /** Dry-run a schedules bundle (file or pasted text) and show the report. Resolves to
+     *  an error message for the import window, or null when the report is up. */
+    async importText(text) {
       let bundle;
       try {
-        bundle = JSON.parse(await file.text());
+        bundle = JSON.parse(text);
       } catch (e) {
-        this.$store.app.toast(`Import failed: not valid JSON — ${e.message}`, 'error');
-        return;
+        return `Not valid JSON — ${e.message}`;
       }
       this._importBundle = bundle;
       try {
@@ -340,14 +346,13 @@ document.addEventListener('alpine:init', () => {
         // A rejected bundle (wrong type / bad shape) returns an error object with no
         // count/importable — show WHY instead of an "undefined of undefined" dialog.
         if (!r.ok) {
-          const why = data.detail || r.statusText || 'unrecognised bundle';
-          this.$store.app.toast(`Import rejected: ${why}`, 'error');
           this.importReport = null;
-          return;
+          return `Import rejected: ${data.detail || r.statusText || 'unrecognised bundle'}`;
         }
         this.importMsg = null;
         this.importReport = data;
-      } catch (e) { this.$store.app.toast(`Import failed to read: ${e.message}`, 'error'); }
+        return null;
+      } catch (e) { return `Import failed to read: ${e.message}`; }
     },
     async confirmImport() {
       this.importMsg = null;
@@ -510,8 +515,11 @@ document.addEventListener('alpine:init', () => {
                value2: 0, value_kind: 'value', value_sensor: '' };
     },
     addHa() {
+      // the same fields a loaded row gets (_haToForm), so ticking Actionable has its
+      // buttons, recipients and wait to show (#739)
       this.form.ha_actions.push({ ha_kind: 'notify', device_id: this.devices[0]?.id || '',
-        when: 'fire', title: '', message: '', guard: this.newHaGuard() });
+        when: 'fire', title: '', message: '', data: '',
+        actionable: false, ...this._actionableToForm(null), guard: this.newHaGuard() });
     },
     addHaService() {
       this.form.ha_actions.push({ ha_kind: 'service', raw: false, instance_id: '',

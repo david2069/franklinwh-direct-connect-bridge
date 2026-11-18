@@ -164,7 +164,8 @@ def find_orphans(msgs: dict[str, bytes], live_nodes, prefix: str) -> dict[str, A
         key = ident or topic
         g = groups.setdefault(key, {
             "identifier": ident, "node": node, "name": dev.get("name"),
-            "sw_version": sw, "ours": ours, "entities": 0, "topics": []})
+            "sw_version": sw, "ours": ours, "entities": 0, "topics": [],
+            "serial_number": dev.get("serial_number")})
         g["entities"] += 1
         g["topics"].append(topic)
 

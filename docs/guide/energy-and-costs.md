@@ -333,7 +333,7 @@ than the gateway.)
 
 **Import tariff** takes a tariff as JSON (`franklinwh-bridge/tariff-profile`, the same
 format a tariff's Export writes and the Modbus Bridge uses): paste it into the box or
-choose a file. **Check** shows what it contains (retailer, network, plan, seasons, fixed
+choose a file, or **Cancel**. **Check** shows what it contains (retailer, network, plan, seasons, fixed
 charges); **Import** adds it as a plan of the default meter (rules below). In the
 preview (`POST /api/tariffs/import?dry_run=true`), `has_demand` is true only when the peak
 demand charge is on: `has_peak_demand` is not 0 and `demand_rate` is not 0. Every Modbus
@@ -504,30 +504,11 @@ disagrees keeps its own, and the bridge log says so.
 
 ## HEMS setup
 
-**Settings → Gateways → HEMS setup** (#713) describes your home for energy planning. It is
-optional and off until you switch it on. *Planning is only as accurate as your answers.*
-
-- **Always-on load** (kW): filled in from the quietest overnight hours of your own history
-  (00:00–06:00), marked **Please confirm**. Change it if it is wrong; saving confirms it.
-- **Usage periods:** your high, medium and low hours on a weekday and on a weekend day, from
-  the last four weeks of history. Tick **These look right** when they do.
-- **Heavy loads:** each large appliance you want planned around: what it is, how it is
-  measured (a Home Assistant power entity, an energy entity, or its nameplate kW), its power
-  and/or how long it runs, when it runs (times, or that it follows the weather), its circuit,
-  and how it may be controlled:
-  - *deferrable*: the energy it needs and the time it needs it by;
-  - *sheddable*: how long it may be off, how long it must stay on, and its priority;
-  - *soak*: soaks up energy when the export price is at or below a level, export is limited,
-    or the battery is full and exporting, up to a kWh quota.
-
-  An EV charger also asks for its kW, phases, how it is controlled, arrival and departure
-  times, and the energy needed.
-
-Each load is checked against what this bridge can control (shown on the card): the operating
-mode always; battery power and target SoC while the Modbus client is on; smart circuits when
-the gateway has them. A problem is listed under the load, such as a smart-circuit switch on a
-gateway with none. The checks and pre-fills come from hems, the shared energy engine. The
-answers are only recorded: nothing is switched or scheduled from them yet.
+**Settings → Gateways → HEMS setup** (#713) describes your home for energy planning: the
+always-on load, your usage periods and your heavy loads, checked against what this bridge can
+control. It is optional and off until you switch it on. The full description is in
+[HEMS → Loads and controllability](hems/loads.md); the whole feature is in the
+[HEMS section](hems/index.md).
 
 ## Solar forecast
 
@@ -535,14 +516,9 @@ answers are only recorded: nothing is switched or scheduled from them yet.
 
 Optional, and off until the bridge has a location. The forecast comes from Open-Meteo.
 
-**How it is worked out.** The bridge asks Open-Meteo for the hourly sunlight on your panels'
-tilt and direction and the air temperature. It turns that into kW for your array size, less
-about 15 % for the inverter and wiring, and less what hot panels lose (they make less in the
-heat). It then **learns from your own system**: each day it compares the forecast with the
-solar your gateways measured, and once it has five days with real sun it scales the forecast
-by measured ÷ forecast over the last 30 days. A shaded or oversized array is corrected this
-way. Changing the location, tilt, direction or solar size starts the learning afresh. The
-maths come from hems, the shared energy engine the bridges use.
+**How it is worked out.** From Open-Meteo's sunlight on your panels and the air temperature,
+scaled to your array and then calibrated against the solar your gateways measured. The
+details are in [HEMS → Solar forecast](hems/solar-forecast.md).
 
 **Location & Solar** is under **Settings → Location & Prices**. The default site on
 Billing & Utilities → Plans & meters shows its location and solar size and links to it, the card

@@ -301,7 +301,7 @@
 
   <!-- ══ Battery warranty & wear (#713, hems) ══ -->
   <div class="flex items-center gap-3">
-    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Battery warranty &amp; wear <a :href="$store.app.guideUrl('health-report/#battery-warranty-and-wear')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Battery warranty &amp; wear <a :href="$store.app.guideUrl('hems/battery-wear')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a> <button type="button" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" data-testid="run-hems-wizard" @click="window.dispatchEvent(new CustomEvent('fwh:open-setup-task', { detail: { id: 'hems', inline: 'hems' } }))">Set up HEMS</button></span>
     <div class="flex-1 border-t border-white/[0.08]"></div>
   </div>
   <div class="card space-y-3" data-testid="wear-setup">
@@ -314,6 +314,7 @@
               <span class="text-xs" style="color:var(--text-secondary)"><span x-text="label"></span>
                 <span x-show="wearConfirm(k)" class="text-[9px] uppercase tracking-wide ml-1" style="color:var(--warning)" :data-testid="'wear-confirm-' + k">Please confirm</span></span>
               <input :type="type" :step="step" min="0" class="form-control form-control-sm" x-model="wearForm[k]" :data-testid="'wear-' + k">
+              <span x-show="wear.fields[k] && wear.fields[k].estimated" class="text-[11px]" style="color:var(--warning)" :data-testid="'wear-estimated-' + k" x-text="wear.fields[k] && wear.fields[k].note"></span>
             </label>
           </template>
         </div>
@@ -322,10 +323,28 @@
           <span x-text="wear.cost ? `$${wear.cost.per_kwh.toFixed(4)} per kWh discharged: ${wear.cost.formula}` + (wear.cost.end_value.derived ? ' (end value = replacement × end SoH; please confirm)' : '') : 'needs replacement value, throughput and end SoH or value'"></span>
           <span style="color:var(--text-secondary)">Throughput used / left</span>
           <span x-text="wear.used_kwh == null ? 'counted from the daily snapshots; the first is taken after midnight' : `${wear.used_kwh.toFixed(0)} kWh` + ' / ' + (wear.remaining_kwh == null ? '–' : `${wear.remaining_kwh.toFixed(0)} kWh`)"></span>
+          <span style="color:var(--text-secondary)">Used, by source</span>
+          <span data-testid="wear-used-sources">
+            <template x-for="u in (wear.used_sources || [])" :key="u.source">
+              <span class="block"><span x-text="`${u.kwh.toFixed(0)} kWh`"></span> <span style="color:var(--text-faint)" x-text="'(' + u.label + (u.estimated ? '; estimated' : '') + ')'"></span></span>
+            </template>
+            <span x-show="!(wear.used_sources || []).length" style="color:var(--text-faint)">no source yet</span>
+          </span>
           <span style="color:var(--text-secondary)">Pace</span>
           <span x-text="wear.pace ? `${wear.pace.daily_kwh.toFixed(1)} kWh a day to last the warranty (${wear.pace.formula})` : (wear.remaining_kwh == null && wearForm.warranty_end && wearForm.warranted_throughput_mwh ? 'after the first daily snapshot' : 'needs the warranty end and throughput')"></span>
           <span style="color:var(--text-secondary)">State of health</span>
           <span x-text="wear.soh_pct == null ? 'not read yet' : `${wear.soh_pct}%`"></span>
+          <span style="color:var(--text-secondary)">Your use vs the allowance</span>
+          <span data-testid="wear-pace-compare" x-text="wear.pace_compare ? wear.pace_compare.text : 'needs the install date, the warranty end and throughput'"></span>
+          <span style="color:var(--text-secondary)">SoH vs the warranty</span>
+          <span data-testid="wear-soh-compare" x-text="wear.soh_compare ? wear.soh_compare.text : ''"></span>
+          <span style="color:var(--text-secondary)">Warranty end, each unit</span>
+          <span data-testid="wear-devices">
+            <template x-for="d in (wear.devices || [])" :key="(d.model || '') + (d.serial || '')">
+              <span class="block" x-text="`${d.model || 'Unit'} ${d.serial || ''}: ${d.expiry || '–'}` + (d.sub_module_expiry ? ` (modules ${d.sub_module_expiry})` : '')"></span>
+            </template>
+            <span x-show="!(wear.devices || []).length" style="color:var(--text-faint)">from the FranklinWH cloud when signed in</span>
+          </span>
           <span style="color:var(--text-secondary)">Round-trip efficiency</span>
           <span x-text="wear.efficiency && wear.efficiency.median != null ? `${(wear.efficiency.median * 100).toFixed(1)}% (median of ${wear.efficiency.n} cycles, ${wear.efficiency.days} days)` : 'no full cycle yet (3 kWh each way, back to the same SoC)'"></span>
         </div>
@@ -338,7 +357,7 @@
 
   <!-- ══ HEMS setup, opt-in (#713, hems.loads) ══ -->
   <div class="flex items-center gap-3">
-    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">HEMS setup <a :href="$store.app.guideUrl('energy-and-costs/#hems-setup')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></span>
+    <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">HEMS setup <a :href="$store.app.guideUrl('hems/loads')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a> <button type="button" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" data-testid="run-hems-wizard" @click="window.dispatchEvent(new CustomEvent('fwh:open-setup-task', { detail: { id: 'hems', inline: 'hems' } }))">Set up HEMS</button></span>
     <div class="flex-1 border-t border-white/[0.08]"></div>
   </div>
   <div class="card space-y-3" data-testid="hems-setup">
@@ -1436,7 +1455,15 @@
                     class="form-control form-control-sm w-16" :value="t.threshold"
                     @change="setThreshold(key, $event.target.value)"><span class="text-slate-500">%</span></span>
             </template>
+            <template x-if="'interval_min' in t">
+              <span class="inline-flex items-center gap-1"><input type="number" min="5" max="1440"
+                    class="form-control form-control-sm w-16" :value="t.interval_min" data-testid="trigger-interval"
+                    @change="setTriggerInterval(key, $event.target.value)"><span class="text-slate-500">min</span></span>
+            </template>
             <span x-show="triggerStat(key)" class="text-[10px] text-slate-500" x-text="triggerStat(key)"></span>
+            <!-- Turned off with a notification's Turn off button (#763). -->
+            <span x-show="t.off_by_button && !t.enabled" data-testid="trigger-off-by-button" class="text-[10px] text-amber-400"
+                  x-text="'Turned off from a notification · ' + fmtNotifyTime(t.off_by_button)"></span>
           </span>
           <!-- Who this trigger notifies (#281): all devices or the devices chosen. -->
           <select class="form-control form-control-sm w-36 ml-auto" data-testid="trigger-target"
@@ -1444,6 +1471,15 @@
                   title="Send to">
             <option value="all" :selected="triggerTargetValue(key, t) === 'all'">All devices</option>
             <option value="device" :selected="triggerTargetValue(key, t) === 'device'">Chosen devices</option>
+            <option value="role" :selected="triggerTargetValue(key, t) === 'role'">A role</option>
+          </select>
+          <!-- Send to a role (#763): the enabled devices linked to an account with it. -->
+          <select x-show="triggerTargetValue(key, t) === 'role'" class="form-control form-control-sm w-28"
+                  data-testid="trigger-target-role" title="Role" @change="setTriggerRole(key, $event.target.value)">
+            <option value="" :selected="!triggerRole(t)">— role —</option>
+            <option value="admin" :selected="triggerRole(t) === 'admin'">Admins</option>
+            <option value="user" :selected="triggerRole(t) === 'user'">Users</option>
+            <option value="viewer" :selected="triggerRole(t) === 'viewer'">Viewers</option>
           </select>
           <button type="button" role="switch" :aria-checked="t.enabled" @click="toggleTrigger(key)"
                   class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0"
@@ -1451,6 +1487,8 @@
             <span class="inline-block h-5 w-5 rounded-full bg-white transition"
                   :class="t.enabled ? 'translate-x-5' : 'translate-x-0.5'"></span>
           </button>
+          <p x-show="notif.loaded && triggerRole(t) && !roleDeviceCount(triggerRole(t))" class="w-full text-right text-[10px] text-amber-400">
+            No enabled device is linked to an account with this role: set a device's Account below.</p>
           <div x-show="triggerTargetValue(key, t) === 'device'" data-testid="trigger-target-devices"
                class="w-full flex items-center justify-end gap-x-3 gap-y-1 flex-wrap">
             {% call device_multiselect("notif.devices.filter(x => triggerTargetIds(t).includes(x.id)).map(x => x.alias).join(', ')", 'w-full sm:w-64') %}
@@ -1480,6 +1518,14 @@
                     title="Send to">
               <option value="all" :selected="triggerTargetValue('ask:' + key, a) === 'all'">All devices</option>
               <option value="device" :selected="triggerTargetValue('ask:' + key, a) === 'device'">Chosen devices</option>
+              <option value="role" :selected="triggerTargetValue('ask:' + key, a) === 'role'">A role</option>
+            </select>
+            <select x-show="triggerTargetValue('ask:' + key, a) === 'role'" class="form-control form-control-sm w-28"
+                    data-testid="ask-target-role" title="Role" @change="setAskRole(key, $event.target.value)">
+              <option value="" :selected="!triggerRole(a)">— role —</option>
+              <option value="admin" :selected="triggerRole(a) === 'admin'">Admins</option>
+              <option value="user" :selected="triggerRole(a) === 'user'">Users</option>
+              <option value="viewer" :selected="triggerRole(a) === 'viewer'">Viewers</option>
             </select>
             <div x-show="triggerTargetValue('ask:' + key, a) === 'device'"
                  class="w-full flex items-center justify-end gap-x-3 gap-y-1 flex-wrap">
@@ -1635,6 +1681,7 @@
               <div class="text-sm font-medium truncate" style="color:var(--text-primary)" x-text="dev.alias"></div>
               <div class="text-[11px] font-mono truncate text-slate-500">
                 <span x-text="dev.service"></span> · <span x-text="dev.instance"></span>
+                <span x-show="accountLabel(dev)" x-text="' · ' + accountLabel(dev)"></span>
                 <span x-show="dev.instance_missing" class="chip warn ml-1">instance missing</span>
                 <span x-show="dev.instance_disabled" class="chip warn ml-1">instance disabled</span>
               </div>
@@ -1678,6 +1725,14 @@
                  create a device that silently never fires. -->
             <template x-for="inst in notif.instances.filter(i => i.enabled)" :key="inst.id">
               <option :value="inst.id" x-text="inst.name"></option>
+            </template>
+          </select></label>
+        <!-- Whose device it is (#763), for Send to a role. Sign-in accounts only. -->
+        <label class="text-xs text-slate-500 block">Account
+          <select class="form-control form-control-sm block mt-1 w-full" x-model="notif.addDev.user_id" data-testid="device-account">
+            <option value="">— none —</option>
+            <template x-for="a in notif.accounts" :key="a.id">
+              <option :value="String(a.id)" x-text="a.username + ' (' + a.role + ')'" :selected="String(a.id) === String(notif.addDev.user_id)"></option>
             </template>
           </select></label>
         <label class="text-xs text-slate-500 block">Type

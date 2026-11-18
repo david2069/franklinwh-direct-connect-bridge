@@ -453,6 +453,7 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                                         nb.get("switches"), nb.get("cloud"))
                         # On 4G while the LAN works (#614): only the aGate's own
                         # report shows it, since :9000 keeps answering.
+                        gw.net_read_ts = time.time()   # the 4G verdict's reading time (#728)
                         troubleshoot.note_local_network(gw.id, True, net_state)
                     except Exception as e:  # noqa: BLE001 — a network read never breaks the poll
                         log.debug("[%s] network read failed: %s", gw.id, e)
@@ -628,7 +629,11 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                         for ev, vals in notify_engine.evaluate(summ, prev, _cfg,
                                                                capacity_kwh=_cap):
                             await asyncio.to_thread(notify_engine.fire, _st, ev,
-                                                    gateway=gw.label or gw.id, cfg=_cfg, **vals)
+                                                    gateway=gw.label or gw.id, cfg=_cfg,
+                                                    gateway_id=gw.id, **vals)
+                        # Still off-grid: a reminder every N minutes (#763).
+                        await asyncio.to_thread(notify_engine.offgrid_reminder, _st, gw.id,
+                                                gw.label or gw.id, summ, _cfg, _cap, time.time())
                         # Today's solar won't fill the battery (#676): once a day.
                         if summ.get("ok"):
                             await asyncio.to_thread(

@@ -7,7 +7,8 @@
  * the list only when `open`, `latest_id` or `changed_ts` changes. No SSE or WebSocket.
  *
  *  - critical + unacknowledged  → the modal, which stays until acknowledged;
- *  - an active condition that has been acknowledged → the red bar under the top bar;
+ *  - an active condition that has been acknowledged → the red bar under the top bar,
+ *    until it resolves or someone dismisses it (#727);
  *  - the summary → the top-bar badge, which opens the list (time first, then what
  *    happened, then where it was delivered).
  * Routine results stay as toasts.
@@ -59,9 +60,10 @@ document.addEventListener('alpine:init', () => {
     get pending() {
       return this.list.filter(a => a.severity === 'critical' && !a.acked_ts);
     },
-    /** The red bar: conditions still active that someone has already acknowledged. */
+    /** The red bar: conditions still active that someone has already acknowledged and
+     *  nobody has dismissed (#727). */
     get activeAcked() {
-      return this.list.filter(a => a.kind === 'condition' && !a.resolved_ts && a.acked_ts);
+      return this.list.filter(a => a.kind === 'condition' && !a.resolved_ts && a.acked_ts && !a.dismissed_ts);
     },
     get openConditions() {
       return this.list.some(a => a.kind === 'condition' && !a.resolved_ts);
@@ -75,6 +77,27 @@ document.addEventListener('alpine:init', () => {
       await this._ack(this.pending.map(a => a.id));
     },
     async ackOne(id) { await this._ack([id]); },
+    /** An active condition whose bar is not dismissed yet (#727). */
+    canDismiss(a) { return a.kind === 'condition' && !a.resolved_ts && !a.dismissed_ts; },
+    /** Hide its bar for everyone until it clears (#727); this also acknowledges it. */
+    async dismiss(id) {
+      if (this.busy) return;
+      this.busy = true; this.ackMsg = null;
+      try {
+        const r = await fetch(`api/alerts/${id}/dismiss`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source: 'ui' }),
+        });
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          this.ackMsg = { kind: 'danger', text: `Could not dismiss alert ${id}: ${d.detail || r.statusText}` };
+          if (!this.listOpen) this.listOpen = true;          // the message shows in the list
+        }
+      } finally {
+        this.busy = false;
+        await this.poll(true);
+      }
+    },
 
     async _ack(ids) {
       this.busy = true; this.ackMsg = null;
@@ -103,13 +126,16 @@ document.addEventListener('alpine:init', () => {
     hm(ts) {
       return ts ? Alpine.store('app')._fmtSiteTime(ts, { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
     },
+    /** " UTC+11" when the site's zone is not the browser's (#728); added once per time shown. */
+    tzTag(ts) { return ts ? Alpine.store('app').siteTzTag(ts) : ''; },
     /** "since 09:54", or "09:54–13:27, resolved" for a condition that came and went. */
     when(a) {
+      const z = this.tzTag(a.opened_ts);
       if (a.kind === 'condition') {
-        return a.resolved_ts ? `${this.at(a.opened_ts)}–${this.hm(a.resolved_ts)}, resolved`
-                             : `since ${this.at(a.opened_ts)}`;
+        return a.resolved_ts ? `${this.at(a.opened_ts)}–${this.hm(a.resolved_ts)}${z}, resolved`
+                             : `since ${this.at(a.opened_ts)}${z}`;
       }
-      return this.at(a.opened_ts) + (a.count > 1 ? ` · ${a.count}×, last ${this.hm(a.last_ts)}` : '');
+      return this.at(a.opened_ts) + z + (a.count > 1 ? ` · ${a.count}×, last ${this.hm(a.last_ts)}` : '');
     },
     /** The list's short time (owner, 2026-11-15): "15 Nov 2:34–3:36 pm", the date once,
      *  am/pm once when both ends share it; a range over two days names both days. */
@@ -117,12 +143,13 @@ document.addEventListener('alpine:init', () => {
       const day = ts => Alpine.store('app')._fmtSiteTime(ts, { month: 'short', day: 'numeric' });
       const s = a.opened_ts;
       const e = a.resolved_ts || (a.count > 1 ? a.last_ts : null);
-      if (!e) return `${day(s)} ${this.hm(s)}`;
+      const z = this.tzTag(s);
+      if (!e) return `${day(s)} ${this.hm(s)}${z}`;
       const t1 = this.hm(s), t2 = this.hm(e);
-      if (day(s) !== day(e)) return `${day(s)} ${t1} – ${day(e)} ${t2}`;
+      if (day(s) !== day(e)) return `${day(s)} ${t1} – ${day(e)} ${t2}${z}`;
       const m1 = t1.match(/^(.*?)\s*([ap]\.?\s?m\.?)$/i), m2 = t2.match(/^(.*?)\s*([ap]\.?\s?m\.?)$/i);
       const same = m1 && m2 && m1[2].toLowerCase() === m2[2].toLowerCase();
-      return `${day(s)} ${same ? m1[1] : t1}–${t2}`;
+      return `${day(s)} ${same ? m1[1] : t1}–${t2}${z}`;
     },
     /** Its state beside the time: resolved, ongoing, or how many times it fired. */
     state(a) {
@@ -139,10 +166,16 @@ document.addEventListener('alpine:init', () => {
       if (d.attempts) return `Bridge log · HA not reached (${d.attempts} tries)`;
       return 'Bridge log · HA pending';
     },
+    /** The gateway's name, as the rest of the UI shows it (#727); its id if unknown. */
+    gwName(id) {
+      if (!id) return '';
+      const g = ((Alpine.store('app') || {}).gateways || []).find(x => x.id === id);
+      return (g && (g.label || g.host)) || id;               // as the gateway picker shows it
+    },
     barText(a) {
-      const gw = a.gateway_id ? ` (${a.gateway_id})` : '';
+      const gw = a.gateway_id ? ` (${this.gwName(a.gateway_id)})` : '';
       if (a.recovering) return this.recoveryText(a) + gw;
-      return `${a.title} since ${this.hm(a.opened_ts)}` + gw + this.dropText(a);
+      return `${a.title} since ${this.hm(a.opened_ts)}${this.tzTag(a.opened_ts)}` + gw + this.dropText(a);
     },
     /** #614: the link is back but the condition has not held good for its resolve time,
      *  so the bar says so rather than "unreachable" beside an Online pill. */
@@ -174,7 +207,7 @@ document.addEventListener('alpine:init', () => {
         todo: 'Troubleshoot asks the FranklinWH cloud whether the aGate left Wi-Fi for 4G or is offline, and runs a health check.',
         tab: 'troubleshoot', link: 'Troubleshoot' },
       AGATE_ON_4G: {
-        means: 'The aGate still answers on your network, but its internet goes over 4G: its Wi-Fi has no route out (often gateway 0.0.0.0). It may not return to Wi-Fi by itself.',
+        means: 'The aGate still answers on your network, but its internet goes over 4G, with Wi-Fi on standby (the aGate does not say why). It may not return to Wi-Fi by itself.',
         todo: 'Check the router, then reconnect it to Wi-Fi from Troubleshoot or the FranklinWH app.',
         tab: 'troubleshoot', link: 'Troubleshoot' },
       LIVE_DATA_MISSING: {
