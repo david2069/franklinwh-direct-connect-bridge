@@ -52,6 +52,23 @@ window.setupWizard = function setupWizard() {
     emu: { label: 'Gateway Emulator', host: '', port: window.FWH_BOOT.ports.dc, msg: '', ok: false, busy: false },
     // Where the Modbus client connects (the active gateway's, or an override).
     mb: { enabled: true, host: '', port: '', resolved: '', msg: '', ok: false, test: null, busy: false },
+    // Energy planning (HEMS), #736: its own steps inside the wizard. Saved at the end through
+    // the APIs the Settings cards use; nothing is written to the aGate or the cloud.
+    hems: { step: 'optin', view: null, wear: null, solar: null, form: null, wearForm: {},
+            skipWarranty: false, noLoads: false, checked: null, busy: false, msg: '', ok: false,
+            saved: false },
+    HEMS_STEPS: ['optin', 'solar', 'warranty', 'usage', 'loads', 'check'],
+    // The hems choice lists in plain words; anything not listed shows as it is.
+    HEMS_LABELS: {
+      ha_power: 'Home Assistant power sensor', ha_energy: 'Home Assistant energy sensor',
+      nameplate: 'Its rated power (nameplate)',
+      smart_circuit: 'A smart circuit', controlled_load: 'Controlled load (off-peak circuit)',
+      general: 'A general circuit',
+      deferrable: 'Can wait (needs its energy by a time)',
+      sheddable: 'Can be switched off for a while', soak: 'Soaks up spare solar',
+      ha_switch: 'A Home Assistant switch', ha_climate: 'A Home Assistant climate entity',
+      ha_number: 'A Home Assistant number entity',
+    },
 
     // ONE profile per gateway. Solar, generator and backup wiring are per-gateway facts:
     // a site can have an aGate with 6.6 kW of PV and another with none, and showing a
@@ -144,6 +161,7 @@ window.setupWizard = function setupWizard() {
         this.fromHub = true;
         if (t.inline === 'mode') this.loadModes();
         if (t.inline === 'modbus') this.loadModbus();
+        if (t.inline === 'hems') this.loadHems();
         if (t.inline === 'emulator') this.emu.msg = '';
         this.go(t.inline);
         return;
@@ -249,6 +267,133 @@ window.setupWizard = function setupWizard() {
       finally { m.busy = false; }
     },
 
+    hemsLabel(id) { return this.HEMS_LABELS[id] || id; },
+
+    async loadHems() {
+      const h = this.hems;
+      Object.assign(h, { step: 'optin', checked: null, msg: '', ok: false, saved: false,
+                         skipWarranty: false, noLoads: false });
+      const q = this._gwq();
+      try {
+        const [v, w, s] = await Promise.all([
+          fetch('api/hems/setup' + q).then(r => r.json()),
+          fetch('api/wear' + q).then(r => (r.ok ? r.json() : null)),
+          fetch('api/solar/forecast' + q).then(r => (r.ok ? r.json() : null)).catch(() => null),
+        ]);
+        h.view = v; h.wear = w; h.solar = s;
+        const ao = v.always_on;
+        h.form = {
+          opted_in: !!v.opted_in,
+          always_on_kw: ao && ao.value_kw != null ? ao.value_kw : '',
+          periods_confirmed: !!(v.periods && v.periods.confirm === false),
+          loads: (v.loads || []).map(({ problems, expected_kwh_today, ...ld }) => ({
+            ...ld, measurement: ld.measurement || { kind: 'nameplate' }, switch: ld.switch || {},
+            _runsText: Array.isArray(ld.runs) ? ld.runs.map(r => `${r.start}-${r.end}`).join(', ') : '',
+            _weather: ld.runs === 'weather',
+            _entities: ((ld.measurement || {}).entities || []).join(', ') })),
+        };
+        h.noLoads = false;
+        h.wearForm = Object.fromEntries(Object.entries((w && w.fields) || {})
+          .map(([k, f]) => [k, f.value ?? '']));
+      } catch (e) { h.msg = `Could not read the HEMS setup: ${e.message || e}`; }
+    },
+
+    hemsConfirm(k) {
+      const f = this.hems.wear && this.hems.wear.fields[k];
+      return !!(f && f.confirm && f.value != null);
+    },
+
+    hemsAddLoad() {
+      this.hems.noLoads = false;
+      this.hems.form.loads.push({ name: '', device_type: '', measurement: { kind: 'nameplate' },
+        power_kw: null, duration_h: null, _runsText: '', _weather: false, circuit: '',
+        control: null, switch: {}, _entities: '' });
+    },
+
+    /** A wizard load as hems.loads expects it (the same shape the HEMS setup card saves). */
+    _hemsLoad(l) {
+      const { _weather, _runsText, _entities, ...ld } = l;
+      ld.runs = _weather ? 'weather' : (_runsText || '').split(',').map(x => x.trim()).filter(Boolean)
+        .map(x => { const [start, end] = x.split('-').map(y => y.trim()); return { start, end }; });
+      if (!_weather && !ld.runs.length) ld.runs = null;
+      const m = { kind: (ld.measurement || {}).kind || 'nameplate' };
+      if (m.kind !== 'nameplate') m.entities = (_entities || '').split(',').map(x => x.trim()).filter(Boolean);
+      ld.measurement = m;
+      for (const k of ['power_kw', 'duration_h']) ld[k] = ld[k] === '' || ld[k] == null ? null : Number(ld[k]);
+      if (!ld.control || !ld.control.type) { delete ld.control; if (!Object.keys(ld.switch || {}).length) delete ld.switch; }
+      return ld;
+    },
+
+    _hemsBody() {
+      const f = this.hems.form;
+      if (!f.opted_in) return { opted_in: false };
+      return { opted_in: true,
+        always_on_kw: f.always_on_kw === '' || f.always_on_kw == null ? null : Number(f.always_on_kw),
+        periods_confirmed: !!f.periods_confirmed,
+        loads: this.hems.noLoads ? [] : f.loads.map(l => this._hemsLoad(l)) };
+    },
+
+    get hemsIndex() { return this.HEMS_STEPS.indexOf(this.hems.step); },
+
+    // Off: nothing else to answer, so straight to Check.
+    async hemsNext() {
+      const h = this.hems;
+      if (h.saved) { this.toHub(); return; }
+      if (h.step === 'check') { await this.saveHemsWizard(); return; }
+      const nxt = h.step === 'optin' && !h.form.opted_in ? 'check' : this.HEMS_STEPS[this.hemsIndex + 1];
+      if (nxt === 'check') await this.checkHems();
+      h.step = nxt;
+    },
+
+    hemsBack() {
+      const h = this.hems;
+      h.saved = false; h.msg = '';
+      h.step = h.step === 'check' && !h.form.opted_in ? 'optin' : this.HEMS_STEPS[this.hemsIndex - 1];
+    },
+
+    async checkHems() {
+      const h = this.hems;
+      h.checked = null;
+      if (!h.form.opted_in) return;
+      try {
+        const r = await fetch('api/hems/setup/check' + this._gwq(), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this._hemsBody()) });
+        if (r.ok) h.checked = await r.json();
+      } catch (e) { /* Check shows what it has */ }
+    },
+
+    // Saves the warranty (unless skipped) and the HEMS setup, then says so here.
+    async saveHemsWizard() {
+      const h = this.hems;
+      h.busy = true; this.busy = true; h.msg = ''; h.ok = false;
+      const q = this._gwq();
+      try {
+        if (h.form.opted_in && !h.skipWarranty) {
+          const body = Object.fromEntries(Object.entries(h.wearForm).map(([k, v]) => [k, v === '' ? null : v]));
+          const r = await fetch('api/wear' + q, { method: 'PUT',
+            headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) { h.msg = `Warranty not saved: ${d.detail || r.status}`; return; }
+          h.wear = d;
+        }
+        const r = await fetch('api/hems/setup' + q, { method: 'PUT',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this._hemsBody()) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { h.msg = `HEMS setup not saved: ${d.detail || r.status}`; return; }
+        h.view = d; h.ok = true; h.saved = true;
+        h.msg = h.form.opted_in ? 'Saved. Change any of it later on the Settings → Gateways cards.'
+                                : 'Saved: HEMS setup is off.';
+        this.loadTasks();
+      } catch (e) { h.msg = `Not saved: ${e.message || e}`; }
+      finally { h.busy = false; this.busy = false; }
+    },
+
+    // Location & Solar has its own card: open it rather than asking for the same fields here.
+    openLocationSolar() {
+      this.openTask({ open: { sub: 'billing', card: 'settings-location' } });
+    },
+
     async saveMode(v) {
       this.mode.busy = true; this.mode.msg = '';
       try {
@@ -304,6 +449,11 @@ window.setupWizard = function setupWizard() {
 
     get nextLabel() {
       if (this.step === 'hub') return 'Close';
+      if (this.step === 'hems') {
+        if (!this.hems.form) return '';
+        if (this.hems.saved) return 'Done';
+        return this.hems.step === 'check' ? 'Save' : 'Next';
+      }
       if (this.fromHub) return 'Done';
       if (this.step === 'intent') return '';
       if (this.step === 'hardware') return 'Continue';
@@ -327,6 +477,7 @@ window.setupWizard = function setupWizard() {
 
     back() {
       this.error = '';
+      if (this.step === 'hems' && this.hemsIndex > 0) { this.hemsBack(); return; }
       const prev = this.history.pop() || 'intent';
       if (prev === 'hub') { this.toHub(); return; }
       this.step = prev;
@@ -334,6 +485,7 @@ window.setupWizard = function setupWizard() {
 
     async next() {
       if (this.step === 'hub') { this.hide(); return; }
+      if (this.step === 'hems') { await this.hemsNext(); return; }
       if (this.fromHub) { this.toHub(); return; }
       if (this.step === 'hardware') { await this.saveCounts(); return; }
       if (this.step === 'timezone') { await this.saveTimezone(); return; }

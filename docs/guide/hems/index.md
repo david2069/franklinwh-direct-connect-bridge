@@ -2,6 +2,9 @@
 
 [Back to the guide index](../index.md) · [Getting started](getting-started.md)
 
+To set it up, run **Energy planning (HEMS)** from the setup list (see
+[Getting started](getting-started.md#the-set-up-hems-wizard)).
+
 HEMS is the part of the bridge that looks ahead: what the sun and your home will do over the
 next two days, what each kWh through the battery costs in wear, and a description of your home
 that planning can work from. It is built on **hems**, the shared energy engine the bridges use
