@@ -2081,6 +2081,30 @@ document.addEventListener('alpine:init', () => {
       const at = ts ? new Date(ts * 1000) : new Date();
       return -at.getTimezoneOffset() === this.siteTzOffsetMin ? '' : ' ' + this.siteTzShort;
     },
+    // #748: one short date for list columns, "18 Nov 18:01", in the zone the list already
+    // used: 'host' (bridge host), 'site' (aGate) or 'local' (this browser).
+    _zoneOffset(zone) {
+      return zone === 'host' ? this.hostTzOffsetMin : zone === 'site' ? this.siteTzOffsetMin : null;
+    },
+    shortWhen(ts, zone) {
+      if (ts == null || ts === '') return '';
+      const o = { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
+      const off = this._zoneOffset(zone);
+      const s = off == null ? new Date(ts * 1000).toLocaleString('en-GB', o)
+        : new Date((ts + off * 60) * 1000).toLocaleString('en-GB', { ...o, timeZone: 'UTC' });
+      return s.replace(',', '');
+    },
+    // The full timestamp behind a short one (its title), with the site's zone label when
+    // that zone differs from the browser's (#728).
+    fullWhen(ts, zone) {
+      if (ts == null || ts === '') return '';
+      if (zone === 'host') return this._fmtHostTime(ts);
+      if (zone === 'site') {
+        const o = { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true };
+        return this._fmtSiteTime(ts, o) + this.siteTzTag(ts);
+      }
+      return new Date(ts * 1000).toLocaleString();
+    },
     // Format an epoch-seconds ts as HH:MM:SS in the SITE tz (shift epoch, render as UTC).
     _fmtSiteTime(ts, opts) {
       if (ts == null || ts === '') return '';

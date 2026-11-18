@@ -47,7 +47,8 @@ only, not the bridge. **Copy** copies the lines and their conditions.
 ## Activity Log results
 
 The **History** view is this bridge's activity log. It loads the latest 200 rows. Times
-are in bridge-host time. The chips at the top filter by status (one chip per status
+are in bridge-host time, shown short on the left ("18 Nov 18:01"); hover or tap a time
+for the full date and seconds. The chips at the top filter by status (one chip per status
 present); **battery** shows the rows written by the force path and the VPP monitor.
 <!-- @b OUT-03 ;; src: static/js/scheduler_tab.js:71-100 ;; untested ;; write: no ;; b: The History view fetches 200 rows, offers one chip per status present plus a battery chip for _batt and _vpp rows ;; test: browser: load History with mixed rows, assert the chips and the battery filter -->
 

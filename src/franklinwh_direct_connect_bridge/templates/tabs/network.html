@@ -275,30 +275,50 @@
             </div>
             <div>
               <div class="text-[10px] uppercase tracking-wide mb-1" style="color:var(--text-faint)">PoP distribution</div>
-              <div class="space-y-1">
-                <template x-for="[pp, n] in Object.entries(pop.distribution || {})" :key="pp">
-                  <div class="flex items-center gap-2 text-xs">
-                    <span class="font-mono w-24 shrink-0" style="color:var(--text-secondary)" x-text="pp"></span>
-                    <div class="flex-1 h-3 rounded overflow-hidden" style="background:var(--surface-2)">
-                      <div class="h-full rounded" style="background:var(--accent)" :style="'width:' + Math.max(3, (n / (pop.total_requests || 1) * 100)) + '%'"></div>
-                    </div>
-                    <span class="font-mono w-16 text-right" style="color:var(--text-faint)" x-text="n + ' req'"></span>
-                  </div>
-                </template>
-              </div>
+              <table class="w-full text-xs" style="table-layout:fixed">
+                <thead>
+                  <tr style="color:var(--text-faint)">
+                    <th class="text-left font-normal w-24">PoP</th>
+                    <th class="text-left font-normal">Share</th>
+                    <th class="text-right font-normal w-20">Requests</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="[pp, n] in Object.entries(pop.distribution || {})" :key="pp">
+                    <tr>
+                      <td class="font-mono py-0.5" style="color:var(--text-secondary)" x-text="pp"></td>
+                      <td class="py-0.5 pr-2">
+                        <div class="h-3 rounded overflow-hidden" style="background:var(--surface-2)">
+                          <div class="h-full rounded" :style="'background:var(--accent);width:' + Math.max(3, (n / (pop.total_requests || 1) * 100)) + '%'"></div>
+                        </div>
+                      </td>
+                      <td class="font-mono text-right py-0.5" style="color:var(--text-faint);font-variant-numeric:tabular-nums" x-text="n"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
             </div>
             <div x-show="pop.transitions && pop.transitions.length">
               <div class="text-[10px] uppercase tracking-wide mb-1" style="color:var(--text-faint)">Recent edge transitions</div>
-              <div class="space-y-0.5">
-                <template x-for="(t, i) in pop.transitions" :key="i">
-                  <div class="flex items-center gap-2 text-[11px]">
-                    <span class="font-mono" style="color:var(--text-secondary)" x-text="t.from"></span>
-                    <span style="color:var(--text-faint)">→</span>
-                    <span class="font-mono" style="color:var(--text-primary)" x-text="t.to"></span>
-                    <span style="color:var(--text-faint)" x-text="t.at ? new Date(t.at * 1000).toLocaleString() : ''"></span>
-                  </div>
-                </template>
-              </div>
+              <table class="text-[11px]">
+                <thead>
+                  <tr style="color:var(--text-faint)">
+                    <th class="text-left font-normal">When</th>
+                    <th class="text-left font-normal pr-3">From</th>
+                    <th class="text-left font-normal">To</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="(t, i) in pop.transitions" :key="i">
+                    <tr>
+                      <td class="when-col font-mono py-0.5" :title="$store.app.fullWhen(t.at, 'local')"
+                          x-text="$store.app.shortWhen(t.at, 'local')"></td>
+                      <td class="font-mono py-0.5 pr-3" style="color:var(--text-secondary)" x-text="t.from"></td>
+                      <td class="font-mono py-0.5" style="color:var(--text-primary)"><span style="color:var(--text-faint)">→ </span><span x-text="t.to"></span></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
             </div>
           </div>
         </template>
