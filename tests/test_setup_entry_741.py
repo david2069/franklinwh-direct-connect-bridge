@@ -29,7 +29,7 @@ def test_automatic_and_mock_start_the_existing_paths():
     hub = _hub()
     assert "startAutomatic()" in hub and "startMock()" in hub
     auto = JS[JS.index("startAutomatic()"):]
-    assert "intent = 'hardware'" in auto[:400] and "go('hardware')" in auto[:400]
+    assert "intent = 'hardware'" in auto[:400] and "_autoNext" in auto[:400]
     mock = JS[JS.index("startMock()"):]
     assert "intent = 'demo'" in mock[:400] and "go('hardware')" in mock[:400]
 

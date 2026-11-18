@@ -42,8 +42,24 @@ to it, and closing it is not declining setup.
 
 Three cards head the list (#741):
 
-- **Automatic** runs the guided path for one aGate and its aPower: find it, connect, then
-  each remaining step in turn.
+- **Automatic** runs the guided path for one aGate and its aPower. A step that is already
+  done is passed over, and every question has a **Skip**:
+  1. **Where the site is**, if the timezone is not set yet.
+  2. **Find it**: Discover, or enter the address (passed over when an aGate is connected).
+  3. **Confirm** what the aGate reports.
+  4. **Link Home Assistant**: its address and a long-lived access token, with **Test** and
+     **Save**. It is asked early so the bridge can check Home Assistant before publishing.
+  5. **Existing Home Assistant entities**: see
+     [below](#existing-home-assistant-entities). Always shown; it changes nothing by itself.
+  6. **FranklinWH cloud** sign-in.
+  7. **Modbus client** (this bridge): where it reaches the aGate's Modbus TCP Server. When
+     the Modbus Bridge already publishes this aGate, it warns that two Modbus writers can
+     work against each other; skip it unless the other one's writes are off.
+  8. **Publish to Home Assistant** (MQTT). When another integration already publishes this
+     aGate, **No** is suggested, so the same battery is not shown twice.
+  9. **Summary**: each part marked **Done** or **Skipped**, and **Custom setup** for the
+     rest. More aPowers than one are all read through the aGate; more than one aGate found
+     is said, and the others are added from Custom.
 - **Mock** runs the mock path: a simulated gateway to look around, never published to Home
   Assistant.
 - **Custom** (advanced) is the list itself: set up each part yourself.
@@ -52,10 +68,10 @@ Three cards head the list (#741):
   to Home Assistant · Electricity utility, pricing & billing · Default operating mode ·
   Automatic scheduling.
 - **Advanced**: HA notifications & devices · Security · User & API accounts · System View ·
-  Connect to FranklinWH Gateway Emulator · Modbus TCP.
+  Connect to FranklinWH Gateway Emulator · Modbus TCP · Existing Home Assistant entities.
 
 **Set up** answers it in the wizard (the cloud sign-in, publishing, the default mode, the
-Gateway Emulator and Modbus TCP),
+Gateway Emulator, Modbus TCP and the existing Home Assistant entities),
 then **Done** brings you back to the list. **Open** takes you to the Settings card, tab or
 overlay that already does it. **Start again from the first steps** re-runs the steps above.
 
@@ -78,6 +94,46 @@ System View, emulator, Modbus TCP). Each shows **Done** once set up; **Set up** 
 straight to where it is set up, or opens that step of the wizard.
 
 ---
+
+### Existing Home Assistant entities
+
+Before anything is published, the bridge lists the FranklinWH entities Home Assistant
+already has (#741), read from two places:
+
+- **The MQTT broker**'s retained discovery messages: the broker publishing uses or, as a
+  Home Assistant add-on, Home Assistant's own broker before publishing is on.
+- **Home Assistant**, once it is linked: its FranklinWH MQTT devices on any broker, and
+  entity ids ending in `_2` whose original still exists.
+
+Each row says whose they are and what to do:
+
+- **This bridge (removed gateways)**: entities left by a gateway that is gone. Home
+  Assistant re-creates them on every restart. **Remove** clears exactly the count shown,
+  after a second click to confirm. It needs publishing on; until then, use the MQTT tab later.
+- **Another integration** (the Modbus Bridge, FWHAI, another Direct Connect bridge):
+  reported only, never changed. When it publishes the same aGate, keep one, or turn off
+  its publishing.
+- **`_2` duplicates**: an older entity holds the name. Remove the old one in Home
+  Assistant → Settings → Entities, then rename the `_2`.
+
+Integrations that are not MQTT are not listed, except the one below.
+
+### The FranklinWH integration (richo)
+
+When Home Assistant has richo's FranklinWH integration (`franklin_wh`) loaded, the check
+shows a note: you can keep it, both work side by side, and later you'll be able to move to
+the bridge and keep your entity names and history. It is optional and read-only: the
+bridge never changes that integration or its entities. **Keep both** hides the note for
+good.
+
+What the bridge adds over that integration (version 2026.3.0, which polls the FranklinWH
+cloud and has whole-system power and energy sensors and Smart Circuit switches):
+
+- Reads the aGate on your own network; the FranklinWH cloud is optional.
+- Operating mode, reserve and battery dispatch controls in Home Assistant.
+- The scheduler, with actionable notifications on your phone.
+- Alerts when the aGate can't be reached, its data stops, or a command or schedule fails.
+- Each aPower's charge, health and state in the bridge.
 
 ## Getting around
 
@@ -102,6 +158,7 @@ You can change all of this:
 
 Preferences are stored in your browser (`localStorage`), so they are per-device and not
 shared between phone and desktop.
+
 
 ### Customise
 

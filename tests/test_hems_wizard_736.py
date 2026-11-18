@@ -28,7 +28,8 @@ def test_hems_is_an_advanced_task_answered_in_the_wizard():
     assert t["hems"]["inline"] == "hems"
     assert t["hems"]["title"] == "Energy planning (HEMS)"
     adv = [x["id"] for x in setup_wizard.tasks() if x["group"] == "advanced"]
-    assert adv[-2:] == ["emulator", "modbus"]           # the existing order is kept
+    # the existing order is kept (#741 appends "Existing Home Assistant entities" after it)
+    assert [x for x in adv if x != "ha_entities"][-2:] == ["emulator", "modbus"]
 
 
 @pytest.fixture
