@@ -21,8 +21,8 @@ def test_automatic_runs_the_steps_in_the_approved_order():
     m = re.search(r"AUTO_STEPS:\s*\[([^\]]*)\]", JS)
     assert m, "AUTO_STEPS missing"
     steps = re.findall(r"'(\w+)'", m.group(1))
-    assert steps == ["timezone", "find", "confirm", "halink", "cloud", "modbus", "publish",
-                     "summary"]
+    assert steps == ["timezone", "find", "confirm", "halink", "haentities", "cloud", "modbus",
+                     "publish", "summary"]
 
 
 def test_a_step_already_done_is_passed_over():

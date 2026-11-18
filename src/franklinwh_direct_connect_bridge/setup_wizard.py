@@ -374,6 +374,9 @@ _TASKS = (
     ("modbus", "advanced", "Modbus TCP",
      "Where this bridge reaches the Modbus TCP Server: an aGate or an emulator.",
      {"inline": "modbus"}),
+    ("ha_entities", "advanced", "Existing Home Assistant entities",
+     "FranklinWH entities Home Assistant already has: leftovers and other integrations.",
+     {"inline": "haentities"}),
 )
 
 

@@ -50,6 +50,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   Modbus client, publish to Home Assistant. It ends on a summary of what is set up, says
   when more than one aGate or aPower was found, and links to Custom for the rest
   ([guide](docs/guide/tour.md)).
+- **Setup: existing Home Assistant entities** (#741). Before anything is published,
+  Automatic and the setup list show the FranklinWH entities Home Assistant already has: from
+  the broker's retained discovery messages and, when Home Assistant is linked, its registry
+  (including true `_2` duplicates). This bridge's own leftovers can be removed after a
+  second click; other integrations' entities are only reported. When another integration
+  publishes the same aGate, Publish suggests No and the Modbus step warns of a second
+  Modbus writer. With richo's FranklinWH integration loaded, an optional note says both can
+  run side by side and lists what the bridge adds; **Keep both** hides it for good
+  ([guide](docs/guide/tour.md)).
 
 ### Fixed
 

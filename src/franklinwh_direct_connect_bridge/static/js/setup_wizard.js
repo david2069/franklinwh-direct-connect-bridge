@@ -53,7 +53,12 @@ window.setupWizard = function setupWizard() {
     // Automatic (#741): one aGate and its aPower, then each remaining part in turn. A step
     // already done is passed over; each one asked has a Skip.
     auto: false,
-    AUTO_STEPS: ['timezone', 'find', 'confirm', 'halink', 'cloud', 'modbus', 'publish', 'summary'],
+    AUTO_STEPS: ['timezone', 'find', 'confirm', 'halink', 'haentities', 'cloud', 'modbus', 'publish',
+                 'summary'],
+    // FranklinWH entities Home Assistant already has (#741), and the two-step Remove.
+    haInv: { rows: [], broker: {}, registry: {}, richo: { show: false, adds: [] },
+             other_same_agate: false, modbus_writer: false },
+    haInvBusy: false, haInvMsg: '', removeArmed: false,
     setupSteps: [],
     // Home Assistant link, asked early in Automatic: the same instance Settings → Integrations
     // keeps. The token is never read back.
@@ -172,6 +177,7 @@ window.setupWizard = function setupWizard() {
         if (t.inline === 'modbus') this.loadModbus();
         if (t.inline === 'hems') this.loadHems();
         if (t.inline === 'emulator') this.emu.msg = '';
+        if (t.inline === 'haentities') this.loadHaInventory();
         this.go(t.inline);
         return;
       }
@@ -474,6 +480,7 @@ window.setupWizard = function setupWizard() {
       if (this.step === 'publish') return this.auto ? 'Continue' : 'Finish';
       if (this.step === 'halink') return this.hal.saved ? 'Continue' : 'Skip';
       if (this.step === 'modbus' && this.auto) return this.mb.enabled ? 'Continue' : 'Skip';
+      if (this.step === 'haentities') return 'Continue';
       if (this.step === 'summary') return 'Finish';
       return '';
     },
@@ -504,7 +511,7 @@ window.setupWizard = function setupWizard() {
       if (this.step === 'find') { this._advance('find', 'cloud'); return; }
       if (this.step === 'cloud') { this._advance('cloud', 'confirm'); return; }
       if (this.step === 'confirm') { this._advance('confirm', 'publish'); return; }
-      if (this.auto && ['halink', 'modbus', 'publish'].includes(this.step)) {
+      if (this.auto && ['halink', 'haentities', 'modbus', 'publish'].includes(this.step)) {
         this._advance(this.step, ''); return;
       }
       if (this.step === 'publish') { await this.finish('done'); return; }
@@ -766,6 +773,7 @@ window.setupWizard = function setupWizard() {
     goAuto(step) {
       if (step === 'modbus') this.loadModbus();
       if (step === 'summary') this.loadTasks();
+      if (step === 'haentities') this.loadHaInventory();
       this.go(step);
     },
     // The next step: Automatic's order, or the first-run order it was called with.
@@ -804,6 +812,39 @@ window.setupWizard = function setupWizard() {
         h.msg = 'Saved. Settings → Integrations has it too.';
         await this.loadTasks();
       } catch (e) { h.msg = `Not saved: ${e.message || e}`; } finally { h.busy = false; }
+    },
+
+    async loadHaInventory() {
+      this.haInvBusy = true; this.haInvMsg = ''; this.removeArmed = false;
+      try {
+        const r = await fetch('api/setup/ha-entities');
+        if (r.ok) this.haInv = await r.json();
+        else this.haInvMsg = `Could not check (HTTP ${r.status}).`;
+      } catch (e) { this.haInvMsg = String(e); } finally { this.haInvBusy = false; }
+    },
+    // This bridge's own leftovers only, through the guarded purge: the first click arms it,
+    // the second removes exactly the count that was shown.
+    async removeOrphans(row) {
+      if (!this.removeArmed) { this.removeArmed = true; return; }
+      this.haInvBusy = true; this.removeArmed = false;
+      try {
+        const r = await fetch(`api/mqtt/orphans/purge?expect=${encodeURIComponent(row.expect)}&confirm=true`,
+                              { method: 'POST' });
+        const d = await r.json().catch(() => ({}));
+        this.haInvMsg = d.ok ? `Removed ${d.cleared || row.expect} old entities.`
+                             : (d.error || d.detail || `Not removed (HTTP ${r.status}).`);
+      } catch (e) { this.haInvMsg = String(e); }
+      finally { this.haInvBusy = false; await this.loadHaInventory(); }
+    },
+    // Keep both: the richo note is not shown again. Nothing in Home Assistant changes.
+    async keepBoth() {
+      try {
+        await fetch('api/setup/ha-entities/richo-note', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keep_both: true }),
+        });
+      } catch (e) { /* hidden for this visit anyway */ }
+      this.haInv.richo = { ...this.haInv.richo, show: false };
     },
 
     // What Automatic leaves set up, from the same facts the setup list shows.
