@@ -814,6 +814,7 @@
                   :disabled="tariffImp.busy || !tariffImp.text.trim()" @click="tariffImportCheck()">Check</button>
           <button data-testid="tariff-import-apply" class="btn btn-primary btn-sm"
                   :disabled="tariffImp.busy || !tariffImp.preview || tariffImp.done" @click="tariffImportApply()">Import</button>
+          <button data-testid="tariff-import-cancel" class="btn btn-secondary btn-sm ml-auto" @click="tariffImp.open=false">Cancel</button>
         </div>
         <div x-show="tariffImp.preview" class="text-xs rounded-lg p-2 whitespace-pre-line"
              style="background:var(--surface-2);color:var(--text-secondary)" x-text="tariffImportSummary()"></div>

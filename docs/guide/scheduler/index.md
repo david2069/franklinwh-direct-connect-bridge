@@ -194,7 +194,9 @@ the stored schedule, so nothing else changes (#157).
   months, day of month, start and end dates, **All gateways**, mode restore or actionable
   notification; an export that drops any of them says so (`warnings`), and **If busy**
   defaults to `override`, as here (#580).
-- **Import** takes a file. The bridge first validates it (a dry run) and shows, per entry,
+- **Import** opens a small window: **Choose file…**, or paste the JSON and **Import pasted
+  JSON**, or **Cancel** (on a phone the file picker is the system's own screen, so the
+  window is the way back). The bridge first validates it (a dry run) and shows, per entry,
   errors (a missing name, a Fire at that is not `HH:MM`, an unknown action) and warnings (a
   gateway or notify device that does not exist here). **Import valid** creates the valid
   entries **disabled**. An entry whose gateway does not exist here goes on the gateway you

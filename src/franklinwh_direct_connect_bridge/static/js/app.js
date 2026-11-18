@@ -62,6 +62,39 @@ function fetchErrorText(e, url) {
   return `${url}: ${m}`;
 }
 
+/**
+ * The import window (owner 2026-11-18): an import button opens this first — Choose file…,
+ * Paste JSON, Cancel — because on Android the file picker is the system's full-screen
+ * browser with no Cancel. Spread into a component with the name of its import method,
+ * which takes the JSON text and resolves to an error message (shown in the window) or
+ * null (done: the window closes). Markup: partials/import_window.html.
+ */
+function importWindowMixin(submit) {
+  return {
+    impWin: { open: false, text: '', msg: '', busy: false },
+    openImportWindow() { this.impWin = { open: true, text: '', msg: '', busy: false }; },
+    closeImportWindow() { this.impWin.open = false; },
+    impPickFile() { this.$refs.impWinFile.click(); },
+    async impFileChosen(ev) {
+      const file = ev.target.files[0];
+      ev.target.value = '';
+      if (!file) return;                       // the picker was backed out of: stay here
+      await this._impSubmit(await file.text());
+    },
+    async impPasteSubmit() { await this._impSubmit(this.impWin.text); },
+    async _impSubmit(text) {
+      this.impWin.busy = true;
+      this.impWin.msg = '';
+      try {
+        const err = await this[submit](text);
+        if (err) this.impWin.msg = err; else this.impWin.open = false;
+      } catch (e) {
+        this.impWin.msg = String((e && e.message) || e);
+      } finally { this.impWin.busy = false; }
+    },
+  };
+}
+
 function socColour(soc) {
   if (soc == null) return 'var(--text-muted)';
   if (soc >= 80) return 'var(--ok)';

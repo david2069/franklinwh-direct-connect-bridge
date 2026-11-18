@@ -38,7 +38,7 @@
         </div>
       </div>
       <button class="btn btn-secondary btn-sm" :disabled="!canWrite"
-              @click="triggerImport()">Import</button>
+              @click="openImportWindow()">Import</button>
       <input type="file" accept="application/json" x-ref="importFile"
              class="hidden" @change="onImportFile($event)">
       <button class="btn btn-primary btn-sm" :disabled="!canWrite"
@@ -648,6 +648,10 @@
   </div>
 
   <!-- Import review -->
+  {% set iw_title = 'Import schedules' %}
+  {% set iw_hint = 'A schedules export from this bridge or the Modbus Bridge (JSON). You see what would be imported before anything changes.' %}
+  {% include "partials/import_window.html" %}
+
   <div x-show="importReport" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center p-4"
        style="background:rgba(0,0,0,.6)" @click.self="importReport = null">
     <div class="card w-full max-w-lg p-5 space-y-3">
