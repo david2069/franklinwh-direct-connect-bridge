@@ -13,6 +13,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- **Battery warranty & wear compares your use with the allowance** (#746). The card now
+  shows throughput used from each source (the FranklinWH warranty's warranted − remaining,
+  the cloud's discharge total since its first day with data, the bridge's snapshots), your
+  kWh a day since the install date against **Pace**, SoH against the guaranteed end SoH, and
+  each unit's warranty end with its serial masked. A blank install date is **estimated**
+  from the first day with data in the FranklinWH cloud (observed on one site), marked
+  please confirm ([guide](docs/guide/hems/battery-wear.md)).
 - **Set up HEMS in the setup wizard** (#736). **Energy planning (HEMS)**, under Advanced in
   the setup list, walks through opting in, the site's location and array (it links to
   Location & Solar rather than asking again), the battery warranty, your home's usage and
