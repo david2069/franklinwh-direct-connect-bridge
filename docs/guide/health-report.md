@@ -68,34 +68,17 @@ phones. Untick **Mondays 07:00** to stop it; **Run now** makes last week's at on
 | Round-trip efficiency | Battery energy out ÷ in over the longest run of days that starts and ends at a similar SoC (within 5 points), so the charge left in the battery hardly counts. |
 | Full cycles | The week's discharge ÷ **Battery capacity** (Settings → Automation); without it, the report says to set it. |
 | Cycles by depth | Charge cycles counted from the SoC readings (rainflow), with their average depth. |
-| Load forecast | How far off the home-load forecast (Home Assistant's **Load Forecast**) was over the last 90 days, as the average error in a day's total, beside "same as the day before" for comparison. Each day is predicted only from the days before it. It needs four weeks of history. |
+| Load forecast | How far off the home-load forecast (Home Assistant's **Load Forecast**) was over the last 90 days, as the average error in a day's total, beside "same as the day before" for comparison. Each day is predicted only from the days before it. It needs four weeks of history. See [HEMS → Load forecast](hems/load-forecast.md). |
 | Energy | The week's battery in and out, solar, home, and grid in and out, from the aGate's daily totals. |
 
 If the bridge was off at 07:00 on Monday, the report runs on its first minute back that week.
 
 ## Battery warranty and wear
 
-**Settings → Gateways → Battery warranty & wear**, per gateway (#713). The figures come from
-hems, the shared energy engine; nothing here writes to the aGate.
-
-| Field | Where it comes from |
-|---|---|
-| Warranty end, Warranted throughput (MWh) | Your warranty. When the FranklinWH cloud is signed in, the bridge reads them from it once a day and fills them in, marked **Please confirm**: check them against your warranty and save. Only these figures are kept from the cloud. |
-| Guaranteed SoH at the end (%) | Your warranty document (no API has it). |
-| Install date | The day the battery was installed; throughput is counted from it. |
-| Replacement value ($) | What replacing the battery would cost. |
-| Value at the end of warranty ($) | Optional. Left blank, it is replacement value × the guaranteed end SoH, and says so. |
-
-| Figure | How it is worked out |
-|---|---|
-| Wear cost | (replacement value − value at the end) ÷ warranted throughput, per kWh discharged, with the sum shown. |
-| Throughput used / left | Discharged since the install date, from the daily snapshot; left is warranted − used (or the cloud's own figure while the throughput is the cloud's). |
-| Pace | Throughput left ÷ days to the warranty end: the kWh a day the battery can discharge and still last the warranty. |
-| State of health | The aPowers' SoH, as read for the alarms. |
-| Round-trip efficiency | The median, over 30 days, of full cycles: back to the same SoC (within 1 point) with at least 3 kWh each way, measured on the aGate's own charged and discharged counters. |
-
-Each charge and discharge block is also recorded (energy in and out, SoC at the start and the
-end, mean power, temperature, and whether it was a VPP event).
+**Settings → Gateways → Battery warranty & wear**, per gateway (#713): what each kWh the
+battery discharges costs in wear, how much of the warranted throughput is used and left, the
+pace that lasts the warranty, state of health and round-trip efficiency. Every field and
+formula is in [HEMS → Battery warranty and wear](hems/battery-wear.md).
 
 ## The daily snapshot
 

@@ -137,6 +137,16 @@ nav:
       - guide/multi-gateway.md
       - guide/health-report.md
       - guide/energy-and-costs.md
+      - HEMS (energy planning):
+          - guide/hems/index.md
+          - guide/hems/getting-started.md
+          - guide/hems/solar-forecast.md
+          - guide/hems/load-forecast.md
+          - guide/hems/battery-wear.md
+          - guide/hems/loads.md
+          - guide/hems/scheduler.md
+          - guide/hems/home-assistant.md
+          - guide/hems/troubleshooting.md
       - USER_GUIDE.md
   - Developers Guide:
       - developers/index.md

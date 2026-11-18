@@ -1,9 +1,10 @@
 """Battery wear from hems (#713 step 4, #612 §6).
 
-- **Warranty inputs** are setup fields per gateway (System Setup). The FranklinWH cloud's
-  ``warrantyInfo`` only pre-fills the end date and warranted throughput, marked please
-  confirm (``hems.wear.setup_fields``); it is read at most once a day while the cloud is
-  signed in, and only those figures are kept (no installer details).
+- **Warranty inputs** are setup fields per gateway (Settings → Gateways → Battery warranty
+  & wear). The FranklinWH cloud's ``warrantyInfo`` only pre-fills the end date and
+  warranted throughput, marked please confirm (``hems.wear.setup_fields``); it is read at
+  most once a day while the cloud is signed in, and only those figures are kept (no
+  installer details).
 - **SoH** is the mean of the aPower SoH the alarm pass already reads.
 - **Dispatch events:** each poll goes into ``hems.wear.add_sample``; the events it closes
   are kept in ``wear_events``.
@@ -193,7 +194,7 @@ def _used_kwh(store, gateway_id: str, install_date: str | None) -> float | None:
 
 def report(store, settings, gateway_id: str, now: float | None = None, *,
            cloud_fn=None) -> dict:
-    """Everything the System Setup card shows for this gateway."""
+    """Everything the Battery warranty & wear card shows for this gateway."""
     from . import state
     now = time.time() if now is None else now
     gw = state.get_gateway(gateway_id)
