@@ -1469,17 +1469,16 @@ def create_app() -> FastAPI:
         try:
             yield
         finally:
-            _sched_stop.set()
             _alert_stop.set()
             _health_stop.set()
             _sup_stop.set()
             _sup_task.cancel()
             # Release any dispatch WE are holding before the bridge stops — a running
             # bridge is the only thing that can release it (hardware timer is cosmetic).
-            # First, because Home Assistant kills an add-on 10 s after asking it to stop.
+            # First, because Home Assistant kills an add-on 10 s after asking it to stop;
+            # after the scheduler's last tick, so it can't arm a force behind it (#367).
             try:
-                from . import battery_control
-                battery_control.release_held("shutdown")
+                await scheduler_worker.stop_then_release(_sched_stop, _sched_task)
             except Exception as e:  # noqa: BLE001
                 log.error("battery shutdown release failed: %s", e)
             # Bridge stopped: recorded (so the next start says restarted), then sent while
