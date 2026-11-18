@@ -515,8 +515,11 @@ document.addEventListener('alpine:init', () => {
                value2: 0, value_kind: 'value', value_sensor: '' };
     },
     addHa() {
+      // the same fields a loaded row gets (_haToForm), so ticking Actionable has its
+      // buttons, recipients and wait to show (#739)
       this.form.ha_actions.push({ ha_kind: 'notify', device_id: this.devices[0]?.id || '',
-        when: 'fire', title: '', message: '', guard: this.newHaGuard() });
+        when: 'fire', title: '', message: '', data: '',
+        actionable: false, ...this._actionableToForm(null), guard: this.newHaGuard() });
     },
     addHaService() {
       this.form.ha_actions.push({ ha_kind: 'service', raw: false, instance_id: '',

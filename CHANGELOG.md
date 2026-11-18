@@ -87,6 +87,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Scheduler: ticking Actionable on a newly added notification threw errors** (#739).
+  A notification added in the editor lacked its buttons, recipients and wait, so the
+  Actionable section couldn't show them until the schedule was saved and reopened. It now
+  starts with the same defaults as a saved one (Yes / No, all enabled phones, 5 minutes).
 - **The Network tab threw "watching is not defined" on load** (#750). The Watch
   button's state was never declared, so the browser console filled with errors and Watch
   showed nothing until pressed. It now starts off, as intended.
