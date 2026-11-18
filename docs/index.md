@@ -50,6 +50,16 @@ file, included here as it stands, and the page the in-app **Full terms** link op
 --8<-- "LICENSE"
 ```
 
+## Highlights
+
+- **[Setup wizard](guide/tour.md#first-run-the-setup-wizard)**: Automatic, Mock or Custom setup: links Home Assistant, finds your aGate, offers the FranklinWH cloud and the Modbus client, and checks for an existing FranklinWH integration in Home Assistant.
+- **[Scheduler](guide/scheduler/index.md)**: Daily, interval and cron triggers; entry and exit conditions over any sensor; priorities and conflict policy; and an explain view of why a window did or did not fire.
+- **[Analytics](guide/energy-and-costs.md#analytics)**: Energy flows, battery use and self-sufficiency by day, week, month, year and lifetime, from the bridge's own store or the FranklinWH cloud, with CSV export.
+- **[Health](guide/health-report.md)**: A daily health report with a colour, unusual changes flagged, a weekly battery report, and battery warranty and wear.
+- **[Network monitoring](guide/tour.md#the-tabs)**: The connection end to end: latency to the aGate, MQTT, AWS IoT, the CloudFront edge your cloud calls reach (with a map), cloud errors and retries, and link history.
+- **[Notifications](guide/ha-setup-and-notifications.md)**: Optional: alerts and schedule notifications pushed to your phones through Home Assistant, including actionable ones that ask before acting.
+- **[HEMS](guide/hems/index.md)**: Energy planning: a calibrated solar forecast, a load forecast, the wear cost of each kWh through the battery, and a description of your home that planning works from.
+
 ## Start here
 
 - **[User guide](guide/index.md):** the web UI, the scheduler, Home Assistant and MQTT,
