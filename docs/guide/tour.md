@@ -42,8 +42,19 @@ to it, and closing it is not declining setup.
 
 Three cards head the list (#741):
 
-- **Automatic** runs the guided path for one aGate and its aPower: find it, connect, then
-  each remaining step in turn.
+- **Automatic** runs the guided path for one aGate and its aPower. A step that is already
+  done is passed over, and every question has a **Skip**:
+  1. **Where the site is**, if the timezone is not set yet.
+  2. **Find it**: Discover, or enter the address (passed over when an aGate is connected).
+  3. **Confirm** what the aGate reports.
+  4. **Link Home Assistant**: its address and a long-lived access token, with **Test** and
+     **Save**. It is asked early so the bridge can check Home Assistant before publishing.
+  5. **FranklinWH cloud** sign-in.
+  6. **Modbus client** (this bridge): where it reaches the aGate's Modbus TCP Server.
+  7. **Publish to Home Assistant** (MQTT).
+  8. **Summary**: each part marked **Done** or **Skipped**, and **Custom setup** for the
+     rest. More aPowers than one are all read through the aGate; more than one aGate found
+     is said, and the others are added from Custom.
 - **Mock** runs the mock path: a simulated gateway to look around, never published to Home
   Assistant.
 - **Custom** (advanced) is the list itself: set up each part yourself.

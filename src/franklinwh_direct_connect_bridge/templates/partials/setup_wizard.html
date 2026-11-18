@@ -369,6 +369,58 @@
             </div>
           </template>
 
+          <!-- Automatic (#741): link Home Assistant early, so its check can run before
+               anything is published. Skippable. -->
+          <template x-if="step === 'halink'">
+            <div class="space-y-2" data-testid="setup-halink">
+              <p>Link your Home Assistant? The bridge uses it for notifications and to check
+                what Home Assistant already has before anything is published.</p>
+              <label class="block text-xs" style="color:var(--text-faint)">Address
+                <input type="url" x-model="hal.base_url" placeholder="http://homeassistant.local:8123"
+                       class="form-control form-control-sm block w-full mt-1" autocomplete="off"></label>
+              <label class="block text-xs" style="color:var(--text-faint)">Long-lived access token
+                <input type="password" x-model="hal.token" class="form-control form-control-sm block w-full mt-1"
+                       autocomplete="off"></label>
+              <p class="text-xs" style="color:var(--text-faint)">Home Assistant → your profile →
+                Security → Long-lived access tokens → Create token.</p>
+              <div class="flex flex-wrap gap-2">
+                <button type="button" class="btn btn-secondary btn-sm" :disabled="hal.busy || !hal.base_url"
+                        @click="testHaLink()">Test</button>
+                <button type="button" class="btn btn-primary btn-sm" :disabled="hal.busy || !hal.base_url || hal.saved"
+                        @click="saveHaLink()">Save</button>
+              </div>
+              <p x-show="hal.msg" class="text-xs" :style="(hal.ok || hal.saved) ? { color: '#86efac' } : { color: '#fca5a5' }"
+                 x-text="hal.msg"></p>
+            </div>
+          </template>
+
+          <!-- Automatic (#741): what it left set up, and the rest in Custom. -->
+          <template x-if="step === 'summary'">
+            <div class="space-y-3" data-testid="setup-summary">
+              <p>Automatic setup is finished. This is what is set up now:</p>
+              <div class="space-y-1">
+                <template x-for="r in autoSummary" :key="r.part">
+                  <div class="flex items-center gap-2 rounded px-2 py-1.5" style="background:var(--surface-2)">
+                    <span class="flex-1 text-sm" style="color:var(--text-primary)" x-text="r.part"></span>
+                    <span x-show="r.note" class="text-xs" style="color:var(--text-faint)" x-text="r.note"></span>
+                    <span class="chip" :class="r.done ? 'ok' : 'warn'" style="font-size:.6rem"
+                          x-text="r.done ? 'Done' : 'Skipped'"></span>
+                  </div>
+                </template>
+              </div>
+              <template x-if="multiUnit.length">
+                <div class="rounded-lg px-3 py-2 text-xs space-y-1" data-testid="setup-multi-unit"
+                     style="background:var(--surface-2);color:var(--text-secondary)">
+                  <template x-for="m in multiUnit" :key="m"><p x-text="m"></p></template>
+                </div>
+              </template>
+              <p class="text-xs" style="color:var(--text-faint)">Anything skipped, and everything
+                else (tariffs, notifications, security), is in
+                <button type="button" class="underline" style="color:var(--accent)"
+                        @click="auto = false; toHub()">Custom setup</button>.</p>
+            </div>
+          </template>
+
           <!-- Energy planning (HEMS), #736: opt in → site & solar → warranty → usage → loads → Check. -->
           <template x-if="step === 'hems'">
             <div class="space-y-3 text-sm">

@@ -532,7 +532,8 @@ def test_no_native_confirm_boxes_remain():
 def test_the_wizard_ends_on_the_home_assistant_question():
     js = _wizard_js()
     nxt = js[js.index("async next()"):js.index("async saveCounts()")]
-    assert "this.go('publish')" in nxt          # confirm -> publish
+    # confirm -> publish (outside Automatic, #741, which asks its own steps first)
+    assert "this._advance('confirm', 'publish')" in nxt
     assert "step === 'publish'" in nxt          # publish -> finish
 
 
