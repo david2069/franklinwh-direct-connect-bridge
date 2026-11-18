@@ -115,7 +115,7 @@ Rows marked "(inferred)" were not read from code line by line.
 | Scheduler | Action: set mode | yes (`set_mode`, scheduler.py:38) | — | `mode` | — | rule actions | — | none | |
 | Scheduler | Action: smart circuit | yes | — | — | — | rule actions (inferred) | — | none | |
 | Scheduler | Action: off-grid | yes (`offgrid`) | — | — | — | (inferred) | — | none | |
-| Scheduler | Action: reserve SoC | declared but **always skipped**: "no local write path… needs a cloud provider" (scheduler.py:2082-2084), even when `POST /api/cloud/reserve` works | — | `reserve_self`, `reserve_tou` (schedules_api:38-48) | — | rule actions (cloud) | — | **missing (scheduler cannot change reserve)** | Wire it to the same cloud path as `/api/cloud/reserve` when a provider is configured |
+| Scheduler | Action: reserve SoC | set through the cloud provider, as `POST /api/cloud/reserve` (#129); skipped with the reason when none is configured | — | `reserve_self`, `reserve_tou` (schedules_api:38-48) | — | rule actions (cloud) | — | done (#129) | |
 | Scheduler | Action: force charge / discharge / standby | yes (`force`, MBus) | — | `force_*`, `release` | — | Smart Dispatch | — | none | |
 | Scheduler | Action: HA service / notify | `notify` action and HA service calls (scheduler.py:2076) | — | `ha_actions` kind entity / notify (schedules_api:~70) | — | notifications engine | — | none | |
 | Scheduler | Target scope (gateway / service / site) | per-gateway | — | `target_type` gateway/service/site | — | per gateway | — | missing in REST (site / service targeting) (inferred) | |
@@ -286,7 +286,7 @@ Rows marked "(inferred)" were not read from code line by line.
 3. **No dispatch outcome ledger.** MB `GET /gateways/{id}/dispatch-outcomes` (gateways_api:1422) records sent / verified / not_effective / released / superseded and who asked.
    - *Proposal:* `GET /api/battery/outcomes` over `store.record_dispatch`, with a verification state.
    - Add a "Last Command Result" HA sensor.
-4. **The scheduler's reserve-SoC action is always skipped** (scheduler.py:2082), even when the cloud path behind `POST /api/cloud/reserve` is configured. MB schedules can set reserves.
+4. **Done (#129):** the scheduler's reserve-SoC action now goes through the cloud path behind `POST /api/cloud/reserve`. It was always skipped before.
    - *Proposal:* route `reserve_soc` through the cloud provider when one is configured. Otherwise keep the skip and its reason.
 
 **B. Reserves and mode in HA**
