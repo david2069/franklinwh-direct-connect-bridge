@@ -11,6 +11,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+
+- **HEMS has its own section in the guide** (#736). Nine pages under *HEMS (energy
+  planning)*: what HEMS does and doesn't do yet, getting started, the solar forecast and its
+  calibration, the load forecast and its backtest (with HAEO), battery warranty and wear,
+  loads and what this bridge can control, the scheduler sensors with examples, the Home
+  Assistant entity, and troubleshooting. The HEMS setup, battery wear and Load Forecast texts
+  moved there; their old places keep a summary and a link, and the cards' **Guide** links
+  open the new pages ([guide](docs/guide/hems/index.md)).
+
 ### Fixed
 
 - **On a phone, Edit schedule's Save and Cancel were under the bottom nav** (#734). The
