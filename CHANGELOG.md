@@ -13,6 +13,25 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- **Set up HEMS in the setup wizard** (#736). **Energy planning (HEMS)**, under Advanced in
+  the setup list, walks through opting in, the site's location and array (it links to
+  Location & Solar rather than asking again), the battery warranty, your home's usage and
+  heavy loads, then a **Check** of what will be saved, with each load checked against what
+  this bridge can control. **Save** writes the Battery warranty & wear and HEMS setup cards'
+  settings, never the aGate or the cloud, and the result shows in the dialog. Both cards have
+  a **Set up HEMS** link, and the setup list shows it Done once HEMS setup is on. The loads'
+  choice lists read in plain words ([guide](docs/guide/hems/getting-started.md#the-set-up-hems-wizard)).
+
+### Changed
+
+- **HEMS has its own section in the guide** (#736). Nine pages under *HEMS (energy
+  planning)*: what HEMS does and doesn't do yet, getting started, the solar forecast and its
+  calibration, the load forecast and its backtest (with HAEO), battery warranty and wear,
+  loads and what this bridge can control, the scheduler sensors with examples, the Home
+  Assistant entity, and troubleshooting. The HEMS setup, battery wear and Load Forecast texts
+  moved there; their old places keep a summary and a link, and the cards' **Guide** links
+  open the new pages ([guide](docs/guide/hems/index.md)).
+
 - **Setup: Automatic, Mock and Custom at the top of the setup list** (#741). Once a
   gateway exists the wizard opens on the setup list, and the first-run choices were only
   behind "Start again from the first steps". Three cards now head the list: **Automatic**
