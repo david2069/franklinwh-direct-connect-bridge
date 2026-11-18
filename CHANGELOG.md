@@ -113,6 +113,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Scheduler: Stop no longer forgets a force it failed to release** (#366). It ended the
+  dispatch whether the release worked or not; now, like Delete, a failed release keeps the
+  dispatch active and Stop reports the failure
+  ([exit and conflicts](docs/guide/scheduler/exit-and-conflicts.md)).
 - **Scheduler: Set reserve SoC now sets the reserve** (#129). It was always skipped, even
   with cloud credentials. It now goes through the FranklinWH cloud for the schedule's own
   gateway, as the reserve control does, and is skipped with the reason only when the cloud

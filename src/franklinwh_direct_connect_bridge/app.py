@@ -4782,9 +4782,20 @@ def create_app() -> FastAPI:
         mine = [d for d in st.active_dispatches()
                 if d.get("schedule_id") == sid and d.get("host")]
         if mine:
+            failed = []
             for d in mine:
                 out = battery_control.execute("Release", host=d["host"])
-                st.end_dispatch(d["id"], status="stopped")
+                # Like DELETE (#195): a failed release keeps the row active, so the boot
+                # reconcile and the conflict check still see the force (#366).
+                if out.get("ok"):
+                    st.end_dispatch(d["id"], status="stopped")
+                else:
+                    failed.append(out)
+            if failed:
+                why = failed[-1].get("result") or failed[-1].get("error") or "release failed"
+                st.log_schedule_event(sid, entry["name"], "error",
+                                      f"stop: release failed, the force may still be running: {why}")
+                return {"stopped": False, "result": f"release failed: {why}"}
             st.log_schedule_event(sid, entry["name"], "stopped",
                                   f"dispatch released by user: {out.get('result', '')}")
             scheduler.notify_run(st, "schedule_aborted", entry["name"],     # #581
