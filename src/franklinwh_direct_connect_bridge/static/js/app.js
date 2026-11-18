@@ -870,6 +870,7 @@ document.addEventListener('alpine:init', () => {
     showRawKeys: localStorage.getItem('fwh-show-keys') === '1', // show raw key/cmdType by labels
     siteTzOffsetMin: null,   // aGate-local UTC offset (min) for time axes; null = fall back to browser tz
     siteTzLabel: '',
+    siteTzShort: '',         // the site zone's short name for alert/Troubleshoot times (#728)
     hostTzOffsetMin: null,   // integration-host UTC offset (min) for system-of-record times
     hostTzLabel: '',
 
@@ -2026,18 +2027,20 @@ document.addEventListener('alpine:init', () => {
     async loadSiteTz() {
       const key = this._siteTzKey();
       this._siteTzFor = key;
-      if (!this.selectedGateway) { this.siteTzOffsetMin = null; this.siteTzLabel = ''; return; }
+      if (!this.selectedGateway) { this.siteTzOffsetMin = null; this.siteTzLabel = ''; this.siteTzShort = ''; return; }
       try {
         const r = await (await fetch('api/site/timezone' + this.gwQuery('?'))).json();
         if (this._siteTzFor !== key) return;        // a newer selection's answer wins
         if (r && r.available && r.offset_minutes != null) {
           this.siteTzOffsetMin = r.offset_minutes;
           this.siteTzLabel = r.label + (r.tz_str ? ' \u00b7 ' + r.tz_str : '');
+          this.siteTzShort = this._tzShort(r);
         } else {
           // Never keep the PREVIOUS gateway's zone for this one (#144): the browser's zone
           // is the documented fallback.
           this.siteTzOffsetMin = null;
           this.siteTzLabel = '';
+          this.siteTzShort = '';
         }
         if (this._lastSeries) this.renderChart(this._lastSeries);   // re-render with correct tz
       } catch (e) { /* falls back to browser tz */ }
@@ -2059,6 +2062,24 @@ document.addEventListener('alpine:init', () => {
       const o = opts || { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true };
       if (this.hostTzOffsetMin == null) return new Date(ts * 1000).toLocaleString([], o);
       return new Date((ts + this.hostTzOffsetMin * 60) * 1000).toLocaleString('en-US', { ...o, timeZone: 'UTC' });
+    },
+    // The site zone's short name: "AEDT" when the aGate names its zone, else "UTC+11".
+    _tzShort(r) {
+      if (r.tz_str) {
+        try {
+          const n = new Intl.DateTimeFormat('en-AU', { timeZone: r.tz_str, timeZoneName: 'short' })
+            .formatToParts(new Date()).find(p => p.type === 'timeZoneName');
+          if (n && !/^(GMT|UTC)/.test(n.value)) return n.value;
+        } catch (e) { /* not an IANA name: the offset label below */ }
+      }
+      return r.label || '';
+    },
+    // #728: " UTC+11" after a SITE-zone time, only when the site's zone differs from the
+    // browser's at that moment; '' when they match or no site zone is known.
+    siteTzTag(ts) {
+      if (this.siteTzOffsetMin == null || !this.siteTzShort) return '';
+      const at = ts ? new Date(ts * 1000) : new Date();
+      return -at.getTimezoneOffset() === this.siteTzOffsetMin ? '' : ' ' + this.siteTzShort;
     },
     // Format an epoch-seconds ts as HH:MM:SS in the SITE tz (shift epoch, render as UTC).
     _fmtSiteTime(ts, opts) {

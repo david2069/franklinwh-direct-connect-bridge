@@ -141,12 +141,13 @@ document.addEventListener('alpine:init', () => {
       const v = this.data && this.data.verdict;
       if (!v || !v.source) return '';
       if (v.source === 'cloud') return 'From the FranklinWH cloud, just now.';
-      return "From the aGate's own report" + (v.as_of_ts ? ' at ' + Alpine.store('alerts').at(v.as_of_ts) : '') + '.';
+      const al = Alpine.store('alerts');
+      return "From the aGate's own report" + (v.as_of_ts ? ' at ' + al.at(v.as_of_ts) + al.tzTag(v.as_of_ts) : '') + '.';
     },
     get lanLine() {
       const l = this.data && this.data.lan;
       if (!l) return '';
-      const at = ts => Alpine.store('alerts').at(ts);
+      const al = Alpine.store('alerts'), at = ts => al.at(ts) + al.tzTag(ts);
       if (l.up) return 'LAN: answering on :' + window.FWH_BOOT.ports.dc + (l.last_ok_ts ? ' · last good ' + at(l.last_ok_ts) : '');
       if (l.state === 'down') return 'LAN: not answering since ' + at(l.down_since_ts);
       // Still "up" in the link record, but no good poll lately (#728).
