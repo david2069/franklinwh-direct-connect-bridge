@@ -11,6 +11,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+
+- **Setup: Automatic, Mock and Custom at the top of the setup list** (#741). Once a
+  gateway exists the wizard opens on the setup list, and the first-run choices were only
+  behind "Start again from the first steps". Three cards now head the list: **Automatic**
+  (the guided path for one aGate and its aPower), **Mock** (a simulated gateway, never
+  published) and **Custom** (the list itself, unchanged) ([guide](docs/guide/tour.md)).
+
 ### Fixed
 
 - **On a phone, Edit schedule's Save and Cancel were under the bottom nav** (#734). The

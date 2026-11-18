@@ -560,6 +560,19 @@ window.setupWizard = function setupWizard() {
       } catch (e) { /* a missed selection is cosmetic; never fail the finish */ }
     },
 
+    // The setup list's three ways in (#741). Automatic and Mock run the first-run paths
+    // from the list; Custom is the list itself.
+    startAutomatic() {
+      this.fromHub = false; this.intent = 'hardware'; this.go('hardware');
+    },
+    startMock() {
+      this.fromHub = false; this.intent = 'demo'; this.go('hardware');
+    },
+    showList() {
+      const el = document.querySelector('[data-testid="setup-list"]');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+
     async skip() { await this.finish('skipped'); this.hide(); },
 
     // Closing the list or a task opened from it is not declining setup.
