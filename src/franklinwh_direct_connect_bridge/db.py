@@ -3022,6 +3022,13 @@ class MetricsStore:
                    acked_by TEXT,
                    acked_ts REAL)"""
         )
+        # Dismissed (#727): the bar of an acknowledged, still-active condition is hidden
+        # until it resolves. A new occurrence is a new row, so it shows again.
+        cols = [r[1] for r in self._conn.execute("PRAGMA table_info(alerts)").fetchall()]
+        if "dismissed_ts" not in cols:
+            self._conn.execute("ALTER TABLE alerts ADD COLUMN dismissed_ts REAL")
+        if "dismissed_by" not in cols:
+            self._conn.execute("ALTER TABLE alerts ADD COLUMN dismissed_by TEXT")
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS ix_alerts_code ON alerts(gateway_id, code, opened_ts DESC)")
         self._conn.execute(
@@ -3112,6 +3119,17 @@ class MetricsStore:
             self._conn.execute(
                 "UPDATE alerts SET acked_by=?, acked_ts=? WHERE id=? AND acked_ts IS NULL",
                 (acked_by, float(now), int(alert_id)))
+            self._conn.commit()
+            rows = self._alert_rows(self._conn.execute(
+                "SELECT * FROM alerts WHERE id=?", (int(alert_id),)))
+        return rows[0] if rows else None
+
+    def dismiss_alert(self, alert_id: int, *, dismissed_by: str, now: float) -> dict | None:
+        """Dismiss once (#727). Returns the row, or None if there is no such alert."""
+        with self._lock:
+            self._conn.execute(
+                "UPDATE alerts SET dismissed_by=?, dismissed_ts=? WHERE id=? AND dismissed_ts IS NULL",
+                (dismissed_by, float(now), int(alert_id)))
             self._conn.commit()
             rows = self._alert_rows(self._conn.execute(
                 "SELECT * FROM alerts WHERE id=?", (int(alert_id),)))

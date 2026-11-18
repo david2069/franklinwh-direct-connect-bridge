@@ -97,13 +97,19 @@
       {% include "partials/topbar.html" %}
 
       <!-- Red bar (#271): a condition still active after it was acknowledged. The modal
-           is for being told once; this shows the fault is still there. -->
+           is for being told once; this shows the fault is still there, until it resolves
+           or someone dismisses it (#727). Its full text wraps; it takes its own space. -->
       <template x-for="a in $store.alerts.activeAcked" :key="a.id">
-        <div class="flex items-center gap-2 px-4 lg:px-6 py-1.5 text-xs font-semibold text-white cursor-pointer"
-             :style="{background: $store.alerts.barColor(a)}" @click="$store.alerts.barClick(a)"
-             :title="$store.alerts.help(a).tab === 'troubleshoot' ? 'Troubleshoot' : 'Open alerts'">
-          <span x-text="$store.alerts.barText(a)"></span>
-          <span x-show="!a.recovering" class="font-normal opacity-90 truncate" x-text="'— ' + a.message"></span>
+        <div class="flex items-start gap-2 px-4 lg:px-6 py-1.5 text-xs text-white shrink-0" data-testid="alert-bar"
+             :style="{background: $store.alerts.barColor(a)}">
+          <div class="flex-1 min-w-0 cursor-pointer break-words" @click="$store.alerts.barClick(a)"
+               :title="$store.alerts.help(a).tab === 'troubleshoot' ? 'Troubleshoot' : 'Open alerts'">
+            <span class="font-semibold" x-text="$store.alerts.barText(a)"></span>
+            <span x-show="!a.recovering" class="opacity-90" x-text="'— ' + a.message"></span>
+          </div>
+          <button class="shrink-0 px-1 -my-0.5 text-base leading-none opacity-90 hover:opacity-100" data-testid="alert-bar-dismiss"
+                  :disabled="$store.alerts.busy" @click.stop="$store.alerts.dismiss(a.id)"
+                  title="Dismiss until it clears" aria-label="Dismiss until it clears">&times;</button>
         </div>
       </template>
 

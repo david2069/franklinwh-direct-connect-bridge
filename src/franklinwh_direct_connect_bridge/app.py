@@ -7292,6 +7292,19 @@ def create_app() -> FastAPI:
             raise HTTPException(404, f"no alert {alert_id}")
         return row
 
+    @app.post("/api/alerts/{alert_id}/dismiss")
+    def api_alert_dismiss(alert_id: int, req: AlertAck | None = None):
+        """Dismiss one alert's bar, for everyone (#727). Also acknowledges it. A condition
+        stays open and listed until it resolves; a new occurrence shows again."""
+        _guard_writes()
+        source = (req.source if req else "api") or "api"
+        if source not in alerts.ACK_SOURCES:
+            raise HTTPException(400, f"source must be one of {', '.join(alerts.ACK_SOURCES)}")
+        row = alerts.dismiss(_ha_store(), alert_id, source)
+        if row is None:
+            raise HTTPException(404, f"no alert {alert_id}")
+        return row
+
     @app.get("/api/status")
     def api_status():
         """The bridge's derived status: the alert summary the top bar and Home Assistant

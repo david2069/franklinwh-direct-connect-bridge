@@ -304,7 +304,7 @@ There are two kinds:
 - an **event**, such as a command that was refused, stays open until it is acknowledged;
 - a **condition**, such as the aGate being unreachable, is active while the fault lasts and
   is marked resolved when it clears. Acknowledging a condition stops the alert window,
-  not the red bar.
+  not the red bar; **Dismiss** hides the bar until it clears.
 
 What raises one today:
 
@@ -330,7 +330,10 @@ It shows what happened, when (in the site's time), what it means and what to do.
 **I understand** for each alert, then **OK**. Escape and clicking outside do not close it.
 An alert raised while no browser was open, by a schedule for example, is shown on the next
 visit, and a condition that came and went shows as "09:54–13:27, resolved". While an
-acknowledged condition is still active, a red bar stays under the top bar. A badge in the
+acknowledged condition is still active, a bar stays under the top bar, naming the gateway
+and giving the full message. Its **×** dismisses it for everyone until the condition clears;
+a new occurrence shows again. **Dismiss** in the list does the same and also acknowledges
+the alert, which stays in the list until it resolves. A badge in the
 top bar counts open alerts and opens the list, where warnings are acknowledged. The
 acknowledgement applies for everyone. Each alert in the list starts with a line giving its
 severity, a short time (for example `15 Nov 2:30–3:32 PM`) and its state (resolved,
@@ -685,7 +688,7 @@ tokens.
 | Push notifications switch | `ha_notify` setting; `actionable.build()` | — |
 | Triggers and Send to | `notify_engine.py`; `actionable.targets()` | `PUT /api/notify/triggers` (`target`, and `asks` for alerts and Release / Keep), `POST /api/notify/triggers/test`, `GET /api/notify/log` |
 | Persistent notifications | `Notifier` in `notify.py`; `poller.py` | `POST /api/notify/test` |
-| Alerts | `alerts.py` (`alerts` table) | `GET /api/alerts` (`open=1`, `kind=event\|condition`, `since=<epoch>`), `POST /api/alerts/{id}/ack` (`source`: `ui`, `api`, `ha`), `GET /api/status` (`alerts`) |
+| Alerts | `alerts.py` (`alerts` table) | `GET /api/alerts` (`open=1`, `kind=event\|condition`, `since=<epoch>`), `POST /api/alerts/{id}/ack` (`source`: `ui`, `api`, `ha`), `POST /api/alerts/{id}/dismiss` (same `source`; also acknowledges), `GET /api/status` (`alerts`) |
 | Buttons | `notify_buttons.py` (`ask_alert()`, `ask_release()`), `actionable.py`; `franklinwh-ha-notify` (`send.py`, `listener.py`, `notify_requests` and `notify_ledger` tables) | — |
 | Running force at start-up | `vpp_monitor.py`; `reconcile_interrupted()` in `battery_control.py` (`dispatch_interrupt_policy`) | — |
 | Schedules | `_ask_step()` and the templates in `scheduler.py` | `ask` on the schedule: `question`, `timeout_min`, `if_no_reply` (`skip`/`continue`), `choices` (`label`, `then`: `run`/`skip`, `reply`), `send_to` |
