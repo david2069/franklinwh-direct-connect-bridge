@@ -1264,6 +1264,9 @@ def _ask_errors(ask: Any) -> list[str]:
         from . import notify_engine
         try:
             notify_engine.valid_target(ask["send_to"])
+            # A role is a trigger's and an alert's Send to (#763); not a schedule's yet (#470).
+            if ask["send_to"].get("type") == "role":
+                raise ValueError("a role is not available for a schedule's notification")
         except ValueError as e:
             out.append(f"actionable notification: send to: {e}")
     return out

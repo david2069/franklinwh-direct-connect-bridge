@@ -629,7 +629,11 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                         for ev, vals in notify_engine.evaluate(summ, prev, _cfg,
                                                                capacity_kwh=_cap):
                             await asyncio.to_thread(notify_engine.fire, _st, ev,
-                                                    gateway=gw.label or gw.id, cfg=_cfg, **vals)
+                                                    gateway=gw.label or gw.id, cfg=_cfg,
+                                                    gateway_id=gw.id, **vals)
+                        # Still off-grid: a reminder every N minutes (#763).
+                        await asyncio.to_thread(notify_engine.offgrid_reminder, _st, gw.id,
+                                                gw.label or gw.id, summ, _cfg, _cap, time.time())
                         # Today's solar won't fill the battery (#676): once a day.
                         if summ.get("ok"):
                             await asyncio.to_thread(

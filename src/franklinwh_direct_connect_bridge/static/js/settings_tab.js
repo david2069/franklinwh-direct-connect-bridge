@@ -68,6 +68,7 @@ function settingsTab(opts = {}) {
     notif: {
       loaded: false, master: false, busy: false,
       instances: [], devices: [],
+      accounts: [],                    // sign-in accounts a device can belong to (#763)
       addDev: null, addDevMsg: null,   // {kind: danger|warn|ok, text}: shown in the dialog
       instMsg: null,                   // the add-instance panel's result (#293)
       targets: null, discovered: [], pickerOpen: false, pickerSearch: '',
@@ -1844,6 +1845,11 @@ function settingsTab(opts = {}) {
       const t = this.triggers.config.triggers[key];
       this._saveTriggers({ triggers: { [key]: { enabled: !t.enabled } } });
     },
+    // The off-grid reminder's interval (#763): 5 min to a day.
+    setTriggerInterval(key, val) {
+      const n = Math.max(5, Math.min(1440, parseInt(val, 10) || 15));
+      this._saveTriggers({ triggers: { [key]: { interval_min: n } } });
+    },
     setThreshold(key, val) {
       const n = Math.max(0, Math.min(100, parseInt(val, 10) || 0));
       this._saveTriggers({ triggers: { [key]: { threshold: n } } });
@@ -1859,15 +1865,34 @@ function settingsTab(opts = {}) {
       const s = (this.triggers.stats || []).find(x => x.event === key);
       return s ? `${s.count}× · last ${this.fmtNotifyTime(s.last_ts)}` : '';
     },
-    // A trigger's target (#281): all devices, or the devices chosen. Roles come later.
+    // A trigger's target (#281): all devices, the devices chosen, or a role (#763): the
+    // enabled devices linked to an account with that role.
     triggerTargetValue(key, t) {
-      return (t.target && t.target.type === 'device') || this.trgPick[key] ? 'device' : 'all';
+      const tt = t.target && t.target.type;
+      if (tt === 'device' || tt === 'role') return tt;
+      return this.trgPick[key] || 'all';
+    },
+    triggerRole(t) { return (t.target && t.target.type === 'role' && t.target.role) || ''; },
+    setTriggerRole(key, role) {
+      if (role) this._saveTriggers({ triggers: { [key]: { target: { type: 'role', role } } } });
+    },
+    setAskRole(key, role) {
+      if (role) this._saveTriggers({ asks: { [key]: { target: { type: 'role', role } } } });
+    },
+    // How many enabled devices a role reaches, so an empty one says so.
+    roleDeviceCount(role) {
+      const ids = new Set(this.notif.accounts.filter(a => a.role === role && a.enabled).map(a => String(a.id)));
+      return this.notif.devices.filter(d => d.enabled && d.user_id && ids.has(String(d.user_id))).length;
+    },
+    accountLabel(dev) {
+      const a = this.notif.accounts.find(x => String(x.id) === String(dev.user_id || ''));
+      return a ? a.username + ' (' + a.role + ')' : '';
     },
     triggerTargetIds(t) {
       return (t.target && t.target.type === 'device' && t.target.ids) || [];
     },
     setTriggerTarget(key, value) {
-      this.trgPick[key] = value === 'device';
+      this.trgPick[key] = value === 'all' ? '' : value;
       if (value === 'all') this._saveTriggers({ triggers: { [key]: { target: { type: 'all' } } } });
     },
     // Ticking a device saves the target; the last one ticked stays (choose All instead).
@@ -1878,7 +1903,7 @@ function settingsTab(opts = {}) {
     },
     // Critical alerts and Release / Keep: the same Send to, saved under asks (#281).
     setAskTarget(key, value) {
-      this.trgPick['ask:' + key] = value === 'device';
+      this.trgPick['ask:' + key] = value === 'all' ? '' : value;
       if (value === 'all') this._saveTriggers({ asks: { [key]: { target: { type: 'all' } } } });
     },
     toggleAskDevice(key, a, id, on) {
@@ -1959,6 +1984,12 @@ function settingsTab(opts = {}) {
         this.notif.devices = d.devices || [];
         const i = await (await fetch('api/ha/instances')).json();
         this.notif.instances = i.instances || [];
+        // Sign-in accounts, for a device's Account (#763); an admin's read only.
+        try {
+          const ur = await fetch('api/security/users');
+          const u = ur.ok ? await ur.json() : {};
+          this.notif.accounts = (u.users || []).filter(a => a && a.role !== 'api');
+        } catch (e) { this.notif.accounts = []; }
         this.notif.loaded = true;
       } catch (e) { Alpine.store('app').toast('Load notifications failed: ' + e.message, 'error'); }
     },
@@ -2017,11 +2048,11 @@ function settingsTab(opts = {}) {
       } catch (e) { say('danger', 'Test failed: ' + e.message); }
     },
     openAddDevice() {
-      this.notif.addDev = { alias: '', instance_id: (this.notif.instances[0] || {}).id || '', service: '', kind: 'other' };
+      this.notif.addDev = { alias: '', instance_id: (this.notif.instances[0] || {}).id || '', service: '', kind: 'other', user_id: '' };
       this.notif.discovered = []; this.notif.pickerOpen = false; this.notif.addDevMsg = null;
     },
     editDevice(dev) {   // rename / re-target an existing device
-      this.notif.addDev = { id: dev.id, alias: dev.alias, instance_id: dev.instance_id, service: dev.service, kind: dev.kind || 'other' };
+      this.notif.addDev = { id: dev.id, alias: dev.alias, instance_id: dev.instance_id, service: dev.service, kind: dev.kind || 'other', user_id: dev.user_id || '' };
       this.notif.discovered = []; this.notif.pickerOpen = false; this.notif.addDevMsg = null;
     },
     // Ask the CHOSEN instance, not every instance. A bridge can read several Home
@@ -2115,7 +2146,7 @@ function settingsTab(opts = {}) {
       this.notif.addDevMsg = null;
       const editing = !!f.id;
       const url = editing ? 'api/ha/notify-devices/' + f.id : 'api/ha/notify-devices';
-      const body = { alias: f.alias, instance_id: f.instance_id, service: f.service, kind: f.kind || 'other' };
+      const body = { alias: f.alias, instance_id: f.instance_id, service: f.service, kind: f.kind || 'other', user_id: f.user_id || '' };
       const r = await fetch(url, { method: editing ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (r.ok) { this.notif.addDev = null; await this.loadNotify(); Alpine.store('app').toast(editing ? 'Device updated' : 'Device added', 'success'); }

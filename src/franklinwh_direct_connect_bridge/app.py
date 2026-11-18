@@ -702,6 +702,7 @@ class NotifyDeviceCreate(BaseModel):
     service: str
     enabled: bool = True
     kind: DeviceKind | None = None      # None: derived from the service (#281)
+    user_id: str | None = None          # its account, for Send to a role (#763)
 
 
 class NotifyDeviceUpdate(BaseModel):
@@ -710,6 +711,7 @@ class NotifyDeviceUpdate(BaseModel):
     service: str | None = None
     enabled: bool | None = None
     kind: DeviceKind | None = None
+    user_id: str | None = None          # its account (#763); "" unlinks it
 
 
 class NotifyTestReq(BaseModel):
@@ -3687,10 +3689,21 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=422,
                                 detail=f"no HA instance '{req.instance_id}'")
         from . import notify_engine
+        _check_device_account(st, req.user_id)
         return st.create_notify_device(
             dev_id=uuid.uuid4().hex[:12], alias=req.alias,
             instance_id=req.instance_id, service=req.service, enabled=req.enabled,
-            kind=req.kind or notify_engine.kind_of(req.service, req.alias))
+            kind=req.kind or notify_engine.kind_of(req.service, req.alias), user_id=req.user_id)
+
+    def _check_device_account(st, user_id: str | None) -> None:
+        """A device's account (#763) is one of this bridge's sign-in accounts; an API
+        token account has no phone. "" or None: no account."""
+        if not user_id:
+            return
+        from . import auth
+        u = next((x for x in auth.users(st) if str(x["id"]) == str(user_id)), None)
+        if u is None or u["role"] == "api":
+            raise HTTPException(status_code=422, detail=f"no sign-in account '{user_id}'")
 
     @app.patch("/api/ha/notify-devices/{dev_id}")
     def api_notify_device_update(dev_id: str, req: NotifyDeviceUpdate):
@@ -3700,6 +3713,7 @@ def create_app() -> FastAPI:
         st = _ha_store()
         if st.notify_device(dev_id) is None:
             raise HTTPException(status_code=404, detail=f"no device '{dev_id}'")
+        _check_device_account(st, req.user_id)
         return st.update_notify_device(dev_id, **req.model_dump(exclude_unset=True))
 
     @app.delete("/api/ha/notify-devices/{dev_id}")

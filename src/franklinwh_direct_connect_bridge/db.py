@@ -1119,8 +1119,8 @@ class MetricsStore:
                    created_at REAL NOT NULL DEFAULT 0,
                    updated_at REAL NOT NULL DEFAULT 0)"""
         )
-        # #281 device shape: `kind` sets the row's icon; `user_id` is for the users and
-        # roles a later release adds, unused until then.
+        # #281 device shape: `kind` sets the row's icon; `user_id` is the bridge account
+        # the device belongs to, for Send to a role (#763).
         cols = [r[1] for r in self._conn.execute("PRAGMA table_info(notify_devices)")]
         if "kind" not in cols:
             self._conn.execute(
@@ -1165,18 +1165,18 @@ class MetricsStore:
 
     def create_notify_device(self, *, dev_id: str, alias: str, instance_id: str,
                              service: str, enabled: bool = True, kind: str = "other",
-                             now: float | None = None) -> dict:
+                             now: float | None = None, user_id: str | None = None) -> dict:
         ts = float(now if now is not None else time.time())
         with self._lock:
             self._conn.execute(
                 "INSERT INTO notify_devices(id,alias,instance_id,service,enabled,kind,"
-                "created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)",
-                (dev_id, alias, instance_id, service, int(enabled), kind, ts, ts))
+                "created_at,updated_at,user_id) VALUES (?,?,?,?,?,?,?,?,?)",
+                (dev_id, alias, instance_id, service, int(enabled), kind, ts, ts, user_id or None))
             self._conn.commit()
         return self.notify_device(dev_id)
 
     def update_notify_device(self, dev_id: str, **fields) -> dict | None:
-        allowed = {"alias", "instance_id", "service", "enabled", "kind"}
+        allowed = {"alias", "instance_id", "service", "enabled", "kind", "user_id"}
         sets = {k: v for k, v in fields.items() if k in allowed and v is not None}
         if not sets:
             return self.notify_device(dev_id)

@@ -174,7 +174,10 @@ notifications and access from away](phone-and-remote-access.md).
 ![The Add companion device form after Discover: the notify services, when each was last seen, and a duplicate marked](../images/ha-setup-and-notifications/06-add-device-discover.png)
 
 Each saved device has an on/off switch, an icon for its kind (phone, tablet, TV, speaker
-or other, guessed from the service name), **Edit**, **Test**, and remove. A device on an
+or other, guessed from the service name), **Edit**, **Test**, and remove. In **Edit**,
+**Account** says whose device it is: one of the bridge's sign-in accounts (Settings →
+Security), shown on the row as "name (role)". It is what **Send to → A role** uses; an
+admin sets it. A device on an
 instance that is switched off is marked **instance disabled**, and receives nothing.
 
 - **Test** sends one plain message straight to that service. It goes out even while the
@@ -219,18 +222,22 @@ Every notification that goes to your devices has a **Send to** choice:
 - **All devices**, the default: every enabled device on an enabled instance.
 - **Chosen devices**: tick one or more. A chosen device that is switched off, or on a
   switched-off instance, gets nothing.
+- **A role** (Admins, Users or Viewers): the enabled devices whose **Account** has that
+  role. Set each device's Account under Companion Devices first; a role no enabled device
+  belongs to says so, and sends to no one.
 
 You set it on each Auto-notify trigger, on **Critical alerts** and **Release / Keep a
 running force** (the two rows under the triggers), and on a schedule's **Ask before
-continuing** step. Devices that show buttons are marked **buttons**. Targeting by user
-or role is not available yet.
+continuing** step. Devices that show buttons are marked **buttons**. **A role** is not
+available on a schedule's step yet, and there is no Send to a single user.
 
 ![Auto-notify triggers: aGate offline / online set to Chosen devices, with the device list open and Phone and Tablet ticked](../images/ha-setup-and-notifications/07-triggers-send-to.png)
 
 ### Push to your notification devices
 
 Set these under **Settings → Integrations → Notifications → Auto-notify triggers**. Each
-has a switch and a **Send to**; the two SoC triggers also have a threshold.
+has a switch and a **Send to**; the two SoC triggers also have a threshold, and the
+off-grid reminder an interval in minutes.
 
 | Trigger | Default | Sent when | Message |
 |---|---|---|---|
@@ -243,8 +250,16 @@ has a switch and a **Send to**; the two SoC triggers also have a threshold.
 | Daily health report amber or red | on | The 07:00 [health report](health-report.md) is amber or red. | "FranklinWH bridge: health amber" and the reasons. |
 | Today's solar won't fill the battery | on | While solar is still forecast today, the solar left won't take the battery to 100 % ([Solar forecast](energy-and-costs.md#solar-forecast)). Once a day per gateway. | "Today's solar won't fill the battery [Home]: about 3.5 kWh left, and it needs 10.9 kWh to reach 100% (now 20%)." |
 
+| Operating mode changed | off | The operating mode read from the aGate changes, between two readings that both name a mode. Button: **Turn off**. | "Operating mode changed [gateway]: Self-Consumption → Time-of-Use." |
+| aGate on 4G mobile / off 4G | off | The **aGate is using 4G** alert opens or clears (both held 5 minutes, see [Alerts](#alerts)). Button: **Turn off**. | "aGate is using 4G mobile [gateway]: Wi-Fi is on standby." / "aGate is no longer on 4G [gateway]." |
+| Still off-grid: remind every | off, 15 min | While off-grid, every interval after **Off-grid started** (5 minutes to a day). It says why, as Off-grid started does: **user requested** (simulated off-grid you asked for) or **grid outage**, how long so far, and the same figures. Button: **Stop reminders**: none for that gateway until it is back on-grid. A restart keeps the count. | "Still OFF-GRID [gateway] (user requested) for 30 min — running on battery: SoC 80%, …" |
+
+**Turn off** switches that trigger off; its row then says "Turned off from a notification"
+and when, until you turn it on again. On a phone that doesn't show buttons the message
+comes without one.
+
 A trigger fires on a **change** between one poll and the next, not on every poll. There
-is no other rate limit.
+is no other rate limit; the off-grid reminder repeats at its interval.
 
 #### Scheduler
 

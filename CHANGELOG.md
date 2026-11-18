@@ -13,6 +13,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- **Notifications: operating mode changed, aGate on 4G, and off-grid reminders; Send to a
+  role** (#763, owner 2026-11-19). Three Auto-notify triggers, off until you turn them on:
+  **Operating mode changed**, **aGate on 4G mobile / off 4G** (when the 4G alert opens or
+  clears), and **Still off-grid: remind every** 15 minutes (5 minutes to a day), saying
+  **user requested** or **grid outage**, how long, and the battery figures; a restart keeps
+  its count. On a phone with buttons, the mode and 4G ones carry **Turn off** (Settings
+  then says it was turned off from a notification), and the reminder **Stop reminders**
+  until back on-grid. **Send to** gains **A role** (Admins, Users, Viewers) for triggers,
+  critical alerts and Release / Keep: the enabled devices whose new **Account** has that
+  role ([guide](docs/guide/ha-setup-and-notifications.md#send-to)).
 - **System view: Solar forecast & actual** (owner 2026-11-19). A new switch under
   **Options**, off until turned on. It shows a box on the diagram's left (above it on a
   phone) with today's solar forecast for the gateway's site, the actual so far and what is
