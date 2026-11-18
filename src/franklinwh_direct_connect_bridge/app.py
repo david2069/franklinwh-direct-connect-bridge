@@ -4804,9 +4804,14 @@ def create_app() -> FastAPI:
         return {"stopped": False, "result": "no active dispatch for this schedule"}
 
     def _open_run(st, sid: str):
-        """This schedule's run for the window currently open, if any."""
+        """This schedule's run for the window currently open, if any: one still to run,
+        or one that already ran while its window is open (#200)."""
         for o in st.due_occurrences():
             if o["schedule_id"] == sid:
+                return o
+        now = time.time()
+        for o in st.occurrences_for(sid, status="ok"):
+            if o.get("window_end_ts") is not None and float(o["window_end_ts"]) > now:
                 return o
         return None
 
@@ -4858,6 +4863,9 @@ def create_app() -> FastAPI:
         if not ok:
             _audit("schedule_resume", detail=sid, result=f"refused: {why}", ok=False)
             raise HTTPException(409, why)
+        # A run that had fired before the pause is re-entered, not counted as done (#200).
+        if entry.get("last_fired_day") == occ.get("occurrence_key"):
+            st.mark_schedule_fired(sid, "", "resumed")
         st.log_schedule_event(sid, entry["name"], "resumed",
                               "resumed by user — window still open")
         _audit("schedule_resume", detail=sid, result="resumed", ok=True)

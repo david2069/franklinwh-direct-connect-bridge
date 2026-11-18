@@ -113,6 +113,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Scheduler: Pause holds a run, and Resume runs it again** (#200). Pause didn't find a
+  run that had already fired (a running force), and the scheduler retried a paused run on
+  its next tick. Now Pause releases and holds the open window's run, the scheduler leaves it
+  alone, and Resume re-enters it ([outcomes](docs/guide/scheduler/outcomes.md#run-now-and-stop)).
 - **Shutdown: a force started by the scheduler's last tick is released too** (#367). The
   release ran while a tick could still be running, so a force it started kept going. The
   bridge now waits for the scheduler to stop (up to 5 s) before releasing
