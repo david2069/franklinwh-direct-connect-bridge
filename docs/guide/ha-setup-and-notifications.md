@@ -396,7 +396,13 @@ together:
   your LAN — it has left Wi-Fi" or "aGate is offline everywhere". The cloud is asked when the
   panel opens and on **Check again**, never in the background. Only the connection type
   and status are read, plus the name of the Wi-Fi network the aGate stores. Its password is
-  never read into the bridge.
+  never read into the bridge. Under the verdict it says whose reading it rests on: the
+  FranklinWH cloud just now, or, when the cloud is not set up or didn't answer, the aGate's
+  own report (1118 `currentNetType`, read every 10 minutes) with the time it was read. An
+  aGate report older than two reads is not used. The LAN line says "not answering lately"
+  as soon as there has been no good poll for three poll intervals (at least 2 minutes),
+  the same rule as the Health check's last good poll, even before the link is marked down.
+  A cloud call that failed reads "asked, no answer".
 - **Health check** — LAN reachability (ping), the local API on :9000, the aGate's own cloud
   link (1118 `awsStatus`) and the last good poll, each pass or fail. It does not touch the
   Modbus TCP Server (aGate :502).

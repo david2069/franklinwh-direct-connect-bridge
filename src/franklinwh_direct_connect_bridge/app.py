@@ -5754,9 +5754,10 @@ def create_app() -> FastAPI:
         Read-only: connection type and status, and the stored Wi-Fi network's NAME for
         Reconnect to Wi-Fi — never its password. A cloud failure is shown, never a 500."""
         gw = _gw_or_404(gateway)
-        lan = troubleshoot.lan_state(db.get_store(get_settings()), gw.id)
+        lan = troubleshoot.lan_state(db.get_store(get_settings()), gw.id,
+                                     poll_interval_s=get_settings().poll_interval)
         why = _cloud_why_not(gw)
-        got = None
+        got, asked = None, False
         if why is None:
             s = get_settings()
             try:
@@ -5765,9 +5766,10 @@ def create_app() -> FastAPI:
                                                      gw.serial)
             except Exception as e:  # noqa: BLE001 — shown in the panel
                 log.warning("cloud call failed: connectivity — %s: %s", type(e).__name__, e)
-                why = f"The FranklinWH cloud didn't answer: {type(e).__name__}"
-        cloud = troubleshoot.cloud_block(got, reason=why)
-        v = troubleshoot.verdict(lan, cloud, (gw.last_state or {}).get("net_cloud_via"))
+                why, asked = f"The FranklinWH cloud didn't answer: {type(e).__name__}", True
+        cloud = troubleshoot.cloud_block(got, reason=why, asked=asked)
+        v = troubleshoot.verdict(lan, cloud, (gw.last_state or {}).get("net_cloud_via"),
+                                 getattr(gw, "net_read_ts", None))
         troubleshoot.note_cloud_verdict(gw.id, v, cloud)
         ssid = (got or {}).get("stored_ssid") if cloud.get("connection") == "4g" else None
         return {"gateway": gw.id, "label": gw.label or gw.id, "lan": lan, "cloud": cloud,
@@ -5782,7 +5784,8 @@ def create_app() -> FastAPI:
         gw = _gw_or_404(gateway)
         s = get_settings()
         check = client.link_check(s, host=gw.active_host or gw.configured_host)
-        lan = troubleshoot.lan_state(db.get_store(get_settings()), gw.id)
+        lan = troubleshoot.lan_state(db.get_store(get_settings()), gw.id,
+                                     poll_interval_s=s.poll_interval)
         return {"gateway": gw.id, "checked_ts": time.time(),
                 "checks": troubleshoot.health(check, lan, s.poll_interval,
                                                 port=s.fwh_port)}
