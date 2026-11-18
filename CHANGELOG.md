@@ -11,6 +11,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+
+- **Shutdown: the scheduler stop and each force release are in the Audit trail** (#778).
+  Releasing the forces this bridge holds at shutdown kept no record of the outcome. The
+  Audit trail now says whether the scheduler stopped or was still running after 5 s, and
+  for each force whether the release was confirmed by the aGate's read-back, sent but not
+  confirmed, or failed ([guide](docs/guide/control.md)).
+
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.

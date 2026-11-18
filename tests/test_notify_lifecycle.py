@@ -68,7 +68,7 @@ def test_shutdown_releases_the_battery_before_the_stop_notification():
     released first, and the stop notification may only take what is left (3 s at most)."""
     end = APP.index("await supervisor.stop_all()")
     block = APP[APP.index("finally:", APP.index("yield", APP.index("notify_engine.bridge_up("))):end]
-    assert block.index('release_held("shutdown")') < block.index('"bridge_stopped"') \
+    assert block.index("stop_then_release(") < block.index('"bridge_stopped"') \
         < block.index("await actionable.stop()")
     wait = block[block.index('"bridge_stopped"'):block.index("await actionable.stop()")]
     assert "version=__version__), 3)" in wait

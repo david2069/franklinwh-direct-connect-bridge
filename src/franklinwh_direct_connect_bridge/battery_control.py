@@ -322,12 +322,42 @@ def reconcile_interrupted(store, host: str, policy: str, *, soc_getter=None,
     return results
 
 
-def release_held(reason: str) -> None:
-    """Release every force this bridge holds, each on its own aGate (#192)."""
+def release_held(reason: str, *, store=None) -> None:
+    """Release every force this bridge holds, each on its own aGate (#192). With a
+    ``store``, each release is recorded in the Audit trail with its outcome: confirmed by
+    the aGate's read-back, sent but not confirmed, or failed."""
     for host in held_hosts():
-        log.warning("battery force: releasing %s on %s (%s)",
-                    current(host).get("active"), host, reason)
-        execute("Release", host=host)
+        active = current(host).get("active")
+        log.warning("battery force: releasing %s on %s (%s)", active, host, reason)
+        try:
+            out = execute("Release", host=host)
+        except Exception as e:                                   # noqa: BLE001
+            out = {"ok": False, "result": f"{type(e).__name__}: {e}"}
+        log.warning("battery force: release on %s: %s", host, out.get("result"))
+        if store is None:
+            continue
+        if out.get("ok") and out.get("confirmed", True):
+            result, ok = "released (confirmed by read-back)", True
+        elif out.get("ok"):
+            result, ok = out.get("result") or "release sent; not confirmed", None
+        else:
+            result, ok = f"not released: {out.get('result', '')}", False
+        store.log_control_event("release", gateway_id=_gateway_id(host), source=reason,
+                                detail=f"{active} on {host} ({reason})",
+                                result=result, ok=ok)
+
+
+def _gateway_id(host: str) -> str | None:
+    """The id of the gateway on ``host``, for the Audit trail."""
+    try:
+        from . import state
+        hp = _host_part(host)
+        for gw in state.gateways():
+            if hp in {_host_part(h) for h in (gw.active_host, gw.configured_host) if h}:
+                return gw.id
+    except Exception:                                           # noqa: BLE001
+        pass
+    return None
 
 
 def _gateway_soc(host: str):
