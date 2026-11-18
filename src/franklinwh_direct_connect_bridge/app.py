@@ -4005,7 +4005,7 @@ def create_app() -> FastAPI:
     def _hub_facts(st) -> dict:
         """What is already set up, for the setup list. Each read is guarded: one store
         problem must not hide the whole list."""
-        from . import constants
+        from . import constants, hems_setup
         s = get_settings()
 
         def ok(fn):
@@ -4023,6 +4023,7 @@ def create_app() -> FastAPI:
             "notifications": ok(lambda: st.notify_devices()),
             "security": ok(lambda: security.enabled(st)),
             "accounts": ok(lambda: len(auth.users(st)) > 1 or auth.tokens(st)),
+            "hems": ok(lambda: hems_setup.configured(st)),
         }
 
     @app.post("/api/setup/state")
@@ -4318,6 +4319,20 @@ def create_app() -> FastAPI:
         if st is None:
             raise HTTPException(503, "metrics store is disabled")
         return hems_setup.view(st, get_settings(), gateway)
+
+    @app.post("/api/hems/setup/check")
+    def api_hems_setup_check(body: dict, gateway: str = Depends(_gateway_q)):
+        """The HEMS setup wizard's Check (#736): the answers given, checked by hems against
+        what this bridge can control, without saving them. No device read or write."""
+        from . import hems_setup
+        _gw_or_404(gateway)
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        bad = [k for k in body if k not in hems_setup.FIELDS]
+        if bad:
+            raise HTTPException(422, f"unknown HEMS setup field(s): {', '.join(bad)}")
+        return hems_setup.view(st, get_settings(), gateway, answers=body)
 
     @app.put("/api/hems/setup")
     def api_hems_setup_put(body: dict, gateway: str = Depends(_gateway_q)):

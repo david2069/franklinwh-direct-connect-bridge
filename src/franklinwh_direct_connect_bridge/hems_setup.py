@@ -55,6 +55,12 @@ def save(store, gateway_id: str, body: dict) -> dict:
     return cur
 
 
+def configured(store) -> bool:
+    """Whether any gateway's HEMS setup is switched on (the setup list's Done)."""
+    from . import state
+    return any(_answers(store, gw.id).get("opted_in") for gw in state.gateways())
+
+
 def _circuits(store, settings, gateway_id: str):
     """The gateway's smart-circuit count as the scheduler knows it (#698); None unknown."""
     from . import scheduler, state
@@ -75,8 +81,11 @@ def capabilities(store, settings, gateway_id: str) -> list[str]:
     return caps
 
 
-def view(store, settings, gateway_id: str, now: float | None = None) -> dict:
-    """The screen: opt-in, notice, pre-fills or answers, loads with hems's checks."""
+def view(store, settings, gateway_id: str, now: float | None = None, *,
+         answers: dict | None = None) -> dict:
+    """The screen: opt-in, notice, pre-fills or answers, loads with hems's checks. With
+    ``answers``, those (not yet saved) are shown and checked instead of the stored ones:
+    the setup wizard's Check (#736)."""
     from . import load_forecast
     now = time.time() if now is None else now
     if settings is None:
@@ -85,7 +94,7 @@ def view(store, settings, gateway_id: str, now: float | None = None) -> dict:
             settings = get_settings()
         except Exception:                                        # noqa: BLE001
             settings = None
-    a = _answers(store, gateway_id)
+    a = _answers(store, gateway_id) if answers is None else answers
     tz = load_forecast._zone(store)
     hist = load_forecast.hourly_load(store, gateway_id, int(now) - HISTORY_DAYS * 86400, int(now))
     if a.get("always_on_kw") is not None:

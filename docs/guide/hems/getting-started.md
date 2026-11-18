@@ -2,6 +2,27 @@
 
 [HEMS overview](index.md)
 
+## The Set up HEMS wizard
+
+The quickest way is the wizard: open the setup list (**Settings → Setup**, or the setup
+wizard), and under **Advanced** choose **Energy planning (HEMS)**. Both cards also have a
+**Set up HEMS** link. It goes through the steps below in order:
+
+| Step | What it does |
+|---|---|
+| 1. Opt in | Switches the HEMS setup on or leaves it off, with the notice. Off goes straight to Check. |
+| 2. Site & solar | Shows whether the site's location and array are set, and today's forecast. It doesn't ask for them: **Open Location & Solar** opens that card (and closes the wizard). No panels? Press Next. |
+| 3. Warranty | The battery warranty fields, with the cloud's pre-fill marked **Please confirm**. **Skip for now** leaves the wear figures blank. |
+| 4. Usage | The always-on load and the usage periods from the last four weeks, to confirm. Without enough history it says so, and they fill in later on the card. |
+| 5. Heavy loads | Each heavy load, or **None**. A control's details (deadline, off and on times, soak triggers, EV fields) are on the HEMS setup card. |
+| 6. Check | What will be saved, and each load checked against what this bridge can control. **Save** writes the two cards' settings and says so in the dialog. |
+
+It writes this bridge's settings only, never the aGate or the FranklinWH cloud. Run it again
+any time: it starts from what is saved. The setup list shows it **Done** once HEMS setup is
+on for a gateway.
+
+The steps by hand:
+
 ## 1. Location and solar
 
 The solar forecast needs the site's location, and your array's size, tilt and direction.
