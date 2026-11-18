@@ -109,22 +109,22 @@
   </div>
 
   <!-- Controls -->
-  <div class="flex items-center gap-2 flex-wrap">
+  <div class="flex items-stretch gap-2 flex-wrap">
     <input type="text" x-model="query" placeholder="Search messages…"
-           class="form-control flex-1" style="min-width:12rem">
-    <select x-model="source" class="form-control" style="width:auto">
+           class="form-control form-control-sm flex-1" style="min-width:12rem">
+    <select x-model="source" class="form-control form-control-sm" style="width:auto">
       <option value="">All sources</option>
       <template x-for="s in sources()" :key="s.name">
         <option :value="s.name" :title="s.name" x-text="s.short"></option>
       </template>
     </select>
-    <select x-model="levelFilter" class="form-control" style="width:auto">
+    <select x-model="levelFilter" class="form-control form-control-sm" style="width:auto">
       <option value="">All levels</option>
       <template x-for="b in buckets" :key="b">
         <option :value="b" x-text="b"></option>
       </template>
     </select>
-    <select x-model="range" @change="load()" class="form-control" style="width:auto"
+    <select x-model="range" @change="load()" class="form-control form-control-sm" style="width:auto"
             title="How far back to load (over persisted history)">
       <!-- :selected, not x-model alone: these options are made by x-for after x-model
            ran, so the select showed its first option ("Last 1h") over a 24 h load (#614). -->
