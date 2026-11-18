@@ -113,6 +113,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Logs: the filter row's controls are one height** (owner 2026-11-19). The search box
+  and drop-downs were taller than the Live, Refresh and Export buttons beside them.
 - **Audit trail: the aGate Modbus TCP Server switch and Home Assistant mode changes are
   recorded** (#130). Neither wrote an entry. They are `der_comms` and `set_mode` (source
   `ha`) ([control](docs/guide/control.md)).
