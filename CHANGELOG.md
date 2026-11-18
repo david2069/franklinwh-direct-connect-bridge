@@ -11,6 +11,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+
+- **The alert bar under the top bar could not be closed** (#727). After an alert such as
+  "aGate is using 4G" was acknowledged, its bar stayed until the fault cleared, cut off on
+  a phone and naming the gateway by its id. The bar now has **×** and the alert list has
+  **Dismiss**, which hide it for everyone until the condition clears (a new occurrence
+  shows again); the bar wraps its full text and names the gateway
+  ([guide](docs/guide/ha-setup-and-notifications.md#alerts)).
+
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.

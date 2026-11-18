@@ -19,7 +19,7 @@
         <div class="rounded-lg border px-3 py-2 space-y-1.5" style="border-color:var(--border)">
           <div class="text-[11px] font-mono" style="color:var(--text-secondary)" x-text="$store.alerts.when(a)"></div>
           <div class="text-sm font-semibold" style="color:var(--text-primary)"
-               x-text="a.title + (a.gateway_id ? ' · ' + a.gateway_id : '')"></div>
+               x-text="a.title + (a.gateway_id ? ' · ' + $store.alerts.gwName(a.gateway_id) : '')"></div>
           <div class="text-sm" style="color:var(--text-primary)" x-text="a.message"></div>
           <div x-show="a.recovering" class="text-xs font-semibold" :style="{color: 'var(--warn, #f59e0b)'}"
                x-text="$store.alerts.recoveryText(a)"></div>
@@ -78,6 +78,10 @@
             <!-- Critical ones are acknowledged in the modal, behind "I understand". -->
             <button x-show="!a.acked_ts && a.severity !== 'critical'" class="btn btn-secondary btn-sm ml-auto" :disabled="$store.alerts.busy"
                     @click="$store.alerts.ackOne(a.id)">Acknowledge</button>
+            <!-- #727: hides the bar until the condition clears; also acknowledges it. -->
+            <button x-show="$store.alerts.canDismiss(a)" class="btn btn-secondary btn-sm" data-testid="alert-dismiss"
+                    :class="(!a.acked_ts && a.severity !== 'critical') ? '' : 'ml-auto'" :disabled="$store.alerts.busy"
+                    title="Hide its bar until it clears" @click="$store.alerts.dismiss(a.id)">Dismiss</button>
           </div>
           <div class="text-sm font-semibold" style="color:var(--text-primary)" x-text="a.title"></div>
           <div style="color:var(--text-secondary)" x-text="a.message"></div>
@@ -86,7 +90,7 @@
           <button x-show="$store.alerts.help(a).tab === 'troubleshoot' && !a.resolved_ts" class="underline text-[11px]"
                   :style="{color: 'var(--accent, #34d399)'}" @click="$store.alerts.go(a)">Troubleshoot</button>
           <div class="text-[10px]" style="color:var(--text-faint)"
-               x-text="$store.alerts.delivery(a) + (a.acked_ts ? ' · acknowledged ' + $store.alerts.at(a.acked_ts) + ' (' + a.acked_by + ')' : '')"></div>
+               x-text="$store.alerts.delivery(a) + (a.acked_ts ? ' · acknowledged ' + $store.alerts.at(a.acked_ts) + ' (' + a.acked_by + ')' : '') + (a.dismissed_ts ? ' · dismissed ' + $store.alerts.at(a.dismissed_ts) : '')"></div>
         </div>
       </template>
     </div>

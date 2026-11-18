@@ -325,6 +325,23 @@ def ack(store, alert_id: int, source: str, now: float | None = None) -> dict | N
     return row
 
 
+def dismiss(store, alert_id: int, source: str, now: float | None = None) -> dict | None:
+    """Dismiss one alert's bar for everyone (#727): it stays listed, and a condition stays
+    open until it resolves, but the bar under the top bar is hidden. A new occurrence is
+    a new alert, so it shows again. Dismissing also acknowledges."""
+    if source not in ACK_SOURCES:
+        raise ValueError(f"source must be one of {', '.join(ACK_SOURCES)}")
+    ts = float(now if now is not None else time.time())
+    if ack(store, alert_id, source, now=ts) is None:
+        return None
+    before = store.alert(alert_id)
+    row = store.dismiss_alert(alert_id, dismissed_by=f"source:{source}", now=ts)
+    if before.get("dismissed_ts") is None:
+        log.info("alert #%s %s %sdismissed by source:%s", alert_id, row["code"],
+                 _gw_tag(row["gateway_id"]), source)
+    return row
+
+
 # ── delivery (the outbox) ───────────────────────────────────────────────────────
 def retry_delay_s(attempts: int) -> float:
     if attempts <= 0:
