@@ -31,6 +31,10 @@ It is not intended for production use, and there is no guarantee it is compatibl
 Point it at your own gateway, or add one or more **emulated (mock) gateways** and see the
 whole thing work before you connect real hardware.
 
+**At a glance:** why the Bridge exists, how it grew, the ways to install it, and what each
+transport can do. [Interactive page](https://david2069.github.io/franklinwh-direct-connect-bridge/overview/bridge-overview.html)
+· [high-res image](docs/overview/bridge-overview.png) ([dark](docs/overview/bridge-overview-dark.png)).
+
 ## Running it
 
 - As a **Home Assistant add-on** (served through ingress, MQTT auto-configured)
