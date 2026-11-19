@@ -11,6 +11,7 @@ caller's guard.
 from __future__ import annotations
 
 import json
+import re
 import logging
 import sqlite3
 import threading
@@ -1960,6 +1961,12 @@ class MetricsStore:
         )
         self._conn.execute("CREATE INDEX IF NOT EXISTS ix_app_logs_ts ON app_logs(ts DESC)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS ix_app_logs_level ON app_logs(level_no)")
+        # Mask a generated first-admin password an older version kept in the stored log.
+        for rid, msg in self._conn.execute(
+                "SELECT id, message FROM app_logs WHERE message LIKE "
+                "'Security: first admin created. Username: admin  Password: %'").fetchall():
+            self._conn.execute("UPDATE app_logs SET message=? WHERE id=?",
+                               (re.sub(r"Password: \S+", "Password: ********", msg), rid))
         self._conn.commit()
 
     #: Keep the newest this-many log rows. Bigger than the old 5,000-line file — it's a DB.

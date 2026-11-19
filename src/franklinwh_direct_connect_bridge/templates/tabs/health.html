@@ -22,7 +22,7 @@
     <template x-if="cur">
       <div class="px-5 py-4 space-y-4 text-sm">
         <div class="flex items-start gap-3">
-          <span class="chip" :class="chipClass(cur.level)" x-text="cur.level"></span>
+          <span class="chip" :class="chipClass(cur.level)" x-text="$store.app.sentence(cur.level)"></span>
           <div class="min-w-0">
             <div class="font-medium" style="overflow-wrap:anywhere" x-text="cur.headline"></div>
             <div class="text-xs mt-1" style="color:var(--text-secondary)" x-text="when(cur.ts)"></div>

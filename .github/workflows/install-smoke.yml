@@ -56,9 +56,8 @@ jobs:
         env:
           MQTT_HOST: host.docker.internal
         run: |
-          # No aGate: docker-compose.yml falls back to a documentation address when FWH_HOST
-          # is empty, so blank it the way the install guide's no-hardware run does.
-          printf 'services:\n  franklinwh-direct-connect-bridge:\n    environment:\n      - FWH_HOST=\n      - ADMIN_USERNAME=smoke\n      - ADMIN_PASSWORD=smoke-test-password\n' > docker-compose.override.yml
+          # No aGate: docker-compose.yml leaves FWH_HOST empty by default (#154).
+          printf 'services:\n  franklinwh-direct-connect-bridge:\n    environment:\n      - ADMIN_USERNAME=smoke\n      - ADMIN_PASSWORD=smoke-test-password\n' > docker-compose.override.yml
           docker build -t franklinwh-direct-connect-bridge:dev .
           docker compose up -d
           for i in $(seq 1 45); do

@@ -6,12 +6,25 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "franklinwh-direct-connect-bridge"
-version = "0.5.53"
+version = "0.5.54"
 description = "Home Assistant add-on / REST + MQTT bridge for the FranklinWH aGate local (sendMqtt) API"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
-authors = [{name = "david2069", email = "david.hona@gmail.com"}]
+# GitHub noreply address, as franklinwh-modbus uses: PyPI shows this publicly (#782).
+authors = [{name = "david2069", email = "david2069@users.noreply.github.com"}]
+# 3.11 is what install-smoke.yml runs the pip install on; 3.12 is the Docker base image.
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: FastAPI",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Home Automation",
+]
 
 dependencies = [
     # >=0.5 for the emulator's explicit site timezone (tz_offset_hours), its live 1202
@@ -52,6 +65,12 @@ test = ["pytest>=8.0", "httpx>=0.27"]
 # typed login errors, resolve_gateway and Client.aclose() that the bridge now relies on.
 # Analytics → Cloud (#215): the shared period chart. Pinned like the other shared packages.
 cloud = ["franklinwh-cloud==0.6.5", "franklinwh-ha-cloud-analytics==0.1.27"]
+
+[project.urls]
+Homepage = "https://github.com/david2069/franklinwh-direct-connect-bridge"
+Documentation = "https://david2069.github.io/franklinwh-direct-connect-bridge/"
+Issues = "https://github.com/david2069/franklinwh-direct-connect-bridge/issues"
+Changelog = "https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/CHANGELOG.md"
 
 [project.scripts]
 franklinwh-direct-connect-bridge = "franklinwh_direct_connect_bridge.cli:main"

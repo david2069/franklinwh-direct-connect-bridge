@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     #: Docker and pip: the first admin account, made on start while no admin exists (#457).
     admin_username: str = ""
     admin_password: str = ""
+    #: Docker and pip quick start: ``off`` on the first start makes a new install start with
+    #: Security off (no sign-in); read only then. Turn it on under Settings → Admin → Security.
+    security: str = ""
+
+    @property
+    def security_quick_start(self) -> bool:
+        return self.security.strip().lower() in ("off", "0", "false", "no")
     poll_interval: int = 30
     #: Scheduler cadence (RUNTIME_DESIGN decision 2): fixed and configurable, not derived
     #: from poll_interval. Predictable beats clever — and a schedule window shorter than

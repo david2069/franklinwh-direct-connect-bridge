@@ -11,17 +11,36 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+
+- **Status words start with a capital** (#770, step 1). The scheduler's log status and
+  monitor state, alert severity and state, the health level and the network link state
+  showed raw lower-case values (*fired*, *holding*, *warning*, *green*, *active*) next to
+  capitalised ones. They now read *Fired*, *Holding*, *Warning*, *Green*, *Active*.
+  Display only: the API, MQTT and Home Assistant values are unchanged.
+
 ### Fixed
 
-- **Shutdown: the scheduler stop and each force release are in the Audit trail** (#778).
-  Releasing the forces this bridge holds at shutdown kept no record of the outcome. The
-  Audit trail now says whether the scheduler stopped or was still running after 5 s, and
-  for each force whether the release was confirmed by the aGate's read-back, sent but not
-  confirmed, or failed ([guide](docs/guide/control.md)).
+- **An api token can read the API schema** (#781). With Security on, an **api** account's
+  token got 403 on `/openapi.json`, so the role meant for integrations couldn't discover
+  the API it may call. `/openapi.json` is now open to every role; `/docs` and `/redoc`
+  stay web pages, as before ([guide](docs/guide/security.md)).
 
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
+
+## 2026-11-20
+
+### [0.5.54](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.54.md)
+
+Added 2 · Fixed 7
+
+- Install and security: `SECURITY=off` quick start for Docker and pip
+- Scheduler: a force runs until its window closes
+- Home Assistant: a failed poll no longer publishes empty values
+- Generator: no "Running / ON" with no generator connected
+- Packaging: ready to publish on PyPI
 
 ## 2026-11-19
 

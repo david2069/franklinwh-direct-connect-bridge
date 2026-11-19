@@ -1,5 +1,6 @@
-# Standalone run. Build the image first with `tools/build_image.sh` (bundles the
-# franklinwh-direct-connect-api wheel), then `docker compose up -d`.
+# Standalone run. Build the image first with
+# `docker build -t franklinwh-direct-connect-bridge:dev .`, then `docker compose up -d`
+# (INSTALL.md §2). With no FWH_HOST the setup wizard opens: find your aGate or add a mock.
 services:
   franklinwh-direct-connect-bridge:
     image: franklinwh-direct-connect-bridge:dev
@@ -13,7 +14,7 @@ services:
       - /etc/timezone:/etc/timezone:ro
     environment:
       - TZ=${TZ:-UTC}
-      - FWH_HOST=${FWH_HOST:-192.0.2.110}
+      - FWH_HOST=${FWH_HOST:-}
       - FWH_PORT=${FWH_PORT:-9000}
       - POLL_INTERVAL=${POLL_INTERVAL:-30}
       - LOG_LEVEL=${LOG_LEVEL:-info}
@@ -21,10 +22,19 @@ services:
       # Control writes (mode switch / off-grid) are OFF by default. Set ALLOW_WRITES=true
       # to expose POST /api/mode + /api/offgrid and the dashboard control buttons.
       - ALLOW_WRITES=${ALLOW_WRITES:-false}
-      # MQTT — the dedicated dev broker (fwh-dev-mosquitto, host port 1884)
-      - MQTT_ENABLED=${MQTT_ENABLED:-true}
+      # Sign-in (Security, #457). A new install starts with Security on: set the first admin
+      # here (read only while no admin exists), or leave both blank and the bridge creates
+      # "admin" with a generated password, printed once to the console log (docker logs) only.
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      # Quick start: SECURITY=off on the first start makes a new install start with Security
+      # off (no sign-in). Turn it on later under Settings → Admin → Security.
+      - SECURITY=${SECURITY:-}
+      # MQTT to Home Assistant: off until you set MQTT_ENABLED=true and your broker
+      # (host.docker.internal is the machine running Docker).
+      - MQTT_ENABLED=${MQTT_ENABLED:-false}
       - MQTT_HOST=${MQTT_HOST:-host.docker.internal}
-      - MQTT_PORT=${MQTT_PORT:-1884}
+      - MQTT_PORT=${MQTT_PORT:-1883}
       # Local time-series history (SQLite under the ./data volume) — served at
       # /api/metrics and drawn on the Dashboard "Power History" chart.
       - METRICS_ENABLED=${METRICS_ENABLED:-true}

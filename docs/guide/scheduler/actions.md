@@ -129,12 +129,11 @@ If it fails, the run is *failed* and the scheduler retries it on later ticks (se
     there is no close, so the fallback (fire time + duration on today's date) is now or in
     the past and the deadline becomes **1 second**: one attempt only. <!-- @b ACT-42 ;; src: scheduler.py:2411-2413, scheduler.py:273-279, scheduler.py:1652-1654 ;; unclear ;; write: yes ;; b: With no window end the deadline falls back to fire_at+duration today, which is often past, so resilience gets 1 s ;; test: unit: always entry with a failing force; assert number of attempts -->
 
-!!! note "An *unknown* outcome cannot happen here today"
-    The resilience layer can return *unknown* (the write may have landed) and the scheduler
-    would settle such a run without retrying. But the action body never raises, and a failed
-    result is turned into a `ConnectionError`, which counts as "never arrived". So scheduler
-    actions end *ok*, *failed* or *skipped*, never *unknown*. The *unknown* path is only
-    exercised by tests that mock it. <!-- @b ACT-41 ;; src: scheduler.py:1655-1667, scheduler.py:1854-1855, resilience.py:70-80 ;; unclear ;; write: yes ;; b: Verdict UNKNOWN is unreachable for scheduler actions because failures are raised as ConnectionError ;; test: unit: a run_action that times out after the request left should yield UNKNOWN through run_action_outcome -->
+**A device write that gets no reply is *unknown*** (#201). When a force, mode, smart
+circuit or off-grid write fails with a timeout after the request left ("timed out",
+"no response"), the write may have landed, so the run ends *unknown* and is not sent again.
+A refused connection or a connect timeout never reached the aGate: that is *failed* and
+retried while the window is open. <!-- @b ACT-41 ;; src: scheduler.py (run_action_outcome, _NO_REPLY) ;; tested: tests/test_unknown_outcome_201.py::test_a_force_that_timed_out_is_unknown_and_sent_once ;; write: yes ;; b: A device write whose failure text is a timeout after sending is UNKNOWN and sent once; refused / connect timeout stays FAILED -->
 
 ### Parameters you can set only through the API
 
@@ -146,14 +145,10 @@ If it fails, the run is *failed* and the scheduler retries it on later ticks (se
 
 <!-- @b ACT-18 ;; src: battery_control.py:101-110, scheduler.py:1560-1565, scheduler.py:1577 ;; untested ;; write: yes ;; b: target_soc releases a charge at SoC>=target and a discharge at SoC<=target every 5 s from the poller cache; 0 = off ;; test: unit: arm with watts>0, target 80, soc_getter returning 81; assert release -->
 
-The time limit comes from **Duration (min)**, not from the window.
-<!-- @b ACT-17 ;; src: scheduler.py:2409-2413, scheduler.py:1578-1581, battery_control.py:99-100 ;; untested ;; write: yes ;; b: The force time limit is duration_min x 60 for every trigger type, enforced by the watchdog ;; test: unit: tick a window-trigger force entry; assert execute duration_s equals the window length (fails today, #160) -->
-
-!!! warning "A force in a *Recurring windows* schedule stops after the hidden Duration (min)"
-    *Recurring windows* hides **Duration (min)**, but the schedule still has one, and a new
-    schedule starts with 90. A force in a 17:00 → 20:00 window therefore releases after
-    90 minutes. Use **Daily at time** or **Weekly at time** for a force, with the duration
-    you want (#160).
+The time limit is the window: the force is released when its window closes, even when it
+started late in the window (#160). A schedule with no close ahead (*Always*, or a
+zero-length window) uses **Duration (min)** instead; 0 means no time limit.
+<!-- @b ACT-17 ;; src: scheduler.py (_force_dispatch) ;; tested: tests/test_force_until_window_close_160.py ;; write: yes ;; b: The watchdog duration is the time to the window's close; duration_min only when there is no close ahead -->
 
 Saving from the form keeps whatever else the action object holds: the form edits a copy of
 the stored action and sends it back whole. <!-- @b ACT-19 ;; src: static/js/scheduler_tab.js:273, static/js/scheduler_tab.js:556-561, app.py:3111-3127 ;; untested ;; write: yes ;; b: The form sends the whole action object, so API-only keys in it survive a form save ;; test: unit (API): PUT with the form's body keeps action keys the form does not show -->

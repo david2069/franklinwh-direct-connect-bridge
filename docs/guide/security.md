@@ -148,7 +148,14 @@ The HTTPS port needs a bridge account.
 - **Docker and pip:** set `ADMIN_USERNAME` and `ADMIN_PASSWORD` before the first start.
   They are read only while no admin exists; change the password in the bridge after
   that. If you set none, the bridge creates an admin named `admin` with a generated
-  password, printed to the log **once**.
+  password, printed **once** to the console log only (`docker logs`, or the terminal it
+  runs in). It is never kept in the bridge's Logs tab, its stored log or a support bundle;
+  a copy an older version stored is masked on upgrade.
+- **Quick start (Docker and pip):** set `SECURITY=off` on the first start and a new install
+  starts with Security **off**: no sign-in, and no admin is created. Trusted networks stay
+  the private ranges. Settings → Admin → Security says so; add an admin and turn it on
+  there when you're done trying the bridge. `SECURITY` is read only on the first start; the
+  add-on ignores it.
 
 Accounts are managed under **Settings → Admin → Security → Accounts**: add, change the
 role, set an expiry date, disable, reset the password, delete. Signed in, you can change
@@ -182,7 +189,7 @@ port is running, so that someone can sign in afterwards.
 | **admin** | Full | Yes | Yes | Yes | Password (HTTPS port), or HA ingress |
 | **user** | Full, with Settings read-only | Yes | Battery commands, answering notifications, and schedules | No | Password, or HA ingress (non-admin HA users) |
 | **viewer** | Read-only | Yes | No | No | Password, or HA ingress (read-only HA users) |
-| **api** | None (REST only) | Yes | Battery commands and answering notifications | No | Token |
+| **api** | None (REST only; reads the API schema at `/openapi.json`, not the `/docs` pages) | Yes | Battery commands and answering notifications | No | Token |
 
 Battery commands are force charge or discharge, release, mode, reserve, off-grid and
 acknowledging an alert. Everything else that changes something (settings, users,
@@ -316,7 +323,7 @@ flowchart TD
     D -- Yes --> E["Admin created later, in the sidebar panel"]
     D -- No --> D2{"ADMIN_USERNAME and ADMIN_PASSWORD set?"}
     D2 -- Yes --> E2[Admin created from them]
-    D2 -- No --> F[Admin created, password printed to the log once]
+    D2 -- No --> F[Admin created, password printed to the console log once]
     E2 --> G
     E --> G[HTTPS certificate: HA ssl folder or self-signed]
     F --> G

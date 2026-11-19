@@ -40,7 +40,7 @@ def _forget_windows():
 
 def test_the_tick_leaves_a_paused_run_alone(st, monkeypatch):
     # A run still being retried (failed) is paused: the tick must not try it again.
-    assert len(_tick(st, monkeypatch, result="mode -> self: failed: timeout")) >= 1
+    assert len(_tick(st, monkeypatch, result="mode -> self: failed: connection refused")) >= 1
     assert st.occurrences_for("p1")[0]["status"] == "failed"
     st.pause_occurrence(st.occurrences_for("p1")[0]["id"])
     _forget_windows()
