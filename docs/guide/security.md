@@ -189,7 +189,7 @@ port is running, so that someone can sign in afterwards.
 | **admin** | Full | Yes | Yes | Yes | Password (HTTPS port), or HA ingress |
 | **user** | Full, with Settings read-only | Yes | Battery commands, answering notifications, and schedules | No | Password, or HA ingress (non-admin HA users) |
 | **viewer** | Read-only | Yes | No | No | Password, or HA ingress (read-only HA users) |
-| **api** | None (REST only) | Yes | Battery commands and answering notifications | No | Token |
+| **api** | None (REST only; reads the API schema at `/openapi.json`, not the `/docs` pages) | Yes | Battery commands and answering notifications | No | Token |
 
 Battery commands are force charge or discharge, release, mode, reserve, off-grid and
 acknowledging an alert. Everything else that changes something (settings, users,
