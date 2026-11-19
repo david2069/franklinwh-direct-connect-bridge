@@ -32,6 +32,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Scheduler: a force runs until its window closes** (#160). Its auto-release came from
+  the schedule's **Duration (min)**, which *Recurring windows* hides and which starts at 90,
+  so a force in a 17:00 → 20:00 window was released after 90 minutes. It now runs until the
+  window closes (also when it started late in the window), or until its target SoC or an
+  exit condition ends it ([actions](docs/guide/scheduler/actions.md)).
+
 - **The generated first-admin password is no longer kept in the bridge's log** (owner
   2026-11-20). On Docker and pip, with no `ADMIN_USERNAME` / `ADMIN_PASSWORD`, the
   password the bridge makes was also stored in the Bridge log, so it showed under Logs and

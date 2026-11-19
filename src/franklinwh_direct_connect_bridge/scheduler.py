@@ -2457,8 +2457,8 @@ def _force_dispatch(action: dict, *, host: str | None, window_min: int,
     """Force charge/discharge/standby over the direct-Modbus path (battery_control) —
     the same engine the dashboard widget uses, independent of the modbus-bridge.
 
-    The dispatch runs for the schedule WINDOW (``window_min``): the bridge's own
-    watchdog auto-releases at window end and also enforces ``target_soc`` (charge
+    The dispatch runs until the schedule's window closes (``window_end_ts``; else
+    ``window_min``): the bridge's own watchdog auto-releases at window end and also enforces ``target_soc`` (charge
     stops at SoC>=target, discharge at SoC<=target), reading live SoC from this
     gateway's last poll. ``release=True`` ends the dispatch, fired on the window's
     exit edge as a safety net so a force never outlives its window. Never raises.
@@ -2509,9 +2509,15 @@ def _force_dispatch(action: dict, *, host: str | None, window_min: int,
             pass
 
     tgt = int(action.get("target_soc") or 0)
+    # The force runs until its window closes (#160), not for duration_min: a Recurring
+    # window doesn't show that field and it defaulted to 90 min. With no close ahead
+    # (always, or a zero-length window) the duration is used, as before.
+    duration_s = int((window_min or 0) * 60)
+    if window_end_ts and float(window_end_ts) > time.time():
+        duration_s = max(1, int(float(window_end_ts) - time.time()))
     out = battery_control.execute(
         slug, host=host, power_w=power_w, power_pct=power_pct, power_mode=mode,
-        duration_s=int((window_min or 0) * 60), target_soc=tgt,
+        duration_s=duration_s, target_soc=tgt,
         soc_getter=_soc, on_event=_log, dry_run=dry_run)
     # Persist the in-flight dispatch so a bridge restart mid-window can be reconciled.
     if out.get("ok") and not dry_run and hasattr(store, "record_dispatch"):
