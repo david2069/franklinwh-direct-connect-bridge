@@ -32,6 +32,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Generator: "Running / ON" is no longer shown with no generator connected** (#245). On the
+  reference aGate `genStat` reads 1 as soon as the generator feature is enabled, with nothing
+  wired, and the bridge showed **Running / ON** (Generator tab, OFF-GRID details, Home
+  Assistant's Generator State, the scheduler's `generator.state_desc`). With no generator
+  model or rated power it now shows **genStat 1 (unconfirmed)**, and `genStat` no longer
+  counts as evidence of generator hardware. What the FranklinWH app shows at that moment is
+  still to be checked ([guide](docs/guide/generator.md)).
+
 - **Docker: `docker compose up` works with no aGate, and MQTT is off until configured**
   (#154). `docker-compose.yml` fell back to a placeholder aGate address, so the setup wizard
   never opened, and it turned MQTT on against a development broker (port 1884). With no
