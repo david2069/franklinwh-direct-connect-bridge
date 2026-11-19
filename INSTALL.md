@@ -105,6 +105,28 @@ To upgrade, `pip install --upgrade "franklinwh-direct-connect-bridge[cloud]"` in
 `[cloud]` is optional. Without it everything runs, but cloud-backed capabilities report
 `available: false` (see `GET /api/providers`).
 
+### First sign-in (Docker and pip)
+
+A new install starts with **Security on**: port 8101 sends the browser to the HTTPS port
+(8102), which asks you to sign in. The bridge's certificate is its own, so the browser
+warns once. Your first admin account comes from one of these:
+
+- **Choose it:** set `ADMIN_USERNAME` and `ADMIN_PASSWORD` before the first start. They're
+  read only while no admin exists; change the password in the bridge after that.
+- **Generated:** set neither, and the bridge creates `admin` with a random password,
+  printed to the log once: `Security: first admin created. Username: admin  Password: …`
+  (`docker logs <container>`, or the terminal you ran it in).
+- **Lost it:** `franklinwh-direct-connect-bridge reset-password admin` where the bridge
+  runs (inside the container for Docker).
+
+**Quick start, no sign-in:** set `SECURITY=off` on the first start, e.g.
+`SECURITY=off FWH_HOST=<your aGate IP> docker compose up -d`. The bridge opens on
+<http://localhost:8101> without signing in; only the private networks can reach it. Anyone
+on them can use it, battery control included, so turn Security on under
+**Settings → Admin → Security** when you're done trying it. `SECURITY` is read only on the
+first start, so it never turns Security off on an existing install
+([guide](docs/guide/security.md#the-first-admin)).
+
 ---
 
 ## 3. Development

@@ -149,6 +149,11 @@ The HTTPS port needs a bridge account.
   They are read only while no admin exists; change the password in the bridge after
   that. If you set none, the bridge creates an admin named `admin` with a generated
   password, printed to the log **once**.
+- **Quick start (Docker and pip):** set `SECURITY=off` on the first start and a new install
+  starts with Security **off**: no sign-in, and no admin is created. Trusted networks stay
+  the private ranges. Settings → Admin → Security says so; add an admin and turn it on
+  there when you're done trying the bridge. `SECURITY` is read only on the first start; the
+  add-on ignores it.
 
 Accounts are managed under **Settings → Admin → Security → Accounts**: add, change the
 role, set an expiry date, disable, reset the password, delete. Signed in, you can change

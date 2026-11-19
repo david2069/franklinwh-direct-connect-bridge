@@ -36,13 +36,16 @@ OPEN_PATHS = ("/signin", "/api/auth/login", "/api/auth/me")
 _KIND_KEY = "security_install"
 _NETS_KEY = "security_trusted_networks"
 _ON_KEY = "security_enabled"
+_QUICK_KEY = "security_quick_start"
 _LOG_EVERY_S = 600.0
 _last_logged: dict[str, float] = {}
 
 
-def decide_install(store) -> str:
+def decide_install(store, *, quick_start: bool = False) -> str:
     """``upgrade`` or ``new``, decided once and kept. Call before ``install_date`` is set
-    on this start. Without a store there is nothing to keep, so it behaves as an upgrade."""
+    on this start. Without a store there is nothing to keep, so it behaves as an upgrade.
+    ``quick_start`` (``SECURITY=off``, Docker and pip) makes a new install start with
+    Security off; trusted networks stay the private ranges."""
     if store is None:
         return "upgrade"
     kind = store.get_config(_KIND_KEY)
@@ -51,10 +54,20 @@ def decide_install(store) -> str:
     kind = "upgrade" if store.get_config("install_date") else "new"
     store.set_config(_KIND_KEY, kind)
     store.set_config(_NETS_KEY, json.dumps([ANY] if kind == "upgrade" else PRIVATE))
-    store.set_config(_ON_KEY, "0" if kind == "upgrade" else "1")
+    quick = kind == "new" and quick_start
+    store.set_config(_ON_KEY, "0" if kind == "upgrade" or quick else "1")
+    store.set_config(_QUICK_KEY, "1" if quick else "0")
     log.info("Security: %s install; trusted networks: %s", kind,
              "any" if kind == "upgrade" else ", ".join(PRIVATE))
+    if quick:
+        log.warning("Security: off (SECURITY=off quick start): no sign-in on either port. "
+                    "Turn it on under Settings → Admin → Security.")
     return kind
+
+
+def quick_start(store) -> bool:
+    """Whether this install started with Security off from ``SECURITY=off``."""
+    return store is not None and store.get_config(_QUICK_KEY) == "1"
 
 
 def install_kind(store) -> str:
