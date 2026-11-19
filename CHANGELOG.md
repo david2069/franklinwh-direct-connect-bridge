@@ -32,6 +32,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **The generated first-admin password is no longer kept in the bridge's log** (owner
+  2026-11-20). On Docker and pip, with no `ADMIN_USERNAME` / `ADMIN_PASSWORD`, the
+  password the bridge makes was also stored in the Bridge log, so it showed under Logs and
+  survived restarts. It is now printed once to the console only (`docker logs`, or the
+  terminal); the Bridge log says where to find it, and a copy an older version stored is
+  masked when the bridge starts. The Home Assistant add-on never logged one
+  ([guide](docs/guide/security.md#the-first-admin)).
+
 - **Scheduler: a device write with no reply is recorded as *unknown*, not retried** (#201).
   A force, mode, smart circuit or off-grid write that timed out after the request left
   was logged *error* and sent again next tick, though it may have landed: a second force.

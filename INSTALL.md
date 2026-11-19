@@ -114,8 +114,9 @@ warns once. Your first admin account comes from one of these:
 - **Choose it:** set `ADMIN_USERNAME` and `ADMIN_PASSWORD` before the first start. They're
   read only while no admin exists; change the password in the bridge after that.
 - **Generated:** set neither, and the bridge creates `admin` with a random password,
-  printed to the log once: `Security: first admin created. Username: admin  Password: …`
-  (`docker logs <container>`, or the terminal you ran it in).
+  printed once to the console log only: `Security: first admin created. Username: admin  Password: …`
+  (`docker logs <container>`, or the terminal you ran it in). It is never kept in the
+  bridge's own Logs tab or a support bundle.
 - **Lost it:** `franklinwh-direct-connect-bridge reset-password admin` where the bridge
   runs (inside the container for Docker).
 
