@@ -1063,6 +1063,7 @@
               :class="security.enabled ? 'translate-x-5' : 'translate-x-0.5'"></span>
       </button>
     </div>
+    <p class="text-xs" style="color:var(--warn)" x-show="!security.enabled && security.quickStart" data-testid="security-quick-start">Security is off (quick start, <span class="font-mono">SECURITY=off</span>): anyone on a trusted network can use the bridge, including battery control, without signing in. Turn it on here when you're done trying it.</p>
     <p class="text-xs text-slate-500" x-show="!security.enabled && !security.hasAdmin">Before you turn it on, add an admin account below.</p>
     <div class="text-xs flex items-center gap-2 flex-wrap" x-show="security.principal" style="color:var(--text-secondary)">
       <span x-text="security.principal ? (security.principal.via === 'ingress' ? 'In Home Assistant as ' : 'Signed in as ') + security.principal.username + ' (' + security.principal.role + ')' : ''"></span>

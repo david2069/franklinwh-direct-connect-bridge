@@ -45,16 +45,13 @@ def enabled(payload: dict) -> bool:
 def configured(payload: dict) -> bool:
     """Is there evidence of real generator hardware behind the feature flag?
 
-    A model string, a rated power or a non-idle run state. None of these can be
-    faked by the enable flag alone, so this is the closest the protocol gets to
-    "something is actually wired up" — and it is still only evidence: there is no
-    accessory serial or firmware version anywhere in the local protocol.
+    A model string or a rated power: neither can be faked by the enable flag alone, so
+    this is the closest the protocol gets to "something is actually wired up" — and it is
+    still only evidence: there is no accessory serial or firmware version anywhere in the
+    local protocol. ``genStat`` is not evidence: on the reference aGate it reads 1 as soon
+    as the feature is enabled, with nothing wired (#245).
     """
-    return bool(
-        (payload.get("genModel") or "").strip()
-        or payload.get("genRatedPower")
-        or payload.get("genStat")
-    )
+    return bool((payload.get("genModel") or "").strip() or payload.get("genRatedPower"))
 
 
 def installed(payload: dict) -> bool:
@@ -77,6 +74,10 @@ def build(payload: dict) -> dict[str, Any]:
     """Assemble the ``/api/generator`` view-model."""
     p = payload or {}
     stat = p.get("genStat", 0)
+    # genStat 1 with no model or rating is what the reference aGate reports for the
+    # feature merely enabled (#245): shown raw and unconfirmed, never "Running", until
+    # the FranklinWH app shows what it means.
+    unconfirmed = stat == 1 and not configured(p)
 
     return {
         "installed": installed(p),
@@ -87,14 +88,16 @@ def build(payload: dict) -> dict[str, Any]:
         # which is exactly why the UI must not imply they do something.
         "editable": enabled(p),
         "state": stat,
-        "state_name": STATE.get(stat, f"Unknown ({stat})"),
-        "running": stat == 1,
+        "state_name": (f"genStat {stat} (unconfirmed)" if unconfirmed
+                       else STATE.get(stat, f"Unknown ({stat})")),
+        "state_unconfirmed": unconfirmed,
+        "running": stat == 1 and not unconfirmed,
         "fault": stat == 3,
         # What the aGate reports that hints at hardware. Evidence, not an "installed" fact.
         "evidence": {
             "model": (p.get("genModel") or "").strip() or None,
             "rated_power_w": p.get("genRatedPower") or None,
-            "run_state": stat or None,
+            "run_state": (stat or None) if configured(p) else None,
         },
         # Unmapped (#237): reported raw under their own keys, never interpreted.
         "mode_raw": p.get("mode"),

@@ -288,9 +288,9 @@ occurrence. It is never shown for Always schedules.
 ## Editing a trigger in the form
 
 - Switching a schedule to **Recurring windows** hides **Duration (min)** but keeps its value
-  (a new schedule starts with 90). The window ignores it for timing, but a **force** action
-  still uses it as its time limit, and so does **Run now**. Issue #160.
-  <!-- @b TRG-34 ;; src: static/js/scheduler_tab.js:243-250, static/js/scheduler_tab.js:656, scheduler.py:2409-2413, scheduler.py:1578-1581 ;; unclear ;; write: yes ;; b: A window entry keeps a hidden duration_min (default 90) that becomes the force's duration_s, so a force stops before a longer window ends ;; test: unit: window 17:00-20:00 force; assert duration_s covers the window (fails today: 5400) -->
+  (a new schedule starts with 90). The window ignores it for timing, and so does a **force**, which
+  runs until the window closes (#160); only **Run now** uses it as the time limit.
+  <!-- @b TRG-34 ;; src: scheduler.py (_force_dispatch) ;; tested: tests/test_force_until_window_close_160.py ;; write: yes ;; b: A window force runs to the window close; the hidden duration_min is used only by Run now -->
 - **Not in this bridge:** an API-only one-off type (`oneoff` with an ISO `fire_at`). Saving a
   **One-off date** schedule copies the date into **Start date** and **End date**.
 - Changing the trigger clears what the new one doesn't show (#580): Days unless Recurring

@@ -109,7 +109,7 @@ class _Spy:
     def __init__(self):
         self.audits, self.notes = [], []
 
-    def audit(self, action, *, detail="", result="", ok=None):
+    def audit(self, action, *, detail="", result="", ok=None, **kw):
         self.audits.append((action, ok, result))
 
     def notify(self, title, message):

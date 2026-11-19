@@ -50,6 +50,15 @@ when the action came from the scheduler rather than from you. That includes swit
 aGate Modbus TCP Server (:502) on or off (`der_comms`) and an operating-mode change from the
 Home Assistant select (`set_mode`, source `ha`) (#130).
 
+When the bridge stops, the Audit trail records whether the scheduler stopped
+(`scheduler_stop`: *stopped*, or *still running after 5 s; its action in flight was not
+waited for*) and each force it released (`release`, source `shutdown`): *released
+(confirmed by read-back)*, *release sent; not confirmed*, or *not released* with the error
+(#778). The aGate's own revert timer does nothing on this firmware, so this release is the
+only thing that ends a force. If the bridge is killed before it can release, the next start
+finds the dispatch still open and handles it as
+[after a bridge restart mid-dispatch](#after-a-bridge-restart-mid-dispatch) says.
+
 Billing & Utilities changes are recorded the same way: adding, editing and deleting a site
 (`site_add`, `site_edit`, `site_delete`), meter (`meter_*`), retailer (`retailer_*`) or
 tariff (`tariff_*`), importing a tariff (`tariff_import`) and a bill's **Recalculate**

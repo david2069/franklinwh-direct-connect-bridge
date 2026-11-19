@@ -67,7 +67,9 @@ for the node id:
 **The node id is your gateway's serial number, lower-cased.** Each discovery config pulls
 its own field out of the shared state JSON with a `value_template`, and availability is a
 separate topic driven by the health round-trip and the MQTT last-will, so an offline
-gateway shows as unavailable in HA rather than as stale numbers.
+gateway shows as unavailable in HA rather than as stale numbers. A failed poll publishes
+only *offline*, never a state: the last good values stay retained until a poll
+succeeds (#176).
 
 In Home Assistant the device appears as **"FranklinWH Direct &lt;last 8 characters of the
 serial&gt;"**, so several gateways are told apart (`device_name()` in
@@ -132,7 +134,7 @@ Measured live on 2026-10-15: **21 entities — 17 sensors and 4 controls.**
 | `circuit_1_today_kwh` … `circuit_3_today_kwh` | Smart Circuit 1–3 Energy Today | kWh | energy | local |
 | `v2l_power_w` | V2L Power | W | power | local |
 | `v2l_export_kwh`, `v2l_import_kwh` | V2L Export Energy, V2L Import Energy (lifetime) | kWh | energy | local |
-| `generator_state` | Generator State (Standby / OFF, Running / ON, Cooldown, Fault) | — | power | local |
+| `generator_state` | Generator State (Standby / OFF, Running / ON, Cooldown, Fault; *genStat 1 (unconfirmed)* with no generator model or rating, #245) | — | power | local |
 | `generator_enabled` | Generator Enabled (binary sensor) | — | diagnostic | local |
 | `generator_today_kwh` | Generator Today | kWh | energy | local |
 | `active_alarms` | Active Alarms | — | diagnostic | local |

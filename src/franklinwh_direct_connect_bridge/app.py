@@ -1092,7 +1092,8 @@ def create_app() -> FastAPI:
     try:  # first-run install date (for the support bundle) — set once, never overwritten
         _cfg_store = db.get_store(get_settings())
         # Upgrade or new install (#457), decided before install_date is first set.
-        security.decide_install(_cfg_store)
+        security.decide_install(_cfg_store, quick_start=get_settings().security_quick_start
+                                and not environment.IS_HA_ADDON)
         if _cfg_store is not None:
             auth.ensure_tables(_cfg_store)
             auth.ensure_first_admin(_cfg_store, get_settings(), on_addon=environment.IS_HA_ADDON,
@@ -1478,7 +1479,8 @@ def create_app() -> FastAPI:
             # First, because Home Assistant kills an add-on 10 s after asking it to stop;
             # after the scheduler's last tick, so it can't arm a force behind it (#367).
             try:
-                await scheduler_worker.stop_then_release(_sched_stop, _sched_task)
+                await scheduler_worker.stop_then_release(_sched_stop, _sched_task,
+                                                         store=db.get_store(s))
             except Exception as e:  # noqa: BLE001
                 log.error("battery shutdown release failed: %s", e)
             # Bridge stopped: recorded (so the next start says restarted), then sent while
@@ -1747,6 +1749,7 @@ def create_app() -> FastAPI:
                 "can_save": store is not None,
                 "https": _https_status(),
                 "enabled": security.enabled(store),
+                "quick_start": security.quick_start(store),
                 "has_admin": store is not None and auth.has_admin(store),
                 "on_addon": environment.IS_HA_ADDON,
                 "principal": getattr(request.state, "principal", None)}
