@@ -4,6 +4,7 @@
 [![Install smoke](https://img.shields.io/github/actions/workflow/status/david2069/franklinwh-direct-connect-bridge/install-smoke.yml?branch=main&label=build)](https://github.com/david2069/franklinwh-direct-connect-bridge/actions/workflows/install-smoke.yml)
 [![Docs](https://img.shields.io/github/actions/workflow/status/david2069/franklinwh-direct-connect-bridge/docs.yml?branch=main&label=docs)](https://github.com/david2069/franklinwh-direct-connect-bridge/actions/workflows/docs.yml)
 [![Add-on image](https://img.shields.io/github/actions/workflow/status/david2069/franklinwh-direct-connect-bridge/publish-image.yml?branch=main&label=image)](https://github.com/david2069/franklinwh-direct-connect-bridge/actions/workflows/publish-image.yml)
+[![Release](https://img.shields.io/github/actions/workflow/status/david2069/franklinwh-direct-connect-bridge/release.yml?label=packaging)](https://github.com/david2069/franklinwh-direct-connect-bridge/actions/workflows/release.yml)
 
 [![Home Assistant add-on](https://img.shields.io/badge/Home%20Assistant-add--on-41BDF5?logo=homeassistant&logoColor=white)](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/INSTALL.md)
 [![python](https://img.shields.io/badge/python-3.11%2B-blue?logo=python&logoColor=white)](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/pyproject.toml)
