@@ -149,7 +149,7 @@
               <span x-show="$store.app.showRawKeys" class="font-mono text-[9px]" style="color:var(--text-faint)" x-text="$store.app.srcTag('p_fhp', 1301)"></span></span>
             <span class="font-mono font-bold text-right" :style="'color:' + powerColour($store.app.power.battery_w, 'battery')"
                   x-text="$store.app.fmtPower($store.app.power.battery_w)"></span>
-            <span class="text-right text-xs" :style="'color:' + ($store.app.flowText('battery', $store.app.power.battery_w) === 'Idle' ? 'var(--text-faint)' : 'var(--text-secondary)')"
+            <span class="text-right text-xs" :style="'color:' + ($store.app.flowText('battery', $store.app.power.battery_w) === 'Standby' ? 'var(--text-faint)' : 'var(--text-secondary)')"
                   x-text="$store.app.flowText('battery', $store.app.power.battery_w)"></span>
           </div>
           <div class="contents">
