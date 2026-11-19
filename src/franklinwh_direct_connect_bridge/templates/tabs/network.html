@@ -46,7 +46,7 @@
                   :style="'border-color:' + linkColor(l.state) + '66;background:' + linkColor(l.state) + '18;color:' + linkColor(l.state)">
               <span class="w-1.5 h-1.5 rounded-full" :style="'background:' + linkColor(l.state)"></span>
               <span class="font-medium" x-text="l.name"></span>
-              <span style="color:var(--text-secondary)" x-text="l.state + (l.signal != null ? (' · ' + l.signal) : '')"></span>
+              <span style="color:var(--text-secondary)" x-text="$store.app.sentence(l.state) + (l.signal != null ? (' · ' + l.signal) : '')"></span>
             </span>
           </template>
           <span class="text-[10px]" style="color:var(--text-faint)">active = carrying traffic · available = link up, standby · off = disabled · not reported = the aGate sent no status</span>
