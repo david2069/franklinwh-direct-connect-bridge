@@ -271,8 +271,8 @@ function batteryTab() {
       let dir;
       if (st.includes('dischar')) dir = 'Discharging';
       else if (st.includes('charg')) dir = 'Charging';
-      else if (st.includes('stand') || st.includes('idle')) dir = 'Idle';
-      else dir = a > 0 ? 'Charging' : a < 0 ? 'Discharging' : 'Idle';   // fallback: corrected sign
+      else if (st.includes('stand') || st.includes('idle')) dir = 'Standby';
+      else dir = a > 0 ? 'Charging' : a < 0 ? 'Discharging' : 'Standby';   // fallback: corrected sign
       return `${Math.abs(a).toFixed(1)} A · ${dir}`;
     },
 

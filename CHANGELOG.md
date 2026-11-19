@@ -13,6 +13,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Changed
 
+- **One word for a resting battery: Standby; the VPP badge says VPP Mode** (#770, steps
+  3 and 4; owner 2026-11-20). The dashboard, top bar and Battery tab said *Idle* where Home
+  Assistant and the aGate's run status say *Standby*; they now say *Standby* (solar, home and
+  generator rows still say *Idle*). The VPP badge's fallback label reads *VPP Mode*, as the
+  FranklinWH app shows it. Display only.
+
 - **Health and the TOU card: the last lower-case words** (#770, step 2). The health
   pattern level read *error* in one list and *green* in the report picker; both now start
   with a capital (*Error*, *Green*), and the TOU card's operating mode reads *Unknown* when

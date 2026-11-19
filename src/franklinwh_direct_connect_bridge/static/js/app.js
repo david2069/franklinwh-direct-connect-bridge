@@ -1363,7 +1363,7 @@ document.addEventListener('alpine:init', () => {
       if (w == null) return 'Unknown';
       if (w < 0) return 'Charging';
       if (w > 0) return 'Discharging';
-      return 'Idle';
+      return 'Standby';
     },
     //: Operating-status label for the dashboard SoC card's "Run status". A dispatch wins over
     //  the plain direction: cloud VPP shows its mode label (+ programme), an unattributed force
@@ -1530,7 +1530,7 @@ document.addEventListener('alpine:init', () => {
         generator: ['Running', 'Idle'],
       };
       const [pos, neg] = words[kind] || ['', ''];
-      return w > 0 ? pos : (w < 0 ? neg : 'Idle');
+      return w > 0 ? pos : (w < 0 ? neg : (kind === 'battery' ? 'Standby' : 'Idle'));
     },
 
     // ── Unit formatters (display-only) ─────────────────────

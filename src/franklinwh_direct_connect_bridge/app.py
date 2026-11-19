@@ -1721,7 +1721,7 @@ def create_app() -> FastAPI:
         power["vpp"] = kind is not None
         power["vpp_kind"] = kind                # "force" | "vpp" | "remote" | None
         power["vpp_label"] = ("Force dispatch" if kind == "force"
-                              else (gw.cloud_mode or "VPP mode") if kind == "vpp" else None)
+                              else (gw.cloud_mode or "VPP Mode") if kind == "vpp" else None)
         power["vpp_programme"] = programme
         # The cloud's app-matching operating-mode label, when a fresh read exists.
         power["effective_mode"] = (gw.cloud_mode or None) if cloud_fresh else None
