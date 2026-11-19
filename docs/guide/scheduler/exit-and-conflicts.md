@@ -89,14 +89,9 @@ design (see [Actions](actions.md#home-assistant-actions)).
     occurrence is already marked fired. From a code read; not tested.
     <!-- @b EXT-24 ;; src: scheduler.py:2259-2302 ;; unclear ;; write: yes ;; b: effective_inside goes true again when exit conditions stop holding, so each later true edge re-runs the exit steps; the Release is sent only while the entry holds the dispatch row ;; test: unit: force fired, exit true, exit false, exit true; assert one Release only -->
 
-!!! warning "Duration (min) also limits the force (#160)"
-    The force's watchdog time limit is the schedule's **Duration (min)**, in every trigger
-    type. A **Recurring windows** schedule hides that field, and a new schedule starts with
-    90. So a force in a three-hour recurring window stops after 90 minutes. Measured with a
-    mock on 2026-10-17: a 17:00–20:00 window armed the watchdog with 5400 s. For force
-    actions, use **Daily at time** or **Weekly at time**, or set `duration_min` through the
-    API. [#160](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/160)
-    <!-- @b EXT-25 ;; src: scheduler.py:2409-2413, scheduler.py:1577-1581, static/js/scheduler_tab.js:244 ;; unclear ;; write: yes ;; b: The watchdog duration_s is duration_min*60 for every trigger type; a window trigger keeps the hidden form default of 90 min ;; test: unit: window 17:00-20:00 with duration_min 90, assert duration_s 10800 (fails today, #160) -->
+A force runs until its window closes, in every trigger type: a force in a three-hour
+*Recurring windows* schedule runs for three hours, not for the hidden **Duration (min)**
+(#160). <!-- @b EXT-25 ;; src: scheduler.py (_force_dispatch) ;; tested: tests/test_force_until_window_close_160.py::test_a_force_in_a_three_hour_window_runs_until_it_closes ;; write: yes ;; b: The watchdog duration_s is the time to the window's close -->
 
 The watchdog checks every 5 seconds. It releases when the duration is reached, and, when a
 **Target SoC** is set, when a charge reaches SoC ≥ target or a discharge reaches
