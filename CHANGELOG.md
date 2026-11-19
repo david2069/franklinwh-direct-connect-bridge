@@ -11,6 +11,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+
+- **Sign-in page: version and help links** (owner 2026-11-20). Under the form the sign-in
+  page shows the bridge's version and links to the documentation, GitHub Discussions and
+  Issues, each in a new tab ([guide](docs/guide/security.md)).
+
 ### Changed
 
 - **Health and the TOU card: the last lower-case words** (#770, step 2). The health
