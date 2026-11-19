@@ -49,6 +49,16 @@ Reviewed by the franklinwh-modbus-bridge session on 2026-10-16. Its review is fo
   index entry, updates the docs-site nav and leaves an empty `[Unreleased]`. `tools/changelog_index.py
   rebuild` regenerates the index and nav from `docs/changelog/`. `tests/test_changelog_index.py` checks
   the layout.
+- **Publishing to PyPI (#782): a `vX.Y.Z` tag, before G1s.** The tag goes on the release branch head,
+  the same commit the GHCR image was built from (`publish-image.yml`), after the image is pushed and
+  before G1s, so the G1s pip leg installs what users will get. `.github/workflows/release.yml` builds the
+  sdist and wheel, checks that the tag matches `pyproject.toml`'s version, and then waits in the GitHub
+  environment `pypi` until the owner approves; only then does it publish, by trusted publishing (no
+  stored token). **A version published to PyPI can never be reused**, even if deleted: if G1s fails, or
+  the release branch changes after the tag, that version is spent and the fix ships as the next patch,
+  as with a GHCR tag. The release PR is merged with a merge commit, so the tagged commit is on `main`.
+  Until the owner has set up the PyPI trusted publisher and the `pypi` environment, no tag is pushed and
+  G1s installs the release ref.
 - **Anything that changes how HA identifies things** (device identifiers, `unique_id`, device or entity
   naming, MQTT topics, add-on slug) is **released alone**. Its notes say exactly what users will see change.
 - **Up to two releases a day** (owner, 2026-10-31; it was one). Each passes its own gates, G1
@@ -64,7 +74,7 @@ Every change passes the gates its risk requires. A release passes all of them.
 | **G0 Suite** | Full suite green **on the pinned dependency set the image uses**. Modbus bridge: `pytest -m "not hardware"` with `constraints.txt`, plus `ruff check src/ tests/`. Each fix has a regression test **seen failing without the fix**. A test must not stub the component it is testing; stub only its edges (network, device, clock). | every PR |
 | **G0 Install smoke** | `.github/workflows/install-smoke.yml`, green: the two standalone installs INSTALL.md offers (Docker Compose; pip into a fresh venv), each with and without a broker. Jobs `docker-mqtt`, `docker-nomqtt`, `python-mqtt`, `python-nomqtt` run `tools/install_smoke.py`: health, a mock gateway added and polling, its discovery configs retained (with a broker), no ERROR or Traceback in the log. Follows the shared fwh-tools "install-smoke" spec (#409). Direct Connect: a fresh install starts with Security on (#457), so the jobs also check that 8101 redirects to HTTPS, that the HTTPS port answers with the bridge's own certificate and asks for a sign-in, and sign in as the first admin (`--https`). | every PR (CI) |
 | **G1 HAOS acceptance** | Scripted run on the HAOS test VM, with a trace (§3). | every release; any PR touching setup, store, MQTT/HA identity or lifecycle, add-on config or packaging |
-| **G1s Standalone acceptance** (Direct Connect) | `tools/standalone_acceptance.py container` and `pip`, against the **published** release: the GHCR image run as `docker-compose.yml` runs it (docker or podman), and a fresh venv installing the release ref. Each is a new install: the install-smoke checks over HTTPS plus a browser pass at desktop and phone size (8101 lands on the sign-in page, the first admin signs in, no console errors, no failed calls). Its `summary.md` is pasted in the release PR. Docker Desktop or the Podman machine counts as the one VM. Added 2026-11-05: until then only the add-on had a release-gate run, and a pip install had shipped without its web UI (#487). | every release |
+| **G1s Standalone acceptance** (Direct Connect) | `tools/standalone_acceptance.py container` and `pip`, against the **published** release: the GHCR image run as `docker-compose.yml` runs it (docker or podman), and a fresh venv installing the release: from PyPI (`pip --from-pypi --version X.Y.Z`, which installs `franklinwh-direct-connect-bridge[cloud]==X.Y.Z`) once releases are published there (#782), and the release ref (`pip --ref release/X.Y.Z`) until then. Each is a new install: the install-smoke checks over HTTPS plus a browser pass at desktop and phone size (8101 lands on the sign-in page, the first admin signs in, no console errors, no failed calls). Its `summary.md` is pasted in the release PR. Docker Desktop or the Podman machine counts as the one VM. Added 2026-11-05: until then only the add-on had a release-gate run, and a pip install had shipped without its web UI (#487). | every release |
 | **G2 Real hardware** | Reference aGate, under §4. | device I/O, dispatch, writes, Modbus, anything "critical" in CLAUDE.md |
 | **G3 Sign-off** | When G0–G2 have passed, the **agent advises the owner that the merge will happen**. It names the PRs, the order and the gate results, then merges. The owner does not merge, and can stop it. Before merging, the agent checks the PR is still open and mergeable; afterwards it checks `main` (version, CHANGELOG). A failed or skipped gate is stated in the advice; the agent does not merge past it without the owner's word. | every release |
 
@@ -263,6 +273,7 @@ new installs.**
 - [ ] G0: suite count on the pinned dependency set, plus the regression tests named
 - [ ] G1: `summary.md` of every matrix run pasted, with baseline differences listed
 - [ ] G1s (Direct Connect): `summary.md` of the `container` and `pip` runs pasted
+- [ ] PyPI (Direct Connect, once set up, #782): `vX.Y.Z` tag on the release branch head, `release.yml` run approved and green, and the G1s `pip` run made with `--from-pypi`
 - [ ] Build proven to be the branch (§3)
 - [ ] Every new check seen failing on a known-bad build
 - [ ] Known failures each linked to an open issue, and outside the area released

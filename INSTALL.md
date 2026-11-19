@@ -86,6 +86,22 @@ pip install ".[cloud]"
 FWH_HOST=<your aGate IP> franklinwh-direct-connect-bridge run
 ```
 
+### From PyPI
+
+> **Not published yet.** This route works from the first release published to PyPI
+> ([#782](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/782)). Until
+> [the PyPI page](https://pypi.org/project/franklinwh-direct-connect-bridge/) shows a release, use *Without Docker* above.
+
+No clone needed:
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install "franklinwh-direct-connect-bridge[cloud]"
+FWH_HOST=<your aGate IP> franklinwh-direct-connect-bridge run
+```
+
+To upgrade, `pip install --upgrade "franklinwh-direct-connect-bridge[cloud]"` in the same venv.
+
 `[cloud]` is optional. Without it everything runs, but cloud-backed capabilities report
 `available: false` (see `GET /api/providers`).
 

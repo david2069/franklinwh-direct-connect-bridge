@@ -11,6 +11,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+
+- **Ready to publish on PyPI** (#782). Once a release is published there, a standalone
+  install is `pip install "franklinwh-direct-connect-bridge[cloud]"` with no clone
+  ([INSTALL.md → From PyPI](INSTALL.md#from-pypi)); installing from a clone or a GitHub ref
+  works as before. The package now carries project links and classifiers, its author email is
+  the GitHub noreply address, and the README's links work on the PyPI page. Nothing is
+  published yet.
+
 ### Fixed
 
 - **Shutdown: the scheduler stop and each force release are in the Audit trail** (#778).

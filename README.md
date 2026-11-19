@@ -12,7 +12,7 @@
 [![commit activity](https://img.shields.io/github/commit-activity/y/david2069/franklinwh-direct-connect-bridge)](https://github.com/david2069/franklinwh-direct-connect-bridge/commits/main)
 
 **Install in Home Assistant:** click to add this repository to your add-on store, then install
-**FranklinWH Direct Connect Bridge** from it ([full steps](INSTALL.md)).
+**FranklinWH Direct Connect Bridge** from it ([full steps](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/INSTALL.md)).
 
 [![Add repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fdavid2069%2Ffranklinwh-direct-connect-bridge)
 
@@ -33,7 +33,7 @@ whole thing work before you connect real hardware.
 
 **At a glance:** why the Bridge exists, how it grew, the ways to install it, and what each
 transport can do. [Interactive page](https://david2069.github.io/franklinwh-direct-connect-bridge/overview/bridge-overview.html)
-· [high-res image](docs/overview/bridge-overview.png) ([dark](docs/overview/bridge-overview-dark.png)).
+· [high-res image](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/overview/bridge-overview.png) ([dark](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/overview/bridge-overview-dark.png)).
 
 ## Running it
 
@@ -50,13 +50,13 @@ transport can do. [Interactive page](https://david2069.github.io/franklinwh-dire
 
 ## Highlights
 
-- **[Setup wizard](docs/guide/tour.md#first-run-the-setup-wizard)**: Automatic, Mock or Custom setup: links Home Assistant, finds your aGate, offers the FranklinWH cloud and the Modbus client, and checks for an existing FranklinWH integration in Home Assistant.
-- **[Scheduler](docs/guide/scheduler/index.md)**: Daily, interval and cron triggers; entry and exit conditions over any sensor; priorities and conflict policy; and an explain view of why a window did or did not fire.
-- **[Analytics](docs/guide/energy-and-costs.md#analytics)**: Energy flows, battery use and self-sufficiency by day, week, month, year and lifetime, from the bridge's own store or the FranklinWH cloud, with CSV export.
-- **[Health](docs/guide/health-report.md)**: A daily health report with a colour, unusual changes flagged, a weekly battery report, and battery warranty and wear.
-- **[Network monitoring](docs/guide/tour.md#the-tabs)**: The connection end to end: latency to the aGate, MQTT, AWS IoT, the CloudFront edge your cloud calls reach (with a map), cloud errors and retries, and link history.
-- **[Notifications](docs/guide/ha-setup-and-notifications.md)**: Optional: alerts and schedule notifications pushed to your phones through Home Assistant, including actionable ones that ask before acting.
-- **[HEMS](docs/guide/hems/index.md)**: Energy planning: a calibrated solar forecast, a load forecast, the wear cost of each kWh through the battery, and a description of your home that planning works from.
+- **[Setup wizard](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/guide/tour.md#first-run-the-setup-wizard)**: Automatic, Mock or Custom setup: links Home Assistant, finds your aGate, offers the FranklinWH cloud and the Modbus client, and checks for an existing FranklinWH integration in Home Assistant.
+- **[Scheduler](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/guide/scheduler/index.md)**: Daily, interval and cron triggers; entry and exit conditions over any sensor; priorities and conflict policy; and an explain view of why a window did or did not fire.
+- **[Analytics](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/guide/energy-and-costs.md#analytics)**: Energy flows, battery use and self-sufficiency by day, week, month, year and lifetime, from the bridge's own store or the FranklinWH cloud, with CSV export.
+- **[Health](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/guide/health-report.md)**: A daily health report with a colour, unusual changes flagged, a weekly battery report, and battery warranty and wear.
+- **[Network monitoring](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/guide/tour.md#the-tabs)**: The connection end to end: latency to the aGate, MQTT, AWS IoT, the CloudFront edge your cloud calls reach (with a map), cloud errors and retries, and link history.
+- **[Notifications](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/guide/ha-setup-and-notifications.md)**: Optional: alerts and schedule notifications pushed to your phones through Home Assistant, including actionable ones that ask before acting.
+- **[HEMS](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/guide/hems/index.md)**: Energy planning: a calibrated solar forecast, a load forecast, the wear cost of each kWh through the battery, and a description of your home that planning works from.
 
 ## What it does
 
@@ -103,8 +103,8 @@ auto-discovery, `read_only` by default.
 
 > **Status: in service.** 180 REST paths (206 operations), the full UI, MQTT / Home Assistant
 > discovery, and a SQLite metrics store are all live and running against real hardware.
-> See the [**User Guide**](docs/guide/README.md) for the UI, the Scheduler, Home Assistant
-> and the control gates, and [`docs/API_COMPARISON.md`](docs/API_COMPARISON.md) for how the
+> See the [**User Guide**](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/guide/README.md) for the UI, the Scheduler, Home Assistant
+> and the control gates, and [`docs/API_COMPARISON.md`](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/API_COMPARISON.md) for how the
 > three transports compare.
 
 ## ⚖️ Disclaimer
@@ -146,7 +146,7 @@ auto-discovery, `read_only` by default.
 >
 > As the MIT Licence requires, the copyright notice and this notice (including the Additional Terms) should
 > be included in copies or substantial portions of the software — in forks, derivatives, and AI-assisted
-> works alike, so the unofficial-app and compliance context travels with the code. See [`LICENSE`](LICENSE)
+> works alike, so the unofficial-app and compliance context travels with the code. See [`LICENSE`](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/LICENSE)
 > (Additional Terms) for the authoritative text.
 
 **SunSpec Modbus conformance.** Unlike FranklinWH's Direct Connect and cloud APIs, the Modbus TCP surface
@@ -159,7 +159,7 @@ is a documented open standard. FranklinWH's implementation is published by the S
 
 ## Install
 
-**[INSTALL.md](INSTALL.md)** covers all three paths — Home Assistant add-on, Docker, and a
+**[INSTALL.md](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/INSTALL.md)** covers all three paths — Home Assistant add-on, Docker, and a
 development checkout — with prerequisites, upgrading and troubleshooting. The add-on summary
 below is the short version.
 
@@ -206,6 +206,15 @@ library is an ordinary dependency and installs from PyPI like any other.
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install ".[cloud]"            # pulls franklinwh-direct-connect-api from PyPI
+FWH_HOST=192.0.2.110 franklinwh-direct-connect-bridge run   # → http://localhost:8101
+```
+
+**From PyPI** (from the first release published there, not yet published:
+[#782](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/782)), no clone needed:
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install "franklinwh-direct-connect-bridge[cloud]"
 FWH_HOST=192.0.2.110 franklinwh-direct-connect-bridge run   # → http://localhost:8101
 ```
 
@@ -315,4 +324,4 @@ All three are wired, each used only where it is the right one.
   > and a global Release stop a dropped connection from leaving the battery dispatched.
 
   The SunSpec **enable toggle** (`/api/der-comms`, cmd 1205) is a separate thing and rides
-  the *local* API, not Modbus. See [`docs/API_COMPARISON.md`](docs/API_COMPARISON.md).
+  the *local* API, not Modbus. See [`docs/API_COMPARISON.md`](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/API_COMPARISON.md).
