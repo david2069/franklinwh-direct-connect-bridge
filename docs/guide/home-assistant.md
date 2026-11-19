@@ -67,7 +67,9 @@ for the node id:
 **The node id is your gateway's serial number, lower-cased.** Each discovery config pulls
 its own field out of the shared state JSON with a `value_template`, and availability is a
 separate topic driven by the health round-trip and the MQTT last-will, so an offline
-gateway shows as unavailable in HA rather than as stale numbers.
+gateway shows as unavailable in HA rather than as stale numbers. A failed poll publishes
+only *offline*, never a state: the last good values stay retained until a poll
+succeeds (#176).
 
 In Home Assistant the device appears as **"FranklinWH Direct &lt;last 8 characters of the
 serial&gt;"**, so several gateways are told apart (`device_name()` in
