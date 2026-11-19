@@ -24,6 +24,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   capitalised ones. They now read *Fired*, *Holding*, *Warning*, *Green*, *Active*.
   Display only: the API, MQTT and Home Assistant values are unchanged.
 
+### Fixed
+
+- **An api token can read the API schema** (#781). With Security on, an **api** account's
+  token got 403 on `/openapi.json`, so the role meant for integrations couldn't discover
+  the API it may call. `/openapi.json` is now open to every role; `/docs` and `/redoc`
+  stay web pages, as before ([guide](docs/guide/security.md)).
+
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
