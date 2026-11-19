@@ -237,7 +237,8 @@ def _report(out: Outcome, *, audit, notifier, write: bool) -> Outcome:
 
     if write and audit is not None:
         try:
-            audit(out.action, detail=out.target, result=out.render(), ok=out.ok)
+            audit(out.action, detail=out.target, result=out.render(), ok=out.ok,
+                  verdict=out.verdict.value, attempts=out.attempts)
         except Exception:  # noqa: BLE001 — auditing must never break the call
             log.debug("audit hook failed for %s", out.action, exc_info=True)
 
