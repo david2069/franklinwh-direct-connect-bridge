@@ -102,6 +102,10 @@ class RingBufferHandler(logging.Handler):
     plain dict ``{ts, level, name, message}`` (``ts`` = epoch seconds). Never raises."""
 
     def emit(self, record: logging.LogRecord) -> None:
+        # A secret meant for the console only (the generated first-admin password) is
+        # never kept: not in the Logs tab, the stored log or a support bundle.
+        if getattr(record, "console_only", False):
+            return
         try:
             msg = self.format(record)
         except Exception:  # noqa: BLE001 — logging must never raise

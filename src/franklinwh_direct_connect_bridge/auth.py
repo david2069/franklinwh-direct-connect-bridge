@@ -304,7 +304,10 @@ def ensure_first_admin(store, settings, *, on_addon: bool, security_on: bool) ->
     pw = secrets.token_urlsafe(12)
     create_user(store, "admin", pw, "admin")
     log.warning("Security: first admin created. Username: admin  Password: %s  (shown once; "
-                "change it under Settings → Admin → Security)", pw)
+                "change it under Settings → Admin → Security)", pw,
+                extra={"console_only": True})
+    log.warning("Security: first admin 'admin' created; its password was printed to the "
+                "console log only (docker logs, or the terminal the bridge runs in).")
     return "generated"
 
 
