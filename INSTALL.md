@@ -30,7 +30,9 @@ Click the button above, or add the repository by hand:
 3. Find **FranklinWH Direct Connect Bridge** and click **Install**.
 4. On **Configuration**, set `fwh_host` to the aGate's IP. Set `mqtt_enabled: true` to
    publish the battery as Home Assistant entities. **Save.**
-5. **Start**, then open the sidebar panel (served over HA ingress).
+5. **Start**, then **Open Web UI** (served over HA ingress). For a **Direct Connect** entry in
+   the sidebar, turn on **Show in sidebar** on the same page: it was off after a fresh install
+   on Home Assistant OS 18.4 (#784).
 
 ### What the add-on does for you
 

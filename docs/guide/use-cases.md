@@ -46,7 +46,7 @@ Give the aGate a fixed address on your router so the Bridge can always find it.
 
 Install the Bridge as a Home Assistant add-on: add this repository to the add-on store,
 install **FranklinWH Direct Connect Bridge**, set your aGate's address and start it. It opens
-from the Home Assistant sidebar, links itself to Home Assistant, and finds the Mosquitto
+with **Open Web UI** (turn on **Show in sidebar** to add it to the sidebar), links itself to Home Assistant, and finds the Mosquitto
 broker on its own, so your aGate shows up as a device with sensors and controls.
 
 - [Quick install, routes B and C](quick-install.md#c-existing-home-assistant-os)

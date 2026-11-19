@@ -158,7 +158,9 @@ History and schedules only run while the Bridge runs, so keep the computer awake
 3. **Install**: find **FranklinWH Direct Connect Bridge** in the store and press **Install**.
 4. **Configure**: on **Configuration**, set `fwh_host` to the aGate's address. Leave
    `mqtt_enabled` on to get Home Assistant entities. **Save**.
-5. **Start**, then open **Direct Connect** from the sidebar. No password is needed there.
+5. **Start**, then **Open Web UI**. No password is needed there. To open it from the sidebar
+   too, turn on **Show in sidebar** on the same page: a **Direct Connect** entry appears. It was
+   off after a fresh install on Home Assistant OS 18.4 ([#784](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/784)).
 6. **Optional**: install the **Mosquitto broker** App for Home Assistant entities. The
    Bridge picks it up on its own, even if you add it later.
 
@@ -180,3 +182,11 @@ Home Assistant 2026.10 and later calls add-ons **Apps**; INSTALL.md still says *
   [Installing, in pictures](installing.md#home-assistant-add-on), whose screenshots were taken
   on 2026-10-16 with release 0.5.0. The sidebar title (`panel_title: "Direct Connect"`) and
   option names (`fwh_host`, `mqtt_enabled`) are from the add-on's `config.yaml`.
+- **Route C** was run on 2026-11-20 on a fresh Home Assistant OS 18.4 virtual machine with
+  add-on 0.5.53 and no aGate: repository added, App installed and started. **Show in sidebar**
+  was off after installing; **Open Web UI** worked, and with the toggle on, **Direct Connect**
+  appeared in the sidebar. The add-on log reported Security on for a new install and printed
+  no password; the sidebar panel opened without a sign-in.
+- **On that virtual machine, Home Assistant answered on port 80**, and every request to 8123
+  was redirected to the same path on port 80. On a home network, `homeassistant.local:8123`
+  therefore still lands on Home Assistant. Seen on one install only.

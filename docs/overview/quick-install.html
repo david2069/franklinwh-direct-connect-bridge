@@ -256,7 +256,7 @@ python --version</pre>
         <a class="badge" href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fdavid2069%2Ffranklinwh-direct-connect-bridge"><span class="chip"><svg><use href="#homeassistant"/></svg>Add repository to my Home Assistant</span></a></div></li>
       <li><div><h3>Install the App</h3><p>Find <b>FranklinWH Direct Connect Bridge</b> in the store and press <b>Install</b>.</p></div></li>
       <li><div><h3>Tell it where your aGate is</h3><p>On <b>Configuration</b>, set <code>fwh_host</code> to the aGate's address. Leave <code>mqtt_enabled</code> on to get Home Assistant entities. <b>Save</b>.</p></div></li>
-      <li><div><h3>Start and open it</h3><p><b>Start</b>, then open <b>Direct Connect</b> from the sidebar. No password needed there.</p></div></li>
+      <li><div><h3>Start and open it</h3><p><b>Start</b>, then <b>Open Web UI</b>. No password needed there. Turn on <b>Show in sidebar</b> to get a <b>Direct Connect</b> entry in the sidebar.</p></div></li>
       <li><div><h3>Optional: entities in Home Assistant</h3><p>Install the <b>Mosquitto broker</b> App. The Bridge finds it on its own, even if you add it later.</p></div></li>
     </ol>
   </section>
@@ -264,7 +264,7 @@ python --version</pre>
 
 <footer>
   <span>Full details: <a href="https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/INSTALL.md">INSTALL.md</a> · Docker install and troubleshooting are there too. Home Assistant 2026.10 and later calls add-ons <b>Apps</b>.</span>
-  <span>Route A was run on macOS on 2026-11-19 (Bridge 0.5.53, from the GitHub zip, with Homebrew's Python 3.12). The Mac's built-in Python 3.9 fails with “No matching distribution found for hems==0.2.0”, hence the version checks. The Windows and Linux steps use each system's standard tools and have not been run by us. Routes B and C follow Home Assistant's own install pages and this project's add-on.</span>
+  <span>Route A was run on macOS on 2026-11-19 (Bridge 0.5.53, from the GitHub zip, with Homebrew's Python 3.12). The Mac's built-in Python 3.9 fails with “No matching distribution found for hems==0.2.0”, hence the version checks. The Windows and Linux steps use each system's standard tools and have not been run by us. Route C was run on 2026-11-20 on a fresh Home Assistant OS 18.4 VM (add-on 0.5.53, no aGate). Route B follows Home Assistant's own install pages.</span>
   <span>Unofficial software, not affiliated with or endorsed by FranklinWH. Logos belong to their owners; icons from Simple Icons (CC0).</span>
 </footer>
 </div>
