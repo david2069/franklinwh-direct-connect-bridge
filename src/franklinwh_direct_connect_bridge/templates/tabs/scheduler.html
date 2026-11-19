@@ -309,7 +309,7 @@
             <div data-testid="tou-copied">Copied <span x-text="when(tou.latest.first_ts)"></span>
               (<span x-text="touReason(tou.latest.reason)"></span>) · last checked <span x-text="when(tou.latest.checked_ts)"></span></div>
             <div x-show="tou.latest.cloud_updated">Last changed in the FranklinWH app: <span x-text="tou.latest.cloud_updated"></span></div>
-            <div>Operating mode now: <b :style="{ color: tou.tou_active ? 'var(--warn)' : 'var(--text-primary)' }" x-text="tou.mode || 'unknown'"></b></div>
+            <div>Operating mode now: <b :style="{ color: tou.tou_active ? 'var(--warn)' : 'var(--text-primary)' }" x-text="tou.mode || 'Unknown'"></b></div>
           </div>
           <div>
             <div class="text-[10px] uppercase tracking-wide mb-1" style="color:var(--text-secondary)">Today</div>
