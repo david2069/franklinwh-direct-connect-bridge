@@ -32,6 +32,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **The generated first-admin password is no longer kept in the bridge's log** (owner
+  2026-11-20). On Docker and pip, with no `ADMIN_USERNAME` / `ADMIN_PASSWORD`, the
+  password the bridge makes was also stored in the Bridge log, so it showed under Logs and
+  survived restarts. It is now printed once to the console only (`docker logs`, or the
+  terminal); the Bridge log says where to find it, and a copy an older version stored is
+  masked when the bridge starts. The Home Assistant add-on never logged one
+  ([guide](docs/guide/security.md#the-first-admin)).
+
 - **Shutdown: the scheduler stop and each force release are in the Audit trail** (#778).
   Releasing the forces this bridge holds at shutdown kept no record of the outcome. The
   Audit trail now says whether the scheduler stopped or was still running after 5 s, and

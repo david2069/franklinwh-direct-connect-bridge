@@ -23,7 +23,7 @@ services:
       - ALLOW_WRITES=${ALLOW_WRITES:-false}
       # Sign-in (Security, #457). A new install starts with Security on: set the first admin
       # here (read only while no admin exists), or leave both blank and the bridge creates
-      # "admin" with a generated password, printed to the log once (docker logs).
+      # "admin" with a generated password, printed once to the console log (docker logs) only.
       - ADMIN_USERNAME=${ADMIN_USERNAME:-}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       # Quick start: SECURITY=off on the first start makes a new install start with Security
