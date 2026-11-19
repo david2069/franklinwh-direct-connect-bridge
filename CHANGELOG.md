@@ -13,6 +13,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Changed
 
+- **Health and the TOU card: the last lower-case words** (#770, step 2). The health
+  pattern level read *error* in one list and *green* in the report picker; both now start
+  with a capital (*Error*, *Green*), and the TOU card's operating mode reads *Unknown* when
+  it isn't known. Display only.
+
 - **Status words start with a capital** (#770, step 1). The scheduler's log status and
   monitor state, alert severity and state, the health level and the network link state
   showed raw lower-case values (*fired*, *holding*, *warning*, *green*, *active*) next to
