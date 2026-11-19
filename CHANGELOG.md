@@ -13,6 +13,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- **Quick start outside Home Assistant: `SECURITY=off`** (owner 2026-11-20). For Docker and
+  pip, `SECURITY=off` on the first start makes a new install start with Security off: port
+  8101 opens without signing in and no admin is created. Trusted networks stay the private
+  ranges, and Settings → Admin → Security says it is off from a quick start until you turn it
+  on. It is read only on the first start and ignored by the add-on. INSTALL.md gains a
+  **First sign-in** step (`ADMIN_USERNAME` / `ADMIN_PASSWORD`, the generated password in
+  the log, `reset-password`), and `docker-compose.yml` lists the three variables
+  ([install](INSTALL.md#first-sign-in-docker-and-pip),
+  [guide](docs/guide/security.md#the-first-admin)).
+
 - **Ready to publish on PyPI** (#782). Once a release is published there, a standalone
   install is `pip install "franklinwh-direct-connect-bridge[cloud]"` with no clone
   ([INSTALL.md → From PyPI](INSTALL.md#from-pypi)); installing from a clone or a GitHub ref

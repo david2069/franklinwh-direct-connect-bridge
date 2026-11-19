@@ -21,6 +21,14 @@ services:
       # Control writes (mode switch / off-grid) are OFF by default. Set ALLOW_WRITES=true
       # to expose POST /api/mode + /api/offgrid and the dashboard control buttons.
       - ALLOW_WRITES=${ALLOW_WRITES:-false}
+      # Sign-in (Security, #457). A new install starts with Security on: set the first admin
+      # here (read only while no admin exists), or leave both blank and the bridge creates
+      # "admin" with a generated password, printed to the log once (docker logs).
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      # Quick start: SECURITY=off on the first start makes a new install start with Security
+      # off (no sign-in). Turn it on later under Settings → Admin → Security.
+      - SECURITY=${SECURITY:-}
       # MQTT — the dedicated dev broker (fwh-dev-mosquitto, host port 1884)
       - MQTT_ENABLED=${MQTT_ENABLED:-true}
       - MQTT_HOST=${MQTT_HOST:-host.docker.internal}

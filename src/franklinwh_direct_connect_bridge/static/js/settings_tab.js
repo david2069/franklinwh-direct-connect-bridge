@@ -268,7 +268,7 @@ function settingsTab(opts = {}) {
     security: { loaded: false, install: '', any: true, text: '', you: '', ingress: false,
                 canSave: true, saving: false, msg: null, https: {},
                 // phase 3: the switch, accounts and sign-in activity
-                enabled: false, hasAdmin: false, onAddon: false, principal: null,
+                enabled: false, quickStart: false, hasAdmin: false, onAddon: false, principal: null,
                 switchMsg: null, users: [], events: [], acctMsg: null,
                 add: { username: '', password: '', role: 'user' }, resetFor: null, resetPw: '',
                 myPw: { current: '', new: '', msg: null },
@@ -281,7 +281,7 @@ function settingsTab(opts = {}) {
         const nets = d.trusted_networks || ['any'];
         Object.assign(this.security, { loaded: true, install: d.install, you: d.your_address || '',
           ingress: !!d.via_ingress, canSave: d.can_save !== false, any: nets.includes('any'),
-          https: d.https || {}, enabled: !!d.enabled, hasAdmin: !!d.has_admin,
+          https: d.https || {}, enabled: !!d.enabled, quickStart: !!d.quick_start, hasAdmin: !!d.has_admin,
           onAddon: !!d.on_addon, principal: d.principal || null,
           text: nets.includes('any') ? (d.private_ranges || []).join('\n') : nets.join('\n') });
       } catch (e) { /* leave last-known */ }
