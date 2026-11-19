@@ -4,10 +4,12 @@ image and a fresh pip install of the release, each as a new user gets it.
 
     standalone_acceptance.py container --version 0.5.31 --out results/
     standalone_acceptance.py pip --ref main --version 0.5.31 --out results/
+    standalone_acceptance.py pip --from-pypi --version 0.5.54 --out results/
 
 container: pulls ghcr.io/david2069/<arch>-franklinwh-direct-connect-bridge:<version> and runs it
 the way docker-compose.yml does (``docker`` or ``podman``, whichever is installed), with a
-fresh named volume as /data (removed afterwards). pip: a fresh venv, ``pip install "<repo>@<ref>[cloud]"``, then
+fresh named volume as /data (removed afterwards). pip: a fresh venv, ``pip install "<repo>@<ref>[cloud]"``
+(or, with --from-pypi, the release itself from PyPI: ``franklinwh-direct-connect-bridge[cloud]==<version>``), then
 ``franklinwh-direct-connect-bridge run`` in a fresh directory. CI's install-smoke covers the
 ``docker compose`` file itself, on every pull request.
 
@@ -74,12 +76,20 @@ def start_container(version: str, data: pathlib.Path, env: dict) -> tuple[list[s
     return [eng, "logs", NAME], image
 
 
-def start_pip(ref: str, work: pathlib.Path, env: dict, log: pathlib.Path) -> subprocess.Popen:
+def pip_requirement(ref: str, version: str, from_pypi: bool) -> str:
+    """What the pip leg installs (#782): the git ref from GitHub, or the published release from
+    PyPI, pinned to --version so an older or newer upload cannot pass in its place."""
+    if from_pypi:
+        return f"franklinwh-direct-connect-bridge[cloud]=={version}"
+    return f"franklinwh-direct-connect-bridge[cloud] @ git+{REPO}@{ref}"
+
+
+def start_pip(requirement: str, work: pathlib.Path, env: dict, log: pathlib.Path) -> subprocess.Popen:
     py = shutil.which("python3.12") or shutil.which("python3.11") or sys.executable
     subprocess.run([py, "-m", "venv", str(work / ".venv")], check=True)
     pip = work / ".venv/bin/pip"
-    subprocess.run([str(pip), "install", "--quiet",
-                    f"franklinwh-direct-connect-bridge[cloud] @ git+{REPO}@{ref}"], check=True)
+    # --no-cache-dir: a wheel cached from an earlier run must not stand in for the download.
+    subprocess.run([str(pip), "install", "--quiet", "--no-cache-dir", requirement], check=True)
     full = {"PATH": f"{work / '.venv/bin'}:/usr/bin:/bin", "HOME": str(work), **env,
             "HTTP_PORT": str(HTTP_PORT), "HTTPS_PORT": str(HTTPS_PORT)}
     return subprocess.Popen([str(work / ".venv/bin/franklinwh-direct-connect-bridge"), "run"],
@@ -135,6 +145,8 @@ def main(argv=None) -> int:
     ap.add_argument("install", choices=["container", "pip"])
     ap.add_argument("--version", required=True, help="the release under test")
     ap.add_argument("--ref", default="main", help="pip: the git ref to install")
+    ap.add_argument("--from-pypi", action="store_true",
+                    help="pip: install the release from PyPI (==--version) instead of --ref")
     ap.add_argument("--out", required=True)
     ap.add_argument("--keep", action="store_true", help="leave it running afterwards")
     a = ap.parse_args(argv)
@@ -159,8 +171,8 @@ def main(argv=None) -> int:
             log_cmd, what = start_container(a.version, data, env)
             log_args = ["--log-cmd", " ".join(log_cmd)]
         else:
-            proc = start_pip(a.ref, work, env, run / "bridge.log")
-            what = f"{REPO}@{a.ref}"
+            what = pip_requirement(a.ref, a.version, a.from_pypi)
+            proc = start_pip(what, work, env, run / "bridge.log")
             log_args = ["--log", str(run / "bridge.log")]
         if a.install == "container":
             # docker-compose.yml keeps the bridge's data on the /data volume; a container
