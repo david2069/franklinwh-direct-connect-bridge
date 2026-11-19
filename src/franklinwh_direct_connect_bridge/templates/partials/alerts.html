@@ -70,11 +70,11 @@
         <div class="text-xs py-2 border-b border-white/[0.06] space-y-1" data-testid="alert-row">
           <div class="flex items-center gap-2 flex-wrap">
             <span class="chip" :class="a.severity === 'critical' ? 'error' : 'warn'" style="font-size:.55rem"
-                  x-text="a.severity"></span>
+                  x-text="$store.app.sentence(a.severity)"></span>
             <span class="font-mono" style="color:var(--text-secondary)" x-text="$store.alerts.short(a)"
                   :title="$store.alerts.when(a)"></span>
             <span x-show="$store.alerts.state(a)" class="chip muted" style="font-size:.55rem"
-                  x-text="$store.alerts.state(a)"></span>
+                  x-text="$store.app.sentence($store.alerts.state(a))"></span>
             <!-- Critical ones are acknowledged in the modal, behind "I understand". -->
             <button x-show="!a.acked_ts && a.severity !== 'critical'" class="btn btn-secondary btn-sm ml-auto" :disabled="$store.alerts.busy"
                     @click="$store.alerts.ackOne(a.id)">Acknowledge</button>

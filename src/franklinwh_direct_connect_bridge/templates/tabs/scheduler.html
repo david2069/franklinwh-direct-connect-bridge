@@ -546,7 +546,7 @@
                  :title="monTrace(l)" @click="o = !o" :aria-expanded="o">
               <div class="flex items-center justify-between gap-2">
                 <span class="text-xs font-mono" style="color:var(--text-secondary)" x-text="when(l.ts)"></span>
-                <span class="chip shrink-0" :style="monStateStyle(l.state) + ';font-size:.6rem'" x-text="l.state"></span>
+                <span class="chip shrink-0" :style="monStateStyle(l.state) + ';font-size:.6rem'" x-text="$store.app.sentence(l.state)"></span>
               </div>
               <div class="text-sm break-words" style="color:var(--text-primary)">
                 <span x-text="l.name"></span>
@@ -595,7 +595,7 @@
                     <div class="text-xs font-mono" style="color:var(--text-secondary)" x-text="e.result"></div>
                   </td>
                   <td class="text-right">
-                    <span class="chip" :style="statusStyle(e.status) + ';font-size:.6rem'" x-text="e.status"></span>
+                    <span class="chip" :style="statusStyle(e.status) + ';font-size:.6rem'" x-text="$store.app.sentence(e.status)"></span>
                   </td>
                 </tr>
               </template>

@@ -11,6 +11,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+
+- **Status words start with a capital** (#770, step 1). The scheduler's log status and
+  monitor state, alert severity and state, the health level and the network link state
+  showed raw lower-case values (*fired*, *holding*, *warning*, *green*, *active*) next to
+  capitalised ones. They now read *Fired*, *Holding*, *Warning*, *Green*, *Active*.
+  Display only: the API, MQTT and Home Assistant values are unchanged.
+
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.

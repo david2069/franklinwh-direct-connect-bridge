@@ -2114,6 +2114,13 @@ document.addEventListener('alpine:init', () => {
       const at = ts ? new Date(ts * 1000) : new Date();
       return -at.getTimezoneOffset() === this.siteTzOffsetMin ? '' : ' ' + this.siteTzShort;
     },
+    // #770: a value shown to people, in Sentence case ("fired" → "Fired"). Only the first
+    // letter changes, so TOU, VPP and SoC keep their capitals; keys and API values don't.
+    sentence(v) {
+      if (v == null || v === '') return v;
+      const s = String(v);
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    },
     // #748: one short date for list columns, "18 Nov 18:01", in the zone the list already
     // used: 'host' (bridge host), 'site' (aGate) or 'local' (this browser).
     _zoneOffset(zone) {
