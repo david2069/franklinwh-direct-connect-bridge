@@ -24,6 +24,7 @@ The Bridge is a working example of the Direct Connect API, with a REST API and a
 schema served by the Bridge itself (Swagger and ReDoc pages included). Run it from a
 development checkout, point it at a mock gateway, and write against the API or MQTT.
 
+- [API examples: OpenAPI and MQTT discovery](../developers/api-examples.md)
 - [Developers Guide](../developers/index.md): [REST API and OpenAPI](../developers/rest-api.md),
   [endpoint reference](../developers/api-endpoints.md), [MQTT](../developers/mqtt.md)
 - [INSTALL.md → Development](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/INSTALL.md)
@@ -36,6 +37,7 @@ your aGate's address, and open the web UI in a browser. The Bridge only records 
 runs schedules while it is running, so keep the Mac plugged in and stop it from sleeping.
 Give the aGate a fixed address on your router so the Bridge can always find it.
 
+- [Quick install, route A](quick-install.md#a-spare-desktop-from-the-command-line): Windows, macOS or Linux, from the command line
 - [Installing → Docker](installing.md#docker) and [Standalone](installing.md#standalone)
   (the screenshots there were taken on Linux; the steps are the same)
 - [INSTALL.md](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/INSTALL.md)
@@ -47,6 +49,7 @@ install **FranklinWH Direct Connect Bridge**, set your aGate's address and start
 from the Home Assistant sidebar, links itself to Home Assistant, and finds the Mosquitto
 broker on its own, so your aGate shows up as a device with sensors and controls.
 
+- [Quick install, routes B and C](quick-install.md#c-existing-home-assistant-os)
 - [Installing → Home Assistant add-on](installing.md#home-assistant-add-on)
 - [Home Assistant and MQTT](home-assistant.md)
 

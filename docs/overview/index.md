@@ -5,6 +5,7 @@ aGate can do.
 
 [Open the interactive page](bridge-overview.html){ .md-button } ·
 [Use cases: "I want to…"](../guide/use-cases.md) ·
+[Quick install: pick your route](../guide/quick-install.md) ·
 [Light image (PNG)](bridge-overview.png) · [Dark image (PNG)](bridge-overview-dark.png)
 
 ![FranklinWH Direct Connect Bridge overview: purpose and timeline, installation types, and capabilities by transport](bridge-overview.png)

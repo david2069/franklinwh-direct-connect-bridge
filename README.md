@@ -38,6 +38,10 @@ transport can do. [Interactive page](https://david2069.github.io/franklinwh-dire
 **Use cases:** what you want to do, from "I use Home Assistant OS" to "charge my car only on
 solar", with a short how-to and links to the guides: [I want to…](https://david2069.github.io/franklinwh-direct-connect-bridge/guide/use-cases/)
 
+**Quick install:** three routes on one page: the command line on a spare Windows, Mac or Linux
+computer, a new Home Assistant OS, or an App in the one you have. [Pick your route](https://david2069.github.io/franklinwh-direct-connect-bridge/guide/quick-install/)
+· [image](docs/overview/quick-install.png).
+
 ## Running it
 
 - As a **Home Assistant add-on** (served through ingress, MQTT auto-configured)
