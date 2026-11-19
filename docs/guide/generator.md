@@ -18,7 +18,7 @@ bridge **cannot tell** whether a generator is installed. It shows what the aGate
 |---|---|---|
 | Feature on / off | `genEn` | The generator feature switch, the same one the FranklinWH app has. A user setting, not a hardware fact. |
 | Model, rated power | `genModel`, `genRatedPower` | Reported by the aGate. Empty or 0 when it reports nothing. |
-| Run state | `genStat` | Standby / OFF, Running / ON, Cooldown, Fault. |
+| Run state | `genStat` | Standby / OFF, Running / ON, Cooldown, Fault. With no generator model or rated power, a 1 shows as **genStat 1 (unconfirmed)**, not *Running*: on the reference aGate it reads 1 as soon as the feature is enabled, with nothing wired (#245). |
 | Generator power | `genpowerGen` | Generator output. The block's other `power` / `curr` / `volt` / `freq` fields are gateway-level values shared with the smart-circuit meter, so they are not shown as generator output. |
 
 FranklinWH's field names don't reliably describe what a field does. Where a field's meaning
