@@ -126,7 +126,25 @@ FWH_HOST=<aGate address> franklinwh-direct-connect-bridge run
 
 Open `http://localhost:8101` in a browser. Accept the certificate warning (the Bridge makes
 its own certificate), then sign in as `admin`. See
-[Security](security.md) for what the first admin is and how to add other users.
+[Security](security.md#the-first-admin) for what the first admin is and how to add other users.
+
+- **Choose your own login instead:** set `ADMIN_USERNAME` and `ADMIN_PASSWORD` before the
+  first start.
+- **Lost the password:** run `franklinwh-direct-connect-bridge reset-password admin` in the
+  same folder.
+
+!!! tip "Just trying it? Start without a sign-in"
+    On the **first** start, add `SECURITY=off`:
+
+    ```bash
+    SECURITY=off FWH_HOST=<aGate address> franklinwh-direct-connect-bridge run
+    ```
+
+    `http://localhost:8101` then opens straight away: no password, no certificate warning,
+    and no admin is created. Anyone on your home network can use it, battery control
+    included, so turn Security on under **Settings → Admin → Security** when you're done
+    trying it. `SECURITY` is read only on the first start: it never turns Security off on
+    an install that already has it on.
 
 **Next time**, from the same folder:
 
@@ -176,6 +194,10 @@ Home Assistant 2026.10 and later calls add-ons **Apps**; INSTALL.md still says *
   Python 3.9.6 (from Xcode), and the install failed with *No matching distribution found
   for hems==0.2.0* (PyPI lists `hems` 0.2.0 as `requires_python >=3.11`). That is why the
   version checks are there.
+- **The `SECURITY=off` quick start** (added in [#786](https://github.com/david2069/franklinwh-direct-connect-bridge/pull/786))
+  was run on 2026-11-20 on macOS with Bridge 0.5.54, installed from this branch, on an empty
+  data folder and with no aGate. Port 8101 answered `200` with no redirect to the sign-in
+  page, no password was printed, and the log warned that Security is off.
 - **Route A on Windows and Linux** uses each system's standard tools and has **not been run**
   for this page.
 - **Routes B and C** follow Home Assistant's own installation pages and this project's
