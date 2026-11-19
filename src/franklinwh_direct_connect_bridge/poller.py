@@ -589,7 +589,10 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                                     summ.get("error") or "unreachable")
                 _cache_summary(gw, summ)
                 if pub:
-                    if not starting:
+                    # A failed poll publishes no state (#176): it would be built from the
+                    # failed summary, empty values retained in HA. Offline only; the last
+                    # good state stays retained until a poll succeeds.
+                    if not starting and summ.get("ok"):
                         pub.publish_state(st)
                     pub.publish_availability(bool(summ.get("ok")))
                     # Load Forecast (#713): hems on the stored history, off the poll's

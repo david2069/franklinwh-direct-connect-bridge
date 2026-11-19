@@ -32,6 +32,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Home Assistant: a failed poll no longer publishes empty values** (#176). It sent a
+  retained state built from the failed reading, then marked the gateway offline, so
+  entities could flash empty values and keep them after a restart of Home Assistant. A
+  failed poll now publishes only *offline*; the last good state stays until a poll
+  succeeds ([Home Assistant](docs/guide/home-assistant.md)).
+
 - **Scheduler: a force runs until its window closes** (#160). Its auto-release came from
   the schedule's **Duration (min)**, which *Recurring windows* hides and which starts at 90,
   so a force in a 17:00 → 20:00 window was released after 90 minutes. It now runs until the
