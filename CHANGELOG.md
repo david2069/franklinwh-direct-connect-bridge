@@ -40,6 +40,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   masked when the bridge starts. The Home Assistant add-on never logged one
   ([guide](docs/guide/security.md#the-first-admin)).
 
+- **Scheduler: a device write with no reply is recorded as *unknown*, not retried** (#201).
+  A force, mode, smart circuit or off-grid write that timed out after the request left
+  was logged *error* and sent again next tick, though it may have landed: a second force.
+  It now ends the run *unknown* and isn't sent again; a refused connection or connect
+  timeout is still retried. The retry helper's audit hook, which failed silently on every
+  call, now works and adds a *retried* row when it took more than one try
+  ([outcomes](docs/guide/scheduler/outcomes.md#retries)).
+
 - **Shutdown: the scheduler stop and each force release are in the Audit trail** (#778).
   Releasing the forces this bridge holds at shutdown kept no record of the outcome. The
   Audit trail now says whether the scheduler stopped or was still running after 5 s, and

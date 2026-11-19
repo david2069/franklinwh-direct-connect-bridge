@@ -129,12 +129,11 @@ If it fails, the run is *failed* and the scheduler retries it on later ticks (se
     there is no close, so the fallback (fire time + duration on today's date) is now or in
     the past and the deadline becomes **1 second**: one attempt only. <!-- @b ACT-42 ;; src: scheduler.py:2411-2413, scheduler.py:273-279, scheduler.py:1652-1654 ;; unclear ;; write: yes ;; b: With no window end the deadline falls back to fire_at+duration today, which is often past, so resilience gets 1 s ;; test: unit: always entry with a failing force; assert number of attempts -->
 
-!!! note "An *unknown* outcome cannot happen here today"
-    The resilience layer can return *unknown* (the write may have landed) and the scheduler
-    would settle such a run without retrying. But the action body never raises, and a failed
-    result is turned into a `ConnectionError`, which counts as "never arrived". So scheduler
-    actions end *ok*, *failed* or *skipped*, never *unknown*. The *unknown* path is only
-    exercised by tests that mock it. <!-- @b ACT-41 ;; src: scheduler.py:1655-1667, scheduler.py:1854-1855, resilience.py:70-80 ;; unclear ;; write: yes ;; b: Verdict UNKNOWN is unreachable for scheduler actions because failures are raised as ConnectionError ;; test: unit: a run_action that times out after the request left should yield UNKNOWN through run_action_outcome -->
+**A device write that gets no reply is *unknown*** (#201). When a force, mode, smart
+circuit or off-grid write fails with a timeout after the request left ("timed out",
+"no response"), the write may have landed, so the run ends *unknown* and is not sent again.
+A refused connection or a connect timeout never reached the aGate: that is *failed* and
+retried while the window is open. <!-- @b ACT-41 ;; src: scheduler.py (run_action_outcome, _NO_REPLY) ;; tested: tests/test_unknown_outcome_201.py::test_a_force_that_timed_out_is_unknown_and_sent_once ;; write: yes ;; b: A device write whose failure text is a timeout after sending is UNKNOWN and sent once; refused / connect timeout stays FAILED -->
 
 ### Parameters you can set only through the API
 
