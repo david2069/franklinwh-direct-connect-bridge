@@ -65,6 +65,16 @@ Where this page and INSTALL.md disagree, INSTALL.md is the reference.
         brew install python
         ```
 
+    4. Close Terminal, open a new one, and check the version:
+
+        ```bash
+        python3 --version
+        ```
+
+        It must say 3.11 or newer. If it still says **3.9**, `python3` is the Mac's own
+        Python, not Homebrew's. In step 2 below, use `$(brew --prefix)/bin/python3 -m venv .venv`
+        instead of `python3 -m venv .venv`.
+
     Or use the installer from [python.org](https://www.python.org/downloads/).
 
 === "Linux"
@@ -89,8 +99,14 @@ mkdir fwh-bridge
 cd fwh-bridge
 python3 -m venv .venv
 source .venv/bin/activate
+python --version
 pip install "franklinwh-direct-connect-bridge[cloud] @ https://github.com/david2069/franklinwh-direct-connect-bridge/archive/refs/heads/main.zip"
 ```
+
+`python --version` must say 3.11 or newer before you run `pip install`. On an older Python,
+pip stops with *No matching distribution found for hems==0.2.0*, because the Bridge's
+dependencies need 3.11+. Delete the folder's `.venv` and create it again with a newer
+Python (see your OS tab above).
 
 That installs straight from GitHub; git is not needed. Check it can see your aGate (each line
 should say `ok`):
@@ -151,8 +167,13 @@ Home Assistant 2026.10 and later calls add-ons **Apps**; INSTALL.md still says *
 ## How this page was checked
 
 - **Route A on macOS** was run on 2026-11-19 with Bridge 0.5.53, installed from the GitHub
-  zip as above: `ping`, the first start (the admin password was printed), and
-  `http://localhost:8101` redirecting to the HTTPS sign-in page.
+  zip as above, using Homebrew's Python 3.12 by its full path: `ping`, the first start (the
+  admin password was printed), and `http://localhost:8101` redirecting to the HTTPS sign-in
+  page.
+- **Plain `python3` on macOS** was also tried on 2026-11-19. On that Mac it was Apple's
+  Python 3.9.6 (from Xcode), and the install failed with *No matching distribution found
+  for hems==0.2.0* (PyPI lists `hems` 0.2.0 as `requires_python >=3.11`). That is why the
+  version checks are there.
 - **Route A on Windows and Linux** uses each system's standard tools and has **not been run**
   for this page.
 - **Routes B and C** follow Home Assistant's own installation pages and this project's

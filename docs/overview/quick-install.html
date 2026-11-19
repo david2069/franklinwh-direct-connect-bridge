@@ -181,6 +181,7 @@ sudo apt install -y python3-venv</pre></li>
         <li>Open <b>Terminal</b> and install Homebrew (from brew.sh):<pre class="cmd">/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"</pre></li>
         <li>Run the two commands it prints under <b>Next steps</b>.</li>
         <li>Install Python:<pre class="cmd">brew install python</pre></li>
+        <li>Close Terminal, open a new one, and check:<pre class="cmd">python3 --version</pre>Still 3.9? That is the Mac's built-in Python. Use <code>$(brew --prefix)/bin/python3</code> in shared step 2.</li>
       </ol>
       <div class="via"><svg><use href="#homebrew"/></svg> Or use the installer from python.org</div>
     </div>
@@ -202,7 +203,9 @@ sudo apt install -y python3-venv</pre></li>
 cd fwh-bridge</pre></div>
     <div class="step"><div class="num"><b>2</b></div><h3>Create a Python environment</h3>
       <pre class="cmd">python3 -m venv .venv
-source .venv/bin/activate</pre></div>
+source .venv/bin/activate
+python --version</pre>
+      <div class="note">Must say <b>3.11 or newer</b>. Says 3.9 on a Mac? See the macOS column.</div></div>
     <div class="step"><div class="num"><b>3</b></div><h3>Install the Bridge</h3>
       <pre class="cmd">pip install "franklinwh-direct-connect-bridge[cloud] @ https://github.com/david2069/franklinwh-direct-connect-bridge/archive/refs/heads/main.zip"</pre>
       <p>Straight from GitHub; no git needed.</p></div>
@@ -261,7 +264,7 @@ source .venv/bin/activate</pre></div>
 
 <footer>
   <span>Full details: <a href="https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/INSTALL.md">INSTALL.md</a> · Docker install and troubleshooting are there too. Home Assistant 2026.10 and later calls add-ons <b>Apps</b>.</span>
-  <span>Route A was run on macOS on 2026-11-19 (Bridge 0.5.53, installed from the GitHub zip). The Windows and Linux steps use each system's standard tools and have not been run by us. Routes B and C follow Home Assistant's own install pages and this project's add-on.</span>
+  <span>Route A was run on macOS on 2026-11-19 (Bridge 0.5.53, from the GitHub zip, with Homebrew's Python 3.12). The Mac's built-in Python 3.9 fails with “No matching distribution found for hems==0.2.0”, hence the version checks. The Windows and Linux steps use each system's standard tools and have not been run by us. Routes B and C follow Home Assistant's own install pages and this project's add-on.</span>
   <span>Unofficial software, not affiliated with or endorsed by FranklinWH. Logos belong to their owners; icons from Simple Icons (CC0).</span>
 </footer>
 </div>
