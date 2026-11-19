@@ -13,9 +13,7 @@ the ones in the **Add schedule** dialog. There are no screenshots of these recip
       them with **Lookup**. The ETA sensors also need the battery capacity constant.
     - Untick **Enabled** while you try things out, and press **Test** under each condition
       block.
-    - For a force, use **Daily at time**, **Weekly at time**, **Every N minutes** or **Custom
-      cron**, with a **Duration (min)**. A force in a **Recurring windows** schedule stops
-      after the hidden duration, not at the window's end (#160).
+    - A force runs until its window closes, in every trigger type (#160).
     - Avoid force schedules whose windows overlap on one gateway. A force that replaces
       another is not undone: when it ends, the earlier schedule's force does not come back.
       A window end releases only that schedule's own force. See
@@ -65,8 +63,7 @@ How it behaves:
   schedule does not fire again until tomorrow.
 - At 21:00 the window closes and the force is released if it is still running.
 - The aGate's own reserve still applies.
-- *Recurring windows* `17:00 → 21:00` would read more naturally, but a force in it stops after
-  the hidden duration (#160).
+- *Recurring windows* `17:00 → 21:00` works the same way: the force runs until 21:00 (#160).
 
 ## 3. Charge from the grid when the NEM spot price is low
 
