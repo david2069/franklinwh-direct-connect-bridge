@@ -32,6 +32,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Docker: `docker compose up` works with no aGate, and MQTT is off until configured**
+  (#154). `docker-compose.yml` fell back to a placeholder aGate address, so the setup wizard
+  never opened, and it turned MQTT on against a development broker (port 1884). With no
+  `FWH_HOST` the wizard now opens, MQTT is off until `MQTT_ENABLED=true` (default port 1883),
+  and the file's build command is INSTALL.md's `docker build`
+  ([install](INSTALL.md#2-docker-standalone)).
+
 - **Home Assistant: a failed poll no longer publishes empty values** (#176). It sent a
   retained state built from the failed reading, then marked the gateway offline, so
   entities could flash empty values and keep them after a restart of Home Assistant. A
