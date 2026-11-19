@@ -209,7 +209,8 @@ def required(method: str, path: str) -> tuple[str, ...]:
     if method.upper() in READ_METHODS:
         if _under(path, ADMIN_READS):
             return ("admin",)
-        if not path.startswith("/api/"):
+        # The API schema is for API callers too (#781); the doc pages stay pages.
+        if not path.startswith("/api/") and path != "/openapi.json":
             return ("admin", "user", "viewer")      # pages: api accounts have no web UI
         return ("admin", "user", "viewer", "api")
     if _under(path, BATTERY):
