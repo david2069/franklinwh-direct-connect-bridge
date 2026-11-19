@@ -66,7 +66,10 @@ docker build -t franklinwh-direct-connect-bridge:dev .
 FWH_HOST=<your aGate IP> docker compose up -d
 ```
 
-Then open <http://localhost:8101>.
+Then open <http://localhost:8101>. Leave out `FWH_HOST` and the setup wizard opens instead:
+it finds your aGate, or adds a mock gateway to try the bridge without one. MQTT to Home
+Assistant is off until you set `MQTT_ENABLED=true` and `MQTT_HOST` (and `MQTT_PORT`,
+`MQTT_USERNAME`, `MQTT_PASSWORD` if your broker needs them).
 
 A plain `docker build` resolves every dependency from PyPI, including
 [`franklinwh-direct-connect-api`](https://pypi.org/project/franklinwh-direct-connect-api/).
