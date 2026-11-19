@@ -54,7 +54,7 @@ def test_a_failed_action_does_NOT_mark_fired(monkeypatch):
 
 
 def test_a_failure_is_logged_with_the_retry_interval(monkeypatch):
-    store, _ = _fire(monkeypatch, "force charge: failed — timeout")
+    store, _ = _fire(monkeypatch, "force charge: failed — connection refused")
     status, detail = store.events[0]
     assert status == "error"
     assert "attempt 1" in detail and "retrying in" in detail, (

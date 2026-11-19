@@ -62,6 +62,7 @@ present); **battery** shows the rows written by the force path and the VPP monit
 | exit | the window closed: "exit condition met" or "window closed" |
 | error | the action failed; with the attempt number and the next retry |
 | unknown | the outcome could not be told; not retried (see [Retries](#retries)) |
+| retried | the retry helper needed more than one try inside one attempt; how many |
 | missed | the window closed with no successful run |
 | coalesced | an open run left by downtime was folded into the current one |
 | manual | **Run now** |
@@ -136,18 +137,13 @@ while the window is open:
 (the write may have landed), it logs *unknown*, closes the run and does not send again.
 <!-- @b OUT-31 ;; src: scheduler.py:2437-2452 ;; tested: tests/test_fire_entry_outcomes.py::test_an_unknown_write_is_never_retried_and_settles_the_run ;; write: yes ;; b: An UNKNOWN outcome settles the run as unknown, marks it fired, logs unknown and is not retried -->
 
-!!! warning "In practice the scheduler never reports *unknown*"
-    The action code never raises; a failure comes back as text, which the scheduler turns
-    into a connection error that counts as "never arrived". So a failed write is always
-    *error* and retried, never *unknown*. The test above reaches *unknown* only through a
-    stand-in. From a code read. Issue #201.
-    <!-- @b OUT-32 ;; src: scheduler.py:1655-1667, resilience.py:70-80, scheduler.py:1854-1855 ;; unclear ;; write: yes ;; b: run_action never raises and _attempt raises ConnectionError, which _arrived treats as not arrived, so UNKNOWN cannot come out of the scheduler's action path ;; test: unit: make the force write time out after sending; assert verdict UNKNOWN (fails today) -->
+A device write that timed out after the request left is *unknown* (#201); a refused
+connection or a connect timeout is *error* and retried.
+<!-- @b OUT-32 ;; src: scheduler.py (run_action_outcome, _NO_REPLY) ;; tested: tests/test_unknown_outcome_201.py ;; write: yes ;; b: A timed-out device write raises TimeoutError inside resilience, so the verdict is UNKNOWN and it is not retried -->
 
-!!! warning "The per-attempt audit rows are never written"
-    The retry helper calls its audit hook in a form the scheduler's hook does not accept.
-    The error is swallowed, so no per-attempt row reaches the History view; only the
-    scheduler's own *fired* / *error* row does. From a code read. Issue #201.
-    <!-- @b OUT-35 ;; src: resilience.py:237-241, scheduler.py:1699-1714 ;; unclear ;; write: no ;; b: resilience calls audit(action, detail=, result=, ok=) but _audit(**kw) takes no positional, so the TypeError is swallowed and nothing is logged ;; test: unit: call the sink as resilience does; assert a schedule_log row (fails today) -->
+Each attempt has its own row (*fired*, *error* or *unknown*). If the retry helper itself
+had to try more than once inside one attempt, a *retried* row says how many tries it took
+(#201). <!-- @b OUT-35 ;; src: resilience.py (_report), scheduler.py (_audit_action) ;; tested: tests/test_unknown_outcome_201.py::test_the_audit_hook_takes_resilience_s_call ;; write: no ;; b: The audit hook takes resilience's call; it logs retried only when the call made more than one attempt -->
 
 **A window that closes without success is recorded as missed.** On every tick the
 scheduler closes runs still pending, running or failed whose window ended more than
