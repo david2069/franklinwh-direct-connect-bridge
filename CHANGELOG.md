@@ -32,6 +32,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Home Assistant: a failed poll no longer publishes empty values** (#176). It sent a
+  retained state built from the failed reading, then marked the gateway offline, so
+  entities could flash empty values and keep them after a restart of Home Assistant. A
+  failed poll now publishes only *offline*; the last good state stays until a poll
+  succeeds ([Home Assistant](docs/guide/home-assistant.md)).
+
 - **The generated first-admin password is no longer kept in the bridge's log** (owner
   2026-11-20). On Docker and pip, with no `ADMIN_USERNAME` / `ADMIN_PASSWORD`, the
   password the bridge makes was also stored in the Bridge log, so it showed under Logs and
