@@ -35,6 +35,9 @@ whole thing work before you connect real hardware.
 transport can do. [Interactive page](https://david2069.github.io/franklinwh-direct-connect-bridge/overview/bridge-overview.html)
 · [high-res image](docs/overview/bridge-overview.png) ([dark](docs/overview/bridge-overview-dark.png)).
 
+**Use cases:** what you want to do, from "I use Home Assistant OS" to "charge my car only on
+solar", with a short how-to and links to the guides: [I want to…](https://david2069.github.io/franklinwh-direct-connect-bridge/guide/use-cases/)
+
 ## Running it
 
 - As a **Home Assistant add-on** (served through ingress, MQTT auto-configured)

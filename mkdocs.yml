@@ -113,6 +113,7 @@ nav:
   - At a glance: overview/index.md
   - User guide:
       - guide/index.md
+      - guide/use-cases.md
       - guide/installing.md
       - guide/tour.md
       - guide/control.md

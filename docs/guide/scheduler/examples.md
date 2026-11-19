@@ -286,3 +286,63 @@ back the mode it replaced. See [Exit and release](exit-and-conflicts.md).
     Before 0.5.5 **Off** in the form ran as on: the circuit turned **on**, or the site went
     **off-grid** instead of reconnecting (#188, fixed in 0.5.5). If you had such a schedule,
     check what it did in **History**.
+
+### EV charger on solar
+
+Charge the car only while solar is between **3 kW and 6 kW**, between **10:00 and 15:00**.
+Change the numbers to suit your site.
+
+Needs: a Home Assistant instance, and your charger's on/off **switch** entity **exposed** on
+the **Home Assistant** tab. The recipe calls it `switch.ev_charger`; use your own entity.
+
+This takes three schedules. A schedule that ends because its exit condition came true does
+not fire again in that window ([Exit and release](exit-and-conflicts.md#exit-conditions)), so
+one long window would stop for the day after the first cloud. Instead, two schedules check
+every 5 minutes, and each 5-minute slot is its own window.
+
+**1. EV: start on solar**
+
+| Field | Value |
+|---|---|
+| Trigger type | **Custom cron** `*/5 10-14 * * *`, Duration (min) `4` |
+| Gateway action | **No gateway action (HA only)** |
+| Entry conditions (Match ALL) | Solar power `solar.power_w` **between** `3000` and `6000` |
+| Hold (HH:MM:SS) | `00:02:00` |
+| Home Assistant actions | **+ entity** `switch.ev_charger` **Turn On**, When **On entry**, **+ guard** `switch.ev_charger` `==` `0` |
+
+**2. EV: stop when solar leaves the range**
+
+| Field | Value |
+|---|---|
+| Trigger type | **Custom cron** `*/5 10-14 * * *`, Duration (min) `4` |
+| Gateway action | **No gateway action (HA only)** |
+| Entry conditions (Match ALL) | Solar power `solar.power_w` **not_in** `3000-6000` |
+| Hold (HH:MM:SS) | `00:02:00` |
+| Home Assistant actions | **+ entity** `switch.ev_charger` **Turn Off**, When **On entry**, **+ guard** `switch.ev_charger` `==` `1` |
+
+**3. EV: stop at the end of the period**
+
+| Field | Value |
+|---|---|
+| Trigger type | **Daily at time**, Fire at `15:00`, Duration (min) `0` |
+| Gateway action | **No gateway action (HA only)** |
+| Home Assistant actions | **+ entity** `switch.ev_charger` **Turn Off**, When **On entry**, **+ guard** `switch.ev_charger` `==` `1` |
+
+How it behaves:
+
+- `solar.power_w` is in **watts**, so 3 kW is `3000`. `between` and the `3000-6000` range are
+  inclusive, so the two schedules never both act on the same reading.
+- The **hold** waits for solar to stay in (or out of) the range for 2 minutes before acting,
+  so a passing cloud doesn't switch the charger. It restarts in each 5-minute window, so the
+  charger reacts within about 2 to 7 minutes.
+- The **guards** call Home Assistant only when the switch needs to change. A switch reads `1`
+  when on and `0` when off. If the entity is `unavailable`, it has no value, the guard is
+  false, and nothing is sent.
+- The cron hours `10-14` cover 10:00 to 14:59; schedule 3 turns the charger off at 15:00.
+  Cron's day of week counts from Sunday = 0, if you add one.
+- To be told, add a **+ notify** action to schedules 1 and 2.
+
+!!! note "Not yet run against a charger"
+    This recipe was written from the Scheduler documentation on this site. It has not been run
+    against a real EV charger. Untick **Enabled** while you set it up, press **Test** under
+    each condition block, and check **History** on the first sunny day.
