@@ -86,8 +86,12 @@ importable inside it.
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install ".[cloud]"
-FWH_HOST=<your aGate IP> franklinwh-direct-connect-bridge run
+franklinwh-direct-connect-bridge setup    # answer the questions once
+franklinwh-direct-connect-bridge          # start it
 ```
+
+Or skip `setup` and set the variables yourself:
+`FWH_HOST=<your aGate IP> franklinwh-direct-connect-bridge run` (see [First sign-in](#first-sign-in-docker-and-pip)).
 
 ### From PyPI
 
@@ -100,7 +104,8 @@ No clone needed:
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install "franklinwh-direct-connect-bridge[cloud]"
-FWH_HOST=<your aGate IP> franklinwh-direct-connect-bridge run
+franklinwh-direct-connect-bridge setup    # or set the variables yourself, as above
+franklinwh-direct-connect-bridge
 ```
 
 To upgrade, `pip install --upgrade "franklinwh-direct-connect-bridge[cloud]"` in the same venv.
@@ -112,24 +117,51 @@ To upgrade, `pip install --upgrade "franklinwh-direct-connect-bridge[cloud]"` in
 
 A new install starts with **Security on**: port 8101 sends the browser to the HTTPS port
 (8102), which asks you to sign in. The bridge's certificate is its own, so the browser
-warns once. Your first admin account comes from one of these:
+warns once. Set it up either way:
 
-- **Choose it:** set `ADMIN_USERNAME` and `ADMIN_PASSWORD` before the first start. They're
-  read only while no admin exists; change the password in the bridge after that.
-- **Generated:** set neither, and the bridge creates `admin` with a random password,
-  printed once to the console log only: `Security: first admin created. Username: admin  Password: …`
-  (`docker logs <container>`, or the terminal you ran it in). It is never kept in the
-  bridge's own Logs tab or a support bundle.
-- **Lost it:** `franklinwh-direct-connect-bridge reset-password admin` where the bridge
-  runs (inside the container for Docker).
+**The setup command (less typing).** Run `franklinwh-direct-connect-bridge setup` with the
+bridge stopped (for Docker: `docker compose run --rm franklinwh-direct-connect-bridge
+franklinwh-direct-connect-bridge setup`). It asks:
 
-**Quick start, no sign-in:** set `SECURITY=off` on the first start, e.g.
-`SECURITY=off FWH_HOST=<your aGate IP> docker compose up -d`. The bridge opens on
-<http://localhost:8101> without signing in; only the private networks can reach it. Anyone
-on them can use it, battery control included, so turn Security on under
-**Settings → Admin → Security** when you're done trying it. `SECURITY` is read only on the
-first start, so it never turns Security off on an existing install
-([guide](docs/guide/security.md#the-first-admin)).
+1. the aGate's address, and checks that it answers;
+2. the web port (8101) and the HTTPS port (8102). In Docker keep them: `docker-compose.yml`
+   publishes those two;
+3. whether to ask for a sign-in (Security on or off);
+4. with Security on and no admin yet: the admin's username and password. Press Enter for
+   the password and it makes one up and shows it once.
+
+It saves the address and ports to `data/bridge.env` (`/data/bridge.env` in Docker), so
+starting the bridge needs nothing typed. The password goes into the bridge's own accounts,
+never into that file. Run `setup` again any time to change the address or ports, or to turn
+Security on or off.
+
+**Manual (environment variables).** Set them yourself instead; they win over
+`bridge.env` when both are set.
+
+- `FWH_HOST`, `HTTP_PORT`, `HTTPS_PORT`: the aGate's address and the ports.
+- **Choose the admin:** set `ADMIN_USERNAME` and `ADMIN_PASSWORD` before the first start.
+  They're read only while no admin exists; change the password in the bridge after that.
+- **Generated admin:** set neither, and the first start makes `admin` with a random
+  password, shown once in the startup banner (`docker logs <container>`, or the terminal
+  you ran it in). It is never kept in the bridge's own Logs tab or a support bundle.
+- **Quick start, no sign-in:** set `SECURITY=off` on the first start, e.g.
+  `SECURITY=off FWH_HOST=<your aGate IP> docker compose up -d`. The bridge opens on
+  <http://localhost:8101> without signing in; only the private networks can reach it.
+  Anyone on them can use it, battery control included. `SECURITY` is read only on the
+  first start, so it never turns Security off on an existing install.
+
+**Turning Security on or off later:** under **Settings → Admin → Security**, or run
+`setup` again with the bridge stopped. Turned off, accounts and tokens are kept, so turning
+it back on restores them ([guide](docs/guide/security.md#the-first-admin)).
+
+**The startup banner.** Before the web server starts, the bridge prints where to open it,
+for example `https://localhost:8102` and this computer's address on your network, whether
+Security is on, and the generated admin password on the one start that makes it. Uvicorn's
+own `Uvicorn running on http://0.0.0.0:8101` line is the address it listens on (every
+network interface), not one to open in a browser.
+
+**Lost the password:** `franklinwh-direct-connect-bridge reset-password admin` where the
+bridge runs (inside the container for Docker).
 
 ---
 

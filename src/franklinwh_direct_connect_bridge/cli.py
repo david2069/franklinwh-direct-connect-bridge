@@ -5,19 +5,23 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import getpass
 import logging
+import os
+import socket
 
 import uvicorn
 
-from . import tls
+from . import config, environment, tls
 from .config import get_settings
 
 log = logging.getLogger(__name__)
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, ask=input, ask_secret=getpass.getpass) -> int:
     p = argparse.ArgumentParser(prog="franklinwh-direct-connect-bridge")
-    p.add_argument("command", nargs="?", default="run", choices=["run", "ping", "reset-password"])
+    p.add_argument("command", nargs="?", default="run",
+                   choices=["run", "setup", "ping", "reset-password"])
     p.add_argument("host", nargs="?", help="ping: the aGate's address (default: FWH_HOST); "
                                            "reset-password: the account's username")
     a = p.parse_args(argv)
@@ -25,6 +29,8 @@ def main(argv: list[str] | None = None) -> int:
         return _ping(a.host or get_settings().fwh_host)
     if a.command == "reset-password":
         return _reset_password(a.host)
+    if a.command == "setup":
+        return _setup(ask, ask_secret)
 
     s = get_settings()
     logging.basicConfig(
@@ -32,6 +38,10 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
     )
     quiet_transport_loggers()
+    try:
+        first_start_banner(s)
+    except Exception as e:  # noqa: BLE001 — the banner must never stop the bridge starting
+        log.warning("startup banner not shown: %s", e)
     asyncio.run(serve(s))
     return 0
 
@@ -101,6 +111,145 @@ TRANSPORT_LOGGERS = ("httpx", "httpcore", "hpack")
 def quiet_transport_loggers() -> None:
     for name in TRANSPORT_LOGGERS:
         logging.getLogger(name).setLevel(logging.WARNING)
+
+
+def _addresses(s, port: int, scheme: str) -> list[str]:
+    """Addresses a browser can open. Uvicorn prints the one it listens on, 0.0.0.0 (every
+    interface), which is not one."""
+    if s.http_host not in ("0.0.0.0", "::", ""):
+        return [f"{scheme}://{s.http_host}:{port}"]
+    urls = [f"{scheme}://localhost:{port}"]
+    if environment.RUNTIME == "docker":
+        urls.append(f"{scheme}://<this computer's address>:{port} from another device")
+        return urls
+    with contextlib.suppress(OSError):
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as so:
+            so.connect(("192.0.2.1", 9))   # UDP: picks the outgoing interface, sends nothing
+            urls.append(f"{scheme}://{so.getsockname()[0]}:{port} from another device")
+    return urls
+
+
+def first_start_banner(s) -> None:
+    """Docker and pip: before the web server starts, where to open the bridge, whether it
+    asks to sign in, and the first admin's password on the one start that generates it."""
+    from . import __version__, auth, db, security
+    if environment.IS_HA_ADDON:
+        return
+    store = db.get_store(s)
+    shown: list[str] = []
+    on = False
+    if store is not None:
+        security.decide_install(store, quick_start=s.security_quick_start)
+        auth.ensure_tables(store)
+        auth.ensure_first_admin(store, s, on_addon=False, security_on=security.enabled(store),
+                                reveal=shown.append)
+        on = security.enabled(store)
+    https = on and s.https_port
+    urls = _addresses(s, s.https_port if https else s.http_port, "https" if https else "http")
+    out = ["", "-" * 64, f"FranklinWH Direct Connect Bridge {__version__}",
+           f"  Open:      {urls[0]}"] + [f"             {u}" for u in urls[1:]]
+    if on:
+        out.append("  Security: on: sign in" + (" (the browser warns once about the bridge's "
+                                                "own certificate)" if https else ""))
+        if shown:
+            out += [f"  First admin: Username: admin  Password: {shown[0]}",
+                    "               shown once; change it under Settings → Admin → Security"]
+        else:
+            out.append("  Sign in with your admin account. Lost the password? "
+                       "franklinwh-direct-connect-bridge reset-password <username>")
+    else:
+        out.append("  Security: off: no sign-in. Turn it on under Settings → Admin → Security,"
+                   " or run: franklinwh-direct-connect-bridge setup")
+    f = config.settings_file()
+    out += [f"  Settings:  {f}" if f.is_file() else
+            "  Settings:  environment variables (franklinwh-direct-connect-bridge setup "
+            "saves them for you)", "-" * 64, ""]
+    print("\n".join(out), flush=True)
+
+
+def _probe_line(host: str) -> str:
+    from .diagnostics import probe
+    r = probe(host)
+    return (f"  {host}: Direct Connect port {r['port']} answered" if r["dc_9000"] else
+            f"  {host}: no answer on the Direct Connect port {r['port']}; check the address, "
+            "and that Direct Connect is on in the FranklinWH app")
+
+
+#: What ``setup`` saves to the settings file; anything else in it is kept as written.
+SETUP_KEYS = ("FWH_HOST", "HTTP_PORT", "HTTPS_PORT")
+
+
+def _save_settings_file(values: dict[str, str]) -> None:
+    f = config.settings_file()
+    lines = f.read_text().splitlines() if f.is_file() else [
+        "# Saved by franklinwh-direct-connect-bridge setup. Edit it, or run setup again;",
+        "# environment variables win over it."]
+    keys = {ln.split("=", 1)[0].strip() for ln in lines if "=" in ln}
+    lines = [f"{ln.split('=', 1)[0].strip()}={values[ln.split('=', 1)[0].strip()]}"
+             if "=" in ln and ln.split("=", 1)[0].strip() in values else ln for ln in lines]
+    lines += [f"{k}={v}" for k, v in values.items() if k not in keys]
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text("\n".join(lines) + "\n")
+    with contextlib.suppress(OSError):
+        os.chmod(f, 0o600)
+
+
+def _setup(ask, ask_secret) -> int:
+    """`franklinwh-direct-connect-bridge setup` (Docker and pip): the aGate's address, the
+    ports, Security on or off and the first admin, so a plain start needs no variables. Run
+    it with the bridge stopped. The password goes into the bridge's accounts, never a file."""
+    from . import auth, db, security
+    if environment.IS_HA_ADDON:
+        print("The add-on is set up from Home Assistant, not this command.")
+        return 2
+    s = config.load_settings()
+
+    def q(prompt: str, default) -> str:
+        return ask(f"{prompt} [{default}]: ").strip() or str(default)
+
+    print("FranklinWH Direct Connect Bridge setup. Enter keeps the value in [brackets].")
+    host = q("aGate address (IP or hostname)", s.fwh_host or "none")
+    host = "" if host == "none" else host
+    if host:
+        print(_probe_line(host))
+    http_port = q("Web port (HTTP)", s.http_port)
+    https_port = q("HTTPS port, 0 = off", s.https_port)
+    on = q("Ask to sign in (Security)? y/n", "y").lower().startswith("y")
+    if on and https_port.strip() == "0":
+        https_port = "8102"
+        print("  Security signs in over HTTPS only, so the HTTPS port stays on: 8102.")
+    _save_settings_file({"FWH_HOST": host, "HTTP_PORT": http_port, "HTTPS_PORT": https_port})
+
+    store = db.get_store(s)
+    if store is None:
+        print("No settings store, so Security and accounts can't be set.")
+        return 1
+    if store.get_config("security_install") in ("upgrade", "new"):
+        security.set_enabled(store, on)
+    else:
+        security.decide_install(store, quick_start=not on)
+    auth.ensure_tables(store)
+    if on and not auth.has_admin(store):
+        name = q("Admin username", "admin")
+        pw = ask_secret("Admin password (Enter = generate one): ")
+        generated = not pw
+        if generated:
+            import secrets
+            pw = secrets.token_urlsafe(12)
+        elif ask_secret("Again: ") != pw:
+            print("The passwords differ; nothing changed. Run setup again.")
+            return 1
+        try:
+            auth.create_user(store, name, pw, "admin")
+        except auth.AuthError as e:
+            print(f"Admin not made: {e}. Run setup again.")
+            return 1
+        print(f"Admin made. Username: {name}" +
+              (f"  Password: {pw}  (shown once; change it under Settings → Admin → Security)"
+               if generated else ""))
+    print(f"Security {'on' if on else 'off'}. Saved to {config.settings_file()}.\n"
+          "Start the bridge: franklinwh-direct-connect-bridge")
+    return 0
 
 
 def _reset_password(username: str | None) -> int:

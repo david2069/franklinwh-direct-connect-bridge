@@ -285,11 +285,12 @@ def end_session(store, token: str | None) -> None:
         _exec(store, "DELETE FROM auth_sessions WHERE token_hash=?", (_h(token),))
 
 
-def ensure_first_admin(store, settings, *, on_addon: bool, security_on: bool) -> str | None:
+def ensure_first_admin(store, settings, *, on_addon: bool, security_on: bool,
+                       reveal=None) -> str | None:
     """Docker and pip: an admin from ``ADMIN_USERNAME``/``ADMIN_PASSWORD`` while none
     exists; with Security on and neither set, ``admin`` with a generated password, logged
-    once. The add-on makes its first admin from the sidebar instead. Returns what was
-    done, for the log."""
+    once, or handed to ``reveal`` (the startup banner) instead. The add-on makes its first
+    admin from the sidebar instead. Returns what was done, for the log."""
     if on_addon or has_admin(store):
         return None
     name, pw = settings.admin_username, settings.admin_password
@@ -303,11 +304,15 @@ def ensure_first_admin(store, settings, *, on_addon: bool, security_on: bool) ->
         return None
     pw = secrets.token_urlsafe(12)
     create_user(store, "admin", pw, "admin")
-    log.warning("Security: first admin created. Username: admin  Password: %s  (shown once; "
-                "change it under Settings → Admin → Security)", pw,
-                extra={"console_only": True})
+    if reveal is not None:
+        reveal(pw)
+    else:
+        log.warning("Security: first admin created. Username: admin  Password: %s  (shown "
+                    "once; change it under Settings → Admin → Security)", pw,
+                    extra={"console_only": True})
     log.warning("Security: first admin 'admin' created; its password was printed to the "
-                "console log only (docker logs, or the terminal the bridge runs in).")
+                "console only, in the startup banner (docker logs, or the terminal the "
+                "bridge runs in).")
     return "generated"
 
 
