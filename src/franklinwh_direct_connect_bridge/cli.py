@@ -38,6 +38,11 @@ def main(argv: list[str] | None = None, *, ask=input, ask_secret=getpass.getpass
         config._settings = None     # read what setup just saved
 
     s = get_settings()
+    logging.basicConfig(
+        level=getattr(logging, s.log_level.upper(), logging.INFO),
+        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+    )
+    quiet_transport_loggers()
     taken = [(k, p) for k, p in (("HTTP_PORT", s.http_port), ("HTTPS_PORT", s.https_port))
              if p and not _can_listen(s.http_host, p)]
     for k, p in taken:
@@ -46,11 +51,6 @@ def main(argv: list[str] | None = None, *, ask=input, ask_secret=getpass.getpass
               f"franklinwh-direct-connect-bridge setup, or set {k}.")
     if taken:
         return 1
-    logging.basicConfig(
-        level=getattr(logging, s.log_level.upper(), logging.INFO),
-        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
-    )
-    quiet_transport_loggers()
     try:
         first_start_banner(s)
     except Exception as e:  # noqa: BLE001 — the banner must never stop the bridge starting
