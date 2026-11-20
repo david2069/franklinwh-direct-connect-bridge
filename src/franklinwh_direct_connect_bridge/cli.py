@@ -43,6 +43,14 @@ def main(argv: list[str] | None = None, *, ask=input, ask_secret=getpass.getpass
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
     )
     quiet_transport_loggers()
+    taken = [(k, p) for k, p in (("HTTP_PORT", s.http_port), ("HTTPS_PORT", s.https_port))
+             if p and not _can_listen(s.http_host, p)]
+    for k, p in taken:
+        print(f"Port {p} is in use, so the bridge didn't start. If the bridge is already running,\n"
+              f"use that one or stop it (Ctrl+C in its terminal). Otherwise pick another port:\n"
+              f"franklinwh-direct-connect-bridge setup, or set {k}.")
+    if taken:
+        return 1
     try:
         first_start_banner(s)
     except Exception as e:  # noqa: BLE001 — the banner must never stop the bridge starting
@@ -53,8 +61,9 @@ def main(argv: list[str] | None = None, *, ask=input, ask_secret=getpass.getpass
 
 async def serve(s) -> None:
     """Port 8101 (HTTP) and the HTTPS port, one app. HTTP runs the app's start-up and owns
-    Ctrl-C/SIGTERM; HTTPS shares the running app. If HTTPS can't start (a bad certificate,
-    the port taken), HTTP carries on and Settings → Admin → Security says why."""
+    Ctrl-C/SIGTERM; HTTPS shares the running app. If HTTPS can't start (a bad certificate),
+    HTTP carries on and Settings → Admin → Security says why. A taken port stops `run`
+    before this starts."""
     from .app import create_app
     app = create_app()
     http = uvicorn.Server(uvicorn.Config(app, host=s.http_host, port=s.http_port,
@@ -100,6 +109,8 @@ def https_server(app, s):
 async def run_https(server) -> None:
     try:
         await server.serve()
+    except asyncio.CancelledError:   # Ctrl+C: a normal stop, not an error
+        raise
     except BaseException as e:  # noqa: BLE001 — uvicorn exits on a failed bind
         tls.status["error"] = (f"could not listen on port {server.config.port}"
                                if isinstance(e, SystemExit) else str(e))
@@ -151,7 +162,7 @@ def first_start_banner(s) -> None:
         on = security.enabled(store)
     https = on and s.https_port
     urls = _addresses(s, s.https_port if https else s.http_port, "https" if https else "http")
-    out = ["", "-" * 64, f"FranklinWH Direct Connect Bridge {__version__}",
+    out = ["", "-" * 64, f"FranklinWH Direct Connect Bridge {__version__}  {_now()}",
            f"  Open:      {urls[0]}"] + [f"             {u}" for u in urls[1:]]
     if not on and s.https_port:   # Security off still serves HTTPS too
         out += [f"  or HTTPS:  {u}" for u in _addresses(s, s.https_port, "https")[:1]]
@@ -174,12 +185,14 @@ def first_start_banner(s) -> None:
     print("\n".join(out), flush=True)
 
 
-def _probe_line(host: str) -> str:
+def _probe(host: str) -> tuple[bool, str]:
+    """Whether the aGate's Direct Connect TCP port answers at ``host``, and a line saying so."""
     from .diagnostics import probe
     r = probe(host)
-    return (f"  {host}: Direct Connect port {r['port']} answered" if r["dc_9000"] else
-            f"  {host}: no answer on the Direct Connect port {r['port']}; check the address, "
-            "and that Direct Connect is on in the FranklinWH app")
+    return bool(r["dc_9000"]), (
+        f"  OK  {host}: Direct Connect port {r['port']} answered" if r["dc_9000"] else
+        f"  !!  {host}: no answer on the Direct Connect port {r['port']}. Check the address,\n"
+        "      and that Direct Connect is on in the FranklinWH app.")
 
 
 #: What ``setup`` saves to the settings file; anything else in it is kept as written.
@@ -205,6 +218,83 @@ def _yes(ask, prompt: str, default: str) -> bool:
     return (ask(f"{prompt} y/n [{default}]: ").strip() or default).lower().startswith("y")
 
 
+def _can_listen(host: str, port: int) -> bool:
+    """Whether the web server could listen on ``port``, checked before anything starts
+    (uvicorn would otherwise start the app, then stop, or run without HTTPS)."""
+    with socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET) as so:
+        so.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)   # as uvicorn does
+        try:
+            so.bind((host or "0.0.0.0", int(port)))
+        except OSError:
+            return False
+    return True
+
+
+def _port_in_use(port: int) -> bool:
+    with socket.socket() as so:
+        so.settimeout(0.5)
+        return so.connect_ex(("127.0.0.1", int(port))) == 0
+
+
+def _now() -> str:
+    import datetime
+    return datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z")
+
+
+def _heading(title: str) -> None:
+    print(f"\n{title}\n{'-' * len(title)}\n")
+
+
+def _setup_header(s, data: Path) -> None:
+    """What setup is about to do, and where: the version, the folders, the checks."""
+    import importlib.util
+    import sys
+    from . import __version__
+    existing = (data / "metrics.db").exists()
+    line = "=" * 64
+    print(f"\n{line}\nFranklinWH Direct Connect Bridge {__version__}: setup\n{line}\n\n"
+          f"  Time:          {_now()}\n"
+          f"  This folder:   {Path.cwd()}\n"
+          f"  Data folder:   {data.resolve()}  "
+          f"({'existing install: its history and accounts are kept' if existing else 'new install'})\n"
+          f"  Settings file: {config.settings_file().resolve()}")
+    _heading("Checks")
+    v = sys.version_info
+    print(f"  {'OK' if v >= (3, 11) else 'NO'}  Python {v.major}.{v.minor}.{v.micro} "
+          "(needs 3.11 or newer)")
+    print("  OK  Cloud features installed" if importlib.util.find_spec("franklinwh_cloud") else
+          "  --  Cloud features not installed (optional). Add them with: "
+          'pip install "franklinwh-direct-connect-bridge[cloud]"')
+    busy = [p for p in (s.http_port, s.https_port) if p and _port_in_use(p)]
+    for p in busy:
+        print(f"  !!  Port {p} is in use. If that's the bridge, stop it first (Ctrl+C in its\n"
+              "      terminal) and run setup again; if it's something else, pick another port\n"
+              "      in step 2.")
+    if not busy:
+        print(f"  OK  Ports {s.http_port} and {s.https_port} are free")
+    for k in (*SETUP_KEYS, "FWH_HOSTS"):
+        if os.environ.get(k):
+            print(f"  !!  {k}={os.environ[k]} is set in your environment, and it wins over what\n"
+                  f"      setup saves. To use setup's answer instead: unset {k}")
+    print("\n4 steps. Press Enter to accept the default in [brackets], or type your own.\n"
+          "Everything can be changed later: run setup again, or in the web UI.\n")
+
+
+def _add_to_gateways(store, host: str) -> str:
+    """On an install that already has gateways, FWH_HOST is not read again (it only seeds
+    an empty list), so the address goes into the list: enabled, the active one unchanged."""
+    rows = store.gateways()
+    if not host or not rows:
+        return ""
+    if any(r.get("host") == host for r in rows):
+        return " (already one of your gateways)"
+    import uuid
+    store.create_gateway(gw_id=uuid.uuid4().hex[:12], label=host, host=host)
+    active = next((r["label"] for r in rows if r.get("is_default")), rows[0]["label"])
+    return (f" (added to your gateways; the active one is still {active}:\n"
+            "             pick it in the gateway selector at the top of the web UI)")
+
+
 def _setup(ask, ask_secret) -> int:
     """`franklinwh-direct-connect-bridge setup` (Docker and pip): the aGate's address, the
     ports, Security on or off and, optionally, the first admin, so a plain start needs no
@@ -227,18 +317,29 @@ def _setup(ask, ask_secret) -> int:
     def q(prompt: str, default) -> str:
         return ask(f"{prompt} [{default}]: ").strip() or str(default)
 
-    print("FranklinWH Direct Connect Bridge setup\n"
-          "Press Enter to accept the default in [brackets], or type your own. All of it\n"
-          f"can be changed later: run setup again, or in the web UI. Data: {data.resolve()}\n")
-    print("1. The aGate. Optional: leave it blank to add it later in the web UI.")
-    host = q("   aGate address (IP or hostname)", s.fwh_host or "none")
-    host = "" if host == "none" else host
-    if host:
-        print(" " + _probe_line(host))
-    print("2. Ports. Keep the defaults unless something else on this computer uses them.")
+    _setup_header(s, data)
+    _heading("Step 1 of 4: the aGate")
+    print("   Its address on your network. Optional: leave it blank and add it later in\n"
+          "   the web UI. With more than one aGate, enter the main one here; add the\n"
+          "   others later in the web UI under Settings → Gateways (Discover gateways).")
+    host = s.fwh_host or "none"
+    while True:
+        host = q("   aGate address (IP or hostname)", host)
+        host = "" if host == "none" else host
+        if not host:
+            break
+        print(f"   Checking {host} (up to 5 s)...", flush=True)
+        ok, line = _probe(host)
+        print(line)
+        if ok or _yes(ask, "   Keep it anyway (the aGate may be off)?", "n"):
+            break
+    _heading("Step 2 of 4: ports")
+    print("   Where your browser opens the bridge. Keep the defaults unless something\n"
+          "   else on this computer uses them.")
     http_port = q("   Web port (HTTP)", s.http_port)
     https_port = q("   HTTPS port, 0 = off", s.https_port)
-    print("3. Security. y: the web UI asks for a username and password (recommended).\n"
+    _heading("Step 3 of 4: Security")
+    print("   y: the web UI asks for a username and password (recommended).\n"
           "   n: anyone on your network can open it; turn it on later in Settings.")
     on = _yes(ask, "   Ask to sign in?", "y")
     if on and https_port.strip() == "0":
@@ -255,9 +356,16 @@ def _setup(ask, ask_secret) -> int:
     else:
         security.decide_install(store, quick_start=not on)
     auth.ensure_tables(store)
-    if on and not auth.has_admin(store):
-        print("4. The admin account. Optional: skip it and the first start makes one,\n"
-              "   username admin, and shows its password once in the terminal.")
+    where = _add_to_gateways(store, host)
+    _heading("Step 4 of 4: the admin account")
+    if not on:
+        print("   Not needed: Security is off.")
+    elif auth.has_admin(store):
+        print("   Already made: sign in with it. Lost the password? "
+              "franklinwh-direct-connect-bridge reset-password <username>")
+    else:
+        print("   Optional: skip it and the first start makes one, username admin, and\n"
+              "   shows its password once in the terminal.")
         if _yes(ask, "   Choose the admin's username and password now?", "n"):
             name = q("   Admin username", "admin")
             pw = ask_secret("   Admin password (Enter = generate one): ")
@@ -276,10 +384,14 @@ def _setup(ask, ask_secret) -> int:
             print(f"   Admin made. Username: {name}" +
                   (f"  Password: {pw}  (shown once; change it under Settings → Admin → "
                    "Security)" if generated else ""))
-    print(f"\nDone. aGate: {host or 'not set (add it in the web UI)'}  Web: {http_port}"
-          f"  HTTPS: {https_port}  Security: {'on' if on else 'off'}\n"
-          f"Saved to {config.settings_file().resolve()}.\n"
-          "To start it later: franklinwh-direct-connect-bridge")
+    url = (f"https://localhost:{https_port}" if on else f"http://localhost:{http_port}")
+    line = "=" * 64
+    print(f"\n{line}\nSetup saved {_now()}\n{line}\n\n"
+          f"  aGate:     {host or 'not set (add it in the web UI)'}{where}\n"
+          f"  Open:      {url} (once the bridge is running)\n"
+          f"  Security:  {'on: sign in' if on else 'off: no sign-in'}\n"
+          f"  Saved to:  {config.settings_file().resolve()}\n"
+          f"  Start it later with: franklinwh-direct-connect-bridge\n")
     return 0
 
 

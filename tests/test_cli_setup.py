@@ -11,6 +11,9 @@ from franklinwh_direct_connect_bridge import auth, cli, config, db, environment,
 pytestmark = pytest.mark.security_on
 
 
+_REAL_CAN_LISTEN = cli._can_listen
+
+
 def _answers(*replies):
     it = iter(replies)
     return lambda prompt="": next(it)
@@ -22,7 +25,9 @@ def _store():
 
 @pytest.fixture(autouse=True)
 def _no_network(monkeypatch):
-    monkeypatch.setattr(cli, "_probe_line", lambda host: f"{host}: ok")
+    monkeypatch.setattr(cli, "_probe", lambda host: (True, f"{host}: ok"))
+    monkeypatch.setattr(cli, "_port_in_use", lambda port: False)
+    monkeypatch.setattr(cli, "_can_listen", lambda host, port: True)   # a bridge may be running
 
 
 def test_setup_saves_the_answers_and_makes_the_admin(capsys):
@@ -143,3 +148,116 @@ def test_with_security_off_the_banner_also_lists_the_https_address(capsys, monke
     cli.first_start_banner(s)
     out = capsys.readouterr().out
     assert f"http://localhost:{s.http_port}" in out and f"https://localhost:{s.https_port}" in out
+
+
+def test_setup_says_what_where_and_how_many_steps(capsys, monkeypatch):
+    """Owner 2026-11-20: version, this folder, where it saves, prerequisites, step x of y."""
+    from franklinwh_direct_connect_bridge import __version__
+    cli.main(["setup"], ask=_answers("", "", "", "", "", "n"), ask_secret=_answers())
+    out = capsys.readouterr().out
+    assert __version__ in out and str(Path.cwd()) in out
+    assert str(Path(environment.DATA_DIR).resolve()) in out and "bridge.env" in out
+    assert "Python 3." in out and "new install" in out
+    for n in (1, 2, 3, 4):
+        assert f"Step {n} of 4" in out
+
+
+def test_setup_warns_when_a_port_is_taken(capsys, monkeypatch):
+    monkeypatch.setattr(cli, "_port_in_use", lambda port: port == 8101)
+    cli.main(["setup"], ask=_answers("", "", "", "", "", "n"), ask_secret=_answers())
+    out = capsys.readouterr().out
+    assert "8101 is in use" in out and "Ctrl+C" in out
+
+
+def test_stopping_with_ctrl_c_logs_no_https_error(caplog):
+    import asyncio
+
+    class _Server:
+        config = type("C", (), {"port": 8102})
+
+        async def serve(self):
+            raise asyncio.CancelledError
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(cli.run_https(_Server()))
+    assert "stopped" not in caplog.text
+
+
+def test_setup_headings_stand_apart_and_say_when(capsys):
+    """Owner 2026-11-20: a blank line before and after each heading, an underline, and the
+    time."""
+    import re
+    cli.main(["setup"], ask=_answers("", "", "", "", "", "n"), ask_secret=_answers())
+    lines = capsys.readouterr().out.splitlines()
+    for n in (1, 2, 3, 4):
+        i = next(k for k, ln in enumerate(lines) if ln.startswith(f"Step {n} of 4"))
+        assert lines[i - 1] == "" and set(lines[i + 1]) == {"-"} and lines[i + 2] == ""
+    assert any(re.search(r"20\d\d-\d\d-\d\d \d\d:\d\d", ln) for ln in lines[:8])
+
+
+def test_the_startup_banner_says_when(capsys):
+    import re
+    cli.first_start_banner(config.get_settings())
+    assert re.search(r"20\d\d-\d\d-\d\d \d\d:\d\d", capsys.readouterr().out)
+
+
+def test_an_agate_that_does_not_answer_is_asked_again(capsys, monkeypatch):
+    """Owner 2026-11-20: a wrong address is caught, not saved silently."""
+    monkeypatch.setattr(cli, "_probe", lambda host: (host == "10.0.0.5", f"{host}: answer?"))
+    cli.main(["setup"], ask=_answers("10.0.0.9", "n", "10.0.0.5", "", "", "", "", "n"),
+             ask_secret=_answers())
+    assert "FWH_HOST=10.0.0.5" in (Path(environment.DATA_DIR) / "bridge.env").read_text()
+    cli.main(["setup"], ask=_answers("10.0.0.9", "y", "", "", "", "", "n"),
+             ask_secret=_answers())      # kept on purpose (aGate off for now)
+    assert "FWH_HOST=10.0.0.9" in (Path(environment.DATA_DIR) / "bridge.env").read_text()
+
+
+def test_run_stops_before_starting_when_a_port_is_taken(capsys, monkeypatch):
+    """Owner 2026-11-20: a taken port stopped the web app half-started. Now nothing starts."""
+    import socket
+    started = []
+    monkeypatch.setattr(cli, "serve", lambda s: started.append(s))
+    monkeypatch.setattr(cli, "_can_listen", _REAL_CAN_LISTEN)
+    monkeypatch.setenv("HTTP_PORT", "0")
+    with socket.socket() as busy:
+        busy.bind(("0.0.0.0", 0))
+        busy.listen()
+        port = busy.getsockname()[1]
+        monkeypatch.setenv("HTTPS_PORT", str(port))
+        monkeypatch.setattr(config, "_settings", None)
+        rc = cli.main(["run"])
+    out = capsys.readouterr().out
+    assert rc == 1 and not started
+    assert f"Port {port} is in use" in out and "HTTPS_PORT" in out
+
+
+def test_an_existing_install_gets_the_agate_added_to_its_gateways(capsys):
+    """Owner 2026-11-20: with gateways already stored (two mocks), the address was saved
+    to bridge.env and ignored. Now it is added to the gateways; the active one stays."""
+    st = _store()
+    st.create_gateway(gw_id="mock1", label="Mock aGate 1", host="127.0.0.1", is_mock=True,
+                      is_default=True)
+    cli.main(["setup"], ask=_answers("10.0.0.5", "", "", "n", "n"), ask_secret=_answers())
+    rows = {r["host"]: r for r in st.gateways()}
+    assert "10.0.0.5" in rows and rows["10.0.0.5"]["enabled"] and not rows["10.0.0.5"]["is_default"]
+    out = capsys.readouterr().out
+    assert "added to your gateways" in out and "Mock aGate 1" in out
+    cli.main(["setup"], ask=_answers("10.0.0.5", "", "", "n", "n"), ask_secret=_answers())
+    assert [r["host"] for r in st.gateways()].count("10.0.0.5") == 1
+    assert "already one of your gateways" in capsys.readouterr().out
+
+
+def test_setup_says_when_the_environment_overrides_it(capsys, monkeypatch):
+    """Owner 2026-11-20: FWH_HOST from the environment is the default shown, and setup
+    says that the environment wins over what it saves."""
+    monkeypatch.setenv("FWH_HOST", "10.0.0.7")
+    cli.main(["setup"], ask=_answers("", "", "", "n", "n"), ask_secret=_answers())
+    out = capsys.readouterr().out
+    assert "[10.0.0.7]" in out or "10.0.0.7" in out
+    assert "FWH_HOST" in out and "environment" in out
+
+
+def test_step_one_says_more_than_one_agate_is_added_in_the_web_ui(capsys):
+    cli.main(["setup"], ask=_answers("", "", "", "n", "n"), ask_secret=_answers())
+    out = capsys.readouterr().out
+    assert "more than one aGate" in out and "Settings → Gateways" in out

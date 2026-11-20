@@ -124,11 +124,19 @@ warns once. Set it up either way:
 **The setup command (less typing).** Run `franklinwh-direct-connect-bridge setup` with the
 bridge stopped (for Docker: `docker compose run --rm franklinwh-direct-connect-bridge
 franklinwh-direct-connect-bridge setup`). Run it from the folder that holds `data`, not
-from inside `data`. Each question has a default in [brackets]: press Enter to accept it,
-or type your own. It asks:
+from inside `data`. It first shows the version, this folder, the data folder (new or
+existing install), where it saves the settings, and its checks: Python 3.11 or newer, the
+cloud features, and whether ports 8101 and 8102 are free (if the bridge is running, stop it
+first). Each question has a default in [brackets]: press Enter to accept it, or type your
+own. If `FWH_HOST`, `HTTP_PORT` or `HTTPS_PORT` is set in your environment, setup shows
+it as the default and warns that it wins over what setup saves. Four steps:
 
-1. the aGate's address, and checks that it answers. Optional: leave it blank and add it
-   later in the web UI;
+1. the aGate's address, and checks that its Direct Connect port (TCP 9000) answers. If it
+   doesn't, it asks again, or keeps the address if you say so (the aGate may be off).
+   Optional: leave it blank and add it later in the web UI. With more than one aGate,
+   enter the main one; add the others later under **Settings → Gateways** (**Discover
+   gateways**). On an install that already has gateways, it is added to them; the active
+   gateway stays as it was;
 2. the web port (8101) and the HTTPS port (8102). In Docker keep them: `docker-compose.yml`
    publishes those two;
 3. whether to ask for a sign-in (Security on or off; on by default);
@@ -167,7 +175,9 @@ it back on restores them ([guide](docs/guide/security.md#the-first-admin)).
 **The startup banner.** Before the web server starts, the bridge prints where to open it,
 for example `https://localhost:8102` and this computer's address on your network, whether
 Security is on, and the generated admin password on the one start that makes it. With
-Security off it lists both addresses: `http://…:8101` and `https://…:8102`. Uvicorn's
+Security off it lists both addresses: `http://…:8101` and `https://…:8102`. If either port is
+already in use (often the bridge already running in another terminal), it doesn't start,
+and says which port and how to change it. Uvicorn's
 own `Uvicorn running on http://0.0.0.0:8101` line is the address it listens on (every
 network interface), not one to open in a browser.
 
@@ -198,6 +208,38 @@ bridge.
 - **Docker:** `git pull`, rebuild the image, `docker compose up -d --force-recreate`.
 - **Data** lives in `./data` (standalone) or the add-on's `/data`. The SQLite store migrates
   itself forward on start; there is no manual step.
+
+### pip (without Docker): update, or start fresh
+
+Stop the bridge first (Ctrl+C in its terminal). Run each line from the folder that holds
+`data` (for example `~/fwh-bridge`), with its venv active, never from inside `data`.
+
+**(a) Update only.** Keeps everything: history, gateways, accounts, settings.
+
+```bash
+cd ~/fwh-bridge
+source .venv/bin/activate
+pip install --force-reinstall --no-deps "https://github.com/david2069/franklinwh-direct-connect-bridge/archive/refs/heads/main.zip"
+franklinwh-direct-connect-bridge
+```
+
+`--force-reinstall` is needed while the version number on `main` is unchanged; without it
+pip keeps the copy it has. Use `pip install --upgrade "franklinwh-direct-connect-bridge[cloud]"`
+instead once releases are on PyPI ([#782](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/782)).
+
+**(b) Clean fresh install.** Starts with no history, gateways, accounts or settings. The
+old data is moved aside, not deleted, so you can go back by moving it back.
+
+```bash
+cd ~/fwh-bridge
+source .venv/bin/activate
+mv data data-old
+pip install --force-reinstall --no-deps "https://github.com/david2069/franklinwh-direct-connect-bridge/archive/refs/heads/main.zip"
+franklinwh-direct-connect-bridge setup
+```
+
+Setup then says **new install** next to the data folder, and offers to start the bridge.
+Delete `data-old` once you're sure you don't need it.
 
 ### Reinstalling: read this before you remove anything
 
