@@ -153,6 +153,8 @@ def first_start_banner(s) -> None:
     urls = _addresses(s, s.https_port if https else s.http_port, "https" if https else "http")
     out = ["", "-" * 64, f"FranklinWH Direct Connect Bridge {__version__}",
            f"  Open:      {urls[0]}"] + [f"             {u}" for u in urls[1:]]
+    if not on and s.https_port:   # Security off still serves HTTPS too
+        out += [f"  or HTTPS:  {u}" for u in _addresses(s, s.https_port, "https")[:1]]
     if on:
         out.append("  Security: on: sign in" + (" (the browser warns once about the bridge's "
                                                 "own certificate)" if https else ""))

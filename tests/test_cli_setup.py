@@ -134,3 +134,12 @@ def test_setup_offers_to_start_the_bridge(monkeypatch):
 
 async def _done():
     return None
+
+
+def test_with_security_off_the_banner_also_lists_the_https_address(capsys, monkeypatch):
+    """Owner 2026-11-20 opened https://localhost:8102, which the banner didn't mention."""
+    s = config.get_settings()
+    monkeypatch.setattr(s, "security", "off")
+    cli.first_start_banner(s)
+    out = capsys.readouterr().out
+    assert f"http://localhost:{s.http_port}" in out and f"https://localhost:{s.https_port}" in out
