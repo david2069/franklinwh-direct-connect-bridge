@@ -23,6 +23,7 @@ def _store():
 @pytest.fixture(autouse=True)
 def _no_network(monkeypatch):
     monkeypatch.setattr(cli, "_probe_line", lambda host: f"{host}: ok")
+    monkeypatch.setattr(cli, "_port_in_use", lambda port: False)
 
 
 def test_setup_saves_the_answers_and_makes_the_admin(capsys):
@@ -143,3 +144,36 @@ def test_with_security_off_the_banner_also_lists_the_https_address(capsys, monke
     cli.first_start_banner(s)
     out = capsys.readouterr().out
     assert f"http://localhost:{s.http_port}" in out and f"https://localhost:{s.https_port}" in out
+
+
+def test_setup_says_what_where_and_how_many_steps(capsys, monkeypatch):
+    """Owner 2026-11-20: version, this folder, where it saves, prerequisites, step x of y."""
+    from franklinwh_direct_connect_bridge import __version__
+    cli.main(["setup"], ask=_answers("", "", "", "", "", "n"), ask_secret=_answers())
+    out = capsys.readouterr().out
+    assert __version__ in out and str(Path.cwd()) in out
+    assert str(Path(environment.DATA_DIR).resolve()) in out and "bridge.env" in out
+    assert "Python 3." in out and "new install" in out
+    for n in (1, 2, 3, 4):
+        assert f"Step {n} of 4" in out
+
+
+def test_setup_warns_when_a_port_is_taken(capsys, monkeypatch):
+    monkeypatch.setattr(cli, "_port_in_use", lambda port: port == 8101)
+    cli.main(["setup"], ask=_answers("", "", "", "", "", "n"), ask_secret=_answers())
+    out = capsys.readouterr().out
+    assert "8101 is in use" in out and "Ctrl+C" in out
+
+
+def test_stopping_with_ctrl_c_logs_no_https_error(caplog):
+    import asyncio
+
+    class _Server:
+        config = type("C", (), {"port": 8102})
+
+        async def serve(self):
+            raise asyncio.CancelledError
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(cli.run_https(_Server()))
+    assert "stopped" not in caplog.text

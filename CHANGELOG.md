@@ -47,7 +47,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   later in the web UI), and so is the admin account: skip it and the first start makes
   `admin` with a password shown once. It ends with a summary and **Start the bridge now?**
   (pip; Docker starts with `docker compose up -d`). Run from inside the `data` folder, it
-  stops instead of making a second, empty one there. With Security off, the startup banner
+  stops instead of making a second, empty one there. It opens with the version, this
+  folder, the data folder (new or existing install), the settings file and checks (Python
+  version, cloud features, ports free), numbers each step (Step 1 of 4), and ends with a
+  summary of what it saved and where to open the bridge. Stopping the bridge with Ctrl+C no
+  longer logs "HTTPS port 8102 stopped" as an error. With Security off, the startup banner
   also lists the HTTPS address ([guide](INSTALL.md#first-sign-in-docker-and-pip)).
 
 - **Sign-in: Home Assistant add-on and standalone kept apart** (owner 2026-11-20). One

@@ -124,8 +124,11 @@ warns once. Set it up either way:
 **The setup command (less typing).** Run `franklinwh-direct-connect-bridge setup` with the
 bridge stopped (for Docker: `docker compose run --rm franklinwh-direct-connect-bridge
 franklinwh-direct-connect-bridge setup`). Run it from the folder that holds `data`, not
-from inside `data`. Each question has a default in [brackets]: press Enter to accept it,
-or type your own. It asks:
+from inside `data`. It first shows the version, this folder, the data folder (new or
+existing install), where it saves the settings, and its checks: Python 3.11 or newer, the
+cloud features, and whether ports 8101 and 8102 are free (if the bridge is running, stop it
+first). Each question has a default in [brackets]: press Enter to accept it, or type your
+own. Four steps:
 
 1. the aGate's address, and checks that it answers. Optional: leave it blank and add it
    later in the web UI;

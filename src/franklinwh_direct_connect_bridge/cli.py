@@ -100,6 +100,8 @@ def https_server(app, s):
 async def run_https(server) -> None:
     try:
         await server.serve()
+    except asyncio.CancelledError:   # Ctrl+C: a normal stop, not an error
+        raise
     except BaseException as e:  # noqa: BLE001 — uvicorn exits on a failed bind
         tls.status["error"] = (f"could not listen on port {server.config.port}"
                                if isinstance(e, SystemExit) else str(e))
@@ -205,6 +207,41 @@ def _yes(ask, prompt: str, default: str) -> bool:
     return (ask(f"{prompt} y/n [{default}]: ").strip() or default).lower().startswith("y")
 
 
+def _port_in_use(port: int) -> bool:
+    with socket.socket() as so:
+        so.settimeout(0.5)
+        return so.connect_ex(("127.0.0.1", int(port))) == 0
+
+
+def _setup_header(s, data: Path) -> None:
+    """What setup is about to do, and where: the version, the folders, the checks."""
+    import importlib.util
+    import sys
+    from . import __version__
+    existing = (data / "metrics.db").exists()
+    line = "=" * 64
+    print(f"{line}\nFranklinWH Direct Connect Bridge {__version__}: setup\n{line}\n"
+          f"  This folder:   {Path.cwd()}\n"
+          f"  Data folder:   {data.resolve()}  "
+          f"({'existing install: its history and accounts are kept' if existing else 'new install'})\n"
+          f"  Settings file: {config.settings_file().resolve()}\n\nChecks")
+    v = sys.version_info
+    print(f"  {'OK' if v >= (3, 11) else 'NO'}  Python {v.major}.{v.minor}.{v.micro} "
+          "(needs 3.11 or newer)")
+    print("  OK  Cloud features installed" if importlib.util.find_spec("franklinwh_cloud") else
+          "  --  Cloud features not installed (optional). Add them with: "
+          'pip install "franklinwh-direct-connect-bridge[cloud]"')
+    busy = [p for p in (s.http_port, s.https_port) if p and _port_in_use(p)]
+    for p in busy:
+        print(f"  !!  Port {p} is in use. If that's the bridge, stop it first (Ctrl+C in its\n"
+              "      terminal) and run setup again; if it's something else, pick another port\n"
+              "      in step 2.")
+    if not busy:
+        print(f"  OK  Ports {s.http_port} and {s.https_port} are free")
+    print("\n4 steps. Press Enter to accept the default in [brackets], or type your own.\n"
+          "Everything can be changed later: run setup again, or in the web UI.\n")
+
+
 def _setup(ask, ask_secret) -> int:
     """`franklinwh-direct-connect-bridge setup` (Docker and pip): the aGate's address, the
     ports, Security on or off and, optionally, the first admin, so a plain start needs no
@@ -227,18 +264,21 @@ def _setup(ask, ask_secret) -> int:
     def q(prompt: str, default) -> str:
         return ask(f"{prompt} [{default}]: ").strip() or str(default)
 
-    print("FranklinWH Direct Connect Bridge setup\n"
-          "Press Enter to accept the default in [brackets], or type your own. All of it\n"
-          f"can be changed later: run setup again, or in the web UI. Data: {data.resolve()}\n")
-    print("1. The aGate. Optional: leave it blank to add it later in the web UI.")
+    _setup_header(s, data)
+    print("Step 1 of 4: the aGate\n"
+          "   Its address on your network. Optional: leave it blank and add it later in\n"
+          "   the web UI.")
     host = q("   aGate address (IP or hostname)", s.fwh_host or "none")
     host = "" if host == "none" else host
     if host:
         print(" " + _probe_line(host))
-    print("2. Ports. Keep the defaults unless something else on this computer uses them.")
+    print("\nStep 2 of 4: ports\n"
+          "   Where your browser opens the bridge. Keep the defaults unless something\n"
+          "   else on this computer uses them.")
     http_port = q("   Web port (HTTP)", s.http_port)
     https_port = q("   HTTPS port, 0 = off", s.https_port)
-    print("3. Security. y: the web UI asks for a username and password (recommended).\n"
+    print("\nStep 3 of 4: Security\n"
+          "   y: the web UI asks for a username and password (recommended).\n"
           "   n: anyone on your network can open it; turn it on later in Settings.")
     on = _yes(ask, "   Ask to sign in?", "y")
     if on and https_port.strip() == "0":
@@ -255,9 +295,15 @@ def _setup(ask, ask_secret) -> int:
     else:
         security.decide_install(store, quick_start=not on)
     auth.ensure_tables(store)
-    if on and not auth.has_admin(store):
-        print("4. The admin account. Optional: skip it and the first start makes one,\n"
-              "   username admin, and shows its password once in the terminal.")
+    print("\nStep 4 of 4: the admin account")
+    if not on:
+        print("   Not needed: Security is off.")
+    elif auth.has_admin(store):
+        print("   Already made: sign in with it. Lost the password? "
+              "franklinwh-direct-connect-bridge reset-password <username>")
+    else:
+        print("   Optional: skip it and the first start makes one, username admin, and\n"
+              "   shows its password once in the terminal.")
         if _yes(ask, "   Choose the admin's username and password now?", "n"):
             name = q("   Admin username", "admin")
             pw = ask_secret("   Admin password (Enter = generate one): ")
@@ -276,10 +322,14 @@ def _setup(ask, ask_secret) -> int:
             print(f"   Admin made. Username: {name}" +
                   (f"  Password: {pw}  (shown once; change it under Settings → Admin → "
                    "Security)" if generated else ""))
-    print(f"\nDone. aGate: {host or 'not set (add it in the web UI)'}  Web: {http_port}"
-          f"  HTTPS: {https_port}  Security: {'on' if on else 'off'}\n"
-          f"Saved to {config.settings_file().resolve()}.\n"
-          "To start it later: franklinwh-direct-connect-bridge")
+    url = (f"https://localhost:{https_port}" if on else f"http://localhost:{http_port}")
+    line = "=" * 64
+    print(f"\n{line}\nSetup saved\n"
+          f"  aGate:     {host or 'not set (add it in the web UI)'}\n"
+          f"  Open:      {url} (once the bridge is running)\n"
+          f"  Security:  {'on: sign in' if on else 'off: no sign-in'}\n"
+          f"  Saved to:  {config.settings_file().resolve()}\n"
+          f"  Start it later with: franklinwh-direct-connect-bridge\n{line}")
     return 0
 
 
