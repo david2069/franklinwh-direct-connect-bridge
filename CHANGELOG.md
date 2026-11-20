@@ -13,6 +13,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- **Custom roles (Docker and pip)** (owner 2026-11-20). Under **Settings → Admin →
+  Security → Custom roles** an admin makes roles of their own: the tabs it can open (any
+  tab, and System view) and what it can change (nothing, battery commands, schedules).
+  The other tabs are hidden and the bridge refuses their data with 403. Custom roles
+  appear in the account role picker; one in use can't be deleted. admin, user, viewer and
+  api are unchanged, and the Home Assistant add-on has none
+  ([guide](docs/guide/security.md#custom-roles-standalone)).
+
 - **`setup` command and a startup banner (Docker and pip)** (owner 2026-11-20).
   `franklinwh-direct-connect-bridge setup` asks for the aGate's address (and checks it
   answers), the ports, Security on or off and the first admin, and saves the address and

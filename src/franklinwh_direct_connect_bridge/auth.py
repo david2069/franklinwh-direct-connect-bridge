@@ -13,6 +13,7 @@ have no password: they only call the REST API, with a token.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import re
 import secrets
@@ -66,6 +67,11 @@ def ensure_tables(store) -> None:
                 expires_at REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS auth_log(
                 ts REAL NOT NULL, username TEXT NOT NULL, event TEXT NOT NULL, ip TEXT);
+            CREATE TABLE IF NOT EXISTS auth_roles(
+                name TEXT PRIMARY KEY COLLATE NOCASE,
+                tabs TEXT NOT NULL,
+                actions TEXT NOT NULL,
+                created_at REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS auth_tokens(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
@@ -91,6 +97,83 @@ def _exec(store, sql: str, args=()) -> int:
         cur = store._conn.execute(sql, args)
         store._conn.commit()
         return cur.lastrowid
+
+
+# ── custom roles (standalone only, owner 2026-11-20) ──────────────────────────────
+#: What a custom role may change besides its own password: battery commands (force,
+#: release, mode, reserve, off-grid, acknowledging an alert) and schedules.
+ROLE_ACTIONS = ("battery", "schedules")
+
+
+def _role_row(r: dict, store) -> dict:
+    n = _rows(store, "SELECT COUNT(*) AS n FROM auth_users WHERE role=? COLLATE NOCASE",
+              (r["name"],))[0]["n"]
+    return {"name": r["name"], "tabs": json.loads(r["tabs"]), "actions": json.loads(r["actions"]),
+            "accounts": n}
+
+
+def roles(store) -> list[dict]:
+    return [_role_row(r, store) for r in
+            _rows(store, "SELECT * FROM auth_roles ORDER BY name COLLATE NOCASE")]
+
+
+def custom_role(store, name: str) -> dict | None:
+    """The custom role called ``name`` (any case), or None."""
+    r = _rows(store, "SELECT * FROM auth_roles WHERE name=?", (name,))
+    return _role_row(r[0], store) if r else None
+
+
+def save_role(store, name: str, tabs, actions) -> dict:
+    """Add a custom role, or change the one with that name."""
+    from . import environment, tab_access
+    if not environment.account_feature("custom_roles"):
+        raise AuthError("custom roles are for standalone installs (Docker and pip); "
+                        "Home Assistant users get their role from their HA group")
+    name = (name or "").strip()
+    if not name or len(name) > 40:
+        raise AuthError("a role's name is 1–40 characters")
+    if name.lower() in ROLES:
+        raise AuthError(f"'{name}' is a built-in role")
+    bad = [t for t in tabs if t not in tab_access.TABS]
+    if bad:
+        raise AuthError(f"no such tab: {', '.join(bad)}")
+    if not tabs:
+        raise AuthError("a role needs at least one tab")
+    bad = [a for a in actions if a not in ROLE_ACTIONS]
+    if bad:
+        raise AuthError(f"no such action: {', '.join(bad)} (one of {', '.join(ROLE_ACTIONS)})")
+    tabs = [t for t in tab_access.TABS if t in tabs]
+    actions = [a for a in ROLE_ACTIONS if a in actions]
+    existed = custom_role(store, name)
+    _exec(store, "INSERT INTO auth_roles(name, tabs, actions, created_at) VALUES (?,?,?,?) "
+                 "ON CONFLICT(name) DO UPDATE SET tabs=excluded.tabs, actions=excluded.actions",
+          (name, json.dumps(tabs), json.dumps(actions), time.time()))
+    record(store, name, "role changed" if existed else "role created")
+    return custom_role(store, name)
+
+
+def delete_role(store, name: str) -> None:
+    r = custom_role(store, name)
+    if r is None:
+        raise AuthError(f"no role '{name}'")
+    if r["accounts"]:
+        raise AuthError(f"'{r['name']}' is used by {r['accounts']} account"
+                        f"{'s' if r['accounts'] != 1 else ''}; give them another role first")
+    _exec(store, "DELETE FROM auth_roles WHERE name=?", (name,))
+    record(store, r["name"], "role deleted")
+
+
+def _role_name(store, role) -> str:
+    """A built-in role, or a custom one's stored name; AuthError otherwise."""
+    if role in ROLES:
+        return role
+    from . import environment
+    r = custom_role(store, role) if isinstance(role, str) and environment.account_feature(
+        "custom_roles") else None
+    if r is None:
+        names = list(ROLES) + [x["name"] for x in roles(store)]
+        raise AuthError(f"the role must be one of {', '.join(names)}")
+    return r["name"]
 
 
 def _public(u: dict, now: float) -> dict:
@@ -134,8 +217,7 @@ def create_user(store, username: str, password: str, role: str,
     now = time.time() if now is None else now
     if not isinstance(username, str) or not _NAME.match(username):
         raise AuthError("a username is 1–64 letters, digits or . _ @ -")
-    if role not in ROLES:
-        raise AuthError(f"the role must be one of {', '.join(ROLES)}")
+    role = _role_name(store, role)
     if _rows(store, "SELECT id FROM auth_users WHERE username=?", (username,)):
         raise AuthError(f"'{username}' already exists")
     pw_hash = "" if role == "api" else _ph.hash(_check_password(password))
@@ -152,8 +234,7 @@ def update_user(store, user_id: int, *, role=None, enabled=None, password=None,
     u = _get(store, user_id)
     new = dict(u)
     if role is not None:
-        if role not in ROLES:
-            raise AuthError(f"the role must be one of {', '.join(ROLES)}")
+        role = _role_name(store, role)
         if (role == "api") != (u["role"] == "api"):
             raise AuthError("an api account can't become a password account, or the other "
                             "way round; add a new account")
@@ -247,7 +328,7 @@ def authenticate(store, username: str, password: str, ip: str | None = None,
     if u["expires_at"] and u["expires_at"] <= now:
         record(store, u["username"], "sign-in refused: expired", ip)
         raise AuthError("this account has expired")
-    if u["role"] not in PASSWORD_ROLES:
+    if u["role"] == "api":
         raise bad
     _exec(store, "UPDATE auth_users SET fail_count=0, locked_until=0, last_login=? WHERE id=?",
           (now, u["id"]))

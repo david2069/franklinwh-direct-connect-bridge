@@ -312,6 +312,25 @@ document.addEventListener('alpine:init', () => {
       return this.solarInstalled === false ? this._navTabsAll.filter(t => t.key !== 'solar')
                                             : this._navTabsAll;
     },
+    //: The available tabs this account's role may open (a custom role's tabs; all otherwise).
+    get navPermitted() {
+      return this.roleTabs ? this.navAvailable.filter(t => this.tabAllowed(t.key)) : this.navAvailable;
+    },
+    //: A custom role's tabs (standalone, from /api/auth/me); null = every tab. The bridge
+    //  refuses the other tabs' data whatever this shows.
+    roleTabs: null,
+    tabAllowed(key) { return !this.roleTabs || this.roleTabs.includes(key); },
+    async _loadRoleTabs() {
+      try {
+        const r = await fetch('api/auth/me');
+        const d = r.ok ? await r.json() : {};
+        this.roleTabs = Array.isArray(d.tabs) ? d.tabs : null;
+      } catch (e) { this.roleTabs = null; }
+      if (!this.tabAllowed(this.activeTab)) {
+        const first = this._navTabsAll.find(t => this.tabAllowed(t.key));
+        if (first) this.setActiveTab(first.key);
+      }
+    },
     //: true / false / null (not known yet), for the active gateway.
     solarInstalled: null,
     async _loadSolarInstalled() {
@@ -364,11 +383,11 @@ document.addEventListener('alpine:init', () => {
 
     //: Every available tab in the user's order, pinned-first — the list the cog edits.
     get navOrdered() {
-      const by = Object.fromEntries(this.navAvailable.map(t => [t.key, t]));
+      const by = Object.fromEntries(this.navPermitted.map(t => [t.key, t]));
       const seen = new Set();
       const out = [];
       this.navPrefs.forEach(p => { if (by[p.id] && !seen.has(p.id)) { seen.add(p.id); out.push({ ...by[p.id], on: !!p.on }); } });
-      this.navAvailable.forEach(t => { if (!seen.has(t.key)) out.push({ ...t, on: true }); });
+      this.navPermitted.forEach(t => { if (!seen.has(t.key)) out.push({ ...t, on: true }); });
       const pin = out.filter(t => this.navPinned(t.key) === 'both');
       return [...pin, ...out.filter(t => this.navPinned(t.key) !== 'both')];
     },
@@ -943,6 +962,7 @@ document.addEventListener('alpine:init', () => {
       this._loadAdvancedTools();
       this._loadTopbarPrefs();
       this._loadNavPrefs();
+      this._loadRoleTabs();
       this.initSidebar();
       // Static labelling metadata — fetch once (no device I/O, cheap, cached).
       this.loadFieldSchema();
@@ -1749,6 +1769,7 @@ document.addEventListener('alpine:init', () => {
     toggleTheme() { this.setTheme(this.theme === 'dark' ? 'light' : 'dark') },
 
     setActiveTab(name) {
+      if (!this.tabAllowed(name)) return;
       const leaving = this.activeTab === 'dashboard' && name !== 'dashboard';
       const entering = this.activeTab !== 'dashboard' && name === 'dashboard';
       this.activeTab = name;
