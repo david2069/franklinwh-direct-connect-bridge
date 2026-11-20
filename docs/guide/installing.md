@@ -170,10 +170,9 @@ text:
 
 1. Create a virtual environment and install with `pip install ".[cloud]"`.
 
-    !!! note "From PyPI, once published"
-        From the first release published to PyPI (not yet published:
-        [#782](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/782)),
-        `pip install "franklinwh-direct-connect-bridge[cloud]"` installs it without a clone. See
+    !!! note "From PyPI"
+        From 0.5.55, `pip install "franklinwh-direct-connect-bridge[cloud]"` installs it from
+        PyPI without a clone. See
         [INSTALL.md → From PyPI](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/INSTALL.md#from-pypi).
         The screenshots on this page were taken from a clone.
 
