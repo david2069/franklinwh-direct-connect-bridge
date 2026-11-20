@@ -43,7 +43,8 @@ def _same_agate(dev: dict, serials: list[str]) -> bool:
 
 
 def inventory(*, broker: dict | None, registry: list[dict] | None, components: list[str],
-              serials: list[str], richo_dismissed: bool, purge_ready: bool) -> dict[str, Any]:
+              serials: list[str], richo_dismissed: bool, purge_ready: bool,
+              richo_activity: dict | None = None) -> dict[str, Any]:
     """The rows the wizard shows. Pure: the caller does the reads."""
     rows: list[dict[str, Any]] = []
     others: list[dict] = []
@@ -96,5 +97,9 @@ def inventory(*, broker: dict | None, registry: list[dict] | None, components: l
                      {"checked": False, "why": "Home Assistant is not linked"}),
         "other_same_agate": same,
         "modbus_writer": modbus,
-        "richo": {"show": richo and not richo_dismissed, "adds": RICHO_ADDS},
+        # Loaded = set up and running (a disabled integration is not loaded); the newest
+        # entity report says whether it is still polling (owner 2026-11-20).
+        "richo": {"show": richo and not richo_dismissed, "adds": RICHO_ADDS, "active": richo,
+                  "entities": (richo_activity or {}).get("entities"),
+                  "last_update": (richo_activity or {}).get("last")},
     }

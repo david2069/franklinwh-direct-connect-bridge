@@ -120,10 +120,13 @@ Integrations that are not MQTT are not listed, except the one below.
 
 ### The FranklinWH integration (richo)
 
-When Home Assistant has richo's FranklinWH integration (`franklin_wh`) loaded, the check
-shows a note: you can keep it, both work side by side, and later you'll be able to move to
-the bridge and keep your entity names and history. It is optional and read-only: the
-bridge never changes that integration or its entities. **Keep both** hides the note for
+When Home Assistant has richo's FranklinWH integration (`franklin_wh`) loaded (set up and
+running; a disabled integration is not loaded), the check says so, with how many entities
+it has and when it last updated (for example "last updated 2 minutes ago"). The bridge
+publishes its own entities, so while both run you have two sets: disable it when you're
+ready, in **Home Assistant → Settings → Devices & services → FranklinWH → ⋮ → Disable**.
+Its entities and history stay, and you can enable it again any time. The bridge never
+takes over or changes that integration or its entities. **Keep both** hides the note for
 good.
 
 What the bridge adds over that integration (version 2026.3.0, which polls the FranklinWH

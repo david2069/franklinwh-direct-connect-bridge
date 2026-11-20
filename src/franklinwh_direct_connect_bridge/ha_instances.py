@@ -280,6 +280,35 @@ def franklin_devices(base_url: str, token: str | None) -> list[dict[str, Any]]:
             for ids, name, sw, n, dup in rows]
 
 
+#: Richo's FranklinWH integration: how many of its entities HA has and the newest report.
+#: ``last_reported`` (HA 2024.3+) moves on every poll even when the value is unchanged;
+#: older HA has only ``last_updated``.
+RICHO_ACTIVITY_TEMPLATE = (
+    "{% set ns = namespace(n=0, t=none) %}"
+    "{% for s in expand(integration_entities('franklin_wh')) %}"
+    "{% set t = s.last_reported if s.last_reported is defined else s.last_updated %}"
+    "{% set ns.n = ns.n + 1 %}{% if ns.t is none or t > ns.t %}{% set ns.t = t %}{% endif %}"
+    "{% endfor %}{{ {'entities': ns.n, 'last': ns.t.isoformat() if ns.t else none} | tojson }}"
+)
+
+
+def richo_activity(base_url: str, token: str | None) -> dict[str, Any] | None:
+    """Richo's integration's entity count and newest update (ISO), or None if unread."""
+    if not token:
+        return None
+    req = urllib.request.Request(
+        base_url.rstrip("/") + "/api/template",
+        data=json.dumps({"template": RICHO_ACTIVITY_TEMPLATE}).encode(),
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
+            body = json.loads(resp.read().decode() or "{}")
+    except Exception:  # noqa: BLE001 — a note, never a failure
+        return None
+    return {"entities": int(body.get("entities") or 0), "last": body.get("last") or None}
+
+
 def call_service(base_url: str, token: str | None, domain: str, service: str,
                  data: dict | None = None) -> dict[str, Any]:
     """Call any Home Assistant service (``domain.service``) with a data payload.

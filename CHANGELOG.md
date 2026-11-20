@@ -42,6 +42,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Changed
 
+- **Richo's FranklinWH integration: detect and warn** (owner 2026-11-20). With Home
+  Assistant linked, the setup check says whether richo's `franklin_wh` integration is
+  running, how many entities it has and when it last updated, and says to disable it in
+  Home Assistant when you're ready. The note no longer promises a later move of entity
+  names and history: the bridge never takes over that integration's entities
+  ([guide](docs/guide/tour.md#the-franklinwh-integration-richo)).
+
 - **A friendlier `setup` command (Docker and pip)** (owner 2026-11-20). Each question says
   what it's for, and Enter accepts every default. The aGate address is optional (add it
   later in the web UI), and so is the admin account: skip it and the first start makes

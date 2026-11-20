@@ -131,3 +131,42 @@ def test_modbus_and_publish_default_to_skip_when_another_integration_is_there():
     pub = pub[:pub.index("</template>")]
     assert "haInv.other_same_agate" in pub
     assert 'data-testid="publish-other-integration"' in pub
+
+
+# Owner 2026-11-20: detect whether richo's integration is still active and warn the user to
+# disable it when they are ready; no takeover.
+
+def test_richo_activity_says_how_many_entities_and_when_it_last_updated():
+    out = inv(components=["franklin_wh"],
+              richo_activity={"entities": 12, "last": "2026-11-20T08:00:00+00:00"})
+    r = out["richo"]
+    assert r["show"] and r["active"] is True
+    assert r["entities"] == 12 and r["last_update"] == "2026-11-20T08:00:00+00:00"
+
+
+def test_richo_activity_unread_is_still_a_note():
+    r = inv(components=["franklin_wh"], richo_activity=None)["richo"]
+    assert r["show"] and r["active"] is True and r["last_update"] is None
+
+
+def test_richo_activity_template_reads_the_newest_report(monkeypatch):
+    import io
+    import json as _json
+    sent = {}
+
+    def fake(req, timeout):
+        sent["body"] = _json.loads(req.data.decode())["template"]
+        return io.BytesIO(b'{"entities": 3, "last": "2026-11-20T08:00:00+00:00"}')
+    monkeypatch.setattr(ha_instances.urllib.request, "urlopen", fake)
+    got = ha_instances.richo_activity("http://ha:8123", "tok")
+    assert got == {"entities": 3, "last": "2026-11-20T08:00:00+00:00"}
+    assert "integration_entities('franklin_wh')" in sent["body"] and "last_reported" in sent["body"]
+
+
+def test_the_note_warns_to_disable_it_when_ready():
+    tpl = HTML[HTML.index('data-testid="richo-note"'):]
+    tpl = tpl[:tpl.index("</template>", tpl.index("Tell me more"))]
+    for s in ("Disable", "Devices &amp; services", "richoAgo(", "when you're ready"):
+        assert s in tpl, s
+    assert "keep your entity names and history" not in tpl
+    assert "richoAgo(" in JS

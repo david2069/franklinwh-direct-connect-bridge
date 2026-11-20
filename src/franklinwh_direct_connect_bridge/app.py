@@ -4232,12 +4232,14 @@ def create_app() -> FastAPI:
             except Exception:  # noqa: BLE001
                 registry = None
             comps = ha_instances.components(inst["base_url"], inst.get("token"))
+        activity = (ha_instances.richo_activity(inst["base_url"], inst.get("token"))
+                    if inst and ha_entities.RICHO_DOMAIN in comps else None)
         serials = [g.serial for g in (get_gateways() or [])
                    if g.serial and not getattr(g, "is_mock", False)]
         dismissed = bool(st and st.get_config(ha_entities.RICHO_KEY, "") == "keep_both")
         return ha_entities.inventory(broker=broker, registry=registry, components=comps,
                                      serials=serials, richo_dismissed=dismissed,
-                                     purge_ready=bool(s.mqtt_enabled))
+                                     purge_ready=bool(s.mqtt_enabled), richo_activity=activity)
 
     @app.post("/api/setup/ha-entities/richo-note")
     def api_setup_richo_note(req: RichoNoteReq):
