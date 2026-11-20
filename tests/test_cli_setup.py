@@ -22,7 +22,7 @@ def _store():
 
 @pytest.fixture(autouse=True)
 def _no_network(monkeypatch):
-    monkeypatch.setattr(cli, "_probe_line", lambda host: f"{host}: ok")
+    monkeypatch.setattr(cli, "_probe", lambda host: (True, f"{host}: ok"))
     monkeypatch.setattr(cli, "_port_in_use", lambda port: False)
 
 
@@ -177,3 +177,32 @@ def test_stopping_with_ctrl_c_logs_no_https_error(caplog):
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(cli.run_https(_Server()))
     assert "stopped" not in caplog.text
+
+
+def test_setup_headings_stand_apart_and_say_when(capsys):
+    """Owner 2026-11-20: a blank line before and after each heading, an underline, and the
+    time."""
+    import re
+    cli.main(["setup"], ask=_answers("", "", "", "", "", "n"), ask_secret=_answers())
+    lines = capsys.readouterr().out.splitlines()
+    for n in (1, 2, 3, 4):
+        i = next(k for k, ln in enumerate(lines) if ln.startswith(f"Step {n} of 4"))
+        assert lines[i - 1] == "" and set(lines[i + 1]) == {"-"} and lines[i + 2] == ""
+    assert any(re.search(r"20\d\d-\d\d-\d\d \d\d:\d\d", ln) for ln in lines[:8])
+
+
+def test_the_startup_banner_says_when(capsys):
+    import re
+    cli.first_start_banner(config.get_settings())
+    assert re.search(r"20\d\d-\d\d-\d\d \d\d:\d\d", capsys.readouterr().out)
+
+
+def test_an_agate_that_does_not_answer_is_asked_again(capsys, monkeypatch):
+    """Owner 2026-11-20: a wrong address is caught, not saved silently."""
+    monkeypatch.setattr(cli, "_probe", lambda host: (host == "10.0.0.5", f"{host}: answer?"))
+    cli.main(["setup"], ask=_answers("10.0.0.9", "n", "10.0.0.5", "", "", "", "", "n"),
+             ask_secret=_answers())
+    assert "FWH_HOST=10.0.0.5" in (Path(environment.DATA_DIR) / "bridge.env").read_text()
+    cli.main(["setup"], ask=_answers("10.0.0.9", "y", "", "", "", "", "n"),
+             ask_secret=_answers())      # kept on purpose (aGate off for now)
+    assert "FWH_HOST=10.0.0.9" in (Path(environment.DATA_DIR) / "bridge.env").read_text()

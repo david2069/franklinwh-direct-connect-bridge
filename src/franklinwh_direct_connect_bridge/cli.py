@@ -153,7 +153,7 @@ def first_start_banner(s) -> None:
         on = security.enabled(store)
     https = on and s.https_port
     urls = _addresses(s, s.https_port if https else s.http_port, "https" if https else "http")
-    out = ["", "-" * 64, f"FranklinWH Direct Connect Bridge {__version__}",
+    out = ["", "-" * 64, f"FranklinWH Direct Connect Bridge {__version__}  {_now()}",
            f"  Open:      {urls[0]}"] + [f"             {u}" for u in urls[1:]]
     if not on and s.https_port:   # Security off still serves HTTPS too
         out += [f"  or HTTPS:  {u}" for u in _addresses(s, s.https_port, "https")[:1]]
@@ -176,12 +176,14 @@ def first_start_banner(s) -> None:
     print("\n".join(out), flush=True)
 
 
-def _probe_line(host: str) -> str:
+def _probe(host: str) -> tuple[bool, str]:
+    """Whether the aGate's Direct Connect TCP port answers at ``host``, and a line saying so."""
     from .diagnostics import probe
     r = probe(host)
-    return (f"  {host}: Direct Connect port {r['port']} answered" if r["dc_9000"] else
-            f"  {host}: no answer on the Direct Connect port {r['port']}; check the address, "
-            "and that Direct Connect is on in the FranklinWH app")
+    return bool(r["dc_9000"]), (
+        f"  OK  {host}: Direct Connect port {r['port']} answered" if r["dc_9000"] else
+        f"  !!  {host}: no answer on the Direct Connect port {r['port']}. Check the address,\n"
+        "      and that Direct Connect is on in the FranklinWH app.")
 
 
 #: What ``setup`` saves to the settings file; anything else in it is kept as written.
@@ -213,6 +215,15 @@ def _port_in_use(port: int) -> bool:
         return so.connect_ex(("127.0.0.1", int(port))) == 0
 
 
+def _now() -> str:
+    import datetime
+    return datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z")
+
+
+def _heading(title: str) -> None:
+    print(f"\n{title}\n{'-' * len(title)}\n")
+
+
 def _setup_header(s, data: Path) -> None:
     """What setup is about to do, and where: the version, the folders, the checks."""
     import importlib.util
@@ -220,11 +231,13 @@ def _setup_header(s, data: Path) -> None:
     from . import __version__
     existing = (data / "metrics.db").exists()
     line = "=" * 64
-    print(f"{line}\nFranklinWH Direct Connect Bridge {__version__}: setup\n{line}\n"
+    print(f"\n{line}\nFranklinWH Direct Connect Bridge {__version__}: setup\n{line}\n\n"
+          f"  Time:          {_now()}\n"
           f"  This folder:   {Path.cwd()}\n"
           f"  Data folder:   {data.resolve()}  "
           f"({'existing install: its history and accounts are kept' if existing else 'new install'})\n"
-          f"  Settings file: {config.settings_file().resolve()}\n\nChecks")
+          f"  Settings file: {config.settings_file().resolve()}")
+    _heading("Checks")
     v = sys.version_info
     print(f"  {'OK' if v >= (3, 11) else 'NO'}  Python {v.major}.{v.minor}.{v.micro} "
           "(needs 3.11 or newer)")
@@ -265,20 +278,27 @@ def _setup(ask, ask_secret) -> int:
         return ask(f"{prompt} [{default}]: ").strip() or str(default)
 
     _setup_header(s, data)
-    print("Step 1 of 4: the aGate\n"
-          "   Its address on your network. Optional: leave it blank and add it later in\n"
+    _heading("Step 1 of 4: the aGate")
+    print("   Its address on your network. Optional: leave it blank and add it later in\n"
           "   the web UI.")
-    host = q("   aGate address (IP or hostname)", s.fwh_host or "none")
-    host = "" if host == "none" else host
-    if host:
-        print(" " + _probe_line(host))
-    print("\nStep 2 of 4: ports\n"
-          "   Where your browser opens the bridge. Keep the defaults unless something\n"
+    host = s.fwh_host or "none"
+    while True:
+        host = q("   aGate address (IP or hostname)", host)
+        host = "" if host == "none" else host
+        if not host:
+            break
+        print(f"   Checking {host} (up to 5 s)...", flush=True)
+        ok, line = _probe(host)
+        print(line)
+        if ok or _yes(ask, "   Keep it anyway (the aGate may be off)?", "n"):
+            break
+    _heading("Step 2 of 4: ports")
+    print("   Where your browser opens the bridge. Keep the defaults unless something\n"
           "   else on this computer uses them.")
     http_port = q("   Web port (HTTP)", s.http_port)
     https_port = q("   HTTPS port, 0 = off", s.https_port)
-    print("\nStep 3 of 4: Security\n"
-          "   y: the web UI asks for a username and password (recommended).\n"
+    _heading("Step 3 of 4: Security")
+    print("   y: the web UI asks for a username and password (recommended).\n"
           "   n: anyone on your network can open it; turn it on later in Settings.")
     on = _yes(ask, "   Ask to sign in?", "y")
     if on and https_port.strip() == "0":
@@ -295,7 +315,7 @@ def _setup(ask, ask_secret) -> int:
     else:
         security.decide_install(store, quick_start=not on)
     auth.ensure_tables(store)
-    print("\nStep 4 of 4: the admin account")
+    _heading("Step 4 of 4: the admin account")
     if not on:
         print("   Not needed: Security is off.")
     elif auth.has_admin(store):
@@ -324,12 +344,12 @@ def _setup(ask, ask_secret) -> int:
                    "Security)" if generated else ""))
     url = (f"https://localhost:{https_port}" if on else f"http://localhost:{http_port}")
     line = "=" * 64
-    print(f"\n{line}\nSetup saved\n"
+    print(f"\n{line}\nSetup saved {_now()}\n{line}\n\n"
           f"  aGate:     {host or 'not set (add it in the web UI)'}\n"
           f"  Open:      {url} (once the bridge is running)\n"
           f"  Security:  {'on: sign in' if on else 'off: no sign-in'}\n"
           f"  Saved to:  {config.settings_file().resolve()}\n"
-          f"  Start it later with: franklinwh-direct-connect-bridge\n{line}")
+          f"  Start it later with: franklinwh-direct-connect-bridge\n")
     return 0
 
 

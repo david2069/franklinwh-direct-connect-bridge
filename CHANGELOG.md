@@ -50,7 +50,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   stops instead of making a second, empty one there. It opens with the version, this
   folder, the data folder (new or existing install), the settings file and checks (Python
   version, cloud features, ports free), numbers each step (Step 1 of 4), and ends with a
-  summary of what it saved and where to open the bridge. Stopping the bridge with Ctrl+C no
+  summary of what it saved and where to open the bridge. Each heading has a blank line
+  before and after and an underline, and the header, summary and startup banner show the
+  time. An aGate address whose Direct Connect port (TCP 9000) doesn't answer is asked
+  again, unless you keep it (the aGate may be off). Stopping the bridge with Ctrl+C no
   longer logs "HTTPS port 8102 stopped" as an error. With Security off, the startup banner
   also lists the HTTPS address ([guide](INSTALL.md#first-sign-in-docker-and-pip)).
 

@@ -130,8 +130,9 @@ cloud features, and whether ports 8101 and 8102 are free (if the bridge is runni
 first). Each question has a default in [brackets]: press Enter to accept it, or type your
 own. Four steps:
 
-1. the aGate's address, and checks that it answers. Optional: leave it blank and add it
-   later in the web UI;
+1. the aGate's address, and checks that its Direct Connect port (TCP 9000) answers. If it
+   doesn't, it asks again, or keeps the address if you say so (the aGate may be off).
+   Optional: leave it blank and add it later in the web UI;
 2. the web port (8101) and the HTTPS port (8102). In Docker keep them: `docker-compose.yml`
    publishes those two;
 3. whether to ask for a sign-in (Security on or off; on by default);
