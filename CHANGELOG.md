@@ -11,113 +11,20 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
-### Added
-
-- **Signed-in user in the top bar** (owner 2026-11-20). With Security on, the top bar shows
-  who is signed in; click it for the role and **Sign out**. In Home Assistant's sidebar it
-  shows the HA user and role. It's a **Customise → Top bar** item, on by default
-  ([guide](docs/guide/tour.md#the-top-bar)).
-
-- **Custom roles (Docker and pip)** (owner 2026-11-20). Under **Settings → Admin →
-  Security → Custom roles** an admin makes roles of their own: the tabs it can open (any
-  tab, and System view) and what it can change (nothing, battery commands, schedules).
-  The other tabs are hidden and the bridge refuses their data with 403. Custom roles
-  appear in the account role picker; one in use can't be deleted. admin, user, viewer and
-  api are unchanged, and the Home Assistant add-on has none
-  ([guide](docs/guide/security.md#custom-roles-standalone)).
-
-- **`setup` command and a startup banner (Docker and pip)** (owner 2026-11-20).
-  `franklinwh-direct-connect-bridge setup` asks for the aGate's address (and checks it
-  answers), the ports, Security on or off and the first admin, and saves the address and
-  ports to `bridge.env` in the data folder, so a plain `franklinwh-direct-connect-bridge`
-  starts it; environment variables still win. The password goes only into the bridge's
-  accounts, never the file. Before the web server starts, a banner shows the addresses to
-  open (localhost and this computer's, not Uvicorn's `0.0.0.0`), whether Security is on,
-  and the generated admin password on the one start that makes it
-  ([install](INSTALL.md#first-sign-in-docker-and-pip)).
-
-- **Sign-in page: version and help links** (owner 2026-11-20). Under the form the sign-in
-  page shows the bridge's version and links to the documentation, GitHub Discussions and
-  Issues, each in a new tab ([guide](docs/guide/security.md)).
-
-### Changed
-
-- **Richo's FranklinWH integration: detect and warn** (owner 2026-11-20). With Home
-  Assistant linked, the setup check says whether richo's `franklin_wh` integration is
-  running, how many entities it has and when it last updated, and says how to turn it off
-  when you're ready (remove its `platform: franklin_wh` entries from `configuration.yaml`
-  and restart Home Assistant). The note no longer promises a later move of entity
-  names and history: the bridge never takes over that integration's entities
-  ([guide](docs/guide/tour.md#the-franklinwh-integration-richo)). Richo's integration set
-  up in YAML (as 2026.3.0 is) is now recognised: Home Assistant lists it as
-  `franklin_wh.sensor`, which the check missed before.
-
-- **A friendlier `setup` command (Docker and pip)** (owner 2026-11-20). Each question says
-  what it's for, and Enter accepts every default. The aGate address is optional (add it
-  later in the web UI), and so is the admin account: skip it and the first start makes
-  `admin` with a password shown once. It ends with a summary and **Start the bridge now?**
-  (pip; Docker starts with `docker compose up -d`). Run from inside the `data` folder, it
-  stops instead of making a second, empty one there. It opens with the version, this
-  folder, the data folder (new or existing install), the settings file and checks (Python
-  version, cloud features, ports free), numbers each step (Step 1 of 4), and ends with a
-  summary of what it saved and where to open the bridge. Each heading has a blank line
-  before and after and an underline, and the header, summary and startup banner show the
-  time. An aGate address whose Direct Connect port (TCP 9000) doesn't answer is asked
-  again, unless you keep it (the aGate may be off). Starting the bridge with port 8101 or 8102 already in
-  use now stops at once and says which port and what to do; before, it started and then
-  stopped, or ran on HTTP alone. On an install that already has gateways, the aGate address is
-  added to them (enabled; the active gateway is unchanged) instead of being saved and
-  ignored. INSTALL.md gives pip installs two paths: update only (keeps everything), or a
-  clean fresh install (moves the old data aside). Setup warns when `FWH_HOST`, `FWH_HOSTS`
-  or a port is set in the environment, which wins over what it saves, and says to enter
-  the main aGate and add any others under Settings → Gateways
-  ([guide](INSTALL.md#pip-without-docker-update-or-start-fresh)). Stopping the bridge with Ctrl+C no
-  longer logs "HTTPS port 8102 stopped" as an error. With Security off, the startup banner
-  also lists the HTTPS address ([guide](INSTALL.md#first-sign-in-docker-and-pip)).
-
-- **Sign-in: Home Assistant add-on and standalone kept apart** (owner 2026-11-20). One
-  table in the code now says which sign-in and account features belong to the add-on (HA
-  users through the sidebar, first admin made there) and which to Docker and pip (first
-  admin from settings or generated, `setup`, `bridge.env`, `SECURITY=off`, the startup
-  banner); every check reads it. Settings → Admin → Security says which way the install
-  is, and on Docker and pip no longer mentions the Home Assistant sidebar
-  ([guide](docs/guide/security.md#home-assistant-add-on-or-standalone-two-separate-ways)).
-
-- **Control guide: Battery force section brought up to date** (owner 2026-11-20). It no
-  longer says direct Modbus TCP is being retired: Battery Control and the Scheduler keep
-  using this bridge's Modbus client. It now says the Modbus client starts off on a new
-  install and where to turn it on, quotes the current reason text, and says
-  `POST /api/dispatch` needs an installed Modbus Bridge ([guide](docs/guide/control.md#battery-force-two-paths-and-which-one-you-are-on)).
-
-- **One word for a resting battery: Standby; the VPP badge says VPP Mode** (#770, steps
-  3 and 4; owner 2026-11-20). The dashboard, top bar and Battery tab said *Idle* where Home
-  Assistant and the aGate's run status say *Standby*; they now say *Standby* (solar, home and
-  generator rows still say *Idle*). The VPP badge's fallback label reads *VPP Mode*, as the
-  FranklinWH app shows it. Display only.
-
-- **Health and the TOU card: the last lower-case words** (#770, step 2). The health
-  pattern level read *error* in one list and *green* in the report picker; both now start
-  with a capital (*Error*, *Green*), and the TOU card's operating mode reads *Unknown* when
-  it isn't known. Display only.
-
-- **Status words start with a capital** (#770, step 1). The scheduler's log status and
-  monitor state, alert severity and state, the health level and the network link state
-  showed raw lower-case values (*fired*, *holding*, *warning*, *green*, *active*) next to
-  capitalised ones. They now read *Fired*, *Holding*, *Warning*, *Green*, *Active*.
-  Display only: the API, MQTT and Home Assistant values are unchanged.
-
-### Fixed
-
-- **An api token can read the API schema** (#781). With Security on, an **api** account's
-  token got 403 on `/openapi.json`, so the role meant for integrations couldn't discover
-  the API it may call. `/openapi.json` is now open to every role; `/docs` and `/redoc`
-  stay web pages, as before ([guide](docs/guide/security.md)).
-
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
 
 ## 2026-11-20
+
+### [0.5.55](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.55.md)
+
+Added 4 · Changed 7 · Fixed 1
+
+- Install and sign-in (Docker and pip): a guided `setup` command with checks and a startup…
+- Home Assistant: richo's FranklinWH integration is detected, with when it last updated and…
+- Wording: Standby for a resting battery, VPP Mode, status words with a capital
+- API: an api token can read the API schema
 
 ### [0.5.54](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.54.md)
 
