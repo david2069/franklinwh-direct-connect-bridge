@@ -133,7 +133,7 @@ def first_start_banner(s) -> None:
     """Docker and pip: before the web server starts, where to open the bridge, whether it
     asks to sign in, and the first admin's password on the one start that generates it."""
     from . import __version__, auth, db, security
-    if environment.IS_HA_ADDON:
+    if not environment.account_feature("startup_banner"):
         return
     store = db.get_store(s)
     shown: list[str] = []
@@ -141,7 +141,7 @@ def first_start_banner(s) -> None:
     if store is not None:
         security.decide_install(store, quick_start=s.security_quick_start)
         auth.ensure_tables(store)
-        auth.ensure_first_admin(store, s, on_addon=False, security_on=security.enabled(store),
+        auth.ensure_first_admin(store, s, security_on=security.enabled(store),
                                 reveal=shown.append)
         on = security.enabled(store)
     https = on and s.https_port
@@ -199,7 +199,7 @@ def _setup(ask, ask_secret) -> int:
     ports, Security on or off and the first admin, so a plain start needs no variables. Run
     it with the bridge stopped. The password goes into the bridge's accounts, never a file."""
     from . import auth, db, security
-    if environment.IS_HA_ADDON:
+    if not environment.account_feature("setup_command"):
         print("The add-on is set up from Home Assistant, not this command.")
         return 2
     s = config.load_settings()

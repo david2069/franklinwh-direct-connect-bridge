@@ -19,6 +19,22 @@ long-lived API tokens.
   HTTPS port and signs in.
 - **Security can always be turned off.**
 
+## Home Assistant add-on or standalone: two separate ways
+
+Sign-in and accounts are set up one of two ways, decided by how the bridge is installed.
+The two never mix: what one has, the other doesn't. **Settings → Admin → Security** says
+which way yours is.
+
+| | Home Assistant add-on | Standalone (Docker or pip) |
+|---|---|---|
+| Home Assistant users | Sign in through the sidebar; their HA group sets the role (admin, user or viewer) | None |
+| First admin | Made under Settings → Admin → Security, from the sidebar | `ADMIN_USERNAME`/`ADMIN_PASSWORD`, the `setup` command, or a generated password |
+| `setup` command and `bridge.env` | No: the add-on's options in Home Assistant | Yes |
+| `SECURITY=off` on the first start | Ignored | Yes |
+| Startup banner | No | Yes |
+
+Accounts with a password, and API tokens, work the same way on both.
+
 ## Trusted networks: available now
 
 **Settings → Admin → Security → Trusted networks** lists the networks that may reach the

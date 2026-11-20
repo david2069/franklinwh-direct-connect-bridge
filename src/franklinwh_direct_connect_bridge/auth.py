@@ -285,12 +285,15 @@ def end_session(store, token: str | None) -> None:
         _exec(store, "DELETE FROM auth_sessions WHERE token_hash=?", (_h(token),))
 
 
-def ensure_first_admin(store, settings, *, on_addon: bool, security_on: bool,
+def ensure_first_admin(store, settings, *, on_addon: bool | None = None, security_on: bool,
                        reveal=None) -> str | None:
     """Docker and pip: an admin from ``ADMIN_USERNAME``/``ADMIN_PASSWORD`` while none
     exists; with Security on and neither set, ``admin`` with a generated password, logged
     once, or handed to ``reveal`` (the startup banner) instead. The add-on makes its first
     admin from the sidebar instead. Returns what was done, for the log."""
+    if on_addon is None:
+        from . import environment
+        on_addon = not environment.account_feature("first_admin_from_settings")
     if on_addon or has_admin(store):
         return None
     name, pw = settings.admin_username, settings.admin_password
