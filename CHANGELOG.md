@@ -53,7 +53,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   summary of what it saved and where to open the bridge. Each heading has a blank line
   before and after and an underline, and the header, summary and startup banner show the
   time. An aGate address whose Direct Connect port (TCP 9000) doesn't answer is asked
-  again, unless you keep it (the aGate may be off). Stopping the bridge with Ctrl+C no
+  again, unless you keep it (the aGate may be off). Starting the bridge with port 8101 or 8102 already in
+  use now stops at once and says which port and what to do; before, it started and then
+  stopped, or ran on HTTP alone. Stopping the bridge with Ctrl+C no
   longer logs "HTTPS port 8102 stopped" as an error. With Security off, the startup banner
   also lists the HTTPS address ([guide](INSTALL.md#first-sign-in-docker-and-pip)).
 

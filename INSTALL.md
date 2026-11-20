@@ -171,7 +171,9 @@ it back on restores them ([guide](docs/guide/security.md#the-first-admin)).
 **The startup banner.** Before the web server starts, the bridge prints where to open it,
 for example `https://localhost:8102` and this computer's address on your network, whether
 Security is on, and the generated admin password on the one start that makes it. With
-Security off it lists both addresses: `http://…:8101` and `https://…:8102`. Uvicorn's
+Security off it lists both addresses: `http://…:8101` and `https://…:8102`. If either port is
+already in use (often the bridge already running in another terminal), it doesn't start,
+and says which port and how to change it. Uvicorn's
 own `Uvicorn running on http://0.0.0.0:8101` line is the address it listens on (every
 network interface), not one to open in a browser.
 

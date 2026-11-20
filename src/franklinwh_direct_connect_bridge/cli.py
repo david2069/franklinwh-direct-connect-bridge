@@ -38,6 +38,14 @@ def main(argv: list[str] | None = None, *, ask=input, ask_secret=getpass.getpass
         config._settings = None     # read what setup just saved
 
     s = get_settings()
+    taken = [(k, p) for k, p in (("HTTP_PORT", s.http_port), ("HTTPS_PORT", s.https_port))
+             if p and not _can_listen(s.http_host, p)]
+    for k, p in taken:
+        print(f"Port {p} is in use, so the bridge didn't start. If the bridge is already running,\n"
+              f"use that one or stop it (Ctrl+C in its terminal). Otherwise pick another port:\n"
+              f"franklinwh-direct-connect-bridge setup, or set {k}.")
+    if taken:
+        return 1
     logging.basicConfig(
         level=getattr(logging, s.log_level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
@@ -53,8 +61,9 @@ def main(argv: list[str] | None = None, *, ask=input, ask_secret=getpass.getpass
 
 async def serve(s) -> None:
     """Port 8101 (HTTP) and the HTTPS port, one app. HTTP runs the app's start-up and owns
-    Ctrl-C/SIGTERM; HTTPS shares the running app. If HTTPS can't start (a bad certificate,
-    the port taken), HTTP carries on and Settings → Admin → Security says why."""
+    Ctrl-C/SIGTERM; HTTPS shares the running app. If HTTPS can't start (a bad certificate),
+    HTTP carries on and Settings → Admin → Security says why. A taken port stops `run`
+    before this starts."""
     from .app import create_app
     app = create_app()
     http = uvicorn.Server(uvicorn.Config(app, host=s.http_host, port=s.http_port,
@@ -207,6 +216,18 @@ def _save_settings_file(values: dict[str, str]) -> None:
 
 def _yes(ask, prompt: str, default: str) -> bool:
     return (ask(f"{prompt} y/n [{default}]: ").strip() or default).lower().startswith("y")
+
+
+def _can_listen(host: str, port: int) -> bool:
+    """Whether the web server could listen on ``port``, checked before anything starts
+    (uvicorn would otherwise start the app, then stop, or run without HTTPS)."""
+    with socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET) as so:
+        so.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)   # as uvicorn does
+        try:
+            so.bind((host or "0.0.0.0", int(port)))
+        except OSError:
+            return False
+    return True
 
 
 def _port_in_use(port: int) -> bool:

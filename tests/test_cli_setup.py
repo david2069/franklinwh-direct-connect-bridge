@@ -11,6 +11,9 @@ from franklinwh_direct_connect_bridge import auth, cli, config, db, environment,
 pytestmark = pytest.mark.security_on
 
 
+_REAL_CAN_LISTEN = cli._can_listen
+
+
 def _answers(*replies):
     it = iter(replies)
     return lambda prompt="": next(it)
@@ -24,6 +27,7 @@ def _store():
 def _no_network(monkeypatch):
     monkeypatch.setattr(cli, "_probe", lambda host: (True, f"{host}: ok"))
     monkeypatch.setattr(cli, "_port_in_use", lambda port: False)
+    monkeypatch.setattr(cli, "_can_listen", lambda host, port: True)   # a bridge may be running
 
 
 def test_setup_saves_the_answers_and_makes_the_admin(capsys):
@@ -206,3 +210,22 @@ def test_an_agate_that_does_not_answer_is_asked_again(capsys, monkeypatch):
     cli.main(["setup"], ask=_answers("10.0.0.9", "y", "", "", "", "", "n"),
              ask_secret=_answers())      # kept on purpose (aGate off for now)
     assert "FWH_HOST=10.0.0.9" in (Path(environment.DATA_DIR) / "bridge.env").read_text()
+
+
+def test_run_stops_before_starting_when_a_port_is_taken(capsys, monkeypatch):
+    """Owner 2026-11-20: a taken port stopped the web app half-started. Now nothing starts."""
+    import socket
+    started = []
+    monkeypatch.setattr(cli, "serve", lambda s: started.append(s))
+    monkeypatch.setattr(cli, "_can_listen", _REAL_CAN_LISTEN)
+    monkeypatch.setenv("HTTP_PORT", "0")
+    with socket.socket() as busy:
+        busy.bind(("0.0.0.0", 0))
+        busy.listen()
+        port = busy.getsockname()[1]
+        monkeypatch.setenv("HTTPS_PORT", str(port))
+        monkeypatch.setattr(config, "_settings", None)
+        rc = cli.main(["run"])
+    out = capsys.readouterr().out
+    assert rc == 1 and not started
+    assert f"Port {port} is in use" in out and "HTTPS_PORT" in out
