@@ -194,6 +194,7 @@ reordered, from **Topbar cog → Customise → Top bar** (Centre indicators / Ri
 | **Cards** | On the Dashboard only: opens Customise on **Dashboard cards**. |
 | **`</>`** | Raw-key toggle — reveals the underlying `cmdType` behind each displayed value. |
 | **Release** | Appears *only while a force dispatch is active*, on every tab, so you can stop it from anywhere. |
+| **Signed-in user** | Who is signed in. Click it for the role and **Sign out**. Shown only when someone is signed in: Security on, or Home Assistant's sidebar (which shows the HA user, without Sign out). |
 | **Refresh · theme · cog** | Re-poll, light/dark, and the cog: theme, accent and **Customise**. |
 
 **System view** (its top-bar button, or System view in the sidebar) opens a picture of the

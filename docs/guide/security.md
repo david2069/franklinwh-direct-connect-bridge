@@ -203,8 +203,12 @@ exist yet is created as an admin.
 
 With Security on, the HTTPS port shows a sign-in page. Under the form it shows the
 bridge's version and links to the documentation, GitHub Discussions and Issues. A session lasts 30 days, or until
-you sign out (**Settings → Admin → Security → Sign out**). Changing a password, or
-disabling an account, ends its sessions. Requests to port 8101 are redirected to the
+you sign out: click your name in the top bar, then **Sign out** (or **Settings → Admin →
+Security → Sign out**).
+
+![The signed-in user in the top bar, with its role and Sign out](../images/security/03-topbar-user.png)
+
+Changing a password, or disabling an account, ends its sessions. Requests to port 8101 are redirected to the
 HTTPS port; if the HTTPS port isn't running, 8101 answers 503 and says why.
 
 The Security switch can only be turned on when an admin account exists and the HTTPS

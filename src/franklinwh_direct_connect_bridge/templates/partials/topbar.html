@@ -281,6 +281,35 @@
       Release
     </button>
 
+    <!-- Signed-in user (owner 2026-11-20): who, as what role, and Sign out. -->
+    <div class="relative" :style="{order: $store.app.topbarOrder('user')}" data-testid="topbar-user"
+         x-show="$store.app.me && $store.app.topbarShow('user')" x-cloak
+         @click.outside="$store.app.userMenuOpen = false">
+      <button type="button" @click="$store.app.userMenuOpen = !$store.app.userMenuOpen"
+              class="inline-flex items-center gap-1.5 px-2 py-1 rounded transition text-slate-400 hover:text-slate-200 hover:bg-slate-700"
+              :title="$store.app.me ? 'Signed in as ' + $store.app.me.username + ' (' + $store.app.me.role + ')' : ''"
+              aria-label="Signed-in user">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <circle cx="12" cy="8" r="4"/><path stroke-linecap="round" d="M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>
+        <span class="hidden md:inline text-xs max-w-[9rem] truncate" x-text="$store.app.me ? $store.app.me.username : ''"></span>
+      </button>
+      <div x-show="$store.app.userMenuOpen" x-cloak
+           class="absolute right-0 mt-1 w-56 rounded-lg border p-3 space-y-2 z-50 text-xs"
+           style="background:var(--surface-1);border-color:var(--border);color:var(--text-secondary)">
+        <template x-if="$store.app.me">
+          <div class="space-y-2">
+            <div><span class="text-sm font-medium" style="color:var(--text-primary)" x-text="$store.app.me.username"></span></div>
+            <div>Role: <span style="color:var(--text-primary)" x-text="$store.app.me.role"></span></div>
+            <div x-show="$store.app.me.via === 'ingress'">Signed in through Home Assistant.</div>
+            <div x-show="$store.app.me.via === 'token'">Using an API token.</div>
+            <button type="button" x-show="$store.app.me.via === 'session'" class="btn btn-secondary btn-sm w-full"
+                    @click="$store.app.signOut()">Sign out</button>
+          </div>
+        </template>
+      </div>
+    </div>
+    <!-- /topbar-user -->
+
     <!-- Topbar Preferences (LOCKED gear + popover) -->
     <div class="relative" style="order:999" @click.outside="$store.app.topbarPrefsOpen = false">
       <button @click="$store.app.topbarPrefsOpen = !$store.app.topbarPrefsOpen"

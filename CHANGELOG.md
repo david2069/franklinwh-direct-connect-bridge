@@ -13,6 +13,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- **Signed-in user in the top bar** (owner 2026-11-20). With Security on, the top bar shows
+  who is signed in; click it for the role and **Sign out**. In Home Assistant's sidebar it
+  shows the HA user and role. It's a **Customise → Top bar** item, on by default
+  ([guide](docs/guide/tour.md#the-top-bar)).
+
 - **Custom roles (Docker and pip)** (owner 2026-11-20). Under **Settings → Admin →
   Security → Custom roles** an admin makes roles of their own: the tabs it can open (any
   tab, and System view) and what it can change (nothing, battery commands, schedules).
