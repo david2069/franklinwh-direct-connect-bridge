@@ -29,6 +29,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Changed
 
+- **Control guide: Battery force section brought up to date** (owner 2026-11-20). It no
+  longer says direct Modbus TCP is being retired: Battery Control and the Scheduler keep
+  using this bridge's Modbus client. It now says the Modbus client starts off on a new
+  install and where to turn it on, quotes the current reason text, and says
+  `POST /api/dispatch` needs an installed Modbus Bridge ([guide](docs/guide/control.md#battery-force-two-paths-and-which-one-you-are-on)).
+
 - **One word for a resting battery: Standby; the VPP badge says VPP Mode** (#770, steps
   3 and 4; owner 2026-11-20). The dashboard, top bar and Battery tab said *Idle* where Home
   Assistant and the aGate's run status say *Standby*; they now say *Standby* (solar, home and

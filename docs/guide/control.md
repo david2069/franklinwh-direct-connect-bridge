@@ -142,38 +142,28 @@ that names the command, both `opt` values, and any known danger text for that `c
 
 This is the part of the bridge with the most moving parts, so it is worth being precise.
 
-**The Control tab widget and the Scheduler's `force` action** both go through the
-bridge's own **direct Modbus** code (`battery_control`), writing SunSpec `WSet` over TCP
-`:502`. That code carries its own watchdog: it enforces the duration *and* the target SoC
+**Battery Control (the Control tab) and the Scheduler's `force` action** use this bridge's
+**Modbus client**. It writes SunSpec `WSet` to the **Modbus TCP Server (aGate :502)**.
+The Modbus client carries its own watchdog: it enforces the duration *and* the target SoC
 (charge stops at SoC ≥ target, discharge at SoC ≤ target, read from the gateway's last
-poll), and releases when a newer command supersedes it. What happens to a dispatch that a
-restart interrupted is a separate, configurable question — see below.
+poll), and releases when a newer command replaces it. What happens to a dispatch that a
+restart interrupted is a separate setting; see below.
 
-**`POST /api/dispatch`** is a different route. It resolves a provider — an installed
-**Modbus Bridge** over REST first, the `franklinwh-modbus` library second — and delegates.
-The library path is detected but **deliberately not wired**: it returns 501, with the
-reason that dispatch without the Modbus Bridge's watchdog is unsafe. So in practice
-`/api/dispatch` needs an installed Modbus Bridge with credentials that have its `control`
-capability; a viewer account signs in successfully and still cannot dispatch.
+**The Modbus client starts off on a new install.** Turn it on under **Control → Modbus
+client (this bridge)**. Until then Battery Control and the Scheduler say why force is
+unavailable (*"This bridge's Modbus client is off"*) rather than hiding it. Switching it
+off affects this bridge only: the aGate's Modbus TCP Server, and other clients of it, are
+unaffected. An install that already had gateways before 0.5.9 keeps it on.
 
-That two-path arrangement is mid-migration. There is a design document in this repository
-(`docs/MODBUS_VIA_REST_DESIGN.md`, dated 2026-10-13) proposing that direct Modbus TCP be
-retired in favour of the Modbus Bridge REST API; at the time of writing it is marked
-**DESIGN for review**, and both paths still exist in the code. Expect this section to
-change.
+**`POST /api/dispatch`** is a separate API route for scripts. It hands the force to an
+installed **Modbus Bridge** over its REST API, with credentials that have its `control`
+capability, and that bridge's own watchdog runs it. Without a Modbus Bridge it returns
+501: the `franklinwh-modbus` library on its own has no watchdog, so it is not used to
+dispatch. Battery Control and the Scheduler do not depend on the Modbus Bridge.
 
-Two further honest notes:
-
-- `GET /api/capabilities` lists `force_charge_discharge` under **cloud** and keys it to
-  cloud login state. The force paths actually used by the UI and the scheduler are the
-  Modbus ones described above. Treat that capability flag as a statement about the cloud
-  API, not as the route your Force button takes. No template or script in this
-  repository refers to that flag by name (checked by search), so it appears to be
-  reporting rather than gating.
-- On the bridge read live on 2026-10-15, the Scheduler reported
-  `force_available: false` with the reason *"Modbus (SunSpec 502) is disabled in Control
-  settings"* — the expected behaviour when the Modbus path is switched off, and a good
-  example of the "say why, don't hide it" rule.
+`GET /api/capabilities` lists `force_charge_discharge` under **cloud**, keyed to the
+FranklinWH cloud sign-in. That flag describes the cloud API; it is not the route Battery
+Control or the Scheduler take, and it doesn't gate them.
 
 ### Stopping a force
 
