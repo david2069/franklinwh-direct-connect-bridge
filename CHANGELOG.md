@@ -11,6 +11,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+
+- **Install from PyPI** (#782). Releases are on PyPI from 0.5.55: README, INSTALL.md and
+  the guide install with `pip install "franklinwh-direct-connect-bridge[cloud]"` and update
+  with `pip install --upgrade` ([guide](INSTALL.md#from-pypi)).
+
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.

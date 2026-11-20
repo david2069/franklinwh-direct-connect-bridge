@@ -97,9 +97,7 @@ Or skip `setup` and set the variables yourself:
 
 ### From PyPI
 
-> **Not published yet.** This route works from the first release published to PyPI
-> ([#782](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/782)). Until
-> [the PyPI page](https://pypi.org/project/franklinwh-direct-connect-bridge/) shows a release, use *Without Docker* above.
+Releases are on [PyPI](https://pypi.org/project/franklinwh-direct-connect-bridge/) from 0.5.55.
 
 No clone needed:
 
@@ -219,13 +217,13 @@ Stop the bridge first (Ctrl+C in its terminal). Run each line from the folder th
 ```bash
 cd ~/fwh-bridge
 source .venv/bin/activate
-pip install --force-reinstall --no-deps "https://github.com/david2069/franklinwh-direct-connect-bridge/archive/refs/heads/main.zip"
+pip install --upgrade "franklinwh-direct-connect-bridge[cloud]"
 franklinwh-direct-connect-bridge
 ```
 
-`--force-reinstall` is needed while the version number on `main` is unchanged; without it
-pip keeps the copy it has. Use `pip install --upgrade "franklinwh-direct-connect-bridge[cloud]"`
-instead once releases are on PyPI ([#782](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/782)).
+That installs the latest release from PyPI. To try `main` before it is released, use
+`pip install --force-reinstall --no-deps "https://github.com/david2069/franklinwh-direct-connect-bridge/archive/refs/heads/main.zip"`
+instead (`--force-reinstall` because `main` keeps the last release's version number).
 
 **(b) Clean fresh install.** Starts with no history, gateways, accounts or settings. The
 old data is moved aside, not deleted, so you can go back by moving it back.
@@ -234,7 +232,7 @@ old data is moved aside, not deleted, so you can go back by moving it back.
 cd ~/fwh-bridge
 source .venv/bin/activate
 mv data data-old
-pip install --force-reinstall --no-deps "https://github.com/david2069/franklinwh-direct-connect-bridge/archive/refs/heads/main.zip"
+pip install --upgrade "franklinwh-direct-connect-bridge[cloud]"
 franklinwh-direct-connect-bridge setup
 ```
 

@@ -217,8 +217,7 @@ pip install ".[cloud]"            # pulls franklinwh-direct-connect-api from PyP
 FWH_HOST=192.0.2.110 franklinwh-direct-connect-bridge run   # → http://localhost:8101
 ```
 
-**From PyPI** (from the first release published there, not yet published:
-[#782](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/782)), no clone needed:
+**From PyPI** (from 0.5.55), no clone needed:
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate

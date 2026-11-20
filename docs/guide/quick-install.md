@@ -100,7 +100,7 @@ cd fwh-bridge
 python3 -m venv .venv
 source .venv/bin/activate
 python --version
-pip install "franklinwh-direct-connect-bridge[cloud] @ https://github.com/david2069/franklinwh-direct-connect-bridge/archive/refs/heads/main.zip"
+pip install "franklinwh-direct-connect-bridge[cloud]"
 ```
 
 `python --version` must say 3.11 or newer before you run `pip install`. On an older Python,
