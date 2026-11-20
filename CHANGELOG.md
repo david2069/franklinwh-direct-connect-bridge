@@ -42,6 +42,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Changed
 
+- **A friendlier `setup` command (Docker and pip)** (owner 2026-11-20). Each question says
+  what it's for, and Enter accepts every default. The aGate address is optional (add it
+  later in the web UI), and so is the admin account: skip it and the first start makes
+  `admin` with a password shown once. It ends with a summary and **Start the bridge now?**
+  (pip; Docker starts with `docker compose up -d`). Run from inside the `data` folder, it
+  stops instead of making a second, empty one there
+  ([guide](INSTALL.md#first-sign-in-docker-and-pip)).
+
 - **Sign-in: Home Assistant add-on and standalone kept apart** (owner 2026-11-20). One
   table in the code now says which sign-in and account features belong to the add-on (HA
   users through the sidebar, first admin made there) and which to Docker and pip (first

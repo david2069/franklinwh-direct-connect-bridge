@@ -123,14 +123,22 @@ warns once. Set it up either way:
 
 **The setup command (less typing).** Run `franklinwh-direct-connect-bridge setup` with the
 bridge stopped (for Docker: `docker compose run --rm franklinwh-direct-connect-bridge
-franklinwh-direct-connect-bridge setup`). It asks:
+franklinwh-direct-connect-bridge setup`). Run it from the folder that holds `data`, not
+from inside `data`. Each question has a default in [brackets]: press Enter to accept it,
+or type your own. It asks:
 
-1. the aGate's address, and checks that it answers;
+1. the aGate's address, and checks that it answers. Optional: leave it blank and add it
+   later in the web UI;
 2. the web port (8101) and the HTTPS port (8102). In Docker keep them: `docker-compose.yml`
    publishes those two;
-3. whether to ask for a sign-in (Security on or off);
-4. with Security on and no admin yet: the admin's username and password. Press Enter for
-   the password and it makes one up and shows it once.
+3. whether to ask for a sign-in (Security on or off; on by default);
+4. with Security on and no admin yet: whether to choose the admin's username and password
+   now. Optional (default no): the first start then makes `admin` with a generated password
+   and shows it once. Choose now and press Enter for the password, and it makes one up and
+   shows it once.
+
+It ends with a summary and, for pip, **Start the bridge now?** (Enter = yes). In Docker,
+start it with `docker compose up -d`.
 
 It saves the address and ports to `data/bridge.env` (`/data/bridge.env` in Docker), so
 starting the bridge needs nothing typed. The password goes into the bridge's own accounts,
