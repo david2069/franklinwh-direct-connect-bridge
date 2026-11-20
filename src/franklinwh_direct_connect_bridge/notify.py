@@ -134,6 +134,38 @@ class Notifier:
             return str(e) or type(e).__name__
 
 
+def has_target(settings: Settings) -> bool:
+    """True when there is a Home Assistant to send to (an instance, the Supervisor or
+    ``ha_url`` + ``ha_token``)."""
+    return Notifier(settings).target_info()["source"] != "none"
+
+
+def push_default(settings: Settings) -> None:
+    """At start: the Push notifications switch is off while there is no Home Assistant to
+    send to, unless the user saved a choice (owner, 2026-11-21)."""
+    from . import config
+    if "ha_notify" not in config.load_overrides() and not has_target(settings):
+        settings.ha_notify = False
+
+
+def push_follows_target(settings: Settings, had_target: bool) -> None:
+    """After an HA instance is added, edited or removed: the first one that connects turns
+    the switch on, losing the last one turns it off. Saved, like a change in Settings.
+    While one stays set up, the user's choice is left alone."""
+    from . import config, ha_instances
+    t = Notifier(settings).target_info()
+    now = t["source"] != "none"
+    if now == had_target:
+        return
+    if now and t["source"] == "instance" and not ha_instances.probe(
+            t["base"][:-len("/api")], t["token"]).get("ok"):
+        return
+    settings.ha_notify = now
+    config.save_override("ha_notify", now)
+    log.info("Push notifications switched %s: Home Assistant %s",
+             "on" if now else "off", "set up" if now else "no longer set up")
+
+
 def transitions(prev: dict | None, cur: dict, gateway: str = "") -> list[tuple[str, str]]:
     """Notify only on state CHANGES (not every poll). Returns (title, message) pairs, each
     naming ``gateway`` (#361)."""

@@ -68,6 +68,7 @@ from . import alerts
 from . import troubleshoot
 from .config import get_settings, gateway_list, metrics_active, save_override
 from .ha_supervisor import apply_host_timezone, apply_supervisor_mqtt, discover_mqtt
+from . import notify
 from .notify import Notifier
 from .poller import run_gateway
 from . import supervisor
@@ -1124,6 +1125,8 @@ def create_app() -> FastAPI:
         await asyncio.to_thread(apply_host_timezone)
         await asyncio.to_thread(apply_supervisor_mqtt, s)
         await asyncio.to_thread(_seed_self_ha_instance, s)
+        # Push notifications stay off until there is a Home Assistant to send to.
+        await asyncio.to_thread(notify.push_default, s)
         # Apply the persisted Modbus client (this bridge) switch: ratings + force dispatch.
         # OFF for a new install (#88): the user opts in from Control. Some sites have
         # no Modbus TCP Server (aGate :502) switched on, on some gateways it misbehaves,
@@ -3573,11 +3576,13 @@ def create_app() -> FastAPI:
         _guard_writes()
         import uuid
         st = _ha_store()
+        had = notify.has_target(get_settings())
         row = st.create_ha_instance(
             ha_id=uuid.uuid4().hex[:12], name=req.name, base_url=req.base_url,
             token=req.token, is_default=req.is_default, enabled=req.enabled)
         from . import actionable
         actionable.sync_instances(st)          # its tap listener starts now, not at a restart
+        notify.push_follows_target(get_settings(), had)
         return ha_instances.redact(row)
 
     @app.patch("/api/ha/instances/{ha_id}")
@@ -3586,19 +3591,23 @@ def create_app() -> FastAPI:
         st = _ha_store()
         if st.ha_instance(ha_id) is None:
             raise HTTPException(status_code=404, detail=f"no HA instance '{ha_id}'")
+        had = notify.has_target(get_settings())
         row = st.update_ha_instance(ha_id, **req.model_dump(exclude_unset=True))
         from . import actionable
         actionable.sync_instances(st)          # new URL/token signs in again; off stops listening
+        notify.push_follows_target(get_settings(), had)
         return ha_instances.redact(row)
 
     @app.delete("/api/ha/instances/{ha_id}")
     def api_ha_instance_delete(ha_id: str):
         _guard_writes()
         st = _ha_store()
+        had = notify.has_target(get_settings())
         if not st.delete_ha_instance(ha_id):
             raise HTTPException(status_code=404, detail=f"no HA instance '{ha_id}'")
         from . import actionable
         actionable.sync_instances(st)          # its tap listener closes
+        notify.push_follows_target(get_settings(), had)
         return {"deleted": ha_id}
 
     @app.post("/api/ha/test")
