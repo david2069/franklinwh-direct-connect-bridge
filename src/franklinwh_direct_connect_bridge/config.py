@@ -303,7 +303,7 @@ def settings_file() -> Path:
 def load_settings() -> Settings:
     """Settings from the environment, then the setup file for whatever it leaves unset."""
     f = settings_file()
-    if environment.IS_HA_ADDON or not f.is_file():
+    if not environment.account_feature("settings_file") or not f.is_file():
         return Settings()
     return Settings(_env_file=str(f))
 

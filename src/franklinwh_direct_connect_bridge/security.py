@@ -134,7 +134,7 @@ def is_trusted(host, nets: list[str]) -> bool:
 def is_ingress(host, headers) -> bool:
     """A Home Assistant sidebar-panel request: the add-on, the ingress proxy's address,
     and HA's ingress header."""
-    return (environment.IS_HA_ADDON and str(host) == INGRESS_IP
+    return (environment.account_feature("ha_users") and str(host) == INGRESS_IP
             and bool(headers.get("X-Ingress-Path")))
 
 

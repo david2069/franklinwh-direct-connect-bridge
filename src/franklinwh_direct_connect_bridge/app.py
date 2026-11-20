@@ -1093,10 +1093,10 @@ def create_app() -> FastAPI:
         _cfg_store = db.get_store(get_settings())
         # Upgrade or new install (#457), decided before install_date is first set.
         security.decide_install(_cfg_store, quick_start=get_settings().security_quick_start
-                                and not environment.IS_HA_ADDON)
+                                and environment.account_feature("security_off_on_first_start"))
         if _cfg_store is not None:
             auth.ensure_tables(_cfg_store)
-            auth.ensure_first_admin(_cfg_store, get_settings(), on_addon=environment.IS_HA_ADDON,
+            auth.ensure_first_admin(_cfg_store, get_settings(),
                                     security_on=security.enabled(_cfg_store))
         if _cfg_store is not None and not _cfg_store.get_config("install_date"):
             import datetime as _idt
@@ -1752,6 +1752,9 @@ def create_app() -> FastAPI:
                 "quick_start": security.quick_start(store),
                 "has_admin": store is not None and auth.has_admin(store),
                 "on_addon": environment.IS_HA_ADDON,
+                "accounts_mode": environment.accounts_mode(),
+                "account_features": list(environment.ACCOUNT_FEATURES[
+                    environment.accounts_mode()]),
                 "principal": getattr(request.state, "principal", None)}
 
     def _https_status() -> dict:

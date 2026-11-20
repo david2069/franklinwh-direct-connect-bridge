@@ -29,6 +29,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Changed
 
+- **Sign-in: Home Assistant add-on and standalone kept apart** (owner 2026-11-20). One
+  table in the code now says which sign-in and account features belong to the add-on (HA
+  users through the sidebar, first admin made there) and which to Docker and pip (first
+  admin from settings or generated, `setup`, `bridge.env`, `SECURITY=off`, the startup
+  banner); every check reads it. Settings → Admin → Security says which way the install
+  is, and on Docker and pip no longer mentions the Home Assistant sidebar
+  ([guide](docs/guide/security.md#home-assistant-add-on-or-standalone-two-separate-ways)).
+
 - **Control guide: Battery force section brought up to date** (owner 2026-11-20). It no
   longer says direct Modbus TCP is being retired: Battery Control and the Scheduler keep
   using this bridge's Modbus client. It now says the Modbus client starts off on a new

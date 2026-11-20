@@ -41,7 +41,7 @@ solar", with a short how-to and links to the guides: [I want to…](https://davi
 
 **Quick install:** three routes on one page: the command line on a spare Windows, Mac or Linux
 computer, a new Home Assistant OS, or an App in the one you have. [Pick your route](https://david2069.github.io/franklinwh-direct-connect-bridge/guide/quick-install/)
-· [image](docs/overview/quick-install.png).
+· [image](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/overview/quick-install.png).
 
 ## Running it
 
