@@ -229,3 +229,19 @@ def test_run_stops_before_starting_when_a_port_is_taken(capsys, monkeypatch):
     out = capsys.readouterr().out
     assert rc == 1 and not started
     assert f"Port {port} is in use" in out and "HTTPS_PORT" in out
+
+
+def test_an_existing_install_gets_the_agate_added_to_its_gateways(capsys):
+    """Owner 2026-11-20: with gateways already stored (two mocks), the address was saved
+    to bridge.env and ignored. Now it is added to the gateways; the active one stays."""
+    st = _store()
+    st.create_gateway(gw_id="mock1", label="Mock aGate 1", host="127.0.0.1", is_mock=True,
+                      is_default=True)
+    cli.main(["setup"], ask=_answers("10.0.0.5", "", "", "n", "n"), ask_secret=_answers())
+    rows = {r["host"]: r for r in st.gateways()}
+    assert "10.0.0.5" in rows and rows["10.0.0.5"]["enabled"] and not rows["10.0.0.5"]["is_default"]
+    out = capsys.readouterr().out
+    assert "added to your gateways" in out and "Mock aGate 1" in out
+    cli.main(["setup"], ask=_answers("10.0.0.5", "", "", "n", "n"), ask_secret=_answers())
+    assert [r["host"] for r in st.gateways()].count("10.0.0.5") == 1
+    assert "already one of your gateways" in capsys.readouterr().out

@@ -55,7 +55,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   time. An aGate address whose Direct Connect port (TCP 9000) doesn't answer is asked
   again, unless you keep it (the aGate may be off). Starting the bridge with port 8101 or 8102 already in
   use now stops at once and says which port and what to do; before, it started and then
-  stopped, or ran on HTTP alone. Stopping the bridge with Ctrl+C no
+  stopped, or ran on HTTP alone. On an install that already has gateways, the aGate address is
+  added to them (enabled; the active gateway is unchanged) instead of being saved and
+  ignored. Stopping the bridge with Ctrl+C no
   longer logs "HTTPS port 8102 stopped" as an error. With Security off, the startup banner
   also lists the HTTPS address ([guide](INSTALL.md#first-sign-in-docker-and-pip)).
 

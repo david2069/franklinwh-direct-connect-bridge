@@ -276,6 +276,21 @@ def _setup_header(s, data: Path) -> None:
           "Everything can be changed later: run setup again, or in the web UI.\n")
 
 
+def _add_to_gateways(store, host: str) -> str:
+    """On an install that already has gateways, FWH_HOST is not read again (it only seeds
+    an empty list), so the address goes into the list: enabled, the active one unchanged."""
+    rows = store.gateways()
+    if not host or not rows:
+        return ""
+    if any(r.get("host") == host for r in rows):
+        return " (already one of your gateways)"
+    import uuid
+    store.create_gateway(gw_id=uuid.uuid4().hex[:12], label=host, host=host)
+    active = next((r["label"] for r in rows if r.get("is_default")), rows[0]["label"])
+    return (f" (added to your gateways; the active one is still {active}:\n"
+            "             pick it in the gateway selector at the top of the web UI)")
+
+
 def _setup(ask, ask_secret) -> int:
     """`franklinwh-direct-connect-bridge setup` (Docker and pip): the aGate's address, the
     ports, Security on or off and, optionally, the first admin, so a plain start needs no
@@ -336,6 +351,7 @@ def _setup(ask, ask_secret) -> int:
     else:
         security.decide_install(store, quick_start=not on)
     auth.ensure_tables(store)
+    where = _add_to_gateways(store, host)
     _heading("Step 4 of 4: the admin account")
     if not on:
         print("   Not needed: Security is off.")
@@ -366,7 +382,7 @@ def _setup(ask, ask_secret) -> int:
     url = (f"https://localhost:{https_port}" if on else f"http://localhost:{http_port}")
     line = "=" * 64
     print(f"\n{line}\nSetup saved {_now()}\n{line}\n\n"
-          f"  aGate:     {host or 'not set (add it in the web UI)'}\n"
+          f"  aGate:     {host or 'not set (add it in the web UI)'}{where}\n"
           f"  Open:      {url} (once the bridge is running)\n"
           f"  Security:  {'on: sign in' if on else 'off: no sign-in'}\n"
           f"  Saved to:  {config.settings_file().resolve()}\n"
