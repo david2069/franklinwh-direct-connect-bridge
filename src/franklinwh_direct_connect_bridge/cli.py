@@ -272,6 +272,10 @@ def _setup_header(s, data: Path) -> None:
               "      in step 2.")
     if not busy:
         print(f"  OK  Ports {s.http_port} and {s.https_port} are free")
+    for k in (*SETUP_KEYS, "FWH_HOSTS"):
+        if os.environ.get(k):
+            print(f"  !!  {k}={os.environ[k]} is set in your environment, and it wins over what\n"
+                  f"      setup saves. To use setup's answer instead: unset {k}")
     print("\n4 steps. Press Enter to accept the default in [brackets], or type your own.\n"
           "Everything can be changed later: run setup again, or in the web UI.\n")
 
@@ -316,7 +320,8 @@ def _setup(ask, ask_secret) -> int:
     _setup_header(s, data)
     _heading("Step 1 of 4: the aGate")
     print("   Its address on your network. Optional: leave it blank and add it later in\n"
-          "   the web UI.")
+          "   the web UI. With more than one aGate, enter the main one here; add the\n"
+          "   others later in the web UI under Settings → Gateways (Discover gateways).")
     host = s.fwh_host or "none"
     while True:
         host = q("   aGate address (IP or hostname)", host)

@@ -245,3 +245,19 @@ def test_an_existing_install_gets_the_agate_added_to_its_gateways(capsys):
     cli.main(["setup"], ask=_answers("10.0.0.5", "", "", "n", "n"), ask_secret=_answers())
     assert [r["host"] for r in st.gateways()].count("10.0.0.5") == 1
     assert "already one of your gateways" in capsys.readouterr().out
+
+
+def test_setup_says_when_the_environment_overrides_it(capsys, monkeypatch):
+    """Owner 2026-11-20: FWH_HOST from the environment is the default shown, and setup
+    says that the environment wins over what it saves."""
+    monkeypatch.setenv("FWH_HOST", "10.0.0.7")
+    cli.main(["setup"], ask=_answers("", "", "", "n", "n"), ask_secret=_answers())
+    out = capsys.readouterr().out
+    assert "[10.0.0.7]" in out or "10.0.0.7" in out
+    assert "FWH_HOST" in out and "environment" in out
+
+
+def test_step_one_says_more_than_one_agate_is_added_in_the_web_ui(capsys):
+    cli.main(["setup"], ask=_answers("", "", "", "n", "n"), ask_secret=_answers())
+    out = capsys.readouterr().out
+    assert "more than one aGate" in out and "Settings → Gateways" in out

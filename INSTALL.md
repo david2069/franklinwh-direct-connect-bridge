@@ -128,12 +128,15 @@ from inside `data`. It first shows the version, this folder, the data folder (ne
 existing install), where it saves the settings, and its checks: Python 3.11 or newer, the
 cloud features, and whether ports 8101 and 8102 are free (if the bridge is running, stop it
 first). Each question has a default in [brackets]: press Enter to accept it, or type your
-own. Four steps:
+own. If `FWH_HOST`, `HTTP_PORT` or `HTTPS_PORT` is set in your environment, setup shows
+it as the default and warns that it wins over what setup saves. Four steps:
 
 1. the aGate's address, and checks that its Direct Connect port (TCP 9000) answers. If it
    doesn't, it asks again, or keeps the address if you say so (the aGate may be off).
-   Optional: leave it blank and add it later in the web UI. On an install that already
-   has gateways, it is added to them; the active gateway stays as it was;
+   Optional: leave it blank and add it later in the web UI. With more than one aGate,
+   enter the main one; add the others later under **Settings → Gateways** (**Discover
+   gateways**). On an install that already has gateways, it is added to them; the active
+   gateway stays as it was;
 2. the web port (8101) and the HTTPS port (8102). In Docker keep them: `docker-compose.yml`
    publishes those two;
 3. whether to ask for a sign-in (Security on or off; on by default);

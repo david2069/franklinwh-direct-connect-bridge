@@ -58,7 +58,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   stopped, or ran on HTTP alone. On an install that already has gateways, the aGate address is
   added to them (enabled; the active gateway is unchanged) instead of being saved and
   ignored. INSTALL.md gives pip installs two paths: update only (keeps everything), or a
-  clean fresh install (moves the old data aside)
+  clean fresh install (moves the old data aside). Setup warns when `FWH_HOST`, `FWH_HOSTS`
+  or a port is set in the environment, which wins over what it saves, and says to enter
+  the main aGate and add any others under Settings → Gateways
   ([guide](INSTALL.md#pip-without-docker-update-or-start-fresh)). Stopping the bridge with Ctrl+C no
   longer logs "HTTPS port 8102 stopped" as an error. With Security off, the startup banner
   also lists the HTTPS address ([guide](INSTALL.md#first-sign-in-docker-and-pip)).
