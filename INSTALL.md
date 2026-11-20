@@ -206,6 +206,38 @@ bridge.
 - **Data** lives in `./data` (standalone) or the add-on's `/data`. The SQLite store migrates
   itself forward on start; there is no manual step.
 
+### pip (without Docker): update, or start fresh
+
+Stop the bridge first (Ctrl+C in its terminal). Run each line from the folder that holds
+`data` (for example `~/fwh-bridge`), with its venv active, never from inside `data`.
+
+**(a) Update only.** Keeps everything: history, gateways, accounts, settings.
+
+```bash
+cd ~/fwh-bridge
+source .venv/bin/activate
+pip install --force-reinstall --no-deps "https://github.com/david2069/franklinwh-direct-connect-bridge/archive/refs/heads/main.zip"
+franklinwh-direct-connect-bridge
+```
+
+`--force-reinstall` is needed while the version number on `main` is unchanged; without it
+pip keeps the copy it has. Use `pip install --upgrade "franklinwh-direct-connect-bridge[cloud]"`
+instead once releases are on PyPI ([#782](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/782)).
+
+**(b) Clean fresh install.** Starts with no history, gateways, accounts or settings. The
+old data is moved aside, not deleted, so you can go back by moving it back.
+
+```bash
+cd ~/fwh-bridge
+source .venv/bin/activate
+mv data data-old
+pip install --force-reinstall --no-deps "https://github.com/david2069/franklinwh-direct-connect-bridge/archive/refs/heads/main.zip"
+franklinwh-direct-connect-bridge setup
+```
+
+Setup then says **new install** next to the data folder, and offers to start the bridge.
+Delete `data-old` once you're sure you don't need it.
+
 ### Reinstalling: read this before you remove anything
 
 > **An upgrade keeps your Home Assistant entities. A remove-and-reinstall is the case that
