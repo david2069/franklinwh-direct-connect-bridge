@@ -15,7 +15,8 @@ cloud account required — and publishes it to Home Assistant over MQTT.
 1. Set **`fwh_host`** to your aGate's IP address. Give it a DHCP reservation or a static
    address — if it moves, the bridge loses the gateway until you update this.
 2. Set **`mqtt_enabled: true`** to publish entities to Home Assistant.
-3. **Save**, then **Start**, then open the sidebar panel.
+3. **Save**, then **Start**, then **Open Web UI**. Turn on **Show in sidebar** for a
+   **Direct Connect** entry in the sidebar; it may be off after installing.
 
 Nothing needs enabling on the gateway for reads.
 

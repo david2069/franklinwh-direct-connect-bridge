@@ -22,6 +22,8 @@ Open the UI at `http://<bridge-host>:8101`. As a Home Assistant add-on, use the 
 
 | Section | Page | What it covers |
 |---|---|---|
+| Getting started | [Use cases: "I want to…"](use-cases.md) | Pick what you want to do, from "I use Home Assistant OS" to "charge my car only on solar", with a short how-to and links to the pages below. |
+| Getting started | [Quick install: pick your route](quick-install.md) | One visual page for three routes: the command line on a spare Windows, Mac or Linux computer (with how to get Python), a new Home Assistant OS, or an App in the Home Assistant OS you have. |
 | Getting started | [Installing, in pictures](installing.md) | A screenshot for each step of the three installs: Home Assistant add-on, Docker, and Python. [`INSTALL.md`](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/INSTALL.md) has the full text. |
 | Getting started | [Tour of the UI](tour.md) | The first-run setup wizard, the sidebar and top bar, what each tab is for, and the Integration Mapping **Probe**. |
 | Control | [Control and write safety](control.md) | The Control tab, the gates between a click and your battery (`confirm` and provider availability; `allow_writes` no longer blocks), the two battery-force paths, and the audit trail (under Logs). |
@@ -31,7 +33,7 @@ Open the UI at `http://<bridge-host>:8101`. As a Home Assistant add-on, use the 
 | Devices | [Generator](generator.md) | The Generator tab: the feature switch (always available, as in the FranklinWH app), what the aGate reports, the SoC thresholds, operating windows and exercise run, and why the mode can't be changed here yet. |
 | Home Assistant | [Home Assistant and MQTT](home-assistant.md) | The broker settings, MQTT topics, the published entities and groups, Republish and Unpublish, sharing a broker, and the Home Assistant tab. |
 | Home Assistant | [Home Assistant setup and notifications](ha-setup-and-notifications.md) | Linking a Home Assistant instance (add-on or URL and token), the four setup checks, adding a phone as a notification device, which events notify you, alerts, notifications from schedules, and actionable notifications (buttons on your phone, and a schedule's Actionable notification). |
-| Security | [Security: logins, trusted networks and API tokens](security.md) | **Planned, not in a release yet (#457).** Upgrading vs new installs, trusted networks, the HTTPS port, who gets in through Home Assistant, the first admin, roles, and API tokens. |
+| Security | [Security: logins, trusted networks and API tokens](security.md) | **In the bridge from 0.5.32 (#457).** Upgrading vs new installs, trusted networks, the HTTPS port, who gets in through Home Assistant, the first admin, roles, and API tokens. |
 | Sites and data | [Multi-gateway and sites](multi-gateway.md) | Registering more than one aGate, the default gateway, mock gateways, sites, utility services and meters. |
 | Sites and data | [History, costs and tariffs](energy-and-costs.md) | What the bridge stores and for how long, the energy and cost views, tariffs, and how far to trust the numbers. |
 | Reference | [User Guide — moved](../USER_GUIDE.md) | The old single-file guide's address, kept so old links land somewhere useful. |

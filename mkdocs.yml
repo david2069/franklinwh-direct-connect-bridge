@@ -113,6 +113,8 @@ nav:
   - At a glance: overview/index.md
   - User guide:
       - guide/index.md
+      - guide/use-cases.md
+      - guide/quick-install.md
       - guide/installing.md
       - guide/tour.md
       - guide/control.md
@@ -152,6 +154,7 @@ nav:
   - Developers Guide:
       - developers/index.md
       - developers/rest-api.md
+      - developers/api-examples.md
       - developers/api-endpoints.md
       - developers/web-ui.md
       - developers/mqtt.md
