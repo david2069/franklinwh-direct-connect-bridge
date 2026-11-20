@@ -22,7 +22,7 @@
     <template x-if="cur">
       <div class="px-5 py-4 space-y-4 text-sm">
         <div class="flex items-start gap-3">
-          <span class="chip" :class="chipClass(cur.level)" x-text="cur.level"></span>
+          <span class="chip" :class="chipClass(cur.level)" x-text="$store.app.sentence(cur.level)"></span>
           <div class="min-w-0">
             <div class="font-medium" style="overflow-wrap:anywhere" x-text="cur.headline"></div>
             <div class="text-xs mt-1" style="color:var(--text-secondary)" x-text="when(cur.ts)"></div>
@@ -68,7 +68,7 @@
           <template x-for="p in r.logs.patterns" :key="p.level + p.pattern">
             <div class="text-xs py-1" style="border-top:1px solid var(--border)">
               <span class="font-mono" x-text="`${p.count} ×`"></span>
-              <span :style="{color: p.level === 'ERROR' ? 'var(--danger)' : 'var(--text-secondary)'}" x-text="p.level.toLowerCase()"></span>
+              <span :style="{color: p.level === 'ERROR' ? 'var(--danger)' : 'var(--text-secondary)'}" x-text="$store.app.sentence(p.level.toLowerCase())"></span>
               <span x-show="p.flags.length" x-text="'(' + p.flags.join(', ') + ')'"></span>
               <div style="overflow-wrap:anywhere" x-text="p.example"></div>
             </div>
@@ -78,7 +78,7 @@
           <label class="text-xs" style="color:var(--text-secondary)">Earlier reports
             <select class="ml-2" @change="open($event.target.value)" data-testid="health-report-past">
               <template x-for="p in past" :key="p.id">
-                <option :value="p.id" :selected="cur && p.id === cur.id" x-text="`${p.period} · ${p.level}`"></option>
+                <option :value="p.id" :selected="cur && p.id === cur.id" x-text="`${p.period} · ${$store.app.sentence(p.level)}`"></option>
               </template>
             </select>
           </label>

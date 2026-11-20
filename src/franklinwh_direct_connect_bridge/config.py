@@ -294,10 +294,24 @@ def save_override(key: str, value) -> None:
 _settings: Settings | None = None
 
 
+def settings_file() -> Path:
+    """What ``franklinwh-direct-connect-bridge setup`` saves (Docker and pip): ``KEY=value``
+    lines in DATA_DIR. Environment variables win over it; the add-on never reads it."""
+    return Path(environment.DATA_DIR) / "bridge.env"
+
+
+def load_settings() -> Settings:
+    """Settings from the environment, then the setup file for whatever it leaves unset."""
+    f = settings_file()
+    if not environment.account_feature("settings_file") or not f.is_file():
+        return Settings()
+    return Settings(_env_file=str(f))
+
+
 def get_settings() -> Settings:
     global _settings
     if _settings is None:
-        _settings = Settings()
+        _settings = load_settings()
         # Persisted runtime overrides win over env for the whitelisted keys.
         apply_overrides(_settings)
     return _settings

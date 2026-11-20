@@ -618,6 +618,12 @@ class UserBody(BaseModel):
     expires_at: float | None = None
 
 
+class RoleBody(BaseModel):
+    name: str
+    tabs: list[str] = []
+    actions: list[str] = []
+
+
 class UserPatchBody(BaseModel):
     role: str | None = None
     enabled: bool | None = None
@@ -1093,10 +1099,10 @@ def create_app() -> FastAPI:
         _cfg_store = db.get_store(get_settings())
         # Upgrade or new install (#457), decided before install_date is first set.
         security.decide_install(_cfg_store, quick_start=get_settings().security_quick_start
-                                and not environment.IS_HA_ADDON)
+                                and environment.account_feature("security_off_on_first_start"))
         if _cfg_store is not None:
             auth.ensure_tables(_cfg_store)
-            auth.ensure_first_admin(_cfg_store, get_settings(), on_addon=environment.IS_HA_ADDON,
+            auth.ensure_first_admin(_cfg_store, get_settings(),
                                     security_on=security.enabled(_cfg_store))
         if _cfg_store is not None and not _cfg_store.get_config("install_date"):
             import datetime as _idt
@@ -1570,7 +1576,7 @@ def create_app() -> FastAPI:
             return RedirectResponse("/signin?next=" + quote(nxt, safe="/"), status_code=303)
         request.state.principal = {"username": user["username"], "role": user["role"],
                                    "via": via}
-        if not security.can(user["role"], request.method, path):
+        if not security.role_can(store, user["role"], request.method, path):
             return JSONResponse({"detail": f"Your role ({user['role']}) can't do this."},
                                 status_code=403)
         return await call_next(request)
@@ -1721,7 +1727,7 @@ def create_app() -> FastAPI:
         power["vpp"] = kind is not None
         power["vpp_kind"] = kind                # "force" | "vpp" | "remote" | None
         power["vpp_label"] = ("Force dispatch" if kind == "force"
-                              else (gw.cloud_mode or "VPP mode") if kind == "vpp" else None)
+                              else (gw.cloud_mode or "VPP Mode") if kind == "vpp" else None)
         power["vpp_programme"] = programme
         # The cloud's app-matching operating-mode label, when a fresh read exists.
         power["effective_mode"] = (gw.cloud_mode or None) if cloud_fresh else None
@@ -1752,6 +1758,9 @@ def create_app() -> FastAPI:
                 "quick_start": security.quick_start(store),
                 "has_admin": store is not None and auth.has_admin(store),
                 "on_addon": environment.IS_HA_ADDON,
+                "accounts_mode": environment.accounts_mode(),
+                "account_features": list(environment.ACCOUNT_FEATURES[
+                    environment.accounts_mode()]),
                 "principal": getattr(request.state, "principal", None)}
 
     def _https_status() -> dict:
@@ -1815,8 +1824,13 @@ def create_app() -> FastAPI:
     @app.get("/api/auth/me")
     def api_auth_me(request: Request):
         store = db.get_store(get_settings())
-        return {"security_enabled": security.enabled(store),
-                "principal": getattr(request.state, "principal", None)}
+        p = getattr(request.state, "principal", None)
+        out = {"security_enabled": security.enabled(store), "principal": p}
+        # A custom role (standalone): the tabs the UI shows and the actions it offers.
+        if p and p["role"] not in auth.ROLES and store is not None:
+            r = auth.custom_role(store, p["role"]) or {"tabs": [], "actions": []}
+            out.update(tabs=r["tabs"], actions=r["actions"])
+        return out
 
     @app.post("/api/auth/password")
     def api_auth_password(request: Request, body: PasswordBody):
@@ -1839,6 +1853,31 @@ def create_app() -> FastAPI:
     @app.get("/api/security/users")
     def api_security_users():
         return {"users": auth.users(_auth_store())}
+
+    @app.get("/api/security/roles")
+    def api_security_roles():
+        """Custom roles (standalone): each with its tabs, actions and how many accounts use
+        it, plus the tabs and actions a role can be given."""
+        from . import tab_access
+        return {"roles": auth.roles(_auth_store()),
+                "tabs": [{"id": k, "label": v} for k, v in tab_access.TABS.items()],
+                "actions": list(auth.ROLE_ACTIONS),
+                "available": environment.account_feature("custom_roles")}
+
+    @app.post("/api/security/roles")
+    def api_security_roles_save(body: RoleBody):
+        try:
+            return auth.save_role(_auth_store(), body.name, body.tabs, body.actions)
+        except auth.AuthError as e:
+            raise HTTPException(422, str(e)) from None
+
+    @app.delete("/api/security/roles/{name}")
+    def api_security_roles_delete(name: str):
+        try:
+            auth.delete_role(_auth_store(), name)
+        except auth.AuthError as e:
+            raise HTTPException(422, str(e)) from None
+        return {"ok": True}
 
     @app.post("/api/security/users")
     def api_security_users_add(body: UserBody):
@@ -4014,12 +4053,18 @@ def create_app() -> FastAPI:
             return None
 
     @app.get("/api/setup")
-    def api_setup(gateway: str | None = Depends(_gateway_opt)):
+    def api_setup(request: Request, gateway: str | None = Depends(_gateway_opt)):
         """Where setup stands — every step, whether it is already satisfied, and whether to
         prompt. Safe to call repeatedly; re-running the wizard is always allowed."""
         st = db.get_store(get_settings())
         out = setup_wizard.summary(st, **_wizard_inputs(gateway))
         out["tasks"] = setup_wizard.tasks(**_hub_facts(st))
+        # A custom role without the Settings tab can't set anything up: don't offer it.
+        p = getattr(request.state, "principal", None)
+        if p and p["role"] not in auth.ROLES and st is not None:
+            r = auth.custom_role(st, p["role"])
+            if not r or "settings" not in r["tabs"]:
+                out["should_prompt"] = False
         return out
 
     def _hub_facts(st) -> dict:
@@ -4187,12 +4232,14 @@ def create_app() -> FastAPI:
             except Exception:  # noqa: BLE001
                 registry = None
             comps = ha_instances.components(inst["base_url"], inst.get("token"))
+        activity = (ha_instances.richo_activity(inst["base_url"], inst.get("token"))
+                    if inst and ha_entities.richo_loaded(comps) else None)
         serials = [g.serial for g in (get_gateways() or [])
                    if g.serial and not getattr(g, "is_mock", False)]
         dismissed = bool(st and st.get_config(ha_entities.RICHO_KEY, "") == "keep_both")
         return ha_entities.inventory(broker=broker, registry=registry, components=comps,
                                      serials=serials, richo_dismissed=dismissed,
-                                     purge_ready=bool(s.mqtt_enabled))
+                                     purge_ready=bool(s.mqtt_enabled), richo_activity=activity)
 
     @app.post("/api/setup/ha-entities/richo-note")
     def api_setup_richo_note(req: RichoNoteReq):

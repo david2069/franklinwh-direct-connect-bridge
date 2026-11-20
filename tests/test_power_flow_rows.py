@@ -38,4 +38,4 @@ def test_the_words_follow_the_sign_conventions():
     assert "grid: ['Importing', 'Exporting']" in fn
     assert "battery: ['Discharging', 'Charging']" in fn
     assert "solar: ['Generating', 'Idle']" in fn and "home: ['Consuming', 'Idle']" in fn
-    assert "return w > 0 ? pos : (w < 0 ? neg : 'Idle');" in fn
+    assert "return w > 0 ? pos : (w < 0 ? neg : (kind === 'battery' ? 'Standby' : 'Idle'));" in fn

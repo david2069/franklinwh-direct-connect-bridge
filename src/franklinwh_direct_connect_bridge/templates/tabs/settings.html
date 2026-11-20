@@ -1053,7 +1053,7 @@
     <div class="flex items-center justify-between gap-2">
       <div>
         <div class="text-sm" style="color:var(--text-primary)">Security</div>
-        <div class="text-xs text-slate-500">On: browsers and API callers sign in on the HTTPS port, each account's role decides what it can do, and port 8101 sends them there. Home Assistant's sidebar panel works without signing in.</div>
+        <div class="text-xs text-slate-500">On: browsers and API callers sign in on the HTTPS port, each account's role decides what it can do, and port 8101 sends them there.<span x-show="security.onAddon"> Home Assistant's sidebar panel works without signing in.</span></div>
       </div>
       <button type="button" role="switch" :aria-checked="security.enabled" data-testid="security-toggle"
               @click="setSecurity(!security.enabled)" :disabled="!securityAdmin()"
@@ -1063,6 +1063,10 @@
               :class="security.enabled ? 'translate-x-5' : 'translate-x-0.5'"></span>
       </button>
     </div>
+    <p class="text-xs" style="color:var(--text-secondary)" data-testid="accounts-mode" x-show="security.accountsMode" x-cloak
+       x-text="security.accountsMode === 'home_assistant'
+         ? 'Home Assistant add-on: Home Assistant users sign in through the sidebar with their HA group\'s role (admin, user or viewer); make the first admin here from the sidebar.'
+         : 'Standalone (Docker or pip): no Home Assistant users. The first admin comes from ADMIN_USERNAME/ADMIN_PASSWORD, the setup command or a generated password.'"></p>
     <p class="text-xs" style="color:var(--warn)" x-show="!security.enabled && security.quickStart" data-testid="security-quick-start">Security is off (quick start, <span class="font-mono">SECURITY=off</span>): anyone on a trusted network can use the bridge, including battery control, without signing in. Turn it on here when you're done trying it.</p>
     <p class="text-xs text-slate-500" x-show="!security.enabled && !security.hasAdmin">Before you turn it on, add an admin account below.</p>
     <div class="text-xs flex items-center gap-2 flex-wrap" x-show="security.principal" style="color:var(--text-secondary)">
@@ -1087,10 +1091,13 @@
         <div class="flex items-center gap-2 flex-wrap text-xs" style="color:var(--text-secondary)">
           <span class="font-medium text-sm" style="color:var(--text-primary)" x-text="u.username"></span>
           <span x-show="u.role === 'api'" class="chip muted">api · tokens only</span>
-          <select x-show="u.role !== 'api'" class="form-control form-control-sm w-24" :value="u.role" @change="editAccount(u, { role: $event.target.value })">
+          <select x-show="u.role !== 'api'" class="form-control form-control-sm w-auto" :value="u.role" @change="editAccount(u, { role: $event.target.value })">
             <option value="admin" :selected="u.role === 'admin'">admin</option>
             <option value="user" :selected="u.role === 'user'">user</option>
             <option value="viewer" :selected="u.role === 'viewer'">viewer</option>
+            <template x-for="r in security.roles" :key="r.name">
+              <option :value="r.name" :selected="u.role === r.name" x-text="r.name"></option>
+            </template>
           </select>
           <span x-show="!u.enabled" class="chip muted">disabled</span>
           <span x-show="u.expired" class="chip warn">expired</span>
@@ -1116,8 +1123,9 @@
     <div class="flex items-center gap-2 flex-wrap" data-testid="account-add">
       <input class="form-control form-control-sm w-36" placeholder="Username" autocapitalize="none" x-model="security.add.username">
       <input x-show="security.add.role !== 'api'" type="password" autocomplete="new-password" class="form-control form-control-sm w-44" placeholder="Password (8+ characters)" x-model="security.add.password">
-      <select class="form-control form-control-sm w-24" x-model="security.add.role">
+      <select class="form-control form-control-sm w-auto" x-model="security.add.role">
         <option value="admin">admin</option><option value="user">user</option><option value="viewer">viewer</option><option value="api">api</option>
+        <template x-for="r in security.roles" :key="r.name"><option :value="r.name" x-text="r.name"></option></template>
       </select>
       <button class="btn btn-primary btn-sm" @click="addAccount()" :disabled="!security.add.username || (security.add.role !== 'api' && !security.add.password)">+ Add account</button>
     </div>
@@ -1130,6 +1138,61 @@
         </template>
       </div>
     </div>
+  </div>
+
+  <!-- Custom roles (standalone only, owner 2026-11-20): tabs a role may open, actions it may take. -->
+  <div class="card space-y-3" data-testid="roles-section" x-show="security.loaded && securityAdmin() && security.rolesOn" x-cloak>
+    <div>
+      <div class="text-sm" style="color:var(--text-primary)">Custom roles</div>
+      <div class="text-xs text-slate-500">Your own roles for accounts: pick the tabs it can open and what it can change. The bridge refuses everything else, not just hides it. Every role can open what every page needs (the top bar, alerts, the gateway list) and change its own password. admin, user, viewer and api stay as they are.</div>
+    </div>
+    <template x-for="r in security.roles" :key="r.name">
+      <div class="flex items-center gap-2 flex-wrap text-xs" style="color:var(--text-secondary)" data-testid="role-row">
+        <span class="font-medium text-sm" style="color:var(--text-primary)" x-text="r.name"></span>
+        <span x-text="r.tabs.map(t => (security.roleTabs.find(x => x.id === t) || {label: t}).label).join(', ')"></span>
+        <span class="chip muted" x-show="r.actions.length" x-text="r.actions.join(', ')"></span>
+        <span class="text-[11px] text-slate-500" x-text="r.accounts + (r.accounts === 1 ? ' account' : ' accounts')"></span>
+        <span class="flex-1"></span>
+        <button class="btn btn-secondary btn-sm" @click="roleOpen(r)">Edit</button>
+        <button class="btn btn-secondary btn-sm" @click="roleDelete(r)" :disabled="r.accounts > 0"
+                :title="r.accounts > 0 ? 'Give its accounts another role first' : 'Delete'">✕</button>
+      </div>
+    </template>
+    <p x-show="!security.roles.length" class="text-xs text-slate-500">No custom roles yet.</p>
+    <button class="btn btn-secondary btn-sm" x-show="!security.roleEdit" @click="roleNew()" data-testid="role-add">+ Add role</button>
+    <div x-show="security.roleEdit" class="rounded-lg border p-3 space-y-3" :style="{ borderColor: 'var(--border)' }" data-testid="role-editor">
+      <template x-if="security.roleEdit">
+        <div class="space-y-3">
+          <label class="block text-xs text-slate-500">Name
+            <input class="form-control form-control-sm w-full mt-1" maxlength="40" placeholder="e.g. Dashboard only"
+                   x-model="security.roleEdit.name" :readonly="!security.roleEdit.isNew"></label>
+          <div>
+            <div class="text-xs text-slate-500 mb-1">Tabs it can open</div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-1">
+              <template x-for="t in security.roleTabs" :key="t.id">
+                <label class="flex items-center gap-2 text-xs" style="color:var(--text-primary)">
+                  <input type="checkbox" :checked="security.roleEdit.tabs.includes(t.id)" @change="roleToggle('tabs', t.id)">
+                  <span x-text="t.label"></span></label>
+              </template>
+            </div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 mb-1">What it can change (none = read-only)</div>
+            <template x-for="a in security.roleActions" :key="a">
+              <label class="flex items-center gap-2 text-xs" style="color:var(--text-primary)">
+                <input type="checkbox" :checked="security.roleEdit.actions.includes(a)" @change="roleToggle('actions', a)">
+                <span x-text="roleActionLabel(a)"></span></label>
+            </template>
+            <div class="text-[11px] text-slate-500 mt-1">Settings stay read-only for every custom role.</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="btn btn-primary btn-sm" @click="roleSave()" :disabled="!security.roleEdit.name.trim() || !security.roleEdit.tabs.length">Save role</button>
+            <button class="btn btn-secondary btn-sm" @click="security.roleEdit = null; security.roleMsg = null">Close</button>
+          </div>
+        </div>
+      </template>
+    </div>
+    {{ dialog_msg('security.roleMsg') }}
   </div>
 
   <!-- API tokens (#457 phase 4) -->

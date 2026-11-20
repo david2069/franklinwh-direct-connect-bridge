@@ -56,6 +56,7 @@
       </template>
       <!-- System view: on a phone the top bar's icon has no label, so it's named here too. -->
       <button type="button" @click="$store.app.moreOpen = false; window.FWHSystemView && FWHSystemView.open()"
+              x-show="$store.app.tabAllowed('systemview')"
               class="flex items-center justify-center gap-2 text-center px-2 py-3 rounded-lg text-sm min-h-[48px] transition border"
               style="color:var(--text-secondary);background:var(--surface-1);border-color:var(--border)">
         <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">

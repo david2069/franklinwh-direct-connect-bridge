@@ -17,6 +17,15 @@ Full notes for each release are on the [docs site](https://david2069.github.io/f
 
 ## 2026-11-20
 
+### [0.5.55](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.55.md)
+
+Added 4 · Changed 7 · Fixed 1
+
+- Install and sign-in (Docker and pip): a guided `setup` command with checks and a startup…
+- Home Assistant: richo's FranklinWH integration is detected, with when it last updated and…
+- Wording: Standby for a resting battery, VPP Mode, status words with a capital
+- API: an api token can read the API schema
+
 ### [0.5.54](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.54.md)
 
 Added 2 · Fixed 7

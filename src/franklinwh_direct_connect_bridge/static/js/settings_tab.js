@@ -268,8 +268,11 @@ function settingsTab(opts = {}) {
     security: { loaded: false, install: '', any: true, text: '', you: '', ingress: false,
                 canSave: true, saving: false, msg: null, https: {},
                 // phase 3: the switch, accounts and sign-in activity
-                enabled: false, quickStart: false, hasAdmin: false, onAddon: false, principal: null,
+                enabled: false, quickStart: false, hasAdmin: false, onAddon: false, accountsMode: '', principal: null,
                 switchMsg: null, users: [], events: [], acctMsg: null,
+                // custom roles (standalone): the roles, the tabs and actions they can have
+                roles: [], roleTabs: [], roleActions: [], rolesOn: false, roleMsg: null,
+                roleEdit: null,
                 add: { username: '', password: '', role: 'user' }, resetFor: null, resetPw: '',
                 myPw: { current: '', new: '', msg: null },
                 // phase 4: API tokens; a new token is shown once, in newToken
@@ -282,7 +285,7 @@ function settingsTab(opts = {}) {
         Object.assign(this.security, { loaded: true, install: d.install, you: d.your_address || '',
           ingress: !!d.via_ingress, canSave: d.can_save !== false, any: nets.includes('any'),
           https: d.https || {}, enabled: !!d.enabled, quickStart: !!d.quick_start, hasAdmin: !!d.has_admin,
-          onAddon: !!d.on_addon, principal: d.principal || null,
+          onAddon: !!d.on_addon, accountsMode: d.accounts_mode || '', principal: d.principal || null,
           text: nets.includes('any') ? (d.private_ranges || []).join('\n') : nets.join('\n') });
       } catch (e) { /* leave last-known */ }
     },
@@ -299,7 +302,32 @@ function settingsTab(opts = {}) {
         this.security.events = (await (await fetch('api/security/signins?limit=20')).json()).events || [];
         const tk = await (await fetch('api/security/tokens')).json();
         this.security.tokens = tk.tokens || []; this.security.tokenDays = tk.days || [30, 90, 365];
+        const rl = await (await fetch('api/security/roles')).json();
+        Object.assign(this.security, { roles: rl.roles || [], roleTabs: rl.tabs || [],
+          roleActions: rl.actions || [], rolesOn: !!rl.available });
       } catch (e) { /* leave last-known */ }
+    },
+    roleNew() { this.security.roleEdit = { name: '', tabs: ['dashboard'], actions: [], isNew: true }; this.security.roleMsg = null; },
+    roleOpen(r) { this.security.roleEdit = { name: r.name, tabs: [...r.tabs], actions: [...r.actions], isNew: false }; this.security.roleMsg = null; },
+    roleToggle(list, id) {
+      const e = this.security.roleEdit;
+      e[list] = e[list].includes(id) ? e[list].filter(x => x !== id) : [...e[list], id];
+    },
+    async roleSave() {
+      const e = this.security.roleEdit;
+      const d = await this._securityCall('api/security/roles', 'POST',
+        { name: e.name.trim(), tabs: e.tabs, actions: e.actions }, 'roleMsg');
+      if (d) { this.security.roleMsg = { kind: 'ok', text: 'Saved role ' + d.name + '.' }; e.isNew = false; e.name = d.name; }
+      await this.loadAccounts();
+    },
+    async roleDelete(r) {
+      const d = await this._securityCall('api/security/roles/' + encodeURIComponent(r.name), 'DELETE', undefined, 'roleMsg');
+      if (d) { this.security.roleMsg = { kind: 'ok', text: 'Deleted role ' + r.name + '.' }; this.security.roleEdit = null; }
+      await this.loadAccounts();
+    },
+    roleActionLabel(a) {
+      return { battery: 'Battery commands (force, release, mode, reserve, off-grid, alerts)',
+               schedules: 'Schedules (add, edit, run, stop)' }[a] || a;
     },
     async _securityCall(url, method, body, msgKey) {
       const s = this.security;

@@ -19,6 +19,23 @@ long-lived API tokens.
   HTTPS port and signs in.
 - **Security can always be turned off.**
 
+## Home Assistant add-on or standalone: two separate ways
+
+Sign-in and accounts are set up one of two ways, decided by how the bridge is installed.
+The two never mix: what one has, the other doesn't. **Settings → Admin → Security** says
+which way yours is.
+
+| | Home Assistant add-on | Standalone (Docker or pip) |
+|---|---|---|
+| Home Assistant users | Sign in through the sidebar; their HA group sets the role (admin, user or viewer) | None |
+| First admin | Made under Settings → Admin → Security, from the sidebar | `ADMIN_USERNAME`/`ADMIN_PASSWORD`, the `setup` command, or a generated password |
+| `setup` command and `bridge.env` | No: the add-on's options in Home Assistant | Yes |
+| `SECURITY=off` on the first start | Ignored | Yes |
+| Startup banner | No | Yes |
+| [Custom roles](#custom-roles-standalone) | No | Yes |
+
+Accounts with a password, and API tokens, work the same way on both.
+
 ## Trusted networks: available now
 
 **Settings → Admin → Security → Trusted networks** lists the networks that may reach the
@@ -93,7 +110,8 @@ trusted networks and the certificate. Only an admin sees it. The steps:
 
 ### Turning Security off (new install)
 
-Turn the same switch off. Port 8101 then serves the web UI and REST API to every trusted
+Turn the same switch off, or (Docker and pip) run `franklinwh-direct-connect-bridge setup`
+with the bridge stopped and answer `n`. Port 8101 then serves the web UI and REST API to every trusted
 network without a login, as an upgraded install does. Accounts and tokens are kept, so
 turning it back on restores them.
 
@@ -148,9 +166,19 @@ The HTTPS port needs a bridge account.
 - **Docker and pip:** set `ADMIN_USERNAME` and `ADMIN_PASSWORD` before the first start.
   They are read only while no admin exists; change the password in the bridge after
   that. If you set none, the bridge creates an admin named `admin` with a generated
-  password, printed **once** to the console log only (`docker logs`, or the terminal it
+  password, printed **once** in the startup banner (`docker logs`, or the terminal it
   runs in). It is never kept in the bridge's Logs tab, its stored log or a support bundle;
   a copy an older version stored is masked on upgrade.
+- **The setup command (Docker and pip):** `franklinwh-direct-connect-bridge setup`, run
+  with the bridge stopped, asks for the aGate's address, the ports, Security on or off and,
+  optionally, the first admin's username and password (Enter = generate one, shown once;
+  skip it and the first start makes `admin` and shows its password in the banner). The address
+  and ports go into `bridge.env` in the data folder; the password goes only into the
+  bridge's accounts. Run it again to turn Security on or off. With Security on it keeps
+  the HTTPS port on, as sign-in needs it.
+- **The startup banner (Docker and pip):** before the web server starts, the bridge prints
+  the addresses to open, whether Security is on, and a generated admin password on the
+  one start that makes it.
 - **Quick start (Docker and pip):** set `SECURITY=off` on the first start and a new install
   starts with Security **off**: no sign-in, and no admin is created. Trusted networks stay
   the private ranges. Settings → Admin → Security says so; add an admin and turn it on
@@ -174,9 +202,14 @@ exist yet is created as an admin.
 
 ### Signing in
 
-With Security on, the HTTPS port shows a sign-in page. A session lasts 30 days, or until
-you sign out (**Settings → Admin → Security → Sign out**). Changing a password, or
-disabling an account, ends its sessions. Requests to port 8101 are redirected to the
+With Security on, the HTTPS port shows a sign-in page. Under the form it shows the
+bridge's version and links to the documentation, GitHub Discussions and Issues. A session lasts 30 days, or until
+you sign out: click your name in the top bar, then **Sign out** (or **Settings → Admin →
+Security → Sign out**).
+
+![The signed-in user in the top bar, with its role and Sign out](../images/security/03-topbar-user.png)
+
+Changing a password, or disabling an account, ends its sessions. Requests to port 8101 are redirected to the
 HTTPS port; if the HTTPS port isn't running, 8101 answers 503 and says why.
 
 The Security switch can only be turned on when an admin account exists and the HTTPS
@@ -189,13 +222,37 @@ port is running, so that someone can sign in afterwards.
 | **admin** | Full | Yes | Yes | Yes | Password (HTTPS port), or HA ingress |
 | **user** | Full, with Settings read-only | Yes | Battery commands, answering notifications, and schedules | No | Password, or HA ingress (non-admin HA users) |
 | **viewer** | Read-only | Yes | No | No | Password, or HA ingress (read-only HA users) |
-| **api** | None (REST only) | Yes | Battery commands and answering notifications | No | Token |
+| **api** | None (REST only; reads the API schema at `/openapi.json`, not the `/docs` pages) | Yes | Battery commands and answering notifications | No | Token |
 
 Battery commands are force charge or discharge, release, mode, reserve, off-grid and
 acknowledging an alert. Everything else that changes something (settings, users,
 tokens, HA instances, notification devices, smart circuits, the generator) needs
 **admin**. A request a role can't make gets 403 "Your role (viewer) can't do this." The
 web UI doesn't grey those controls out yet; it shows that message.
+
+### Custom roles (standalone)
+
+On Docker and pip installs an admin can make roles of their own under **Settings → Admin
+→ Security → Custom roles**, for example *Dashboard only* with the Dashboard and System
+view ticked. A custom role sets:
+
+- **the tabs it can open:** any of the web UI's tabs, and System view. The other tabs
+  don't appear for it, and the bridge refuses their data (403 "Your role (…) can't do
+  this."), so hiding them is not the only protection;
+- **what it can change:** nothing (read-only), battery commands, schedules, or both.
+  Settings stay read-only for every custom role, and it gets no access to accounts,
+  tokens, backups or exports.
+
+![Settings → Admin → Security → Custom roles, editing a "Dashboard only" role](../images/security/01-custom-roles.png)
+
+![Signed in with the "Dashboard only" role: only Dashboard and System view](../images/security/02-dashboard-only-account.png)
+
+Every custom role can still read what every page needs (the top bar, alerts, the gateway
+list and status) and change its own password. Pick the role when you add or edit an
+account. A role can't be deleted while an account uses it, and the setup wizard isn't
+offered to a role without the Settings tab. The built-in roles above don't change. The
+Home Assistant add-on has no custom roles: Home Assistant users get their role from their
+HA group.
 
 Accounts also have:
 
@@ -323,7 +380,7 @@ flowchart TD
     D -- Yes --> E["Admin created later, in the sidebar panel"]
     D -- No --> D2{"ADMIN_USERNAME and ADMIN_PASSWORD set?"}
     D2 -- Yes --> E2[Admin created from them]
-    D2 -- No --> F[Admin created, password printed to the console log once]
+    D2 -- No --> F[Admin created, password shown once in the startup banner]
     E2 --> G
     E --> G[HTTPS certificate: HA ssl folder or self-signed]
     F --> G

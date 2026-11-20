@@ -836,6 +836,18 @@ window.setupWizard = function setupWizard() {
       } catch (e) { this.haInvMsg = String(e); }
       finally { this.haInvBusy = false; await this.loadHaInventory(); }
     },
+    // When richo's integration last reported, as "5 minutes ago"; '' when unknown.
+    richoAgo(iso) {
+      const t = Date.parse(iso || '');
+      if (!t) return '';
+      const m = Math.max(0, Math.round((Date.now() - t) / 60000));
+      if (m < 1) return 'just now';
+      if (m < 60) return `${m} minute${m === 1 ? '' : 's'} ago`;
+      const h = Math.round(m / 60);
+      if (h < 48) return `${h} hour${h === 1 ? '' : 's'} ago`;
+      const d = Math.round(h / 24);
+      return `${d} days ago`;
+    },
     // Keep both: the richo note is not shown again. Nothing in Home Assistant changes.
     async keepBoth() {
       try {

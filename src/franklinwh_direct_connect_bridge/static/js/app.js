@@ -312,6 +312,33 @@ document.addEventListener('alpine:init', () => {
       return this.solarInstalled === false ? this._navTabsAll.filter(t => t.key !== 'solar')
                                             : this._navTabsAll;
     },
+    //: The available tabs this account's role may open (a custom role's tabs; all otherwise).
+    get navPermitted() {
+      return this.roleTabs ? this.navAvailable.filter(t => this.tabAllowed(t.key)) : this.navAvailable;
+    },
+    //: A custom role's tabs (standalone, from /api/auth/me); null = every tab. The bridge
+    //  refuses the other tabs' data whatever this shows.
+    roleTabs: null,
+    //: Who is signed in ({username, role, via}), or null when nobody is (Security off).
+    me: null,
+    userMenuOpen: false,
+    async signOut() {
+      try { await fetch('api/auth/logout', { method: 'POST' }); } catch (e) { /* signing in again works either way */ }
+      location.href = 'signin';
+    },
+    tabAllowed(key) { return !this.roleTabs || this.roleTabs.includes(key); },
+    async _loadRoleTabs() {
+      try {
+        const r = await fetch('api/auth/me');
+        const d = r.ok ? await r.json() : {};
+        this.me = d.principal || null;
+        this.roleTabs = Array.isArray(d.tabs) ? d.tabs : null;
+      } catch (e) { this.roleTabs = null; this.me = null; }
+      if (!this.tabAllowed(this.activeTab)) {
+        const first = this._navTabsAll.find(t => this.tabAllowed(t.key));
+        if (first) this.setActiveTab(first.key);
+      }
+    },
     //: true / false / null (not known yet), for the active gateway.
     solarInstalled: null,
     async _loadSolarInstalled() {
@@ -364,11 +391,11 @@ document.addEventListener('alpine:init', () => {
 
     //: Every available tab in the user's order, pinned-first — the list the cog edits.
     get navOrdered() {
-      const by = Object.fromEntries(this.navAvailable.map(t => [t.key, t]));
+      const by = Object.fromEntries(this.navPermitted.map(t => [t.key, t]));
       const seen = new Set();
       const out = [];
       this.navPrefs.forEach(p => { if (by[p.id] && !seen.has(p.id)) { seen.add(p.id); out.push({ ...by[p.id], on: !!p.on }); } });
-      this.navAvailable.forEach(t => { if (!seen.has(t.key)) out.push({ ...t, on: true }); });
+      this.navPermitted.forEach(t => { if (!seen.has(t.key)) out.push({ ...t, on: true }); });
       const pin = out.filter(t => this.navPinned(t.key) === 'both');
       return [...pin, ...out.filter(t => this.navPinned(t.key) !== 'both')];
     },
@@ -634,6 +661,7 @@ document.addEventListener('alpine:init', () => {
           { id: 'refresh', label: 'Refresh', on: true },
           { id: 'theme', label: 'Theme', on: true },
           { id: 'release', label: 'Release', on: true },
+          { id: 'user', label: 'Signed-in user', on: true },
         ],
       };
     },
@@ -943,6 +971,7 @@ document.addEventListener('alpine:init', () => {
       this._loadAdvancedTools();
       this._loadTopbarPrefs();
       this._loadNavPrefs();
+      this._loadRoleTabs();
       this.initSidebar();
       // Static labelling metadata — fetch once (no device I/O, cheap, cached).
       this.loadFieldSchema();
@@ -1363,7 +1392,7 @@ document.addEventListener('alpine:init', () => {
       if (w == null) return 'Unknown';
       if (w < 0) return 'Charging';
       if (w > 0) return 'Discharging';
-      return 'Idle';
+      return 'Standby';
     },
     //: Operating-status label for the dashboard SoC card's "Run status". A dispatch wins over
     //  the plain direction: cloud VPP shows its mode label (+ programme), an unattributed force
@@ -1530,7 +1559,7 @@ document.addEventListener('alpine:init', () => {
         generator: ['Running', 'Idle'],
       };
       const [pos, neg] = words[kind] || ['', ''];
-      return w > 0 ? pos : (w < 0 ? neg : 'Idle');
+      return w > 0 ? pos : (w < 0 ? neg : (kind === 'battery' ? 'Standby' : 'Idle'));
     },
 
     // ── Unit formatters (display-only) ─────────────────────
@@ -1749,6 +1778,7 @@ document.addEventListener('alpine:init', () => {
     toggleTheme() { this.setTheme(this.theme === 'dark' ? 'light' : 'dark') },
 
     setActiveTab(name) {
+      if (!this.tabAllowed(name)) return;
       const leaving = this.activeTab === 'dashboard' && name !== 'dashboard';
       const entering = this.activeTab !== 'dashboard' && name === 'dashboard';
       this.activeTab = name;
@@ -2113,6 +2143,13 @@ document.addEventListener('alpine:init', () => {
       if (this.siteTzOffsetMin == null || !this.siteTzShort) return '';
       const at = ts ? new Date(ts * 1000) : new Date();
       return -at.getTimezoneOffset() === this.siteTzOffsetMin ? '' : ' ' + this.siteTzShort;
+    },
+    // #770: a value shown to people, in Sentence case ("fired" → "Fired"). Only the first
+    // letter changes, so TOU, VPP and SoC keep their capitals; keys and API values don't.
+    sentence(v) {
+      if (v == null || v === '') return v;
+      const s = String(v);
+      return s.charAt(0).toUpperCase() + s.slice(1);
     },
     // #748: one short date for list columns, "18 Nov 18:01", in the zone the list already
     // used: 'host' (bridge host), 'site' (aGate) or 'local' (this browser).

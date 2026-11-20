@@ -26,6 +26,13 @@
     <button id="b" type="submit" class="btn btn-primary w-full">Sign in</button>
     <div class="text-[11px] text-slate-500">Forgotten the password? An admin can reset it, or run
       <span class="font-mono">franklinwh-direct-connect-bridge reset-password &lt;name&gt;</span> on the bridge.</div>
+    <div class="text-[11px] pt-3 flex flex-wrap gap-x-3 gap-y-1" data-testid="signin-footer"
+         style="border-top:1px solid var(--border);color:var(--text-faint)">
+      <span>Version {{ version }}</span>
+      <a href="https://david2069.github.io/franklinwh-direct-connect-bridge/" target="_blank" rel="noopener" style="color:var(--accent)">Documentation</a>
+      <a href="https://github.com/david2069/franklinwh-direct-connect-bridge/discussions" target="_blank" rel="noopener" style="color:var(--accent)">Discussions</a>
+      <a href="https://github.com/david2069/franklinwh-direct-connect-bridge/issues" target="_blank" rel="noopener" style="color:var(--accent)">Issues</a>
+    </div>
   </form>
   <script>
     const f = document.getElementById('f'), msg = document.getElementById('msg'), b = document.getElementById('b');

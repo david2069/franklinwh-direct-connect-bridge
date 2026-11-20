@@ -42,8 +42,15 @@ def _same_agate(dev: dict, serials: list[str]) -> bool:
     return any(s and s.lower() in text for s in serials)
 
 
+def richo_loaded(components) -> bool:
+    """Whether richo's integration is loaded: 'franklin_wh', or 'franklin_wh.sensor' etc.
+    when it is set up in YAML (as 2026.3.0 is)."""
+    return any(c == RICHO_DOMAIN or c.startswith(RICHO_DOMAIN + ".") for c in components or [])
+
+
 def inventory(*, broker: dict | None, registry: list[dict] | None, components: list[str],
-              serials: list[str], richo_dismissed: bool, purge_ready: bool) -> dict[str, Any]:
+              serials: list[str], richo_dismissed: bool, purge_ready: bool,
+              richo_activity: dict | None = None) -> dict[str, Any]:
     """The rows the wizard shows. Pure: the caller does the reads."""
     rows: list[dict[str, Any]] = []
     others: list[dict] = []
@@ -87,7 +94,7 @@ def inventory(*, broker: dict | None, registry: list[dict] | None, components: l
                      "advice": ("Publishes this aGate too: keep one, or turn off its "
                                 "publishing." if is_same else
                                 "Another FranklinWH integration; left as it is.")})
-    richo = RICHO_DOMAIN in (components or [])
+    richo = richo_loaded(components)
     return {
         "rows": rows,
         "broker": ({"checked": True} if b.get("ok") else
@@ -96,5 +103,9 @@ def inventory(*, broker: dict | None, registry: list[dict] | None, components: l
                      {"checked": False, "why": "Home Assistant is not linked"}),
         "other_same_agate": same,
         "modbus_writer": modbus,
-        "richo": {"show": richo and not richo_dismissed, "adds": RICHO_ADDS},
+        # Loaded = set up and running (a disabled integration is not loaded); the newest
+        # entity report says whether it is still polling (owner 2026-11-20).
+        "richo": {"show": richo and not richo_dismissed, "adds": RICHO_ADDS, "active": richo,
+                  "entities": (richo_activity or {}).get("entities"),
+                  "last_update": (richo_activity or {}).get("last")},
     }

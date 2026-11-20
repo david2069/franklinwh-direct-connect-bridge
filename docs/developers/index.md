@@ -14,6 +14,7 @@ documentation, which the bridge also bundles behind the in-app **Guide** button.
 | Page | What it covers |
 |---|---|
 | [REST API and OpenAPI](rest-api.md) | Where the OpenAPI schema and the Swagger and ReDoc pages are served, on port 8101 and under Home Assistant ingress. The endpoint groups, gateway selection, errors, and what does and does not guard a write. |
+| [API examples: OpenAPI and MQTT discovery](api-examples.md) | Two worked examples: finding and calling endpoints from the OpenAPI schema with a token, and reading and commanding the bridge over MQTT and Home Assistant discovery. |
 | [REST endpoint reference](api-endpoints.md) | Every operation, generated from the bridge's own schema by `tools/gen_api_reference.py`. |
 | [How the web UI uses the API](web-ui.md) | Server-rendered templates, the Alpine.js store and tab components, what the browser polls and how often, and two worked examples. |
 | [Sending data to Home Assistant over MQTT](mqtt.md) | Discovery, state, availability and command topics, device identity, entity groups, retained messages and purging, with sample payloads. |

@@ -113,6 +113,8 @@ nav:
   - At a glance: overview/index.md
   - User guide:
       - guide/index.md
+      - guide/use-cases.md
+      - guide/quick-install.md
       - guide/installing.md
       - guide/tour.md
       - guide/control.md
@@ -152,6 +154,7 @@ nav:
   - Developers Guide:
       - developers/index.md
       - developers/rest-api.md
+      - developers/api-examples.md
       - developers/api-endpoints.md
       - developers/web-ui.md
       - developers/mqtt.md
@@ -189,6 +192,7 @@ nav:
       - VALUE_SOURCES_DESIGN.md
       - WHAT_THE_ENGINE_IS.md
   - Changelog:
+      - 0.5.55: changelog/0.5.55.md
       - 0.5.54: changelog/0.5.54.md
       - 0.5.53: changelog/0.5.53.md
       - 0.5.52: changelog/0.5.52.md
