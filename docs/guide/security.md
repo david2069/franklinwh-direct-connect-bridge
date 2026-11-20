@@ -32,6 +32,7 @@ which way yours is.
 | `setup` command and `bridge.env` | No: the add-on's options in Home Assistant | Yes |
 | `SECURITY=off` on the first start | Ignored | Yes |
 | Startup banner | No | Yes |
+| [Custom roles](#custom-roles-standalone) | No | Yes |
 
 Accounts with a password, and API tokens, work the same way on both.
 
@@ -223,6 +224,30 @@ acknowledging an alert. Everything else that changes something (settings, users,
 tokens, HA instances, notification devices, smart circuits, the generator) needs
 **admin**. A request a role can't make gets 403 "Your role (viewer) can't do this." The
 web UI doesn't grey those controls out yet; it shows that message.
+
+### Custom roles (standalone)
+
+On Docker and pip installs an admin can make roles of their own under **Settings → Admin
+→ Security → Custom roles**, for example *Dashboard only* with the Dashboard and System
+view ticked. A custom role sets:
+
+- **the tabs it can open:** any of the web UI's tabs, and System view. The other tabs
+  don't appear for it, and the bridge refuses their data (403 "Your role (…) can't do
+  this."), so hiding them is not the only protection;
+- **what it can change:** nothing (read-only), battery commands, schedules, or both.
+  Settings stay read-only for every custom role, and it gets no access to accounts,
+  tokens, backups or exports.
+
+![Settings → Admin → Security → Custom roles, editing a "Dashboard only" role](../images/security/01-custom-roles.png)
+
+![Signed in with the "Dashboard only" role: only Dashboard and System view](../images/security/02-dashboard-only-account.png)
+
+Every custom role can still read what every page needs (the top bar, alerts, the gateway
+list and status) and change its own password. Pick the role when you add or edit an
+account. A role can't be deleted while an account uses it, and the setup wizard isn't
+offered to a role without the Settings tab. The built-in roles above don't change. The
+Home Assistant add-on has no custom roles: Home Assistant users get their role from their
+HA group.
 
 Accounts also have:
 

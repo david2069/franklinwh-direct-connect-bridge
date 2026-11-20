@@ -193,7 +193,8 @@ SCHEDULES = ("/api/schedules",)
 #: Any signed-in account: their own session and password, and the disclaimer.
 SELF = ("/api/auth/", "/api/disclaimer/ack")
 #: Reads only an admin may make.
-ADMIN_READS = ("/api/security/users", "/api/security/signins", "/api/security/tokens")
+ADMIN_READS = ("/api/security/users", "/api/security/signins", "/api/security/tokens",
+               "/api/security/roles")
 READ_METHODS = ("GET", "HEAD", "OPTIONS")
 
 
@@ -220,8 +221,31 @@ def required(method: str, path: str) -> tuple[str, ...]:
     return ("admin",)
 
 
-def can(role: str, method: str, path: str) -> bool:
-    return role in required(method, path)
+def can(role: str, method: str, path: str, custom: dict | None = None) -> bool:
+    """``custom`` is the account's custom role (``auth.custom_role``) when ``role`` isn't
+    a built-in one: its tabs decide its reads and its actions its writes."""
+    if custom is None:
+        return role in required(method, path)
+    from . import tab_access
+    if _under(path, SELF):
+        return True
+    if method.upper() in READ_METHODS:
+        if not path.startswith("/api/"):
+            return path not in ("/openapi.json",)   # pages; the UI shows only its tabs
+        return not _under(path, ADMIN_READS) and tab_access.read_allowed(custom["tabs"], path)
+    return (("battery" in custom["actions"] and _under(path, BATTERY))
+            or ("schedules" in custom["actions"] and _under(path, SCHEDULES)))
+
+
+def role_can(store, role: str, method: str, path: str) -> bool:
+    """``can`` for an account's role, built-in or custom. A custom role that no longer
+    exists may only reach the account's own session and password."""
+    from . import auth
+    if role in auth.ROLES:
+        return can(role, method, path)
+    custom = auth.custom_role(store, role) if store is not None else None
+    return can(role, method, path, custom or {"tabs": [], "actions": []}) and (
+        custom is not None or _under(path, SELF) or not path.startswith("/api/"))
 
 
 # ── Home Assistant users (phase 3b) ───────────────────────────────────────────────

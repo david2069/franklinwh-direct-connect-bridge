@@ -618,6 +618,12 @@ class UserBody(BaseModel):
     expires_at: float | None = None
 
 
+class RoleBody(BaseModel):
+    name: str
+    tabs: list[str] = []
+    actions: list[str] = []
+
+
 class UserPatchBody(BaseModel):
     role: str | None = None
     enabled: bool | None = None
@@ -1570,7 +1576,7 @@ def create_app() -> FastAPI:
             return RedirectResponse("/signin?next=" + quote(nxt, safe="/"), status_code=303)
         request.state.principal = {"username": user["username"], "role": user["role"],
                                    "via": via}
-        if not security.can(user["role"], request.method, path):
+        if not security.role_can(store, user["role"], request.method, path):
             return JSONResponse({"detail": f"Your role ({user['role']}) can't do this."},
                                 status_code=403)
         return await call_next(request)
@@ -1818,8 +1824,13 @@ def create_app() -> FastAPI:
     @app.get("/api/auth/me")
     def api_auth_me(request: Request):
         store = db.get_store(get_settings())
-        return {"security_enabled": security.enabled(store),
-                "principal": getattr(request.state, "principal", None)}
+        p = getattr(request.state, "principal", None)
+        out = {"security_enabled": security.enabled(store), "principal": p}
+        # A custom role (standalone): the tabs the UI shows and the actions it offers.
+        if p and p["role"] not in auth.ROLES and store is not None:
+            r = auth.custom_role(store, p["role"]) or {"tabs": [], "actions": []}
+            out.update(tabs=r["tabs"], actions=r["actions"])
+        return out
 
     @app.post("/api/auth/password")
     def api_auth_password(request: Request, body: PasswordBody):
@@ -1842,6 +1853,31 @@ def create_app() -> FastAPI:
     @app.get("/api/security/users")
     def api_security_users():
         return {"users": auth.users(_auth_store())}
+
+    @app.get("/api/security/roles")
+    def api_security_roles():
+        """Custom roles (standalone): each with its tabs, actions and how many accounts use
+        it, plus the tabs and actions a role can be given."""
+        from . import tab_access
+        return {"roles": auth.roles(_auth_store()),
+                "tabs": [{"id": k, "label": v} for k, v in tab_access.TABS.items()],
+                "actions": list(auth.ROLE_ACTIONS),
+                "available": environment.account_feature("custom_roles")}
+
+    @app.post("/api/security/roles")
+    def api_security_roles_save(body: RoleBody):
+        try:
+            return auth.save_role(_auth_store(), body.name, body.tabs, body.actions)
+        except auth.AuthError as e:
+            raise HTTPException(422, str(e)) from None
+
+    @app.delete("/api/security/roles/{name}")
+    def api_security_roles_delete(name: str):
+        try:
+            auth.delete_role(_auth_store(), name)
+        except auth.AuthError as e:
+            raise HTTPException(422, str(e)) from None
+        return {"ok": True}
 
     @app.post("/api/security/users")
     def api_security_users_add(body: UserBody):
@@ -4017,12 +4053,18 @@ def create_app() -> FastAPI:
             return None
 
     @app.get("/api/setup")
-    def api_setup(gateway: str | None = Depends(_gateway_opt)):
+    def api_setup(request: Request, gateway: str | None = Depends(_gateway_opt)):
         """Where setup stands — every step, whether it is already satisfied, and whether to
         prompt. Safe to call repeatedly; re-running the wizard is always allowed."""
         st = db.get_store(get_settings())
         out = setup_wizard.summary(st, **_wizard_inputs(gateway))
         out["tasks"] = setup_wizard.tasks(**_hub_facts(st))
+        # A custom role without the Settings tab can't set anything up: don't offer it.
+        p = getattr(request.state, "principal", None)
+        if p and p["role"] not in auth.ROLES and st is not None:
+            r = auth.custom_role(st, p["role"])
+            if not r or "settings" not in r["tabs"]:
+                out["should_prompt"] = False
         return out
 
     def _hub_facts(st) -> dict:

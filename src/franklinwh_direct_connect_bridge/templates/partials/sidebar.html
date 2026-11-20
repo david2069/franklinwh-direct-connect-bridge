@@ -43,6 +43,7 @@
 
     <!-- System view (#428): opens the shared overlay over this UI; not a tab. -->
     <button type="button" @click="window.FWHSystemView && FWHSystemView.open()"
+            x-show="$store.app.tabAllowed('systemview')"
             @mouseenter="if ($store.app.sidebarCollapsed) { clearTimeout(hoverTimer); hoverText = 'System view'; hoverTop = Math.round($el.getBoundingClientRect().top + ($el.offsetHeight / 2) - 12); hoverTimer = setTimeout(() => hoverText = '', 1500) }"
             @mouseleave="clearTimeout(hoverTimer); hoverText = ''"
             class="nav-item w-full border-l-2 border-transparent"
