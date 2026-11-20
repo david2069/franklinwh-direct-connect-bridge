@@ -166,7 +166,17 @@ def test_richo_activity_template_reads_the_newest_report(monkeypatch):
 def test_the_note_warns_to_disable_it_when_ready():
     tpl = HTML[HTML.index('data-testid="richo-note"'):]
     tpl = tpl[:tpl.index("</template>", tpl.index("Tell me more"))]
-    for s in ("Disable", "Devices &amp; services", "richoAgo(", "when you're ready"):
+    # Richo's integration is set up in YAML (2026.3.0 has no config flow), so it is turned
+    # off by removing its platform entries, not from Devices & services.
+    for s in ("configuration.yaml", "platform: franklin_wh", "restart", "richoAgo(",
+              "when you're ready"):
         assert s in tpl, s
     assert "keep your entity names and history" not in tpl
     assert "richoAgo(" in JS
+
+
+def test_richo_set_up_in_yaml_is_seen():
+    """Seen on the test VM 2026-11-20: a YAML-configured richo integration shows in HA's
+    components as 'franklin_wh.sensor', not 'franklin_wh'."""
+    assert inv(components=["mqtt", "franklin_wh.sensor"])["richo"]["show"] is True
+    assert inv(components=["franklin_wh_other"])["richo"]["show"] is False

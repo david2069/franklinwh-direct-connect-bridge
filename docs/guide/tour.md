@@ -123,9 +123,11 @@ Integrations that are not MQTT are not listed, except the one below.
 When Home Assistant has richo's FranklinWH integration (`franklin_wh`) loaded (set up and
 running; a disabled integration is not loaded), the check says so, with how many entities
 it has and when it last updated (for example "last updated 2 minutes ago"). The bridge
-publishes its own entities, so while both run you have two sets: disable it when you're
-ready, in **Home Assistant → Settings → Devices & services → FranklinWH → ⋮ → Disable**.
-Its entities and history stay, and you can enable it again any time. The bridge never
+publishes its own entities, so while both run you have two sets. Turn it off when you're
+ready: it is set up in YAML (version 2026.3.0 has no setup from the UI), so in
+`configuration.yaml` remove, or comment out with `#`, its `platform: franklin_wh` entries
+under `sensor:` and `switch:`, then restart Home Assistant. Its history stays; put the
+entries back to turn it on again. The bridge never
 takes over or changes that integration or its entities. **Keep both** hides the note for
 good.
 

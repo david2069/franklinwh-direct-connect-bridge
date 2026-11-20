@@ -4233,7 +4233,7 @@ def create_app() -> FastAPI:
                 registry = None
             comps = ha_instances.components(inst["base_url"], inst.get("token"))
         activity = (ha_instances.richo_activity(inst["base_url"], inst.get("token"))
-                    if inst and ha_entities.RICHO_DOMAIN in comps else None)
+                    if inst and ha_entities.richo_loaded(comps) else None)
         serials = [g.serial for g in (get_gateways() or [])
                    if g.serial and not getattr(g, "is_mock", False)]
         dismissed = bool(st and st.get_config(ha_entities.RICHO_KEY, "") == "keep_both")

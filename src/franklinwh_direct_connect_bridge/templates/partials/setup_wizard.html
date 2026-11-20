@@ -446,9 +446,10 @@
                     in Home Assistant<span x-show="haInv.richo.entities" x-text="': ' + haInv.richo.entities + ' entities'"></span><span
                     x-show="haInv.richo.last_update" x-text="', last updated ' + richoAgo(haInv.richo.last_update)"></span>.
                     The bridge publishes its own entities, so while both run you have two sets.</p>
-                  <p>Disable it when you're ready: Home Assistant → Settings → Devices &amp; services →
-                    FranklinWH → ⋮ → Disable. Its entities and history stay, and you can enable it
-                    again any time.</p>
+                  <p>Turn it off when you're ready: in Home Assistant's configuration.yaml, remove
+                    (or comment out with #) its <code>platform: franklin_wh</code> entries under
+                    <code>sensor:</code> and <code>switch:</code>, then restart Home Assistant. Its
+                    history stays; put the entries back to turn it on again.</p>
                   <p>What the bridge adds:</p>
                   <ul class="list-disc pl-4">
                     <template x-for="a in haInv.richo.adds" :key="a"><li x-text="a"></li></template>
