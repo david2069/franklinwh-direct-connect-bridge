@@ -93,7 +93,8 @@ trusted networks and the certificate. Only an admin sees it. The steps:
 
 ### Turning Security off (new install)
 
-Turn the same switch off. Port 8101 then serves the web UI and REST API to every trusted
+Turn the same switch off, or (Docker and pip) run `franklinwh-direct-connect-bridge setup`
+with the bridge stopped and answer `n`. Port 8101 then serves the web UI and REST API to every trusted
 network without a login, as an upgraded install does. Accounts and tokens are kept, so
 turning it back on restores them.
 
@@ -148,9 +149,18 @@ The HTTPS port needs a bridge account.
 - **Docker and pip:** set `ADMIN_USERNAME` and `ADMIN_PASSWORD` before the first start.
   They are read only while no admin exists; change the password in the bridge after
   that. If you set none, the bridge creates an admin named `admin` with a generated
-  password, printed **once** to the console log only (`docker logs`, or the terminal it
+  password, printed **once** in the startup banner (`docker logs`, or the terminal it
   runs in). It is never kept in the bridge's Logs tab, its stored log or a support bundle;
   a copy an older version stored is masked on upgrade.
+- **The setup command (Docker and pip):** `franklinwh-direct-connect-bridge setup`, run
+  with the bridge stopped, asks for the aGate's address, the ports, Security on or off and
+  the first admin's username and password (Enter = generate one, shown once). The address
+  and ports go into `bridge.env` in the data folder; the password goes only into the
+  bridge's accounts. Run it again to turn Security on or off. With Security on it keeps
+  the HTTPS port on, as sign-in needs it.
+- **The startup banner (Docker and pip):** before the web server starts, the bridge prints
+  the addresses to open, whether Security is on, and a generated admin password on the
+  one start that makes it.
 - **Quick start (Docker and pip):** set `SECURITY=off` on the first start and a new install
   starts with Security **off**: no sign-in, and no admin is created. Trusted networks stay
   the private ranges. Settings → Admin → Security says so; add an admin and turn it on
@@ -324,7 +334,7 @@ flowchart TD
     D -- Yes --> E["Admin created later, in the sidebar panel"]
     D -- No --> D2{"ADMIN_USERNAME and ADMIN_PASSWORD set?"}
     D2 -- Yes --> E2[Admin created from them]
-    D2 -- No --> F[Admin created, password printed to the console log once]
+    D2 -- No --> F[Admin created, password shown once in the startup banner]
     E2 --> G
     E --> G[HTTPS certificate: HA ssl folder or self-signed]
     F --> G

@@ -13,6 +13,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Added
 
+- **`setup` command and a startup banner (Docker and pip)** (owner 2026-11-20).
+  `franklinwh-direct-connect-bridge setup` asks for the aGate's address (and checks it
+  answers), the ports, Security on or off and the first admin, and saves the address and
+  ports to `bridge.env` in the data folder, so a plain `franklinwh-direct-connect-bridge`
+  starts it; environment variables still win. The password goes only into the bridge's
+  accounts, never the file. Before the web server starts, a banner shows the addresses to
+  open (localhost and this computer's, not Uvicorn's `0.0.0.0`), whether Security is on,
+  and the generated admin password on the one start that makes it
+  ([install](INSTALL.md#first-sign-in-docker-and-pip)).
+
 - **Sign-in page: version and help links** (owner 2026-11-20). Under the form the sign-in
   page shows the bridge's version and links to the documentation, GitHub Discussions and
   Issues, each in a new tab ([guide](docs/guide/security.md)).
