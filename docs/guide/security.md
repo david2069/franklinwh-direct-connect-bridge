@@ -170,8 +170,9 @@ The HTTPS port needs a bridge account.
   runs in). It is never kept in the bridge's Logs tab, its stored log or a support bundle;
   a copy an older version stored is masked on upgrade.
 - **The setup command (Docker and pip):** `franklinwh-direct-connect-bridge setup`, run
-  with the bridge stopped, asks for the aGate's address, the ports, Security on or off and
-  the first admin's username and password (Enter = generate one, shown once). The address
+  with the bridge stopped, asks for the aGate's address, the ports, Security on or off and,
+  optionally, the first admin's username and password (Enter = generate one, shown once;
+  skip it and the first start makes `admin` and shows its password in the banner). The address
   and ports go into `bridge.env` in the data folder; the password goes only into the
   bridge's accounts. Run it again to turn Security on or off. With Security on it keeps
   the HTTPS port on, as sign-in needs it.

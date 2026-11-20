@@ -26,7 +26,7 @@ def _no_network(monkeypatch):
 
 
 def test_setup_saves_the_answers_and_makes_the_admin(capsys):
-    rc = cli.main(["setup"], ask=_answers("10.0.0.5", "", "", "y", "owner"),
+    rc = cli.main(["setup"], ask=_answers("10.0.0.5", "", "", "y", "y", "owner", "n"),
                   ask_secret=_answers("a-long-password", "a-long-password"))
     assert rc == 0
     text = (Path(environment.DATA_DIR) / "bridge.env").read_text()
@@ -39,7 +39,7 @@ def test_setup_saves_the_answers_and_makes_the_admin(capsys):
 
 
 def test_setup_generates_a_password_when_left_blank(capsys):
-    cli.main(["setup"], ask=_answers("10.0.0.5", "", "", "y", ""),
+    cli.main(["setup"], ask=_answers("10.0.0.5", "", "", "y", "y", "", "n"),
              ask_secret=_answers(""))
     out = capsys.readouterr().out
     line = next(ln for ln in out.splitlines() if "Password:" in ln)
@@ -49,13 +49,13 @@ def test_setup_generates_a_password_when_left_blank(capsys):
 
 
 def test_security_on_keeps_the_https_port_on():
-    cli.main(["setup"], ask=_answers("10.0.0.5", "", "0", "y", ""),
+    cli.main(["setup"], ask=_answers("10.0.0.5", "", "0", "y", "y", "", "n"),
              ask_secret=_answers(""))
     assert "HTTPS_PORT=8102" in (Path(environment.DATA_DIR) / "bridge.env").read_text()
 
 
 def test_setup_with_security_off_makes_no_admin():
-    cli.main(["setup"], ask=_answers("10.0.0.5", "", "", "n"), ask_secret=_answers())
+    cli.main(["setup"], ask=_answers("10.0.0.5", "", "", "n", "n"), ask_secret=_answers())
     st = _store()
     assert security.enabled(st) is False and not auth.has_admin(st)
 
@@ -66,9 +66,9 @@ def test_setup_turns_security_on_or_off_on_an_existing_install():
     st.set_config("install_date", "2026-01-01")
     auth.ensure_tables(st)
     auth.create_user(st, "owner", "a-long-password", "admin")
-    cli.main(["setup"], ask=_answers("10.0.0.5", "", "", "n"), ask_secret=_answers())
+    cli.main(["setup"], ask=_answers("10.0.0.5", "", "", "n", "n"), ask_secret=_answers())
     assert security.enabled(st) is False
-    cli.main(["setup"], ask=_answers("10.0.0.5", "", "", "y"), ask_secret=_answers())
+    cli.main(["setup"], ask=_answers("10.0.0.5", "", "", "y", "n"), ask_secret=_answers())
     assert security.enabled(st) is True
     assert [u["username"] for u in auth.users(st)] == ["owner"]   # kept, none added
 
@@ -97,3 +97,49 @@ def test_the_banner_says_when_security_is_off(capsys, monkeypatch):
     cli.first_start_banner(s)
     out = capsys.readouterr().out
     assert "Security: off" in out and "Password:" not in out
+
+
+def test_enter_everywhere_accepts_the_defaults_and_leaves_the_admin_for_later(capsys):
+    """Owner 2026-11-20: Enter takes every default; the admin is optional (the first start
+    makes one and shows its password), and the output says what each answer means."""
+    rc = cli.main(["setup"], ask=_answers("", "", "", "", "", "n"), ask_secret=_answers())
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Press Enter to accept" in out and "later" in out
+    st = _store()
+    assert security.enabled(st) is True and not auth.has_admin(st)
+    assert "first start" in out
+
+
+def test_setup_says_where_it_saves_and_stops_in_an_empty_folder_inside_data(
+        capsys, monkeypatch, tmp_path):
+    """Run from inside the data folder, ./data is a new, empty one: say so and stop,
+    unless the owner says it's a new install."""
+    (tmp_path / "data").mkdir()
+    monkeypatch.chdir(tmp_path / "data")
+    monkeypatch.setattr(environment, "DATA_DIR", "./data")
+    rc = cli.main(["setup"], ask=_answers("n"), ask_secret=_answers())
+    out = capsys.readouterr().out
+    assert rc == 1 and "data/data" in out and "cd .." in out
+    assert not (tmp_path / "data" / "data" / "bridge.env").exists()
+
+
+def test_setup_offers_to_start_the_bridge(monkeypatch):
+    started = []
+    monkeypatch.setattr(cli, "serve", lambda s: started.append(s) or _done())
+    monkeypatch.setattr(cli, "first_start_banner", lambda s: None)
+    rc = cli.main(["setup"], ask=_answers("10.0.0.5", "", "", "n", ""), ask_secret=_answers())
+    assert rc == 0 and len(started) == 1 and started[0].fwh_host == "10.0.0.5"
+
+
+async def _done():
+    return None
+
+
+def test_with_security_off_the_banner_also_lists_the_https_address(capsys, monkeypatch):
+    """Owner 2026-11-20 opened https://localhost:8102, which the banner didn't mention."""
+    s = config.get_settings()
+    monkeypatch.setattr(s, "security", "off")
+    cli.first_start_banner(s)
+    out = capsys.readouterr().out
+    assert f"http://localhost:{s.http_port}" in out and f"https://localhost:{s.https_port}" in out
