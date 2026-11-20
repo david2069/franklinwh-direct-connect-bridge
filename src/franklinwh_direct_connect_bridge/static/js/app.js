@@ -319,13 +319,21 @@ document.addEventListener('alpine:init', () => {
     //: A custom role's tabs (standalone, from /api/auth/me); null = every tab. The bridge
     //  refuses the other tabs' data whatever this shows.
     roleTabs: null,
+    //: Who is signed in ({username, role, via}), or null when nobody is (Security off).
+    me: null,
+    userMenuOpen: false,
+    async signOut() {
+      try { await fetch('api/auth/logout', { method: 'POST' }); } catch (e) { /* signing in again works either way */ }
+      location.href = 'signin';
+    },
     tabAllowed(key) { return !this.roleTabs || this.roleTabs.includes(key); },
     async _loadRoleTabs() {
       try {
         const r = await fetch('api/auth/me');
         const d = r.ok ? await r.json() : {};
+        this.me = d.principal || null;
         this.roleTabs = Array.isArray(d.tabs) ? d.tabs : null;
-      } catch (e) { this.roleTabs = null; }
+      } catch (e) { this.roleTabs = null; this.me = null; }
       if (!this.tabAllowed(this.activeTab)) {
         const first = this._navTabsAll.find(t => this.tabAllowed(t.key));
         if (first) this.setActiveTab(first.key);
@@ -653,6 +661,7 @@ document.addEventListener('alpine:init', () => {
           { id: 'refresh', label: 'Refresh', on: true },
           { id: 'theme', label: 'Theme', on: true },
           { id: 'release', label: 'Release', on: true },
+          { id: 'user', label: 'Signed-in user', on: true },
         ],
       };
     },
