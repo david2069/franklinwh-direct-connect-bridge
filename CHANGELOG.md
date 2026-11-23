@@ -11,24 +11,19 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
-### Changed
-
-- **Install from PyPI** (#782). Releases are on PyPI from 0.5.55: README, INSTALL.md and
-  the guide install with `pip install "franklinwh-direct-connect-bridge[cloud]"` and update
-  with `pip install --upgrade` ([guide](INSTALL.md#from-pypi)).
-- **Push notifications follow Home Assistant** (#809). The switch is off until an HA
-  instance that connects is added, turns on then, and turns off when the last one is
-  removed or disabled ([guide](docs/guide/ha-setup-and-notifications.md#the-push-notifications-switch)).
-
-### Fixed
-
-- **Operating mode order** (#809). The Operating Mode & Reserves card lists the modes in
-  the FranklinWH app's order (Time-of-Use, Self-Consumption, Emergency Backup), whatever
-  order the gateway sends them in. The emulator's mock gateways sent Self-Consumption first.
-
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
+
+## 2026-11-23
+
+### [0.5.56](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.56.md)
+
+Changed 2 · Fixed 1
+
+- Install: PyPI is the install and update route in the docs
+- Notifications: the Push notifications switch follows Home Assistant (off until an HA…
+- Dashboard: the operating modes in the FranklinWH app's order
 
 ## 2026-11-20
 
