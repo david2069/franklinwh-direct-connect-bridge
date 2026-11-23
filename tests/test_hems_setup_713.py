@@ -99,3 +99,19 @@ def test_the_api_and_the_screen(tmp_path, monkeypatch):
     assert 'data-testid="hems-setup"' in html and 'data-testid="hems-optin"' in html
     assert "hems-add-load" in html and "Please confirm" in html
     state.reset_gateways()
+
+
+def test_device_type_is_a_list_with_labels(st):
+    """Owner 2026-11-24: Device type is a drop-down of hems's types (value + label), not free
+    text; a typed value that isn't one is flagged, and kept so nothing is lost."""
+    choices = hems_setup.view(st, None, "gw1", NOW)["choices"]["device_type"]
+    assert {"value": "ev_charger", "label": "EV charger"} in choices
+    assert choices[-1]["value"] == "other"
+    hems_setup.save(st, "gw1", {"opted_in": True, "loads": [{**POOL, "device_type": "EV charger"}]})
+    ld = hems_setup.view(st, None, "gw1", NOW)["loads"][0]
+    assert ld["device_type"] == "EV charger"
+    assert any(p.startswith("device type: one of") for p in ld["problems"])
+    for f in ("templates/tabs/settings.html", "templates/partials/setup_wizard.html"):
+        html = (PKG / f).read_text()
+        assert 'placeholder="pool_pump' not in html
+        assert "choices.device_type" in html and 'data-testid="hems-device-type"' in html

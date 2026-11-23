@@ -11,7 +11,10 @@ optional and off until you switch it on. *Planning is only as accurate as your a
   (00:00–06:00), marked **Please confirm**. Change it if it is wrong; saving confirms it.
 - **Usage periods:** your high, medium and low hours on a weekday and on a weekend day, from
   the last four weeks of history. Tick **These look right** when they do.
-- **Heavy loads:** each large appliance you want planned around: what it is, how it is
+- **Heavy loads:** each large appliance you want planned around: what it is (**Device
+  type**, picked from a list: EV charger, hot water, heat pump, air conditioning, pool
+  pump, spa, well pump, clothes dryer, washing machine, dishwasher, oven, or Other; a type
+  typed in before 0.5.57 shows as *Other (…)* and is flagged until you pick one), how it is
   measured (a Home Assistant power entity, an energy entity, or its nameplate kW), its power
   and/or how long it runs, when it runs (times, or that it follows the weather), its circuit,
   and how it may be controlled:
