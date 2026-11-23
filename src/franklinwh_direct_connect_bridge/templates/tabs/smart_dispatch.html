@@ -1,0 +1,116 @@
+<div x-data="smartDispatchTab()" class="space-y-4 max-w-5xl">
+
+  <!-- Smart Dispatch, plan only (#612 §7 phase 1, hems.dispatch): the plan and the action
+       now, from prices, solar, home load and the battery. Nothing here controls the gateway. -->
+  <div class="flex items-center justify-between gap-3 flex-wrap">
+    <div>
+      <h1 class="text-xl font-semibold" style="color:var(--text-primary)">Smart Dispatch <a :href="$store.app.guideUrl('hems/smart-dispatch/')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></h1>
+      <p class="text-sm text-slate-500">A 24-hour battery plan for your target, from prices, solar, home load and SoC. Plan only: it doesn't control the battery.</p>
+    </div>
+    <button class="btn btn-secondary btn-sm" data-testid="sd-reevaluate" @click="load(true)" :disabled="loading">
+      <span x-text="loading ? '…' : 'Re-evaluate'"></span>
+    </button>
+  </div>
+
+  <!-- What is missing before a plan can be worked out. -->
+  <div class="card space-y-2" x-show="v && v.missing.length" data-testid="sd-missing">
+    <div class="card-label" style="margin-bottom:0">Needed for a plan</div>
+    <template x-for="m in (v ? v.missing : [])" :key="m.key">
+      <div class="flex items-center gap-3 text-sm">
+        <span style="color:var(--text-secondary)" x-text="m.todo"></span>
+        <button x-show="m.tab" class="btn btn-secondary btn-sm" @click="$store.app.activeTab = m.tab">Open</button>
+      </div>
+    </template>
+  </div>
+
+  <!-- The action now. -->
+  <div class="card" x-show="v && v.decision" data-testid="sd-decision">
+    <div class="card-label">Now</div>
+    <template x-if="v && v.decision">
+      <div class="space-y-1">
+        <div class="text-lg font-semibold" :class="actionClass(v.decision.action)" x-text="actionLabel(v.decision.action)"></div>
+        <div class="text-sm" style="color:var(--text-secondary)" x-text="v.decision.reason"></div>
+        <div class="text-xs" style="color:var(--text-faint)">
+          Until <span x-text="hhmm(v.decision.until)"></span>
+          <span x-show="v.decision.target_soc_pct != null"> · aiming for <span x-text="Math.round(v.decision.target_soc_pct)"></span>% SoC</span>
+          <span x-show="v.mode"> · the gateway is in <span x-text="v.mode"></span></span>
+        </div>
+      </div>
+    </template>
+    <template x-if="v && v.result">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 text-sm">
+        <div><div class="text-xs" style="color:var(--text-faint)">Planned cost</div><div x-text="money(v.result.cost)"></div></div>
+        <div><div class="text-xs" style="color:var(--text-faint)">Self-consumption alone</div><div x-text="money(v.result.baseline.cost)"></div></div>
+        <div><div class="text-xs" style="color:var(--text-faint)">Saving (incl. energy left)</div><div x-text="money(v.result.saving)"></div></div>
+        <div><div class="text-xs" style="color:var(--text-faint)">Value of 10% charge</div><div x-text="money(v.result.cost_per_10pct)"></div></div>
+      </div>
+    </template>
+  </div>
+
+  <!-- The plan. -->
+  <div class="card" x-show="steps.length" data-testid="sd-chart">
+    <div class="card-label">Next 24 hours</div>
+    <div style="height:260px"><canvas x-ref="sdChart"></canvas></div>
+  </div>
+
+  <div class="card overflow-x-auto" x-show="steps.length" data-testid="sd-steps">
+    <div class="card-label">Each half hour</div>
+    <table class="w-full text-xs">
+      <thead><tr style="color:var(--text-faint)" class="text-left">
+        <th class="py-1 pr-2">Time</th><th class="pr-2">Action</th><th class="pr-2">Battery kW</th>
+        <th class="pr-2">SoC</th><th class="pr-2">Import</th><th class="pr-2">Export</th><th>Why</th></tr></thead>
+      <tbody>
+        <template x-for="s in steps" :key="s.start">
+          <tr class="border-t" style="border-color:var(--border)">
+            <td class="py-1 pr-2" x-text="hhmm(s.start)"></td>
+            <td class="pr-2" :class="actionClass(s.action)" x-text="actionLabel(s.action)"></td>
+            <td class="pr-2" x-text="s.battery_kw.toFixed(1)"></td>
+            <td class="pr-2" x-text="Math.round(s.soc_pct) + '%'"></td>
+            <td class="pr-2" x-text="s.import_price.toFixed(2)"></td>
+            <td class="pr-2" x-text="s.export_price.toFixed(2)"></td>
+            <td style="color:var(--text-secondary)" x-text="s.reason"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <ul class="mt-3 text-xs list-disc pl-5" style="color:var(--text-faint)">
+      <template x-for="a in (v && v.result ? v.result.assumptions : [])"><li x-text="a"></li></template>
+      <template x-for="a in (v ? v.sources : [])"><li x-text="a"></li></template>
+    </ul>
+  </div>
+
+  <!-- The user's target and the utility's limits (hems's questions). -->
+  <div class="card space-y-3" x-show="v" data-testid="sd-questions">
+    <div class="card-label" style="margin-bottom:0">Your target and your utility's limits</div>
+    <p class="text-xs" style="color:var(--text-faint)" x-show="v && v.plan_name">From your plan <span x-text="v && v.plan_name"></span>. Answers marked Please confirm are pre-filled.</p>
+    <template x-for="q in (v ? v.questions : [])" :key="q.key">
+      <div x-show="shown(q)" class="space-y-1">
+        <div class="text-sm" style="color:var(--text-primary)">
+          <span x-text="q.label"></span>
+          <span x-show="q.please_confirm && !q.readonly" class="text-xs text-amber-300 ml-1">Please confirm</span>
+        </div>
+        <div class="text-xs" style="color:var(--text-faint)" x-text="q.why"></div>
+        <template x-if="q.kind === 'choice'">
+          <select class="form-control form-control-sm w-auto" :data-testid="'sd-q-' + q.key" x-model="form[q.key]">
+            <template x-for="c in q.choices" :key="c.value"><option :value="c.value" x-text="c.label" :selected="c.value === form[q.key]"></option></template>
+          </select>
+        </template>
+        <template x-if="q.kind === 'number' && !q.readonly">
+          <input type="number" step="any" class="form-control form-control-sm w-32 inline-block" :data-testid="'sd-q-' + q.key" x-model="form[q.key]">
+        </template>
+        <template x-if="q.kind === 'number' && q.readonly">
+          <div class="text-sm"><span x-text="q.value == null ? 'Not set' : q.value + ' ' + (q.unit || '')"></span>
+            <span class="text-xs" style="color:var(--text-faint)"> · change it in <span x-text="q.where"></span></span></div>
+        </template>
+        <template x-if="q.kind === 'bool'">
+          <label class="text-sm inline-flex items-center gap-2"><input type="checkbox" :data-testid="'sd-q-' + q.key" x-model="form[q.key]"> Yes</label>
+        </template>
+      </div>
+    </template>
+    <div class="flex items-center gap-2 flex-wrap">
+      <button class="btn btn-secondary btn-sm" data-testid="sd-check" @click="send('POST')" :disabled="saving">Check</button>
+      <button class="btn btn-primary btn-sm" data-testid="sd-save" @click="send('PUT')" :disabled="saving">Save</button>
+      <span x-show="msg" class="text-xs" :class="msg && msg.ok ? 'text-emerald-300' : 'text-amber-300'" x-text="msg && msg.text"></span>
+    </div>
+  </div>
+</div>

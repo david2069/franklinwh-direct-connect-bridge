@@ -15,7 +15,8 @@ from __future__ import annotations
 #: The tabs a custom role can be given, in sidebar order, with their labels.
 TABS: dict[str, str] = {
     "dashboard": "Dashboard", "systemview": "System view", "battery": "Battery",
-    "analytics": "Analytics", "energy_costs": "Billing & Utilities", "solar": "Solar",
+    "analytics": "Analytics", "energy_costs": "Billing & Utilities",
+    "smart_dispatch": "Smart Dispatch", "solar": "Solar",
     "scheduler": "Scheduler", "circuits": "Smart Circuits", "generator": "Generator",
     "health": "Health", "ha": "Home Assistant", "mqtt": "MQTT", "network": "Network",
     "grid": "Grid & Inverter", "device": "Device", "control": "Control", "logs": "Logs",
@@ -40,6 +41,7 @@ TAB_READS: dict[str, tuple[str, ...]] = {
     "analytics": ("/api/analytics", "/api/metrics", "/api/energy"),
     "energy_costs": ("/api/billing", "/api/tariffs", "/api/tariff", "/api/utilities",
                      "/api/meters", "/api/prices", "/api/sites"),
+    "smart_dispatch": ("/api/smart-dispatch",),
     "solar": ("/api/solar", "/api/metrics", "/api/energy"),
     "scheduler": ("/api/schedules", "/api/scheduler", "/api/cloud/tou", "/api/ha/notify-targets",
                   "/api/ha/notify-devices", "/api/ha/instances", "/api/ha/entities"),

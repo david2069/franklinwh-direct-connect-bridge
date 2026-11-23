@@ -11,6 +11,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+
+- **Smart Dispatch tab, plan only** (owner 2026-11-24, #612 §7 phase 1, hems 0.3.0). A
+  24-hour battery plan, half hour by half hour, from your utility plan's prices, the solar
+  and load forecasts and the battery's charge, with the action now, why, and the saving
+  against self-consumption. Once a utility plan is entered it asks your target (Emergency
+  Backup only, TOU, lowest bill including demand charges, self-consumption, most export
+  earnings), the SoC range, and what your utility allows: grid charging and export each
+  allowed, limited to a kW size, or prohibited; battery export; demand-peak shaving; and it
+  notes export penalties. Pre-filled answers are *Please confirm*. It never writes to the
+  aGate or the cloud ([guide](docs/guide/hems/smart-dispatch.md)).
+
 ### Changed
 
 - **HEMS: Device type is a drop-down** (owner 2026-11-24). Heavy loads, in the setup wizard
