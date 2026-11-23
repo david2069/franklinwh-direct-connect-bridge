@@ -11,6 +11,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+
+- **HEMS: Device type is a drop-down** (owner 2026-11-24). Heavy loads, in the setup wizard
+  and the Settings HEMS card, pick the device type from hems 0.2.1's list (EV charger, hot
+  water, pool pump, …) instead of typing it; a typed value no longer silently loses the EV
+  charger fields. One typed earlier shows as *Other (…)* and is flagged until changed
+  ([guide](docs/guide/hems/loads.md)).
+
 ### Fixed
 
 - **Docs that said otherwise than the bridge does** (owner 2026-11-23). README, INSTALL.md,

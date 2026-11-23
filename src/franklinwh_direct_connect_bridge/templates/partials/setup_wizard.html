@@ -596,7 +596,7 @@
                     <template x-for="(l, i) in hems.form.loads" :key="i">
                       <div class="rounded p-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs" style="border:1px solid var(--border)">
                         <label class="flex flex-col gap-1">Name<input class="form-control form-control-sm" x-model="l.name"></label>
-                        <label class="flex flex-col gap-1">Device type<input class="form-control form-control-sm" x-model="l.device_type" placeholder="pool_pump, hot_water, ev_charger …"></label>
+                        <label class="flex flex-col gap-1">Device type<select class="form-control form-control-sm" x-model="l.device_type" data-testid="hems-device-type"><option value="" :selected="!l.device_type">Choose…</option><template x-for="d in hems.view.choices.device_type" :key="d.value"><option :value="d.value" x-text="d.label" :selected="d.value === l.device_type"></option></template><template x-if="l.device_type && !hems.view.choices.device_type.some(d => d.value === l.device_type)"><option :value="l.device_type" selected x-text="'Other (' + l.device_type + ')'"></option></template></select></label>
                         <label class="flex flex-col gap-1">Measured by
                           <select class="form-control form-control-sm" x-model="l.measurement.kind">
                             <template x-for="m in hems.view.choices.measurement" :key="m"><option :value="m" x-text="hemsLabel(m)" :selected="m === l.measurement.kind"></option></template></select></label>

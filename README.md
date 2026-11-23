@@ -191,7 +191,7 @@ Notes:
 - The Supervisor **watchdog** restarts the add-on if the web app stops serving (it probes
   `/api/live`, which does no gateway I/O, so a down aGate never triggers a restart).
 - Mode and off-grid changes ask you to confirm first. `allow_writes` no longer blocks
-  writes (since 0.5.2; see [Control](docs/guide/control.md#1-allow_writes-no-longer-blocks-writes)).
+  writes (since 0.5.2; see [Control](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/guide/control.md#1-allow_writes-no-longer-blocks-writes)).
 
 ## Layout
 

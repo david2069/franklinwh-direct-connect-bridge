@@ -117,7 +117,9 @@ def view(store, settings, gateway_id: str, now: float | None = None, *,
                       "expected_kwh_today": round(sum(exp.values()), 3) if exp else None})
     return {"opted_in": bool(a.get("opted_in")), "notice": hloads.NOTICE,
             "always_on": always, "periods": periods, "capabilities": sorted(caps),
-            "loads": loads, "choices": {"measurement": list(hloads.MEASUREMENTS),
+            "loads": loads, "choices": {"device_type": [{"value": k, "label": v} for k, v
+                                                        in hloads.DEVICE_TYPES.items()],
+                                        "measurement": list(hloads.MEASUREMENTS),
                                         "circuit": list(hloads.CIRCUITS),
                                         "control": list(hloads.CONTROL_TYPES),
                                         "switch": list(hloads.SWITCHES),
