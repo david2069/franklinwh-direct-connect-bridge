@@ -183,18 +183,11 @@ mode changes (`RESTORABLE` in `scheduler.py`); a force auto-releases.
 
 ## Known issues
 
-Checked with `gh issue view` on 2026-10-17. All are open.
+Checked with `gh issue view` on 2026-11-23. All are open.
 
-- **#160:** a force in a Recurring-windows schedule stops after the hidden duration
-  (default 90 minutes), not at the window's end. Use Daily or Weekly (above).
 - **#162:** the Scheduler has no **Release** action, no release policies, and no "hold
   instead of release". A force ends by its window, exit conditions, target SoC or
   duration.
-- **#129:** a schedule's `reserve_soc` action is always skipped, even with cloud
-  credentials. Do not rely on a schedule to set the reserve.
-- **#122:** Home Assistant controls for the battery command (a select, staged
-  parameters and status) are planned. Today Home Assistant can change the operating mode
-  and smart circuits over MQTT, but cannot start or release a force.
 - **#124:** detecting VPP through the cloud and through the Modbus client (this bridge)
   is to be retired in favour of the aGate's local run status. Until then, the VPP chip's
   wording may change.

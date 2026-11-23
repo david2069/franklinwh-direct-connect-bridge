@@ -190,8 +190,8 @@ Notes:
   so a second copy is redundant. Set `metrics_enabled: true` to force it on.
 - The Supervisor **watchdog** restarts the add-on if the web app stops serving (it probes
   `/api/live`, which does no gateway I/O, so a down aGate never triggers a restart).
-- Control writes (mode / off-grid) stay **off** until you enable `allow_writes`; you can
-  flip it live from the **Settings** tab in the UI.
+- Mode and off-grid changes ask you to confirm first. `allow_writes` no longer blocks
+  writes (since 0.5.2; see [Control](docs/guide/control.md#1-allow_writes-no-longer-blocks-writes)).
 
 ## Layout
 

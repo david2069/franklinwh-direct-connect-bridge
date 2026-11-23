@@ -34,7 +34,7 @@ Nothing needs enabling on the gateway for reads.
 | `mqtt_host` / `mqtt_port` / `mqtt_username` / `mqtt_password` | auto | **Leave blank.** Filled from the Mosquitto add-on via the Supervisor. Set them only for a broker the Supervisor does not know about. |
 | `log_level` | `info` | `debug` when reporting a problem. |
 | `read_only` | `true` | Blocks every write, including from the UI. |
-| `allow_writes` | `false` | Permits mode and off-grid changes. Also switchable live from the **Settings** tab. |
+| `allow_writes` | `false` | Kept for older setups; it no longer blocks writes (since 0.5.2). Mode and off-grid changes ask you to confirm instead. |
 | `ha_notify` | `true` | Send Home Assistant notifications for the events you enable. |
 | `metrics_enabled` | on | Local SQLite history, used by the bridge's own charts. **On unless set to `false`.** |
 | `metrics_retention_days` | — | How long to keep that local history. |
@@ -68,7 +68,8 @@ the panel. If entities are listed there but missing in HA, the broker the bridge
 is not the one Home Assistant subscribes to. That page's **Dashboard card** builder names the
 prefix it used.
 
-**Controls do nothing.** Writes are disabled. Set `allow_writes`, or use the Settings tab.
+**Controls do nothing.** Mode and off-grid changes ask you to confirm first; `allow_writes`
+no longer blocks writes. The reason for any refusal is in the add-on's log.
 
 **"MODBUS :502 — Not probed."** Expected when the bridge's own Modbus client is off. It
 describes *this add-on*, not your gateway — the gateway's own setting is the separate
