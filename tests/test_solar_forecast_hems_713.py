@@ -97,6 +97,6 @@ def test_the_tick_feeds_the_calibration_from_the_gateways_solar_today(monkeypatc
     state.reset_gateways()
 
 
-def test_the_pin_is_hems_020():
+def test_the_pin_is_hems_021():
     txt = (PKG.parents[1] / "pyproject.toml").read_text()
-    assert '"hems==0.2.0"' in txt
+    assert '"hems==0.2.1"' in txt
