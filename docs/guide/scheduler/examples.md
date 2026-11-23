@@ -123,7 +123,8 @@ How it behaves:
 - The WMO weather code is in the snapshot as `weather.code` but **not in the picker**; through
   the API a row `weather.code in 95, 96, 99` works.
 - To keep the charge afterwards, add a second schedule with **Force standby** and the same
-  weather gate. **Set reserve SoC** does not help: it never runs (#129).
+  weather gate. Or raise the reserve with **Set reserve SoC**, which goes through the
+  FranklinWH cloud and needs cloud credentials ([Actions](actions.md)).
 
 ## 5. Peak-demand window: shave imports using the Demand-Charge Min SoC
 

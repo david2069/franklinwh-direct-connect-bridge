@@ -88,11 +88,10 @@ What happens once it is enabled:
   and the force is released. The schedule does not fire again until tomorrow's window.
 - At 20:00 the window closes and the bridge sends a release.
 
-!!! warning "For a force action, use a trigger with Fire at and Duration"
-    A force stops after the schedule's **Duration (min)** (#160). A **Recurring windows**
-    schedule still has that value, although the form hides it, and a new schedule starts
-    with 90. So a force in a three-hour recurring window stops after 90 minutes. Use **Daily
-    at time** or **Weekly at time** for force actions.
+!!! note "A force runs until its window closes"
+    In every trigger type, a force runs until the window closes (#160), unless its target
+    SoC or an exit condition ends it first. **Run now** uses the schedule's **Duration
+    (min)** as the time limit.
 
 To check it before the window opens, open the card's **⋮** menu and choose **Test against
 live**. It says *Would fire* or *Would not fire*, with the reason and each row's live value.

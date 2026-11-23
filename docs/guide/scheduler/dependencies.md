@@ -57,7 +57,7 @@ Where to set each one:
 | **Set operating mode** | ✔ | | | | |
 | **Smart circuit on/off** | ✔ | | | | |
 | **Go off-grid / reconnect** | ✔ | | | | |
-| **Set reserve SoC** | — never runs (#129) | | (listed as needed, not used) | | |
+| **Set reserve SoC** | | | ✔ (for this schedule's gateway) | | |
 | **Force charge / discharge / standby** | | ✔ (on, library installed, a host, a SunSpec read that succeeds) | | | |
 | No gateway action (HA only) | | | | | |
 
@@ -117,7 +117,7 @@ Start with two tools on the Scheduler tab:
 | **Force** is greyed *unavailable* in the list | The Modbus client (this bridge) is off, not installed, or cannot read SunSpec from the Modbus TCP Server (aGate :502) | Fix it under **Control → Modbus client**. The reason is shown under the list. |
 | History shows *error* — "force charge failed: …" | The Modbus client (this bridge) path refused the force: client off, "could not connect…", or SunSpec not answering. It is retried while the window is open | Fix it under **Control → Modbus client**. Check the **Logs** tab. |
 | History shows *error* — "mode -> tou: failed: …" | The aGate rejected the mode or off-grid write. It is retried while the window is open | Read the result in the row. |
-| **Set reserve SoC** shows *fired* but nothing changed | The action is always skipped, even with cloud credentials (#129) | Set the reserve in the FranklinWH app, or from **Control**. |
+| **Set reserve SoC** shows *fired* but nothing changed | It was skipped: no cloud credentials, or they are for a different gateway. A skip counts as success; the reason is in the run (*"reserve_soc skipped: …"*) | Sign in to the FranklinWH cloud for this gateway under **Settings → Cloud**. |
 | A smart circuit turned **on** when the schedule said **Off**, or the gateway went **off-grid** when it said reconnect | Before 0.5.5 the form saved **Off** as text that ran as on (#188, fixed in 0.5.5) | Update, then check what such schedules did in **History**. Since 0.5.5 an On/Off value the bridge cannot read is refused, with no write. |
 | The mode did not change back | A mode change is not undone at the end of the window, unless **Put the previous mode back when the window ends** is ticked (#580) | Add a second schedule, or set `restore_on_exit`. See [Exit and release](exit-and-conflicts.md). |
 | A force stopped early | Its **Target SoC**, an exit condition, or the window closed (a force runs until its window closes, #160) | Check the schedule's History for the release reason. |

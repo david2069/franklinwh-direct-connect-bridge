@@ -206,7 +206,7 @@ then choose *Force Charge*, *Force Discharge* or *Force Standby* in **Battery Co
 *Release* (or *Not Active*) ends the force. The numbers are the same staged values the
 Battery tab shows, and the force runs the same way: over the Modbus TCP Server (aGate
 :502), with the bridge's watchdog ending it at the duration or target, recorded like a
-Battery tab force. It needs **Allow writes**, and the controls are published only while the Modbus client is
+Battery tab force. The controls are published only while the Modbus client is
 switched on in Control → Modbus client (see *Source* below); a refusal is in the bridge's log. **Battery Command** shows the
 force this bridge holds on the gateway. Mock gateways don't have these controls: they
 have no Modbus TCP Server.

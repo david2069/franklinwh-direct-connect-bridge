@@ -49,8 +49,8 @@ Click the button above, or add the repository by hand:
 - **A prebuilt image** is downloaded from GitHub's container registry
   (`ghcr.io/david2069/{arch}-franklinwh-direct-connect-bridge`); nothing is compiled on your
   machine. Supported: **aarch64** (Raspberry Pi 4/5, most ARM boards) and **amd64** (Intel/AMD).
-- **Control writes stay off** until you set `allow_writes`. You can flip it live from the
-  **Settings** tab.
+- **Mode and off-grid changes ask you to confirm first.** `allow_writes` no longer blocks
+  writes (since 0.5.2; see [Control](docs/guide/control.md#1-allow_writes-no-longer-blocks-writes)).
 
 > **Not verified by the maintainers on a live Supervisor.** The add-on build and the
 > Supervisor integration are exercised by tests against a faked Supervisor API, not on a real
@@ -293,8 +293,9 @@ are listed there but absent in HA, the broker the bridge publishes to is not the
 Assistant subscribes to — that is the usual cause, and the dashboard-card builder on that
 page names the prefix it used.
 
-**Mode or off-grid controls do nothing.** Writes are off unless `allow_writes` is set. The
-UI says so on the Settings tab rather than failing quietly.
+**Mode or off-grid controls do nothing.** They ask you to confirm first; a call without
+the confirmation is refused (HTTP 428). `allow_writes` no longer blocks writes. The reason
+for any other refusal is in the bridge's log.
 
 **"MODBUS :502 — Not probed".** Expected when the bridge's own Modbus client is switched off.
 It is a statement about this bridge, not about the gateway; the gateway's own SunSpec Modbus
