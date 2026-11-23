@@ -2009,6 +2009,8 @@ function settingsTab(opts = {}) {
       try {
         const d = await (await fetch('api/ha/notify-devices')).json();
         this.notif.master = !!d.master_enabled;
+        // Adding or removing an HA instance can flip it; a later Save must not undo that.
+        this.form.ha_notify = this.notif.master;
         this.notif.devices = d.devices || [];
         const i = await (await fetch('api/ha/instances')).json();
         this.notif.instances = i.instances || [];

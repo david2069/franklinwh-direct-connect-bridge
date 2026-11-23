@@ -204,6 +204,11 @@ own persistent notifications. One switch, **Push notifications** at the top of
 
 ### The Push notifications switch
 
+It is off until there is a Home Assistant to send to. Adding the first HA instance that
+connects turns it on; removing (or disabling) the last one turns it off. While one is set
+up, the switch stays where you put it. On the add-on it is on from the start, because the
+add-on adds its own Home Assistant.
+
 **Off — no notifications are sent** means:
 
 - nothing goes to your notification devices: the triggers, schedules, broadcasts, the

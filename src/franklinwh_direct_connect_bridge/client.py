@@ -1148,6 +1148,29 @@ def device_extras(c, s: Settings, manifest: dict | None, cfg: dict | None) -> di
     return out
 
 
+#: The FranklinWH app's order of the modes, by 1726 ``scheduling_type`` (TOU=1, Self=2,
+#: Backup=3). Gateways send the list in their own order; the emulator's differs.
+APP_MODE_ORDER = (1, 2, 3)
+
+
+def modes_from_list(ml: dict) -> list[dict]:
+    """The dashboard's modes from a 1726 ``mode_list`` reply, in the app's order."""
+    cur = ml.get("current_id")
+    modes = []
+    for m in ml.get("list", []):
+        label = catalog.mode_label(m)          # canonical, e.g. "Time-of-Use"
+        raw = m.get("name", "")                # site tariff, e.g. "Ausgrid EA11 TOU"
+        modes.append({
+            "name": label,
+            "tariff": raw if raw and raw != label else None,
+            "reserved_soc": m.get("reserved_soc"),
+            "workmode": m.get("scheduling_type"),
+            "active": m.get("id") == cur,
+        })
+    rank = {w: i for i, w in enumerate(APP_MODE_ORDER)}
+    return sorted(modes, key=lambda m: rank.get(m["workmode"], len(rank)))
+
+
 def summary(s: Settings, host: str | None = None, *, mock: bool = False,
             extras: bool = False) -> dict[str, Any]:
     """Everything the dashboard needs in ONE aGate session (one login) — efficient on the
@@ -1249,17 +1272,7 @@ def summary(s: Settings, host: str | None = None, *, mock: bool = False,
             out["tou_tiers"] = _tou_tiers_from_power_flow(pf)
             ml = c.mode_list()
             cur = ml.get("current_id")
-            modes = []
-            for m in ml.get("list", []):
-                label = catalog.mode_label(m)          # canonical, e.g. "Time-of-Use"
-                raw = m.get("name", "")                # site tariff, e.g. "Ausgrid EA11 TOU"
-                modes.append({
-                    "name": label,
-                    "tariff": raw if raw and raw != label else None,
-                    "reserved_soc": m.get("reserved_soc"),
-                    "workmode": m.get("scheduling_type"),
-                    "active": m.get("id") == cur,
-                })
+            modes = modes_from_list(ml)
             out["mode"] = {"current_id": cur, "modes": modes}
             # canonical name of the active mode for the power card
             active = next((m for m in modes if m["active"]), None)

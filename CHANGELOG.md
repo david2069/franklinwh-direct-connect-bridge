@@ -15,6 +15,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
 
+## 2026-11-23
+
+### [0.5.56](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.56.md)
+
+Changed 2 · Fixed 1
+
+- Install: PyPI is the install and update route in the docs
+- Notifications: the Push notifications switch follows Home Assistant (off until an HA…
+- Dashboard: the operating modes in the FranklinWH app's order
+
 ## 2026-11-20
 
 ### [0.5.55](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.55.md)
