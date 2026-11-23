@@ -19,7 +19,7 @@ Three ways, and they coexist:
    `FWH_HOSTS=192.0.2.10=Home,192.0.2.11=Shed`. When set, it wins over the
    single-gateway `FWH_HOST`.
 2. **Settings → Gateways → Add** — host and a label, from the UI.
-3. **Settings → Gateways → Scan** — probe a subnet for aGates. The subnet comes from
+3. **Settings → Gateways → Discover gateways** — probe a subnet for aGates. The subnet comes from
    `FWH_SUBNET`, or is derived as the host's `/24` when that is blank. The search uses
    TCP 9000, where every real aGate listens. To find emulators, give a port, a list or a
    range in the port box (`9020`, `9000,9020` or `9020-9030`). Each open port is confirmed

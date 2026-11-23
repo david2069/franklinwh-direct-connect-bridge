@@ -94,9 +94,9 @@ How it behaves:
 - Without a region the gate fails. **With a region, the last good price is kept however old
   it is** if the bridge cannot reach AEMO; the Modbus Bridge drops a price after 30 minutes.
 
-!!! note "Why not *Always (sensor-driven)*?"
-    An Always schedule fires once and then never again: its single occurrence is recorded
-    as done (#190). See [Triggers](triggers.md#always-evaluate).
+!!! note "Always (sensor-driven) works too"
+    An Always schedule fires on every rising edge (#190); the two thresholds above stop it
+    flapping. See [Triggers](triggers.md#always-evaluate).
 
 ## 4. Storm forecast: fill the battery
 

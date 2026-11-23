@@ -83,16 +83,10 @@ change it, and you should not need to.
 | **A schedule** | A `force` action. It starts when the window opens and the conditions hold. See [Scheduler → The force action in detail](scheduler/actions.md#battery-actions-force-charge-and-force-discharge). |
 | **The API** | `POST /api/battery/command`. Not confirm-gated; see [Control](control.md#which-gate-applies-to-what). |
 
-### Time the window with Daily or Weekly, not Recurring windows
+### Any trigger works
 
-For a scheduled force, use the **Daily** or **Weekly** trigger with a **Fire at** time and
-a **Duration (min)** that is the window. Avoid **Recurring windows** for a force for now.
-
-The reason is an open defect, **#160**. The force's watchdog takes its time limit from
-the schedule's duration (`_force_dispatch()` in `scheduler.py`). The Recurring-windows
-form hides the Duration field, and a new schedule gets 90 minutes from the form's
-defaults. So a force in a three-hour recurring window releases after 90 minutes. With
-Daily or Weekly, the duration you type **is** the window, and the two agree.
+A scheduled force runs until its window closes, in every trigger type (#160), unless its
+target SoC or an exit condition ends it first.
 
 ---
 
@@ -147,12 +141,11 @@ Things to know:
   one a schedule card's **Stop** did not start. Stop checks that its own schedule
   started a dispatch, but the release it sends is the same one.
 - **A release needs the Modbus client (this bridge) on.** If you switch the client off
-  while a force is running, the release is refused with the "Modbus client is off"
-  reason, even though the code's comment says a release is always allowed. Switch the
-  client back on, then release. (Read from `battery_control.execute()`; not tested.)
-- **"Released" is reported without checking.** The library reads the setpoint back,
-  but the bridge ignores the result and always reports `released`. Check the VPP chip
-  on the next poll.
+  while a force is running, the release is refused: the message says the force is still
+  active and to switch the Modbus client on in **Control → Modbus client**, then Release.
+- **A release is checked.** The bridge reads the setpoint back: *released*, *release
+  sent; not confirmed* when the read fails, or an error when the aGate still reports the
+  force on (#174).
 
 !!! note "Planned: an always-visible Release"
     A Release button that is always visible, as in the Modbus Bridge, is planned in

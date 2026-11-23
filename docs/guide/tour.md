@@ -317,9 +317,9 @@ To find a scheduler decision, the Scheduler's **History** view is usually quicke
 
 ### Sign-in and users
 
-Not available in this bridge. There is no login, no user accounts and no sign-in
-history. Anyone who can reach the web UI or the HTTP API can use all of it, so keep the
-bridge on a trusted network.
+Accounts, roles and sign-in are under **Settings → Admin → Security** (from 0.5.32). New
+installs have it on; an upgraded install keeps it off until you turn it on. See
+[Security](security.md).
 
 ### Settings, by sub-tab
 

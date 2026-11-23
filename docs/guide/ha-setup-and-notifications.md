@@ -699,8 +699,9 @@ tokens.
 - **No filter for phones.** The service list shows every `notify.*` service, not only
   `mobile_app_*`.
 - **Buttons on these only:** Release / Keep, alerts (Acknowledge, Re-discover), **Ask
-  before continuing**, **Test with buttons** and **Test critical alert**. Auto-notify
-  triggers and schedule notify steps are plain.
+  before continuing**, **Test with buttons** and **Test critical alert**, and **Turn off** /
+  **Stop reminders** on the mode-change, 4G and off-grid-reminder triggers. Other
+  auto-notify triggers and schedule notify steps are plain.
 
 ---
 

@@ -226,23 +226,11 @@ When the conditions stop holding, the window closes: exit HA actions run and, fo
 action this schedule still holds, a Release is sent.
 <!-- @b TRG-30 ;; src: scheduler.py:2014-2033 ;; tested: tests/test_scheduler.py::test_trigger_always_fires_on_rising_edge ;; write: yes ;; b: When an always entry's conditions stop, the closing edge sends a force Release and runs exit HA actions ;; test: -->
 
-!!! danger "Always fires once, ever, and then only releases"
-    The run of an Always schedule is stored as one occurrence with the fixed key `always`.
-    After the first successful run that occurrence is finished, so **every later rising edge
-    sends nothing**. Probe, 2026-10-17, against this release's code: SoC 95 → 50 → 95 → 95 →
-    50 → 95 gave Force Discharge, Release, nothing, nothing, Release, nothing.
-
-    - A **falling** edge sends **Release** only while this schedule holds the force on that
-      gateway (see [Exit and release](exit-and-conflicts.md#how-a-run-ends)).
-    - The mark is kept in the database. A restart, an edit, or turning it off and on does
-      not clear it; nothing prunes old runs (the prune function exists but is never called).
-      Deleting the schedule and creating it again does.
-    - An Always schedule with **no battery action** sends its HA actions once, ever, too.
-
-    For "whenever the price is low" rules use a repeating trigger with a gap, for example
-    **Custom cron** `*/30 * * * *` with **Duration (min)** 29. Issue #190.
-<!-- @b TRG-28 ;; src: scheduler.py:378-379, scheduler.py:2147-2150, db.py:1935-1962 ;; unclear ;; write: yes ;; b: An always entry's occurrence key is the constant 'always'; once it finishes ok it is terminal, so the entry never fires again ;; test: unit: tick an always force entry through two rising edges; assert a second Force (fails today) -->
-<!-- @b TRG-29 ;; src: db.py:1935-1962, db.py:2202-2212 ;; unclear ;; write: yes ;; b: The fired-once mark for always is a stored occurrence row per schedule and gateway; it survives restart, edit and disable, and prune_occurrences is never called ;; test: unit: after restart (fresh in-memory state, same DB) the always entry still does not fire -->
+!!! note "Always fires on each rising edge"
+    Each time the conditions start to hold is a new run (#190). A **falling** edge sends
+    **Release** only while this schedule holds the force on that gateway (see
+    [Exit and release](exit-and-conflicts.md#how-a-run-ends)).
+<!-- @b TRG-28 ;; src: scheduler.py (tick, trigger_type always) ;; unclear ;; write: yes ;; b: Each activation of an always entry is its own occurrence (always:<ts>), so every rising edge fires (#190) ;; test: unit: tick an always force entry through two rising edges; assert a second Force -->
 
 ## Repeat patterns
 
