@@ -62,8 +62,8 @@ a machine on a trusted network, and add its network.
 ## The HTTPS port: available now
 
 The bridge serves the same web UI and REST API over HTTPS on port **8102**, next to
-8101, on every install. Trusted networks apply to it the same way. There is no sign-in
-yet, so for now it adds encryption, not access control.
+8101, on every install. Trusted networks apply to it the same way. With Security on, it
+asks for a sign-in (or an API token). With Security off, it adds encryption only.
 
 - **Home Assistant add-on:** the add-on publishes 8102. Change the host port, or turn
   it off, in the add-on's **Configuration → Network** section.

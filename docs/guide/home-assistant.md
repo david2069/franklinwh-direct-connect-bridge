@@ -293,7 +293,7 @@ every gateway.
 
 Nothing outside this bridge is touched. The topic list comes from the bridge's own entities
 for that gateway, never from a wildcard, so other gateways and other FranklinWH software
-(Modbus Bridge, FWHAI) are left alone. Every Unpublish is recorded in Control → Audit trail.
+(Modbus Bridge, FWHAI) are left alone. Every Unpublish is recorded in **Logs → Audit trail**.
 
 Disabling or removing a gateway in Settings → Gateways removes its entities the same way
 ([Multiple gateways](multi-gateway.md)).
@@ -423,8 +423,8 @@ list and keeps the exposed ones.)
 
 ![Settings → Integrations → Notifications](../images/home-assistant/15-notification-devices.png)
 
-Register notification targets, test one, or broadcast to all of them. These are what the
-Scheduler's **Notify** action and the bridge's own alerts (an interrupted dispatch, for
+Register notification targets, test one, or broadcast to all of them. These are what a
+schedule's notify rows and the bridge's own alerts (an interrupted dispatch, for
 instance) send to.
 
 A separate set of **notification triggers** — the bridge's own standing alerts, as

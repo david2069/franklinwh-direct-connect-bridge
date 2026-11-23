@@ -19,6 +19,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   drops #122 (done by #705), #160 and #129, and the Scheduler pages describe
   **Set reserve SoC** through the cloud (#129) and a force running until its window closes
   (#160) ([Control](docs/guide/control.md#1-allow_writes-no-longer-blocks-writes)).
+- **The guide brought in line with the bridge** (docs audit). `read_only` and
+  `allow_writes` do not block writes (mode and off-grid ask you to confirm); `mqtt_enabled`
+  defaults to on and `fwh_host` may be left empty for the setup wizard; sign-in and the
+  HTTPS port follow Security; an Always schedule fires on each rising edge (#190); a `PUT`
+  without `enabled` keeps it (#168); failed and missed runs notify (#172, #581) and the
+  Push notifications switch stops every push (#171); a Release is read back (#174);
+  History names the gateway (#205); the Audit trail is under Logs
+  ([Outcomes and audit](docs/guide/scheduler/outcomes.md#notifications)).
 
 ## Releases
 

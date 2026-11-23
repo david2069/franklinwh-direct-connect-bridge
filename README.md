@@ -107,9 +107,9 @@ This integration requires the unofficial FranklinWH Direct Connect API library:
 
 The integration has been modelled on [`energipays-bridge`](https://github.com/david2069/energipays-bridge): dual-target
 Dockerfile (slim standalone / alpine HA base), ingress web UI, `mqtt:want` broker
-auto-discovery, `read_only` by default.
+auto-discovery.
 
-> **Status: in service.** 180 REST paths (206 operations), the full UI, MQTT / Home Assistant
+> **Status: in service.** Over 280 REST operations, the full UI, MQTT / Home Assistant
 > discovery, and a SQLite metrics store are all live and running against real hardware.
 > See the [**User Guide**](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/guide/README.md) for the UI, the Scheduler, Home Assistant
 > and the control gates, and [`docs/API_COMPARISON.md`](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/API_COMPARISON.md) for how the
@@ -283,12 +283,12 @@ It starts **two seeded mock aGates** (the `franklinwh-direct-connect emulate --s
 bundled in the image — each a distinct virtual device with a solar/battery/load curve that
 follows the time of day) plus a bridge pointed at mock-1. Values move between polls, control
 buttons are enabled against the mock, and it is fully isolated from the real deployment
-(own port `8102`, own `./data-demo` volume, MQTT off — the real container on `8101` is
-untouched). `mock-agate-2` is already running and ready for **multi-gateway** testing.
+(own port `8102`, own `./data-demo` volume, MQTT off). Port `8102` is also the real bridge's
+HTTPS port, so stop one before starting the other. `mock-agate-2` is already running and ready for **multi-gateway** testing.
 
 ## Endpoints
 
-**180 paths / 206 operations**, as served by the running app. `/docs` (OpenAPI) is the live
+Over 280 REST operations, as served by the running app. `/docs` (OpenAPI) is the live
 inventory — prefer it over this table, which is a snapshot. The shape:
 
 | Group | Paths | What |
@@ -311,8 +311,8 @@ Plus `/` (UI) and `/api/live` (the watchdog probe that does no gateway I/O).
 All three are wired, each used only where it is the right one.
 
 - **Local sendMqtt (TCP/9000)** — the baseline. Everything under `/api/cmd/*`, plus the
-  hardware-verified mode / off-grid / der-comms / reboot writes. Gated **off by default**
-  (`read_only: true`).
+  hardware-verified mode / off-grid / der-comms / reboot writes. Mode and off-grid changes
+  need a confirmation (HTTP 428 without it).
 - **Cloud API** — used only where the local transport physically cannot reach: **reserve-SoC
   write** (the aGate silently discards the local write) and the cloud-native mode /
   smart-circuit setters. `GET /api/providers` reports, per capability, which transport is

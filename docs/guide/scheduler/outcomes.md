@@ -16,10 +16,10 @@ record and notifications. Also the controls that act outside the schedule: **Run
 | **Run queue** (`GET /api/schedules/runs`, `GET /api/schedules/stats`) | one row per run the scheduler expected: pending, running, ok, failed, missed, skipped, unknown, paused, stopped. No view in the UI. |
 | **Card** on the Schedules view | the last result with its date, **Next:**, **● active** |
 | **Logs** tab | the application log: each fired schedule (info) and each missed run (warning) |
-| **Control-log** (`GET /api/control-log`) | Pause and Resume calls |
+| **Logs → Audit trail** (`GET /api/control-log`) | each consequential control, its source and result; for the scheduler, Pause and Resume |
 
-**Not in this bridge:** a per-command control log with requester and hardware state
-before and after, and a dispatch-outcomes record (see [below](#the-dispatch-record)).
+**Not in this bridge:** hardware state before and after each command, and a
+dispatch-outcomes record (see [below](#the-dispatch-record)).
 
 ## Monitor
 
@@ -151,7 +151,7 @@ scheduler closes runs still pending, running or failed whose window ended more t
 is no catch-up: a missed run is never fired late.
 <!-- @b OUT-29 ;; src: scheduler_worker.py:39, scheduler_worker.py:119-145, db.py:2102-2131 ;; tested: tests/test_occurrences.py::test_grace_lets_a_late_run_still_catch_up ;; write: no ;; b: Runs whose window ended more than 120 s ago while pending/running/failed are swept to missed and logged missed (store level; the worker's log row is untested) -->
 
-**Not in this bridge:** failure and recovery notifications for retries (see
+Each failed attempt updates one `SCHEDULE_FAILED` alert for the window (see
 [Notifications](#notifications)).
 
 ## Supervision of a running command
@@ -195,12 +195,11 @@ requested. Tracked in
 
 ## Notifications
 
-**Not in this bridge** for scheduled actions. A failed, missed or unknown scheduled action
-sends **no** notification: the scheduler passes no notifier to its retry helper
-([#172](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/172)). To be
-told, add a **Notify** HA action to the schedule; note it runs after the battery action on
-every attempt, whatever the outcome (see [Actions](actions.md#home-assistant-actions)).
-<!-- @b OUT-18 ;; src: scheduler.py:2409-2413, resilience.py:243-249 ;; unclear ;; write: no ;; b: run_action_outcome is called without a notifier, so failures and unknowns of scheduled actions notify nobody ;; test: unit: a failing force with a notifier in place; assert one 'action failed' notification (fails today, #172) -->
+A failed run raises the `SCHEDULE_FAILED` alert and its **Run failed** push; a missed run
+sends **Run missed** (#172, #581). Set them under **Settings → Integrations →
+Notifications → Auto-notify triggers** (Scheduler group). See
+[Notifications](../ha-setup-and-notifications.md#scheduler).
+<!-- @b OUT-18 ;; src: scheduler.py (SCHEDULE_FAILED), notify_engine.py (schedule_failed, schedule_missed) ;; unclear ;; write: no ;; b: A failed run raises SCHEDULE_FAILED with the Run failed push; a missed run sends Run missed ;; test: — -->
 
 **Direct Connect only.** After a restart that interrupted a scheduled force, the boot
 reconcile notifies your enabled notification devices ("FranklinWH — scheduled dispatch

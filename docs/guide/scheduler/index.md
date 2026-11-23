@@ -136,11 +136,8 @@ direction or target SoC takes effect at the next window.
 the stored schedule, so nothing else changes (#157).
 <!-- @b IDX-08 ;; src: static/js/scheduler_tab.js:578-592, app.py:3105-3134 ;; tested: tests/test_schedule_update_merge.py::test_the_toggle_body_changes_only_enabled ;; write: yes ;; b: The toggle's partial PUT changes only enabled; every other stored field is kept ;; test: -->
 
-!!! warning "A PUT without `enabled` turns the schedule on"
-    The form and the toggle always send `enabled`. An API call that does not, for example one
-    that only renames a disabled schedule, turns it back **on**: `enabled` defaults to true
-    in the request model. Issue #168.
-<!-- @b IDX-09 ;; src: app.py:631, app.py:3124-3132 ;; unclear ;; write: yes ;; b: PUT without enabled re-enables a disabled schedule (request default True) ;; test: unit (API): PUT {name} on a disabled schedule; assert still disabled (fails today) -->
+A `PUT` without `enabled` leaves it as it was (#168).
+<!-- @b IDX-09 ;; src: app.py (update_schedule, model_fields_set) ;; unclear ;; write: yes ;; b: PUT without enabled keeps the stored enabled state (#168) ;; test: unit (API): PUT {name} on a disabled schedule; assert still disabled -->
 
 ### Templates, export and import
 
@@ -315,9 +312,10 @@ schedules. Home Assistant entities for run, pause and state over MQTT are planne
 add-on's **Info** page shows it (for example `4a12892f-franklinwh-local-bridge`). Use
 `http://<that hostname>:8101`. A Docker install uses its own host and port.
 
-> The bridge's HTTP API has no login, and writes are not gated (`writes_enabled` always
-> returns true). Anything that can reach it can do all of the below. Keep it on a trusted
-> network.
+> With Security off, the HTTP API has no login: anything that can reach it can do all of
+> the below. Keep it on a trusted network. With Security on, call `https://<hostname>:8102`
+> with an API token for an account whose role can edit schedules
+> ([Security](../security.md#api-access-tokens)).
 
 ```yaml
 # configuration.yaml
@@ -327,7 +325,7 @@ rest_command:
     method: POST
     content_type: "application/json"
     payload: "{{ schedule | tojson }}"
-  fwh_schedule_update:          # merges what you send (#157); always send name and enabled (#168)
+  fwh_schedule_update:          # merges what you send (#157); always send name
     url: "http://<hostname>:8101/api/schedules/{{ id }}"
     method: PUT
     content_type: "application/json"
@@ -344,8 +342,7 @@ rest_command:
 ```
 
 **Update merges.** `PUT` changes only the fields you send (since 0.5.2, #157), but always
-send `name` (required) and `enabled`: without `enabled` the schedule is switched **on**
-(#168).
+send `name` (required). Left out, `enabled` keeps its value (#168).
 
 **Reading.** A `rest` sensor on `GET /api/schedules` lists every schedule with `enabled`,
 `next_fire` and `active_now` (container clock, #161). `GET /api/schedules/runs` and

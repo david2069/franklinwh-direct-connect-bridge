@@ -58,7 +58,7 @@ For gateway scope *all*, each gateway is handled on its own:
 | Run | one run (occurrence) per gateway, with its own status and retries. Each gateway fires once per occurrence; before #270 the first gateway to fire stopped the others |
 | Priority | one resource claim per gateway (`<gateway>/battery`), so gateways do not compete |
 | Window end | each gateway's tick sends its own release when the window closes |
-| History | one row per gateway, but the row does **not** name the gateway |
+| History | one row per gateway, each naming its gateway |
 
 <!-- @b TGT-04 ;; src: scheduler.py:2084-2094, scheduler.py:2317-2329, db.py:1935-1962 ;; tested: tests/test_occurrences.py::test_the_same_rule_on_two_gateways_is_two_runs ;; write: yes ;; b: Each gateway gets its own occurrence row and its own resource claim for an all-scope rule ;; test: — -->
 <!-- @b TGT-05 ;; src: scheduler.py:1989, scheduler.py:2014-2033 ;; untested ;; write: yes ;; b: The window-end release runs per gateway:entry key, to that gateway's host ;; test: unit: all-scope force on two gateways; close the window; assert a Release to each host -->
