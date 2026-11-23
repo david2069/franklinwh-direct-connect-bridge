@@ -147,6 +147,7 @@ nav:
           - guide/hems/load-forecast.md
           - guide/hems/battery-wear.md
           - guide/hems/loads.md
+          - guide/hems/smart-dispatch.md
           - guide/hems/scheduler.md
           - guide/hems/home-assistant.md
           - guide/hems/troubleshooting.md

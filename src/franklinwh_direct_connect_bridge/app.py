@@ -4477,6 +4477,45 @@ def create_app() -> FastAPI:
             raise HTTPException(422, str(e))
         return hems_setup.view(st, get_settings(), gateway)
 
+    @app.get("/api/smart-dispatch")
+    def api_smart_dispatch(refresh: bool = Query(False), gateway: str = Depends(_gateway_q)):
+        """Smart Dispatch, plan only (#612 §7, hems.dispatch): the target and limit questions,
+        what is missing, the 24-hour plan and the action now. No device read or write;
+        ``refresh`` works the plan out again (Re-evaluate)."""
+        from . import smart_dispatch
+        _gw_or_404(gateway)
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        return smart_dispatch.view(st, get_settings(), gateway, force=refresh)
+
+    @app.post("/api/smart-dispatch/check")
+    def api_smart_dispatch_check(body: dict, gateway: str = Depends(_gateway_q)):
+        """The answers given, checked and planned without saving them."""
+        from . import smart_dispatch
+        _gw_or_404(gateway)
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        bad = [k for k in body if k not in smart_dispatch.FIELDS]
+        if bad:
+            raise HTTPException(422, f"unknown Smart Dispatch field(s): {', '.join(bad)}")
+        return smart_dispatch.view(st, get_settings(), gateway, answers=body)
+
+    @app.put("/api/smart-dispatch")
+    def api_smart_dispatch_put(body: dict, gateway: str = Depends(_gateway_q)):
+        """Save Smart Dispatch answers (null clears one back to its pre-fill). No device write."""
+        from . import smart_dispatch
+        _gw_or_404(gateway)
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        try:
+            smart_dispatch.save(st, gateway, body)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+        return smart_dispatch.view(st, get_settings(), gateway)
+
     _install_modes: dict[str, tuple] = {}   # host -> (expires_monotonic, mode labels)
     _install_history: dict[str, tuple] = {}  # gateway id -> (expires_monotonic, history)
 

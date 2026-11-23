@@ -65,6 +65,7 @@
   <script src="static/js/fwh_calendar.js?v={{ cache_bust }}"></script>
   <script src="static/js/analytics_tab.js?v={{ cache_bust }}"></script>
   <script src="static/js/energy_costs_tab.js?v={{ cache_bust }}"></script>
+  <script src="static/js/smart_dispatch_tab.js?v={{ cache_bust }}"></script>
   <script src="static/js/network_tab.js?v={{ cache_bust }}"></script>
   <script src="static/js/integrations_tab.js?v={{ cache_bust }}"></script>
   <script src="static/js/grid_tab.js?v={{ cache_bust }}"></script>
@@ -181,6 +182,10 @@
 
         <div x-show="$store.app.activeTab === 'energy_costs'" x-cloak>
           {% include "tabs/energy_costs.html" %}
+        </div>
+
+        <div x-show="$store.app.activeTab === 'smart_dispatch'" x-cloak>
+          {% include "tabs/smart_dispatch.html" %}
         </div>
 
         <div x-show="$store.app.activeTab === 'device'" x-cloak>
