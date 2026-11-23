@@ -16,7 +16,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - **Docs that said otherwise than the bridge does** (owner 2026-11-23). README, INSTALL.md,
   DOCS.md and the generator and Home Assistant pages no longer say writes need
   `allow_writes` (it stopped blocking writes in 0.5.2). Battery dispatch's Known issues
-  drops #122, #160 and #129, which are fixed, and the Scheduler pages describe
+  drops #122 (done by #705), #160 and #129, and the Scheduler pages describe
   **Set reserve SoC** through the cloud (#129) and a force running until its window closes
   (#160) ([Control](docs/guide/control.md#1-allow_writes-no-longer-blocks-writes)).
 
