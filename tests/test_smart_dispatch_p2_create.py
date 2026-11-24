@@ -38,6 +38,8 @@ def test_create_adds_the_drafts_as_tagged_tasks(planned):
         assert e["enabled"] and e["gateway_id"] == "gw1" and e["trigger_type"] == "once"
         assert e["name"].startswith("Smart Dispatch: ")
         assert scheduler.validate_spec(e) == []
+        # Shaped as the Scheduler saves one: its card reads these lists.
+        assert e["conditions"] == [] and e["exit_conditions"] == [] and e["ha_actions"] == []
     assert any(l["status"] == "created" for l in planned.schedule_log(limit=50))
 
 

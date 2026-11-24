@@ -78,6 +78,15 @@
                 @click="listFilter = f" x-text="f"></button>
       </template>
     </div>
+    <!-- Source (owner 2026-11-24): yours, or created by Smart Dispatch (its origin tag). -->
+    <div x-show="hasSmartDispatch" class="inline-flex rounded-lg border overflow-hidden" style="border-color:var(--border)" data-testid="sched-source-filter">
+      <template x-for="f in [['all','All sources'],['user','Yours'],['smart_dispatch','Smart Dispatch']]" :key="f[0]">
+        <button class="px-2.5 py-1 text-[11px]"
+                :class="sourceFilter === f[0] ? 'bg-emerald-500 text-white' : ''"
+                :style="sourceFilter === f[0] ? '' : 'color:var(--text-secondary)'"
+                @click="sourceFilter = f[0]" x-text="f[1]"></button>
+      </template>
+    </div>
     <span x-show="hiddenCount" class="text-[11px]" style="color:var(--text-faint)"
           x-text="hiddenCount + ' hidden'"></span>
   </div>
@@ -98,6 +107,9 @@
             <div class="text-[11px] mt-0.5" style="color:var(--text-faint)">
               Next: <span x-text="nextFireLabel(s)"></span></div>
           </div>
+          <span x-show="s.origin === 'smart_dispatch'" class="chip whitespace-nowrap shrink-0" data-testid="sched-source-badge"
+                style="font-size:.6rem;background:#a78bfa22;color:#a78bfa"
+                title="Created by Smart Dispatch. Edit it and it is yours.">Smart Dispatch</span>
           <span x-show="s.active_now" class="chip" style="font-size:.6rem;background:#34d39922;color:#34d399"
                 title="Running now">● active</span>
           <span class="chip" :class="s.enabled ? 'ok' : 'muted'" style="font-size:.6rem"
@@ -569,6 +581,14 @@
         <div class="flex items-center gap-2 flex-wrap" x-show="logEvents.length">
           <button class="chip" :class="!logFilter ? 'ok' : 'muted'" @click="logFilter=''"
                   x-text="'all ' + logEvents.length"></button>
+          <span x-show="logSourceCount('smart_dispatch')" class="inline-flex gap-1" data-testid="sched-log-source">
+            <template x-for="f in [['user','Yours'],['smart_dispatch','Smart Dispatch']]" :key="f[0]">
+              <button class="chip" :class="logSource === f[0] ? '' : 'muted'"
+                      :style="logSource === f[0] ? 'background:#a78bfa22;color:#a78bfa' : ''"
+                      @click="logSource = (logSource === f[0] ? '' : f[0])"
+                      x-text="f[1] + ' ' + logSourceCount(f[0])"></button>
+            </template>
+          </span>
           <button x-show="batteryLogCount" class="chip"
                   :class="(logFilter==='_battery_') ? '' : 'muted'"
                   :style="(logFilter==='_battery_') ? { background: '#22d3ee22', color: '#22d3ee' } : {}"
@@ -591,6 +611,7 @@
                       <span x-text="e.name"></span>
                       <span x-show="e.gateway_id" class="text-xs" style="color:var(--text-secondary)"
                             x-text="'· ' + gatewayName(e.gateway_id)"></span>
+                      <span x-show="e.source === 'smart_dispatch'" class="chip" style="font-size:.55rem;background:#a78bfa22;color:#a78bfa">Smart Dispatch</span>
                     </div>
                     <div class="text-xs font-mono" style="color:var(--text-secondary)" x-text="e.result"></div>
                   </td>

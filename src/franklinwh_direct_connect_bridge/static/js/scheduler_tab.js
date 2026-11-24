@@ -28,6 +28,8 @@ document.addEventListener('alpine:init', () => {
     advRepeat: false,
     exitTestResult: null,
     listFilter: 'all',   // all | enabled | disabled
+    sourceFilter: 'all', // all | user | smart_dispatch (the schedule's origin tag)
+    logSource: '',       // '' | user | smart_dispatch
     trigger_types: [], cron_available: false, presetSel: '',
     loading: false, error: '', busy: false,
     form: null,
@@ -212,8 +214,9 @@ document.addEventListener('alpine:init', () => {
     },
     _isBatteryEvent(e) { return e.schedule_id === '_batt' || e.schedule_id === '_vpp'; },
     get batteryLogCount() { return (this.logEvents || []).filter(e => this._isBatteryEvent(e)).length; },
+    logSourceCount(src) { return (this.logEvents || []).filter(e => (e.source || 'user') === src).length; },
     get filteredLog() {
-      const evs = this.logEvents || [];
+      const evs = (this.logEvents || []).filter(e => !this.logSource || (e.source || 'user') === this.logSource);
       if (!this.logFilter) return evs;
       if (this.logFilter === '_battery_') return evs.filter(e => this._isBatteryEvent(e));
       return evs.filter(e => e.status === this.logFilter);
@@ -721,8 +724,10 @@ document.addEventListener('alpine:init', () => {
     },
 
     // ─── list: status filter, active-now, next-fire, per-entry stop ───
+    get hasSmartDispatch() { return (this.schedules || []).some(s => s.origin === 'smart_dispatch'); },
     get filteredSchedules() {
-      const all = this.schedules || [];
+      const src = this.sourceFilter;
+      const all = (this.schedules || []).filter(s => src === 'all' || (s.origin || 'user') === src);
       if (this.listFilter === 'enabled') return all.filter(s => s.enabled);
       if (this.listFilter === 'disabled') return all.filter(s => !s.enabled);
       return all;
