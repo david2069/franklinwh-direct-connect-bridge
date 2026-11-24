@@ -50,6 +50,11 @@ The **History** view is this bridge's activity log. It loads the latest 200 rows
 are in bridge-host time, shown short on the left ("18 Nov 18:01"); hover or tap a time
 for the full date and seconds. The chips at the top filter by status (one chip per status
 present); **battery** shows the rows written by the force path and the VPP monitor.
+Once Smart Dispatch has created a task, **Yours** and **Smart Dispatch** chips filter by
+where the schedule came from. Each row records its source when it is written, so a Smart
+Dispatch task's runs stay marked after the task is gone; rows from before this was added are
+marked from the tasks still there. `GET /api/schedules/log?source=user|smart_dispatch` filters
+the same way.
 <!-- @b OUT-03 ;; src: static/js/scheduler_tab.js:71-100 ;; untested ;; write: no ;; b: The History view fetches 200 rows, offers one chip per status present plus a battery chip for _batt and _vpp rows ;; test: browser: load History with mixed rows, assert the chips and the battery filter -->
 
 | Status | Meaning |

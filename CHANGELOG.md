@@ -12,6 +12,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Scheduler: where each schedule came from** (owner 2026-11-24). Tasks Smart Dispatch
+  created carry a **Smart Dispatch** badge; the list filters by **All sources / Yours / Smart
+  Dispatch**, and History by **Yours / Smart Dispatch**. Each History row records its source
+  when written (earlier rows are backfilled); `GET /api/schedules/log?source=`
+  ([guide](docs/guide/scheduler/index.md#the-entry-list)).
 - **Smart Dispatch: Auto (#612 phase 2, step 3).** Off, Shadow or On per gateway, about hourly
   from the scheduler worker while readings are fresh. Shadow logs what Create schedules would
   do; On does it, and is allowed only after 7 days of Shadow. Tasks still in the plan are kept,

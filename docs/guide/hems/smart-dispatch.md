@@ -102,6 +102,8 @@ roles: the **Schedules** action).
 - **Force unavailable:** with the Modbus client off, nothing is created.
 
 The card shows how many Smart Dispatch tasks are in the Scheduler, with **Open** to go there.
+In the Scheduler they carry a **Smart Dispatch** badge, and the list and History can be
+filtered by source (**Yours** / **Smart Dispatch**).
 The Scheduler's log records each task created or replaced.
 
 ### Auto

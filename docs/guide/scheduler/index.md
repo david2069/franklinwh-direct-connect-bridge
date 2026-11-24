@@ -103,13 +103,15 @@ live**. It says *Would fire* or *Would not fire*, with the reason and each row's
 Each schedule is a card. It shows the name; the Fire at time and duration, the recurrence
 in words and the number of top-level conditions; **Next:** (see
 [Triggers → Next fire](triggers.md#next-fire)); **● active** while its window is open and it
-has fired; **On** or **Off**; the battery action (or *No gateway action*) and the number of
+has fired; **Smart Dispatch** on a task that [Smart Dispatch](../hems/smart-dispatch.md#create-schedules)
+created; **On** or **Off**; the battery action (or *No gateway action*) and the number of
 HA actions; and the last result with its occurrence.
 
 | Control | What it does |
 |---|---|
 | **N active now** | Counts the cards showing **● active**. |
 | **All / Enabled / Disabled** | Filters the cards. A note says how many are hidden. |
+| **All sources / Yours / Smart Dispatch** | Shown once Smart Dispatch has created a task. Filters the cards by where they came from. A Smart Dispatch task you edit becomes yours. |
 | **Explain** | A plain-language summary of the schedule, at three levels: **min**, **medium** and **full**. A Home Assistant action that runs on exit reads "… when it ends". The browser remembers the level you last chose. |
 | **Edit** | Opens the form. If the schedule is **● active**, saving asks first. |
 | **Turn on** / **Turn off** | Enables or disables the schedule. |

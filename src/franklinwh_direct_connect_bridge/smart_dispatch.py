@@ -407,7 +407,9 @@ def create(store, settings, gateway_id: str, now: float | None = None, *,
             skipped.append({"name": t["name"],
                             "why": "a Smart Dispatch task is already running then"})
             continue
-        spec = {**t["spec"], "origin": ORIGIN}
+        # Shaped as the Scheduler saves one (its card and form read these lists).
+        spec = scheduler.normalize_spec({"conditions": [], "exit_conditions": [],
+                                         **t["spec"], "origin": ORIGIN})
         errors = scheduler.validate_spec(spec)
         if errors:
             skipped.append({"name": t["name"], "why": "; ".join(errors)})

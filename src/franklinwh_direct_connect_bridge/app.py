@@ -5097,7 +5097,8 @@ def create_app() -> FastAPI:
     def api_schedule_log(limit: int = Query(100, ge=1, le=500),
                          schedule_id: str | None = Query(None),
                          status: str | None = Query(None),
-                         severity: str | None = Query(None)):
+                         severity: str | None = Query(None),
+                         source: str | None = Query(None, pattern="^(user|smart_dispatch)$")):
         """Recent schedule events, newest first — the history view.
 
         Filter by ``schedule_id`` (one entry's runs), ``status`` (fired/error), or
@@ -5105,9 +5106,12 @@ def create_app() -> FastAPI:
         what it said) or ``exception`` (the bridge itself misbehaved — a bug, not a
         condition). Each class is capped separately, so routine chatter cannot evict
         a failure. A schedule that fired and did nothing still appears, with the reason.
+        ``source``: ``user`` or ``smart_dispatch`` (the schedule's origin when the row was
+        written).
         """
         return {"events": _ha_store().schedule_log(
-            limit=limit, schedule_id=schedule_id, status=status, severity=severity)}
+            limit=limit, schedule_id=schedule_id, status=status, severity=severity,
+            source=source)}
 
     @app.get("/api/scheduler/monitor")
     def api_scheduler_monitor(entry_id: str | None = Query(None), since: int = Query(0, ge=0)):
