@@ -60,6 +60,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Setup wizard, Home Assistant step: install Mosquitto first** (#785, path B). On the add-on
+  with no MQTT broker, the broker check says "Install the Mosquitto broker app. The Bridge
+  connects on its own once it is running." with an **Install Mosquitto** button to its page in
+  Home Assistant. The checks are ordered steps (below the first failing one: *Waiting for the
+  step above*) and run again every 5 s. After **Yes**, the Bridge confirms the MQTT integration
+  Home Assistant discovered for the broker (only while it has none; audited). A Supervisor
+  "Service not enabled" at boot is now *No MQTT broker yet* at INFO, not a WARNING
+  ([guide](docs/guide/ha-setup-and-notifications.md#the-four-setup-checks)).
+
 - **Docs that said otherwise than the bridge does** (owner 2026-11-23). README, INSTALL.md,
   DOCS.md and the generator and Home Assistant pages no longer say writes need
   `allow_writes` (it stopped blocking writes in 0.5.2). Battery dispatch's Known issues

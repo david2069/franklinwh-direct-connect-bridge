@@ -67,6 +67,7 @@ from . import workers as _workers
 from . import alerts
 from . import troubleshoot
 from .config import get_settings, gateway_list, metrics_active, save_override
+from . import ha_supervisor
 from .ha_supervisor import apply_host_timezone, apply_supervisor_mqtt, discover_mqtt
 from . import notify
 from .notify import Notifier
@@ -4293,16 +4294,24 @@ def create_app() -> FastAPI:
         # discover_mqtt() already answers "not an add-on" by itself; a second gate here
         # only created a path where the two disagreed.
         sup = discover_mqtt()
-        if not s.mqtt_enabled:
+        # The add-on with no broker app: installing Mosquitto comes first (#785). The
+        # Bridge finds it on its own once it runs.
+        no_broker = bool(environment.IS_HA_ADDON and not sup.get("found"))
+        if no_broker:
+            remedy = ("Install the Mosquitto broker app. The Bridge connects on its own "
+                      "once it is running.")
+        elif not s.mqtt_enabled:
             remedy = ("Home Assistant's broker is available — turn publishing on from the "
                       "MQTT tab." if sup.get("found") else
-                      "Publishing is off. Install the Mosquitto broker add-on, then turn it "
-                      "on from the MQTT tab.")
+                      "Publishing is off. Set your MQTT broker on the MQTT tab and turn "
+                      "publishing on; without a broker, run one (Mosquitto) first.")
         elif no_publisher:
             remedy = ("The connection is made per gateway — add a gateway with "
                       "Publish to Home Assistant on, then check again.")
         else:
-            remedy = "" if broker_ok else "Publishing is on but the broker is not connected — check the MQTT tab."
+            remedy = ("" if broker_ok else
+                      "Publishing is on but the broker is not connected — check the broker "
+                      "settings on the MQTT tab, and that the broker is running.")
         checks.append({
             "id": "mqtt_broker", "title": "MQTT broker connected",
             "detail": "Carries this bridge's entities into Home Assistant.",
@@ -4314,6 +4323,8 @@ def create_app() -> FastAPI:
                       else "Connected" if broker_ok else "Not connected"),
             "remedy": remedy,
             "can_enable": bool(sup.get("found") and not s.mqtt_enabled),
+            "install_url": ha_supervisor.MOSQUITTO_URL if no_broker else "",
+            "install_my_url": ha_supervisor.MOSQUITTO_MY_URL if no_broker else "",
         })
 
         # 2. OUR link INTO Home Assistant — the opposite direction, and a different fix.
@@ -4341,7 +4352,10 @@ def create_app() -> FastAPI:
             "ok": mqtt_comp,
             "state": ("Set up" if mqtt_comp else
                       "Not set up" if mqtt_comp is False else "Could not be checked"),
+            # With the broker app running, Home Assistant discovers MQTT itself (#785).
             "remedy": ("" if mqtt_comp else
+                       "Home Assistant → Settings → Devices & services → Discovered → MQTT → Add."
+                       if sup.get("found") else
                        "Home Assistant → Settings → Devices & services → Add integration → MQTT."),
         })
 
@@ -4374,8 +4388,50 @@ def create_app() -> FastAPI:
                        "services → MQTT, or use the MQTT tab's orphan purge."
                        if leftovers else ""),
         })
+        # Ordered steps (#785): below the first failing check the others are ``waiting``;
+        # the wizard shows them as "Waiting for the step above", neither ✓ nor ✗. Their
+        # own result is kept for the API.
+        failed = False
+        for c in checks:
+            c["waiting"] = failed
+            failed = failed or c["ok"] is False
         return {"checks": checks, "publishing": bool(s.mqtt_enabled),
                 "addon": environment.IS_HA_ADDON}
+
+    @app.post("/api/setup/ha-mqtt/confirm")
+    def api_setup_ha_mqtt_confirm():
+        """After Yes, on the add-on (#785, path B): confirm the MQTT integration Home
+        Assistant discovered for the Mosquitto broker app (handler mqtt, source hassio),
+        only while Home Assistant has no MQTT integration. Audited. When it can't, the
+        remedy is the manual step."""
+        s = get_settings()
+        if not environment.IS_HA_ADDON:
+            raise HTTPException(409, "only the Home Assistant add-on can confirm it")
+        if not s.mqtt_enabled:
+            raise HTTPException(409, "answer Yes to publishing first")
+        manual = "Home Assistant → Settings → Devices & services → Discovered → MQTT → Add."
+        st = db.get_store(s)
+        inst = next((i for i in (st.ha_instances() if st else []) if i.get("enabled", 1)
+                     and str(i.get("base_url", "")).startswith("http://supervisor")), None)
+        if inst and "mqtt" in ha_instances.components(inst["base_url"], inst.get("token")):
+            return {"ok": True, "already": True, "message": "Home Assistant's MQTT integration is set up."}
+        try:
+            flow_id = ha_supervisor.mqtt_flow_id()
+        except Exception as e:  # noqa: BLE001
+            log.info("MQTT integration: could not list Home Assistant's discovered flows: %s", e)
+            return {"ok": False, "remedy": manual, "error": str(e)}
+        if not flow_id:
+            return {"ok": False, "remedy": manual, "error": "Home Assistant has not discovered MQTT yet"}
+        try:
+            out = ha_supervisor.confirm_flow(flow_id)
+        except Exception as e:  # noqa: BLE001
+            _audit("ha_mqtt_confirm", detail=f"flow {flow_id}", result=str(e), ok=False)
+            return {"ok": False, "remedy": manual, "error": str(e)}
+        ok = out.get("type") == "create_entry"
+        _audit("ha_mqtt_confirm", detail=f"flow {flow_id}", result=str(out.get("type")), ok=ok)
+        return ({"ok": True, "already": False,
+                 "message": "Added Home Assistant's MQTT integration for the Mosquitto broker."}
+                if ok else {"ok": False, "remedy": manual, "error": f"flow ended: {out.get('type')}"})
 
     @app.get("/api/setup/capabilities")
     def api_setup_capabilities(gateway: str = Depends(_gateway_q)):

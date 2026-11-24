@@ -33,7 +33,8 @@ window.setupWizard = function setupWizard() {
     scan_ports: '',                    // blank = 9000; a port, list or range finds emulators (#416)
     manual: { host: '' },
     // The four live Home Assistant checks, and whether to publish at all.
-    ha: { checks: [], publishing: false, addon: false, busy: false, msg: '' },
+    ha: { checks: [], publishing: false, addon: false, busy: false, msg: '', saidYes: false, confirming: false },
+    _haTimer: null,
     // Gateways added in THIS wizard run. "Publish this gateway to Home Assistant? Yes"
     // applies to them — and only them (#98: their publish flag is what the poller honours).
     createdIds: [],
@@ -491,7 +492,7 @@ window.setupWizard = function setupWizard() {
       this.step = step;
       if (step === 'hardware') this.intent = this.intent || 'hardware';
       if (step === 'find') { this.loadScanDefault().then(() => this.scan()); }
-      if (step === 'publish') this.loadHaChecks();
+      if (step === 'publish') { this.loadHaChecks(); this.watchHa(); }
     },
 
     back() {
@@ -663,9 +664,53 @@ window.setupWizard = function setupWizard() {
           this.ha.checks = d.checks || [];
           this.ha.publishing = !!d.publishing;
           this.ha.addon = !!d.addon;
+          this.confirmHaMqtt();
         }
       } catch (e) { /* the step explains an empty list itself */ }
       finally { this.ha.busy = false; }
+    },
+
+    // Re-check every 5 s while this step is open (#785), so installing Mosquitto and Home
+    // Assistant picking it up tick through without Check again. Stops once all pass, or
+    // when the step is left or the wizard closed.
+    watchHa() {
+      clearInterval(this._haTimer);
+      this._haTimer = setInterval(async () => {
+        if (!this.open || this.step !== 'publish') { clearInterval(this._haTimer); this._haTimer = null; return; }
+        if (this.ha.busy) return;
+        await this.loadHaChecks();
+        if (this.ha.checks.length && this.ha.checks.every(c => c.ok === true)) {
+          clearInterval(this._haTimer); this._haTimer = null;
+        }
+      }, 5000);
+    },
+
+    // After Yes on the add-on, once the broker is connected: confirm the MQTT integration
+    // Home Assistant discovered for it (#785). The result stays in the step.
+    async confirmHaMqtt() {
+      const c = Object.fromEntries((this.ha.checks || []).map(x => [x.id, x]));
+      if (!this.ha.saidYes || !this.ha.addon || this.ha.confirming) return;
+      if (!(c.mqtt_broker && c.mqtt_broker.ok === true && c.ha_mqtt && c.ha_mqtt.ok === false)) return;
+      this.ha.confirming = true;
+      try {
+        const r = await fetch('api/setup/ha-mqtt/confirm', { method: 'POST' });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.ok && !d.already) { this.ha.msg = d.message; await this.loadHaChecks(); }
+      } catch (e) { /* the check's own remedy says what to do */ }
+      finally { this.ha.confirming = false; }
+    },
+
+    // The Mosquitto broker app's page in a new tab, so this step stays open and keeps
+    // checking: Home Assistant's own page from the sidebar panel, else the My Home
+    // Assistant link.
+    openMosquitto(c) {
+      let url = c.install_my_url;
+      try {
+        if (window.top !== window.self && window.top.location.origin === window.location.origin) {
+          url = window.top.location.origin + c.install_url;
+        }
+      } catch (e) { /* another origin: the My link */ }
+      window.open(url, '_blank', 'noopener');
     },
 
     // "Yes" is the only thing that turns publishing on. Entities appear in someone's Home
@@ -687,6 +732,7 @@ window.setupWizard = function setupWizard() {
           ? ((a && a.gateways) || []).filter(g => g && g.id && !g.is_mock).map(g => g.id)
           : this.createdIds;
         if (r.ok) {
+          this.ha.saidYes = true;
           for (const id of ids) {
             await fetch(`api/gateways/${encodeURIComponent(id)}`, {
               method: 'PATCH', headers: { 'Content-Type': 'application/json' },
