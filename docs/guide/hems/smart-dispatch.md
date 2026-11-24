@@ -51,7 +51,21 @@ your plan and site are asked.
   the **saving** (counting the value of the energy left in the battery at the end), and the
   **value of 10 % charge**.
 - **Next 24 hours:** planned SoC, battery kW, and import and export prices.
-- **Each half hour:** the action and why. The actions are relative to self-consumption:
+  - **Tariff shading** (owner 2026-11-25): the chart shades your tariff's windows, each with
+    its own filter, shown only when your plan has it: **TOU bands** (off-peak green, shoulder
+    amber, peak red), **Demand charge** (when a demand charge applies), **Export bonus** (when
+    export pays more than its lowest rate in these 24 hours) and **Export penalty** (when
+    exporting costs money). Where two overlap, the penalty, then demand, then bonus, then the
+    band is shown.
+  - **Tariff** (beside **Chart**) shows the same as bands, like the FranklinWH emulator's TOU
+    schedule: the plan's action, the tariff band, and demand and export windows when there are
+    any. Hover a band for its name and times.
+  - **Actuals** adds what the battery did from the site's midnight to now, from the bridge's
+    own history: actual SoC and battery kW (+ charging) on the chart, and earlier half hours
+    above the plan in the table, with **Actual kW** and **Actual SoC** columns. The half hour
+    under way shows both.
+- **Each half hour:** the action, the tariff band (and *demand* inside a demand-charge
+  window), the prices and why. The actions are relative to self-consumption:
 
 | Action | Means |
 |---|---|

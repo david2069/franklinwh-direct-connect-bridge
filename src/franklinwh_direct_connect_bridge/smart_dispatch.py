@@ -319,6 +319,9 @@ def view(store, settings, gateway_id: str, now: float | None = None, *,
         notes.append("The gateway is in Emergency Backup: on its own it keeps the battery "
                      "charged; the comparison is with Self-Consumption")
     result["assumptions"] = result["assumptions"] + notes
+    # The tariff under each step, for the tab's shading and bands (owner 2026-11-25).
+    for s, p in zip(result["steps"], steps):
+        s["band"], s["demand_rate"] = p.get("band"), float(p.get("demand_rate") or 0.0)
     planned = {"result": result, "planned_at": int(now), "currency": plan.get("currency")}
     if answers is None:
         _cache[gateway_id] = (time.monotonic(), key, planned)
@@ -514,3 +517,27 @@ def _log(store, sid: str, name: str, status: str, result: str, gateway_id: str) 
         store.log_schedule_event(sid, name, status, result, gateway_id=gateway_id)
     except Exception:                                            # noqa: BLE001
         pass
+
+
+def actuals(store, gateway_id: str, now: float | None = None) -> dict:
+    """What the battery and the grid did each half hour from the site's midnight to now, for
+    the tab's Actuals (owner 2026-11-25). ``battery_kw`` uses the plan's sign (+ charging);
+    import and export are from the half hour's mean grid power."""
+    from . import load_forecast
+    now = time.time() if now is None else now
+    tz = load_forecast._zone(store)
+    local = dt.datetime.fromtimestamp(now, tz)
+    start = int(local.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+    rows = store.query(start, int(now), STEP_S, gateway=gateway_id) if store is not None else []
+
+    def kw(w, sign=1.0):
+        return None if w is None else round(sign * w / 1000.0, 2)
+    out = []
+    for r in rows:
+        g = r.get("grid_w")
+        out.append({"start": r["ts"], "battery_kw": kw(r.get("battery_w"), -1.0),
+                    "soc_pct": r.get("soc"),
+                    "import_kw": None if g is None else kw(max(g, 0.0)),
+                    "export_kw": None if g is None else kw(max(-g, 0.0)),
+                    "solar_kw": kw(r.get("solar_w")), "load_kw": kw(r.get("load_w"))})
+    return {"start": start, "end": int(now), "timezone": str(tz), "steps": out}

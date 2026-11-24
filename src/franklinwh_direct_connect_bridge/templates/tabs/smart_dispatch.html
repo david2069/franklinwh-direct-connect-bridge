@@ -49,8 +49,47 @@
 
   <!-- The plan. -->
   <div class="card" x-show="steps.length" data-testid="sd-chart">
-    <div class="card-label">Next 24 hours</div>
-    <div style="height:260px"><canvas x-ref="sdChart"></canvas></div>
+    <!-- Owner 2026-11-25: Chart or Tariff (bands, as the emulator's TOU schedule); Actuals
+         from midnight; the tariff's windows shaded, each kind a filter. -->
+    <div class="flex items-center justify-between gap-2 flex-wrap mb-2">
+      <div class="flex items-center gap-2">
+        <div class="card-label" style="margin-bottom:0" x-text="showActuals ? 'Today so far and the next 24 hours' : 'Next 24 hours'"></div>
+        <div class="inline-flex rounded-md overflow-hidden border text-xs" style="border-color:var(--border)">
+          <button type="button" data-testid="sd-view-chart" class="px-2 py-0.5" :class="sdView === 'chart' ? 'bg-emerald-500/20 text-emerald-300' : ''" @click="setView('chart')">Chart</button>
+          <button type="button" data-testid="sd-view-tariff" class="px-2 py-0.5" :class="sdView === 'tariff' ? 'bg-emerald-500/20 text-emerald-300' : ''" @click="setView('tariff')">Tariff</button>
+        </div>
+      </div>
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <button type="button" data-testid="sd-tariff-tou" x-show="tariffKinds.tou" class="chip" :class="shade.tou ? 'ok' : 'muted'" @click="toggleShade('tou')" title="Shade the time-of-use bands">TOU bands</button>
+        <button type="button" data-testid="sd-tariff-demand" x-show="tariffKinds.demand" class="chip" :class="shade.demand ? 'ok' : 'muted'" @click="toggleShade('demand')" title="Shade the demand-charge windows">Demand charge</button>
+        <button type="button" data-testid="sd-tariff-bonus" x-show="tariffKinds.bonus" class="chip" :class="shade.bonus ? 'ok' : 'muted'" @click="toggleShade('bonus')" title="Shade when export pays more than its lowest rate">Export bonus</button>
+        <button type="button" data-testid="sd-tariff-penalty" x-show="tariffKinds.penalty" class="chip" :class="shade.penalty ? 'ok' : 'muted'" @click="toggleShade('penalty')" title="Shade when exporting costs money">Export penalty</button>
+        <button type="button" data-testid="sd-actuals" class="btn btn-secondary btn-sm" :class="showActuals && 'ring-1 ring-emerald-400'" @click="toggleActuals()" title="What the battery did from midnight to now, beside the plan">Actuals</button>
+      </div>
+    </div>
+    <div x-show="sdView === 'chart'" style="height:260px"><canvas x-ref="sdChart"></canvas></div>
+    <div x-show="sdView === 'tariff'" x-cloak data-testid="sd-bands" class="space-y-1.5"
+         x-init="const m = () => { bandPx = $el.clientWidth - 72; }; m(); new ResizeObserver(m).observe($el)">
+      <template x-for="row in bands" :key="row.name">
+        <div class="flex items-center gap-2">
+          <div class="w-16 shrink-0 text-xs" style="color:var(--text-secondary)" x-text="row.name"></div>
+          <div class="relative flex-1 h-7 rounded overflow-hidden" style="background:var(--surface-2)">
+            <template x-for="g in row.segs" :key="g.start">
+              <div class="absolute top-0 bottom-0 flex items-center justify-center text-[10px] font-semibold overflow-hidden whitespace-nowrap border-r"
+                   style="border-color:var(--surface-1);color:#0f172a" :style="`left:${g.left}%;width:${g.width}%;background:${g.color}`"
+                   :title="g.label + ' ' + hhmm(g.start) + '–' + hhmm(g.end)" x-text="fits(g) ? g.label : ''"></div>
+            </template>
+          </div>
+        </div>
+      </template>
+      <div class="flex items-center gap-2">
+        <div class="w-16 shrink-0"></div>
+        <div class="relative flex-1 h-4 text-[10px]" style="color:var(--text-faint)">
+          <template x-for="k in bandTicks" :key="k.left"><span class="absolute" :style="`left:${k.left}%`" x-text="k.label"></span></template>
+        </div>
+      </div>
+      <p class="text-[11px]" style="color:var(--text-faint)">Times are the plan's (<span x-text="zoneShort"></span>). Export bonus: export pays more than its lowest rate in these 24 hours; export penalty: exporting costs money.</p>
+    </div>
   </div>
 
   <div class="card overflow-x-auto" x-show="steps.length" data-testid="sd-steps">
@@ -58,17 +97,23 @@
     <table class="w-full text-xs">
       <thead><tr style="color:var(--text-faint)" class="text-left">
         <th class="py-1 pr-2">Time</th><th class="pr-2">Action</th><th class="pr-2">Battery kW</th>
-        <th class="pr-2">SoC</th><th class="pr-2">Import</th><th class="pr-2">Export</th><th>Why</th></tr></thead>
+        <th class="pr-2">SoC</th>
+        <th class="pr-2" x-show="showActuals" data-testid="sd-actual-kw">Actual kW</th>
+        <th class="pr-2" x-show="showActuals" data-testid="sd-actual-soc">Actual SoC</th>
+        <th class="pr-2">Tariff</th><th class="pr-2">Import</th><th class="pr-2">Export</th><th>Why</th></tr></thead>
       <tbody>
-        <template x-for="s in steps" :key="s.start">
-          <tr class="border-t" style="border-color:var(--border)">
+        <template x-for="s in rows" :key="s.start">
+          <tr class="border-t" style="border-color:var(--border)" :style="s.past ? 'opacity:.75' : ''">
             <td class="py-1 pr-2" x-text="hhmm(s.start)"></td>
-            <td class="pr-2" :class="actionClass(s.action)" x-text="actionLabel(s.action)"></td>
-            <td class="pr-2" x-text="s.battery_kw.toFixed(1)"></td>
-            <td class="pr-2" x-text="Math.round(s.soc_pct) + '%'"></td>
-            <td class="pr-2" x-text="s.import_price.toFixed(2)"></td>
-            <td class="pr-2" x-text="s.export_price.toFixed(2)"></td>
-            <td style="color:var(--text-secondary)" x-text="s.reason"></td>
+            <td class="pr-2" :class="s.past ? '' : actionClass(s.action)" :style="s.past ? 'color:var(--text-faint)' : ''" x-text="s.past ? 'Actual' : actionLabel(s.action)"></td>
+            <td class="pr-2" x-text="s.past ? '—' : s.battery_kw.toFixed(1)"></td>
+            <td class="pr-2" x-text="s.past ? '—' : Math.round(s.soc_pct) + '%'"></td>
+            <td class="pr-2" x-show="showActuals" x-text="s.actual && s.actual.battery_kw != null ? s.actual.battery_kw.toFixed(1) : '—'"></td>
+            <td class="pr-2" x-show="showActuals" x-text="s.actual && s.actual.soc_pct != null ? Math.round(s.actual.soc_pct) + '%' : '—'"></td>
+            <td class="pr-2 whitespace-nowrap" x-text="s.past ? '' : bandLabel(s.band) + (s.demand_rate > 0 ? ' · demand' : '')"></td>
+            <td class="pr-2" x-text="s.past ? '' : s.import_price.toFixed(2)"></td>
+            <td class="pr-2" x-text="s.past ? '' : s.export_price.toFixed(2)"></td>
+            <td style="color:var(--text-secondary)" x-text="s.past ? '' : s.reason"></td>
           </tr>
         </template>
       </tbody>
