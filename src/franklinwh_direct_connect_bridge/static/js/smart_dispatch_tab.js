@@ -14,6 +14,8 @@ function smartDispatchTab() {
     msg: null,
     creating: false,
     createMsg: null,
+    autoBusy: false,
+    autoMsg: null,
     _chart: null,
 
     init() {
@@ -83,6 +85,42 @@ function smartDispatchTab() {
       } catch (e) {
         this.createMsg = { ok: false, text: e.message };
       } finally { this.creating = false; }
+    },
+
+    async setAuto(mode) {
+      // Off | Shadow | On; a refusal (On before a week of Shadow) stays in the card.
+      this.autoBusy = true;
+      this.autoMsg = null;
+      try {
+        const r = await fetch('api/schedules/smart-dispatch/auto' + this.$store.app.gwQuery('?'), {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }) });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) { this.autoMsg = { ok: false, text: j.detail || ('Failed (' + r.status + ')') }; return; }
+        this._take(j);
+        this.autoMsg = { ok: true, text: { off: 'Auto is off.', shadow: 'Shadow: each hour the log below says what it would create.', on: 'On: each hour it creates and updates its Scheduler tasks.' }[mode] };
+      } catch (e) {
+        this.autoMsg = { ok: false, text: e.message };
+      } finally {
+        this.autoBusy = false;
+        // A refused change puts the select back on the saved mode.
+        this.$nextTick(() => { const el = this.$root.querySelector('[data-testid=sd-auto]'); if (el && this.v && this.v.auto) el.value = this.v.auto.mode; });
+      }
+    },
+
+    autoText(e) {
+      if (e.error) return e.error;
+      const verb = e.mode === 'on' ? 'Created' : 'Would create';
+      const parts = [];
+      parts.push(e.create.length ? verb + ': ' + e.create.join(', ') : (e.mode === 'on' ? 'Nothing new' : 'Nothing new to create'));
+      if (e.replace.length) parts.push((e.mode === 'on' ? 'Replaced: ' : 'Would replace: ') + e.replace.join(', '));
+      if (e.kept) parts.push('kept ' + e.kept);
+      if (e.skipped.length) parts.push('skipped: ' + e.skipped.map(k => k.name + ' (' + k.why + ')').join(', '));
+      return parts.join(' · ');
+    },
+
+    dayTime(ts) {
+      return new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+        timeZone: (this.v && this.v.timezone) || undefined }).format(new Date(ts * 1000));
     },
 
     shown(q) {

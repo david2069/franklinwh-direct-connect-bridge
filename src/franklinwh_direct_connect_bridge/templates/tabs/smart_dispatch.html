@@ -83,7 +83,7 @@
        one-off tasks tagged Smart Dispatch, replacing its own that haven't started. -->
   <div class="card overflow-x-auto" x-show="v && v.drafts" data-testid="sd-drafts">
     <div class="card-label">Draft schedules</div>
-    <p class="text-xs mb-2" style="color:var(--text-faint)">The plan as one-off Scheduler tasks. <b>Create schedules</b> adds them to the Scheduler; creating again replaces its own tasks that haven't started. Your own schedules are never changed.</p>
+    <p class="text-xs mb-2" style="color:var(--text-faint)">The plan as one-off Scheduler tasks. <b>Create schedules</b> adds them to the Scheduler; creating again keeps its own tasks still in the plan and replaces the rest that haven't started. Your own schedules are never changed.</p>
     <p class="text-sm" style="color:var(--text-secondary)" x-show="v && v.drafts && !v.drafts.tasks.length">Self-consumption all day: no tasks needed.</p>
     <table class="w-full text-xs" x-show="v && v.drafts && v.drafts.tasks.length">
       <thead><tr style="color:var(--text-faint)" class="text-left">
@@ -111,6 +111,36 @@
         In the Scheduler: <span x-text="v && v.drafts && v.drafts.in_scheduler"></span> Smart Dispatch task(s)
         <button class="underline ml-1" @click="$store.app.activeTab = 'scheduler'">Open</button>
       </span>
+    </div>
+    <!-- Auto (#612 phase 2, step 3): hourly, Shadow logs what Create schedules would do, On
+         does it (after a week of Shadow). -->
+    <div class="mt-4 pt-3 border-t space-y-2" style="border-color:var(--border)" x-show="v && v.auto">
+      <div class="flex items-center gap-2 flex-wrap text-sm">
+        <span style="color:var(--text-primary)">Auto</span>
+        <select class="form-control form-control-sm w-auto" data-testid="sd-auto" :value="v && v.auto && v.auto.mode" @change="setAuto($event.target.value)" :disabled="autoBusy">
+          <option value="off">Off</option>
+          <option value="shadow">Shadow: log what it would create</option>
+          <option value="on">On: create the tasks every hour</option>
+        </select>
+        <span class="text-xs" style="color:var(--text-faint)" x-show="v && v.auto && v.auto.shadow_since">
+          Shadow since <span x-text="v && v.auto && dayTime(v.auto.shadow_since)"></span><span x-show="v && v.auto && v.auto.on_allowed_at > Date.now() / 1000"> · On from <span x-text="v && v.auto && dayTime(v.auto.on_allowed_at)"></span></span>
+        </span>
+      </div>
+      <div class="text-xs" :class="autoMsg && autoMsg.ok ? 'text-emerald-300' : 'text-amber-300'" x-show="autoMsg" x-text="autoMsg && autoMsg.text"></div>
+      <div class="overflow-x-auto" x-show="v && v.auto && v.auto.log.length" data-testid="sd-auto-log">
+        <table class="w-full text-xs">
+          <thead><tr style="color:var(--text-faint)" class="text-left"><th class="py-1 pr-2">Run</th><th class="pr-2">Mode</th><th>What it did</th></tr></thead>
+          <tbody>
+            <template x-for="e in (v && v.auto ? v.auto.log : [])" :key="e.ts">
+              <tr class="border-t" style="border-color:var(--border)">
+                <td class="py-1 pr-2 whitespace-nowrap" x-text="dayTime(e.ts)"></td>
+                <td class="pr-2" x-text="e.mode === 'on' ? 'On' : 'Shadow'"></td>
+                <td :class="e.error ? 'text-amber-300' : ''" style="color:var(--text-secondary)" x-text="autoText(e)"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
     </div>
     <div class="mt-2 text-xs space-y-1" x-show="createMsg" data-testid="sd-create-msg">
       <div :class="createMsg && createMsg.ok ? 'text-emerald-300' : 'text-amber-300'" x-text="createMsg && createMsg.text"></div>

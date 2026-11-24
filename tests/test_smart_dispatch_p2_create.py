@@ -41,18 +41,24 @@ def test_create_adds_the_drafts_as_tagged_tasks(planned):
     assert any(l["status"] == "created" for l in planned.schedule_log(limit=50))
 
 
-def test_creating_again_replaces_its_own_future_tasks_only(planned):
+def test_creating_again_keeps_identical_tasks_and_replaces_changed_ones_only(planned):
     planned.create_schedule(sid="u1", name="My evening", enabled=True, spec={
         "gateway_id": "gw1", "fire_at": "06:00", "duration_min": 0,
         "action": {"kind": "smart_circuit", "circuit": 1, "on": True}})
     smart_dispatch.create(planned, None, "gw1", NOW)
-    first = {e["id"] for e in ours(planned)}
+    first = {e["id"]: e for e in ours(planned)}
+    out = smart_dispatch.create(planned, None, "gw1", NOW)          # same plan: no churn
+    assert set(first) == {e["id"] for e in ours(planned)}
+    assert out["created"] == [] and out["replaced"] == [] and out["kept"] == len(first)
+    # A future task that no longer matches the plan is replaced.
+    tz = smart_dispatch._site_zone(planned)
+    sid, e = next((i, e) for i, e in first.items() if smart_dispatch._window(e, tz)[0] > NOW)
+    spec = {k: e[k] for k in ("trigger_type", "start_date", "end_date", "fire_at", "gateway_id",
+                              "action", "origin")}
+    planned.update_schedule(sid, spec={**spec, "duration_min": e["duration_min"] + 30})
     out = smart_dispatch.create(planned, None, "gw1", NOW)
-    again = {e["id"] for e in ours(planned)}
-    running = _running(planned)
-    assert len(again) == len(first) and (first - running).isdisjoint(again)
-    assert out["replaced"]
-    assert planned.schedule("u1") is not None
+    assert out["replaced"] == [e["name"]] and out["created"] == [e["name"]]
+    assert planned.schedule(sid) is None and planned.schedule("u1") is not None
 
 
 def _running(st):
