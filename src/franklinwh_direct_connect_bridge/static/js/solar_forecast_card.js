@@ -3,7 +3,7 @@
  * Today/Tomorrow totals + peak, an hourly kW bar chart with a NOW marker, and the
  * current weather. Data from GET /api/solar/forecast (cached server-side ~15min).
  */
-function solarForecastCard() {
+function solarForecastCard(tab = 'dashboard') {   // the tab it refreshes on
   return {
     data: null, loading: false, error: '', _t: null,
     solarSplit: null,   // today: {home, battery, grid} kWh (where actual solar went)
@@ -20,8 +20,8 @@ function solarForecastCard() {
       await this.load();
       this._loadSolarSplit();
       this._loadChargeBand();
-      this._t = setInterval(() => { if (this.$store.app.activeTab === 'dashboard') { this.load(); this._loadSolarSplit(); this._loadChargeBand(); } }, 15 * 60 * 1000);
-      this._ts = setInterval(() => { if (this.$store.app.activeTab === 'dashboard') { this._loadSolarSplit(); this._loadChargeBand(); } }, 120000);
+      this._t = setInterval(() => { if (this.$store.app.activeTab === tab) { this.load(); this._loadSolarSplit(); this._loadChargeBand(); } }, 15 * 60 * 1000);
+      this._ts = setInterval(() => { if (this.$store.app.activeTab === tab) { this._loadSolarSplit(); this._loadChargeBand(); } }, 120000);
     },
     // Where today's actual solar went (solar->home/battery/grid), from the flow reconstruction.
     async _loadSolarSplit() {
