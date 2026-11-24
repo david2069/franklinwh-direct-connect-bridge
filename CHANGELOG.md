@@ -45,6 +45,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   aGate or the cloud ([guide](docs/guide/hems/smart-dispatch.md)).
 
 ### Changed
+- **Settings: the Allow writes switch is gone** (owner 2026-11-25). It has done nothing since
+  0.5.2; the `allow_writes` option is still accepted so older setups keep working
+  ([Control](docs/guide/control.md#1-allow_writes-no-longer-blocks-writes)).
 
 - **Scheduler: smaller cards, and Compact and Table views** (owner 2026-11-24). Each schedule
   shows only **Explain**, **Edit** and **⋮** on one line; **Turn on/off**, **Stop** (while

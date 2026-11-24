@@ -47,7 +47,7 @@ FranklinWH's Generator support page describes *"up to 3 non-overlapping operatin
 gateway with no generator, window 1 may still show as enabled (11:00–23:59): a stored value
 does not mean an active schedule.
 
-**Allow writes** no longer blocks these writes (since 0.5.2; see
+`allow_writes` no longer blocks these writes (since 0.5.2; see
 [Control](control.md#1-allow_writes-no-longer-blocks-writes)).
 
 ## Mode: not available yet
