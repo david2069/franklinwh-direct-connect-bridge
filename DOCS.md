@@ -54,6 +54,8 @@ Nothing needs enabling on the gateway for reads.
   gateway and your Home Assistant are in different zones.
 - **The watchdog** restarts the add-on if the web app stops serving. It probes `/api/live`,
   which does no gateway I/O, so an unreachable aGate never causes a restart loop.
+  **Watchdog** is off after a fresh install: turn on **Watchdog** on the add-on's **Info**
+  page for it to act.
 - **Mode and off-grid changes ask you to confirm first.** Other writes (a force, a smart
   circuit) go through.
 

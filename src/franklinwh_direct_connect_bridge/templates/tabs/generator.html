@@ -43,7 +43,7 @@
         </div>
         <button class="btn btn-primary btn-sm flex-shrink-0"
                 :disabled="busy || !canToggleFeature"
-                :title="canToggleFeature ? '' : 'Writes are disabled (ALLOW_WRITES=true)'"
+                :title="canToggleFeature ? '' : 'Loading…'"
                 @click="setEnabled(true)">Enable generator</button>
       </div>
     </div>

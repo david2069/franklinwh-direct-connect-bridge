@@ -42,7 +42,7 @@
       <input type="file" accept="application/json" x-ref="importFile"
              class="hidden" @change="onImportFile($event)">
       <button class="btn btn-primary btn-sm" :disabled="!canWrite"
-              :title="canWrite ? '' : 'Writes are disabled (ALLOW_WRITES=true)'"
+              :title="canWrite ? '' : 'Loading…'"
               @click="newEntry()">Add schedule</button>
     </div>
   </div>
@@ -567,7 +567,7 @@
         <button class="btn btn-secondary btn-sm" @click="touImp.open = false" x-text="touImp.done ? 'Close' : 'Cancel'"></button>
         <button class="btn btn-primary btn-sm" data-testid="tou-import-apply" x-show="!touImp.done"
                 :disabled="touBusy || !canWrite || !(touImp.plan && touImp.plan.entries.length)"
-                :title="canWrite ? '' : 'Writes are disabled (ALLOW_WRITES=true)'"
+                :title="canWrite ? '' : 'Loading…'"
                 @click="doTouImport()">Import</button>
       </div>
     </div>

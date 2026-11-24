@@ -75,7 +75,7 @@
         <strong>This is a write</strong> — <span class="font-mono" x-text="conCmd"></span>
         reads with <span class="font-mono"
           x-text="'opt:' + ((conInfo && conInfo.read_payload) ? conInfo.read_payload.opt : 0)"></span>,
-        so this payload is not a read. It needs ALLOW_WRITES and an explicit
+        so this payload is not a read. It needs an explicit
         confirmation. Remember: <span class="font-mono">result: 0</span> means the frame was
         <em>parsed</em>, not that the setting was applied — several commands accept and
         silently discard. Always re-read to verify.

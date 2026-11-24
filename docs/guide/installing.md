@@ -20,8 +20,8 @@ only**: no aGate, no MQTT broker, no cloud account. Each install started from sc
 ## Home Assistant add-on
 
 Taken on Home Assistant OS 18.3 (generic-aarch64) in a virtual machine. Home Assistant
-2026.10 calls add-ons **Apps**, so the menus read *Apps* and *App store* where INSTALL.md
-says *Add-ons* and *Add-on Store*. Full text:
+2026.10 calls add-ons **Apps**, so the menus read *Apps* and *App store*; earlier versions
+say *Add-ons* and *Add-on Store*. Full text:
 [INSTALL.md → Home Assistant add-on](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/INSTALL.md#1-home-assistant-add-on).
 
 1. Start from a Home Assistant OS install that has finished booting.
