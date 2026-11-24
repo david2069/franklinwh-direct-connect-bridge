@@ -8316,7 +8316,7 @@ def create_app() -> FastAPI:
             "cloud_configured": bool(settings.fwh_cloud_email and settings.fwh_cloud_password),
             "nem_region": settings.nem_region or None,
             "dynamic_price_entity_set": bool(settings.tariff_price_entity),
-            "writes_enabled": bool(settings.allow_writes),
+            "writes_enabled": client.writes_enabled(settings),
         }
 
         # Billing (redacted: presence + kind only, no site/meter/utility names or addresses)

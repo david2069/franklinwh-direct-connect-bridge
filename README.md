@@ -76,7 +76,7 @@ computer, a new Home Assistant OS, or an App in the one you have. [Pick your rou
 - Local history in a SQLite store, with charts for both real-time and historical views,
   an Analytics tab and CSV export
 
-**Control** — all writes gated off until you enable them
+**Control** — mode and off-grid changes ask you to confirm first
 - Operating mode, off-grid / reconnect, reboot
 - **Generator**: enable, mode, exercise schedule, start SoC
 - **Smart circuits**: switch a circuit, set its schedule
@@ -173,12 +173,13 @@ below is the short version.
 
 ## Install as a Home Assistant add-on
 
-1. In Home Assistant, go to **Settings → Add-ons → Add-on Store**.
+1. In Home Assistant, go to **Settings → Apps → App store** (before Home Assistant 2026.10:
+   **Settings → Add-ons → Add-on Store**).
 2. Open the **⋮** menu (top-right) → **Repositories**, add
    `https://github.com/david2069/franklinwh-direct-connect-bridge`, then close.
 3. Find **FranklinWH Direct Connect Bridge** in the store and click **Install**.
-4. On the **Configuration** tab set `fwh_host` to your aGate's IP, and enable
-   `mqtt_enabled` to publish the battery as Home Assistant entities. **Save.**
+4. On the **Configuration** tab set `fwh_host` to your aGate's IP, and leave
+   `mqtt_enabled` on to publish the battery as Home Assistant entities. **Save.**
 5. **Start** the add-on, then **Open Web UI** (served over HA ingress). To open it from the
    sidebar too, turn on **Show in sidebar** on the same page: it is off after a fresh install.
 
@@ -186,11 +187,13 @@ Notes:
 
 - **MQTT** auto-configures from the official **Mosquitto** add-on — no host/credentials
   needed (the Supervisor provides them; the `mqtt:want` service discovers the broker).
-- **Local history** (the SQLite metrics store) is **off by default** in the add-on when
-  MQTT is on — Home Assistant's own recorder already stores the published MQTT entities,
-  so a second copy is redundant. Set `metrics_enabled: true` to force it on.
+- **Local history** (the SQLite metrics store) is **on by default**. The bridge's own
+  charts (Power History, Analytics, costs) read it. `metrics_enabled: false` turns recording
+  off.
 - The Supervisor **watchdog** restarts the add-on if the web app stops serving (it probes
-  `/api/live`, which does no gateway I/O, so a down aGate never triggers a restart).
+  `/api/live`, which does no gateway I/O, so a down aGate never triggers a restart). The
+  switch is off after a fresh install: turn on **Watchdog** on the add-on's **Info**
+  page for it to act.
 - Mode and off-grid changes ask you to confirm first. `allow_writes` no longer blocks
   writes (since 0.5.2; see [Control](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/guide/control.md#1-allow_writes-no-longer-blocks-writes)).
 

@@ -29,7 +29,7 @@
   <div x-show="view === 'instances'" class="space-y-3">
     <div class="flex justify-end">
       <button class="btn btn-primary btn-sm" :disabled="!canWrite"
-              :title="canWrite ? '' : 'Writes are disabled (ALLOW_WRITES=true)'"
+              :title="canWrite ? '' : 'Loading…'"
               @click="newInstance()">Add instance</button>
     </div>
 

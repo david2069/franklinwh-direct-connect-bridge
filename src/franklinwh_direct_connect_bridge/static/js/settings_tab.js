@@ -475,6 +475,8 @@ function settingsTab(opts = {}) {
       try { return this.$store.app._fmtHostTime(mtime); } catch (e) { return ''; }
     },
 
+    // control.allow_writes is client.writes_enabled(), always true (#87): false only before
+    // /api/config has loaded.
     canWrite() { return !!(this.cfg.control && this.cfg.control.allow_writes); },
 
     // ── Discover (scan TCP 9000, or the ports given, + Local-API login) ──
@@ -484,7 +486,7 @@ function settingsTab(opts = {}) {
     scanPorts: '',        // blank = 9000; a port, list or range finds emulators (#416)
 
     async discoverGateways() {
-      if (!this.canWrite()) { this.gwErr = 'Enable writes (ALLOW_WRITES) to scan/add.'; return; }
+      if (!this.canWrite()) { this.gwErr = 'Settings are still loading; try again in a moment.'; return; }
       this.scanning = true; this.gwErr = ''; this.scanCands = null;
       try {
         const body = this.scanSubnet.trim() ? { subnet: this.scanSubnet.trim() } : {};
@@ -519,7 +521,7 @@ function settingsTab(opts = {}) {
     // ── Mock gateway (in-process emulator, testing) ──
     mockForm: { label: 'Mock', units: 3, seed: '' },
     async saveMockGateway() {
-      if (!this.canWrite()) { this.gwErr = 'Enable writes (ALLOW_WRITES) to add a gateway.'; return; }
+      if (!this.canWrite()) { this.gwErr = 'Settings are still loading; try again in a moment.'; return; }
       try {
         const body = { label: this.mockForm.label || 'Mock', is_mock: true,
           mock_units: Math.max(1, Math.min(8, this.mockForm.units || 1)),
@@ -537,7 +539,7 @@ function settingsTab(opts = {}) {
     openAddGateway() { this.gwErr = ''; this.scanCands = null; this.gwAdd = { label: '', host: '', port: window.FWH_BOOT.ports.dc, enabled: true }; },
     cancelAddGateway() { this.gwAdd = null; },
     async saveAddGateway() {
-      if (!this.canWrite()) { this.gwErr = 'Enable writes (ALLOW_WRITES) to add a gateway.'; return; }
+      if (!this.canWrite()) { this.gwErr = 'Settings are still loading; try again in a moment.'; return; }
       try {
         const r = await fetch('api/gateways', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -560,7 +562,7 @@ function settingsTab(opts = {}) {
     },
     // The default moves only here, never as a side effect of an edit (#182).
     async makeDefaultGateway() {
-      if (!this.canWrite()) { this.gwErr = 'Enable writes (ALLOW_WRITES) to edit gateways.'; return; }
+      if (!this.canWrite()) { this.gwErr = 'Settings are still loading; try again in a moment.'; return; }
       this.gwErr = ''; this.gwNote = '';
       try {
         const r = await fetch('api/gateways/' + encodeURIComponent(this.gwEdit.id) + '/default', { method: 'POST' });
@@ -584,7 +586,7 @@ function settingsTab(opts = {}) {
     newSite() { this.siteEdit = { id: '', name: '', timezone: '', postcode: '', region: '', currency: '' }; },
     editSite(s) { this.siteEdit = { ...s }; },
     async saveSite() {
-      if (!this.canWrite()) { this.$store.app.toast('Enable writes to change sites', 'error'); return; }
+      if (!this.canWrite()) { this.$store.app.toast('Settings are still loading; try again in a moment.', 'error'); return; }
       const s = this.siteEdit;
       const body = { name: s.name, timezone: s.timezone || '', postcode: s.postcode || '', region: s.region || '', currency: s.currency || '' };
       try {
@@ -606,7 +608,7 @@ function settingsTab(opts = {}) {
     editMeter(m) { this.meterEdit = { ...m, rated_amps: m.rated_amps ?? '', pto_status: m.pto_status || 'unknown', pto_reference: m.pto_reference || '', timezone: m.timezone || '', utility_id: m.utility_id || '', tariff_id: m.tariff_id || '' }; },
     ptoLabel(s) { return ({ unknown: 'Unknown', pending: 'Pending', approved: 'Approved', exempt: 'Exempt' })[s] || 'Unknown'; },
     async saveMeter() {
-      if (!this.canWrite()) { this.$store.app.toast('Enable writes to change meters', 'error'); return; }
+      if (!this.canWrite()) { this.$store.app.toast('Settings are still loading; try again in a moment.', 'error'); return; }
       const m = this.meterEdit;
       const body = { site_id: m.site_id, name: m.name, meter_number: m.meter_number || '',
                      ac_type: m.ac_type, rated_amps: (m.rated_amps === '' || m.rated_amps == null) ? null : Number(m.rated_amps),
@@ -644,7 +646,7 @@ function settingsTab(opts = {}) {
     },
     modeAvail(v) { return !this.constModes.length || this.constModes.some(o => o.value === v); },
     async saveConstants() {
-      if (!this.canWrite()) { this.$store.app.toast('Enable writes to save constants', 'error'); return; }
+      if (!this.canWrite()) { this.$store.app.toast('Settings are still loading; try again in a moment.', 'error'); return; }
       this.constSaving = true;
       try {
         const r = await fetch('api/constants', { method: 'PUT',
@@ -693,7 +695,7 @@ function settingsTab(opts = {}) {
       return Object.fromEntries(Object.entries(now).filter(([k, v]) => was[k] !== v));
     },
     async saveSystemSetup() {
-      if (!this.canWrite()) { this.$store.app.toast('Enable writes to save', 'error'); return; }
+      if (!this.canWrite()) { this.$store.app.toast('Settings are still loading; try again in a moment.', 'error'); return; }
       if (!this.systemCurrent) return;
       this.systemSaving = true;
       try {
@@ -727,7 +729,7 @@ function settingsTab(opts = {}) {
     wearConfirm(k) { const f = this.wear && this.wear.fields[k]; return !!(f && f.confirm && f.value != null); },
     /** Every field as shown: a confirmed pre-fill becomes the user's value. */
     async saveWear() {
-      if (!this.canWrite()) { this.$store.app.toast('Enable writes to save', 'error'); return; }
+      if (!this.canWrite()) { this.$store.app.toast('Settings are still loading; try again in a moment.', 'error'); return; }
       if (this.wearFor !== this.$store.app.gwQuery()) return;
       this.wearSaving = true;
       try {
@@ -787,7 +789,7 @@ function settingsTab(opts = {}) {
       return ld;
     },
     async saveHems() {
-      if (!this.canWrite()) { this.$store.app.toast('Enable writes to save', 'error'); return; }
+      if (!this.canWrite()) { this.$store.app.toast('Settings are still loading; try again in a moment.', 'error'); return; }
       if (this.hemsFor !== this.$store.app.gwQuery()) return;
       this.hemsSaving = true;
       try {
@@ -1054,7 +1056,7 @@ function settingsTab(opts = {}) {
     },
     async touTarImport() {
       const t = this.touTar;
-      if (!this.canWrite()) { t.msg = { kind: 'err', text: 'Enable writes (ALLOW_WRITES) to import a tariff.' }; return; }
+      if (!this.canWrite()) { t.msg = { kind: 'err', text: 'Settings are still loading; try again in a moment.' }; return; }
       Object.assign(t, { msg: null, busy: true });
       try {
         const r = await fetch('api/cloud/tou/tariff/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.touTarBody()) });
@@ -1074,7 +1076,7 @@ function settingsTab(opts = {}) {
       charging_allowed: !!u.charging_allowed, discharging_allowed: !!u.discharging_allowed,
       effective_start: u.effective_start || '', effective_end: u.effective_end || '' }; },
     async saveUtility() {
-      if (!this.canWrite()) { this.$store.app.toast('Enable writes to change utilities', 'error'); return; }
+      if (!this.canWrite()) { this.$store.app.toast('Settings are still loading; try again in a moment.', 'error'); return; }
       const u = this.utilEdit;
       const body = { name: u.name, network_dnsp: u.network_dnsp || '', country: u.country || '', plan_type: u.plan_type || 'unknown',
         export_allowed: u.export_allowed, solar_export_allowed: u.solar_export_allowed, battery_export_allowed: u.battery_export_allowed,
@@ -1440,7 +1442,7 @@ function settingsTab(opts = {}) {
       } catch (e) { this.$store.app.toast('Validate failed: ' + e.message, 'error'); }
     },
     async saveTariff() {
-      if (!this.canWrite()) { this.tariffMsg = { kind: 'err', text: 'Enable writes to change tariffs.' }; return; }
+      if (!this.canWrite()) { this.tariffMsg = { kind: 'err', text: 'Settings are still loading; try again in a moment.' }; return; }
       const t = this.tariffEdit;
       this.tariffMsg = null;
       const win = o => (o && o.on ? { start: o.start, end: o.end,
@@ -1495,7 +1497,7 @@ function settingsTab(opts = {}) {
       } catch (e) { this.$store.app.toast('Delete failed: ' + e.message, 'error'); }
     },
     async saveEditGateway() {
-      if (!this.canWrite()) { this.gwErr = 'Enable writes (ALLOW_WRITES) to edit gateways.'; return; }
+      if (!this.canWrite()) { this.gwErr = 'Settings are still loading; try again in a moment.'; return; }
       const e = this.gwEdit;
       const body = e.is_mock
         ? { label: e.label, description: e.description,
@@ -1531,7 +1533,7 @@ function settingsTab(opts = {}) {
       finally { this.gwTesting = false; }
     },
     async restartEditGateway() {
-      if (!this.canWrite()) { this.gwErr = 'Enable writes to restart.'; return; }
+      if (!this.canWrite()) { this.gwErr = 'Settings are still loading; try again in a moment.'; return; }
       try {
         const r = await fetch('api/gateways/' + encodeURIComponent(this.gwEdit.id) + '/restart', { method: 'POST' });
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
@@ -1539,7 +1541,7 @@ function settingsTab(opts = {}) {
       } catch (e) { this.gwErr = e.message; }
     },
     async removeEditGateway() {
-      if (!this.canWrite()) { this.gwErr = 'Enable writes to remove.'; return; }
+      if (!this.canWrite()) { this.gwErr = 'Settings are still loading; try again in a moment.'; return; }
       if (!await this.$store.app.confirmDialog(`Remove gateway "${this.gwEdit.label}"?`, { danger: true })) return;
       try {
         const r = await fetch('api/gateways/' + encodeURIComponent(this.gwEdit.id), { method: 'DELETE' });
@@ -1549,7 +1551,7 @@ function settingsTab(opts = {}) {
     },
 
     async deleteGateway(gw) {
-      if (!this.canWrite()) { this.gwErr = 'Enable writes (ALLOW_WRITES) to remove a gateway.'; return; }
+      if (!this.canWrite()) { this.gwErr = 'Settings are still loading; try again in a moment.'; return; }
       if (!await this.$store.app.confirmDialog(`Remove gateway "${gw.label}"?`, { danger: true })) return;
       try {
         const r = await fetch('api/gateways/' + encodeURIComponent(gw.id), { method: 'DELETE' });

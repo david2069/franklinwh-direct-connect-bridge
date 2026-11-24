@@ -59,6 +59,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   ([guide](docs/guide/hems/loads.md)).
 
 ### Fixed
+- **No screen says "Enable writes (ALLOW_WRITES)" any more** (#87). `allow_writes` stopped
+  blocking writes in 0.5.2, so those messages could only show while a page was still loading;
+  they now say so. The support bundle (`/api/support-info`) reports writes as the bridge applies
+  them, not the old option.
+- **Install docs brought up to date** (#155). The steps use Home Assistant 2026.10's
+  **Settings → Apps → App store** (the old Add-on Store path is kept as a note), say to leave
+  `mqtt_enabled` on and to turn on the add-on's **Watchdog** switch (off after a fresh
+  install), and the README no longer says local history is off or that writes are gated off
+  ([install](INSTALL.md#1-home-assistant-add-on)).
 
 - **Which clock, and whose value** (#50, #161, #148). The top bar shows the gateway's time
   with its zone and, when your browser is in another zone, yours (`23:48 AEDT · your time

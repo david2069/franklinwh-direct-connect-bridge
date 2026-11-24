@@ -111,7 +111,7 @@ document.addEventListener('alpine:init', () => {
     get canToggleFeature() { return !!this.$store.app.summary.writes_enabled; },
 
     editBlockedReason() {
-      if (!this.$store.app.summary.writes_enabled) return 'Writes are disabled (ALLOW_WRITES=true)';
+      if (!this.$store.app.summary.writes_enabled) return 'Loading…';
       if (this.data && !this.data.enabled) return 'Generator is not enabled';
       return '';
     },
