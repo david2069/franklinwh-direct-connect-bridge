@@ -651,6 +651,7 @@ document.addEventListener('alpine:init', () => {
     _topbarDefaults() {
       return {
         centre: [
+          { id: 'clock', label: 'Gateway time and your time', on: true },
           { id: 'mode', label: 'Operating mode', on: true },
           { id: 'status', label: 'VPP / Force / Off-grid', on: true },
           { id: 'charge', label: 'Charge state', on: true },
@@ -935,6 +936,7 @@ document.addEventListener('alpine:init', () => {
     siteTzOffsetMin: null,   // aGate-local UTC offset (min) for time axes; null = fall back to browser tz
     siteTzLabel: '',
     siteTzShort: '',         // the site zone's short name for alert/Troubleshoot times (#728)
+    clockNow: Date.now(),    // the top bar's clock (#50, #148), ticked every 30 s
     hostTzOffsetMin: null,   // integration-host UTC offset (min) for system-of-record times
     hostTzLabel: '',
 
@@ -987,6 +989,7 @@ document.addEventListener('alpine:init', () => {
       this.poll();
       this._dashStartedAt = Date.now();
       this._interval = setInterval(() => this._dashTick(), 10000);
+      this._clockTimer = setInterval(() => { this.clockNow = Date.now(); }, 30000);
       // History is heavier than the 5s poll — load once, then refresh slowly.
       this.loadSiteTz();
       this.loadSetup();
@@ -2140,6 +2143,30 @@ document.addEventListener('alpine:init', () => {
       }
       return r.label || '';
     },
+    // #50, #148: the top bar's clock, as the Modbus Bridge's: the gateway's (site) time with
+    // its zone and, when this browser is in another zone, "your time" too. With no site zone
+    // known, only this browser's time, said as such.
+    get clockText() {
+      const now = this.clockNow;
+      const hm = (d, tz) => new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit',
+        hour12: false, ...(tz ? { timeZone: tz } : {}) }).format(d);
+      const mine = new Date(now);
+      const yours = 'your time ' + hm(mine) + (this._viewerTzShort() ? ' ' + this._viewerTzShort() : '');
+      if (this.siteTzOffsetMin == null) return yours;
+      const site = hm(new Date(now + this.siteTzOffsetMin * 60000), 'UTC') + ' ' + (this.siteTzShort || '');
+      return -mine.getTimezoneOffset() === this.siteTzOffsetMin ? site : site + ' \u00b7 ' + yours;
+    },
+    _viewerTzShort() {
+      try {
+        return new Intl.DateTimeFormat('en-AU', { timeZoneName: 'short' }).formatToParts(new Date())
+          .find(p => p.type === 'timeZoneName').value;
+      } catch (e) { return ''; }
+    },
+    // A time axis's title: the zone its labels are in (the site's; this browser's without one).
+    timeAxisTitle() {
+      return 'Time (' + (this.siteTzOffsetMin != null && this.siteTzShort ? this.siteTzShort
+        : 'your time' + (this._viewerTzShort() ? ' ' + this._viewerTzShort() : '')) + ')';
+    },
     // #728: " UTC+11" after a SITE-zone time, only when the site's zone differs from the
     // browser's at that moment; '' when they match or no site zone is known.
     siteTzTag(ts) {
@@ -2232,7 +2259,8 @@ document.addEventListener('alpine:init', () => {
           animation: false,
           interaction: { mode: 'index', intersect: false },
           scales: {
-            x: { ticks: { maxTicksLimit: 8, autoSkip: true } },
+            x: { ticks: { maxTicksLimit: 8, autoSkip: true },
+                 title: { display: true, text: this.timeAxisTitle(), color: '#64748b' } },
             y: {
               position: 'left', title: { display: true, text: yLabel },
               ticks: { callback: (v) => (kw ? v : Math.round(v)) },

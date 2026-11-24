@@ -124,6 +124,12 @@
       <span x-text="$store.alerts.summary.open + ($store.alerts.summary.open === 1 ? ' alert' : ' alerts')"></span>
     </button>
 
+    <!-- The gateway's time and, when it differs, yours (#50, #148) -->
+    <span class="chip muted whitespace-nowrap" data-testid="topbar-clock"
+          :style="{order: $store.app.topbarOrder('clock')}" x-show="$store.app.topbarShow('clock')"
+          :title="$store.app.siteTzLabel ? 'Gateway (site) time: ' + $store.app.siteTzLabel : 'The gateway has not said its time zone: this is your browser\'s time'"
+          x-text="$store.app.clockText"></span>
+
     <!-- Operating mode — tap to switch -->
     <div class="relative" :style="{order: $store.app.topbarOrder('mode')}"
          x-show="$store.app.activeMode !== '--' && $store.app.topbarShow('mode')"

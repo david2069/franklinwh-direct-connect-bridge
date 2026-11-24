@@ -65,6 +65,13 @@
     react no faster than the bridge reads the gateway.
   </div>
 
+  <!-- #161: gateways in more than one zone; each schedule runs on its own gateway's clock. -->
+  <div x-show="view === 'schedules' && zonesDiffer" data-testid="sched-zone-warning"
+       class="card px-4 py-2 mb-3 text-xs" style="color:#fbbf24">
+    Your gateways are in different time zones (<span x-text="zoneList"></span>). Each schedule's
+    times are on its own gateway's clock; an All gateways schedule runs at that time on each.
+  </div>
+
   <div x-show="view === 'schedules' && schedules.length" class="flex items-center flex-wrap gap-2 mb-3">
     <span x-show="activeCount" class="chip" style="font-size:.65rem;background:#34d39922;color:#34d399">
       <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1 animate-pulse"></span>
@@ -191,7 +198,7 @@
           <div class="flex items-center gap-1">{{ sched_chips() }}</div>
         </div>
         <div class="text-xs" style="color:var(--text-secondary)">
-          <span x-text="s.fire_at"></span><span x-show="s.duration_min" x-text="` for ${s.duration_min} min`"></span>
+          <span x-text="s.fire_at" :title="'On ' + zoneNote(s)"></span><span x-show="s.duration_min" x-text="` for ${s.duration_min} min`"></span>
           · <span x-text="recurrenceLabel(s)"></span>
           · <span x-text="actionText(s)"></span>
         </div>
@@ -213,7 +220,7 @@
           <div class="min-w-0 flex-1 basis-full sm:basis-0" :class="s.enabled ? '' : 'opacity-60'">
             <div class="text-sm font-medium truncate" style="color:var(--text-primary)" :title="s.name" x-text="s.name"></div>
             <div class="text-[11px] truncate" style="color:var(--text-faint)">
-              <span x-text="s.fire_at"></span><span x-show="s.duration_min" x-text="` · ${s.duration_min} min`"></span>
+              <span x-text="s.fire_at" :title="'On ' + zoneNote(s)"></span><span x-show="s.duration_min" x-text="` · ${s.duration_min} min`"></span>
               · <span x-text="actionText(s)"></span> · Next: <span x-text="nextFireLabel(s)"></span>
             </div>
           </div>
@@ -240,7 +247,7 @@
               {{ sched_panels() }}
             </td>
             <td :class="s.enabled ? '' : 'opacity-60'" class="pr-2 py-2 hidden sm:table-cell whitespace-nowrap" style="color:var(--text-secondary)">
-              <span x-text="s.fire_at"></span><span x-show="s.duration_min" x-text="` · ${s.duration_min} min`"></span>
+              <span x-text="s.fire_at" :title="'On ' + zoneNote(s)"></span><span x-show="s.duration_min" x-text="` · ${s.duration_min} min`"></span>
               <div style="color:var(--text-faint)" x-text="recurrenceLabel(s)"></div>
             </td>
             <td :class="s.enabled ? '' : 'opacity-60'" class="pr-2 py-2 hidden md:table-cell" style="color:var(--text-secondary)" x-text="actionText(s)"></td>
@@ -311,7 +318,7 @@
                    style="color:var(--text-secondary)">No history recorded yet today.</div>
             </div>
             <div class="flex justify-between text-[10px]" style="color:var(--text-faint)">
-              <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
+              <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span x-text="'24:00 · ' + gwZone(lane.gateway_id).short"></span>
             </div>
             <!-- this gateway's planned windows -->
             <div class="text-[10px] uppercase tracking-wide" style="color:var(--text-secondary)">Planned windows <a :href="$store.app.guideUrl('scheduler/#visual-timeline')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></div>
@@ -622,6 +629,8 @@
     </div>
     <template x-if="logEvents">
       <div class="space-y-2">
+        <p class="text-[11px]" style="color:var(--text-faint)" data-testid="sched-history-zone"
+           x-text="'Times in this bridge\'s zone' + ($store.app.hostTzLabel ? ': ' + $store.app.hostTzLabel : '') + '. Hover a time for the date and seconds.'"></p>
         <!-- status filter chips -->
         <div class="flex items-center gap-2 flex-wrap" x-show="logEvents.length">
           <button class="chip" :class="!logFilter ? 'ok' : 'muted'" @click="logFilter=''"
@@ -833,6 +842,7 @@
         </template>
         <p x-show="!form.windows.length" class="text-[11px]" style="color:var(--text-faint)">
           Add at least one window — wraps past midnight when end ≤ start.</p>
+        <p class="text-[11px]" style="color:var(--text-faint)" x-text="'Times on the gateway\'s clock: ' + zoneNote(form)"></p>
       </div>
 
       <!-- One-off date -->
@@ -844,7 +854,9 @@
       <!-- Fire at + Duration (daily / weekly / monthly / one-off) -->
       <div x-show="showFireAt" class="grid grid-cols-2 gap-3">
         <label class="block text-xs" style="color:var(--text-secondary)">Fire at
-          <input type="time" class="form-control form-control-sm w-full mt-1" x-model="form.fire_at"></label>
+          <input type="time" class="form-control form-control-sm w-full mt-1" x-model="form.fire_at">
+          <span class="text-[11px] block mt-0.5" style="color:var(--text-faint)" data-testid="sched-form-zone"
+                x-text="'On the gateway\'s clock: ' + zoneNote(form)"></span></label>
         <label class="block text-xs" style="color:var(--text-secondary)">Duration (min)
           <input type="number" min="0" max="1440" class="form-control form-control-sm w-full mt-1" x-model.number="form.duration_min"></label>
       </div>

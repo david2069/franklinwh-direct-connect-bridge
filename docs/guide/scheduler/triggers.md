@@ -265,13 +265,11 @@ Months, Day of month and Time windows first.
 occurrence. It is never shown for Always schedules.
 <!-- @b TRG-33 ;; src: scheduler.py:509-520 ;; tested: tests/test_scheduler.py::test_next_fire_and_active_now ;; write: no ;; b: active_now = enabled, inside the window and last_fired_day equals this occurrence; always is never active_now ;; test: -->
 
-!!! warning "Next and ● active use the container's clock"
-    `GET /api/schedules` computes `next_fire` and `active_now` with the bridge container's
-    clock, while the scheduler fires on the site's clock (see
-    [Restarts and the clock](restarts-and-clock.md#the-clock)). When the two zones differ,
-    **Next:**, **● active** and therefore the **Stop** button are off by the difference. The
-    browser then formats the time in **its** zone. Issue #161.
-<!-- @b TRG-52 ;; src: app.py:3033-3038, static/js/scheduler_tab.js:510-529 ;; unclear ;; write: no ;; b: next_fire and active_now are computed on the container's naive clock, not the site clock the tick uses ;; test: unit (API): container UTC, site UTC-5; assert next_fire matches the site window -->
+**Next:** is on the schedule's gateway clock, with its zone: `tomorrow 12:30 AEDT`. The
+bridge works it out on that gateway's site clock (the one the scheduler fires on), and the
+page shows it in that gateway's zone, not your browser's (#161). An **All gateways** schedule
+is shown on the selected gateway's clock.
+<!-- @b TRG-52 ;; src: app.py (_site_now), static/js/scheduler_tab.js (nextFireLabel, gwZone) ;; tested: tests/test_clocks_ui_50_161.py ;; write: no ;; b: next_fire is computed on the gateway's site clock and shown in that gateway's zone ;; test: -->
 
 ## Editing a trigger in the form
 

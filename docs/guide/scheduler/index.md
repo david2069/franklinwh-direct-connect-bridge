@@ -106,6 +106,10 @@ Pick how the list looks with **Cards / Compact / Table**; the browser remembers 
 | **Compact** | One line per schedule: name, time, action and **Next:**. On a phone the buttons go on a second line. |
 | **Table** | Columns Name, When, Action, Next and Status. On a phone only Name, Status and the buttons; Action and Next from tablet width. |
 
+Schedule times are on each schedule's gateway clock: hover a Fire at time for its zone, and
+the form says it under **Fire at** and the windows ("On the gateway's clock: AEDT"). When your
+gateways are in different time zones, a note above the list names each gateway's zone.
+
 Every view shows **● active** while a schedule's window is open and it has fired,
 **Smart Dispatch** on a task that [Smart Dispatch](../hems/smart-dispatch.md#create-schedules)
 created, and **On** or **Off**. A schedule that is off is dimmed. Each has only **Explain**,
@@ -300,7 +304,8 @@ see it, add conditions to it or notify on it, and a bridge schedule can work aga
 
 ## Activity Log
 
-Every decision the scheduler makes is written to **History**, newest first: created,
+Every decision the scheduler makes is written to **History**, newest first (in the bridge
+host's zone, named above the list): created,
 *fired*, *gated*, *waiting*, *deferred*, *exit*, *error*, *missed* and more. The status list
 and filter chips are on [Outcomes and audit](outcomes.md#activity-log-results). Times are in
 the bridge host's zone.

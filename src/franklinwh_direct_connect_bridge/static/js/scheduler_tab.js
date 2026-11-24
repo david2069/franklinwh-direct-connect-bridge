@@ -14,6 +14,7 @@ document.addEventListener('alpine:init', () => {
     ...importWindowMixin('importText'),
     schedules: [], actions: {}, unavailable: {}, force_available: false, force_reason: '',
     sensors: [], ops: [], gateways: [],
+    gwZones: {},          // gateway id -> {off: UTC offset (min), short: 'AEDT'} (#161)
     haNames: {},   // exposed HA entity_id -> friendly name (condition-label enrichment)
     importMsg: null, formMsg: null,              // results shown inside their dialog (#293)
     explainId: null,                           // per-schedule plain-language explanation
@@ -88,6 +89,7 @@ document.addEventListener('alpine:init', () => {
         this.cron_available = !!d.cron_available;
         this.sensors = d.sensors || [];
         this.gateways = d.gateways || [];
+        this.loadGatewayZones();
         this.ops = d.ops || [];
         this.text_rhs_ops = d.text_rhs_ops || [];
         try {
@@ -755,25 +757,68 @@ document.addEventListener('alpine:init', () => {
     get activeCount() { return (this.schedules || []).filter(s => s.active_now).length; },
 
     /** Human "next fire" from the server-computed epoch. */
+    // ── each schedule runs on its gateway's clock (#161) ──
+    /** Each gateway's site zone, once per load: schedule times are shown on it. */
+    async loadGatewayZones() {
+      const out = {};
+      for (const g of this.gateways) {
+        try {
+          const r = await (await fetch('api/site/timezone?gateway=' + encodeURIComponent(g.id))).json();
+          if (r && r.available && r.offset_minutes != null) {
+            out[g.id] = { off: r.offset_minutes, short: this.$store.app._tzShort(r) };
+          }
+        } catch (e) { /* that gateway's times fall back to the selected one's */ }
+      }
+      this.gwZones = out;
+    },
+    /** The zone a schedule's times are in: its gateway's; All gateways or unknown: the
+     *  selected gateway's, else this browser's. */
+    gwZone(gid) {
+      const z = this.gwZones[gid];
+      if (z) return z;
+      const a = this.$store.app;
+      if (a.siteTzOffsetMin != null) return { off: a.siteTzOffsetMin, short: a.siteTzShort };
+      return { off: -new Date().getTimezoneOffset(), short: 'your time' };
+    },
+    /** "AEDT", or for All gateways "each gateway's own time" when their zones differ. */
+    zoneNote(s) {
+      if (s && s.gateway_scope === 'all' && this.zonesDiffer) return "each gateway's own time";
+      return this.gwZone(s && s.gateway_id).short || 'site time';
+    },
+    /** Gateways in more than one zone (a warning above the list). */
+    get zonesDiffer() {
+      return new Set(Object.values(this.gwZones).map(z => z.off)).size > 1;
+    },
+    get zoneList() {
+      return this.gateways.filter(g => this.gwZones[g.id])
+        .map(g => (g.name || g.id) + ': ' + this.gwZones[g.id].short).join(', ');
+    },
+
+    /** Human "next fire" from the server-computed epoch, on the schedule's gateway clock
+     *  (it was in this browser's zone, #161). */
     nextFireLabel(s) {
       if (!s.enabled) return 'disabled';
       const ts = s.next_fire;
       if (!ts) return '—';
-      const d = new Date(ts * 1000), now = new Date();
-      const sameDay = d.toDateString() === now.toDateString();
-      const tmr = new Date(now); tmr.setDate(tmr.getDate() + 1);
-      const isTmr = d.toDateString() === tmr.toDateString();
-      const hm = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-      if (sameDay) {
-        const mins = Math.round((d - now) / 60000);
+      const z = this.gwZone(s.gateway_id);
+      // Wall-clock fields on that clock, read with getUTC*.
+      const at = (ms) => new Date(ms + z.off * 60000);
+      const d = at(ts * 1000), now = at(Date.now());
+      const day = (x) => x.toISOString().slice(0, 10);
+      const tmr = new Date(now.getTime() + 86400000);
+      const pad = (n) => String(n).padStart(2, '0');
+      const hm = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+      const tag = z.short ? ' ' + z.short : '';
+      if (day(d) === day(now)) {
+        const mins = Math.round((ts * 1000 - Date.now()) / 60000);
         if (mins <= 0) return 'in its window';
         if (mins < 60) return `in ${mins} min`;
-        return `today ${hm}`;
+        return `today ${hm}${tag}`;
       }
-      if (isTmr) return `tomorrow ${hm}`;
-      const within = (d - now) / 86400000 < 6.5;
-      return within ? `${d.toLocaleDateString(undefined, { weekday: 'short' })} ${hm}`
-                    : `${d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' })} ${hm}`;
+      if (day(d) === day(tmr)) return `tomorrow ${hm}${tag}`;
+      const within = (ts * 1000 - Date.now()) / 86400000 < 6.5;
+      const opt = within ? { weekday: 'short', timeZone: 'UTC' } : { day: '2-digit', month: 'short', timeZone: 'UTC' };
+      return `${d.toLocaleDateString(undefined, opt)} ${hm}${tag}`;
     },
 
     async stopEntry(s) {
