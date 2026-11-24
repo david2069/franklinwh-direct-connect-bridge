@@ -98,24 +98,28 @@ live**. It says *Would fire* or *Would not fire*, with the reason and each row's
 
 ## The entry list
 
-![The Schedules view: a schedule card with Explain, Edit, Turn on and the ⋮ menu](../../images/scheduler/18-using-schedules-from-ha.png)
+Pick how the list looks with **Cards / Compact / Table**; the browser remembers it.
 
-Each schedule is a card. It shows the name; the Fire at time and duration, the recurrence
-in words and the number of top-level conditions; **Next:** (see
-[Triggers → Next fire](triggers.md#next-fire)); **● active** while its window is open and it
-has fired; **Smart Dispatch** on a task that [Smart Dispatch](../hems/smart-dispatch.md#create-schedules)
-created; **On** or **Off**; the battery action (or *No gateway action*) and the number of
-HA actions; and the last result with its occurrence.
+| View | Shows |
+|---|---|
+| **Cards** | One card per schedule: the name; the Fire at time and duration, the recurrence in words and the action (battery action or *No gateway action*, the gateway, HA actions, who is asked); **Next:** (see [Triggers → Next fire](triggers.md#next-fire)) and the last result. |
+| **Compact** | One line per schedule: name, time, action and **Next:**. On a phone the buttons go on a second line. |
+| **Table** | Columns Name, When, Action, Next and Status. On a phone only Name, Status and the buttons; Action and Next from tablet width. |
+
+Every view shows **● active** while a schedule's window is open and it has fired,
+**Smart Dispatch** on a task that [Smart Dispatch](../hems/smart-dispatch.md#create-schedules)
+created, and **On** or **Off**. A schedule that is off is dimmed. Each has only **Explain**,
+**Edit** and **⋮** as buttons; everything else is in **⋮**.
 
 | Control | What it does |
 |---|---|
 | **N active now** | Counts the cards showing **● active**. |
-| **All / Enabled / Disabled** | Filters the cards. A note says how many are hidden. |
-| **All sources / Yours / Smart Dispatch** | Shown once Smart Dispatch has created a task. Filters the cards by where they came from. A Smart Dispatch task you edit becomes yours. |
+| **All / Enabled / Disabled** | Filters the list. A note says how many are hidden. |
+| **All sources / Yours / Smart Dispatch** | Shown once Smart Dispatch has created a task. Filters the list by where they came from. A Smart Dispatch task you edit becomes yours. |
 | **Explain** | A plain-language summary of the schedule, at three levels: **min**, **medium** and **full**. A Home Assistant action that runs on exit reads "… when it ends". The browser remembers the level you last chose. |
 | **Edit** | Opens the form. If the schedule is **● active**, saving asks first. |
-| **Turn on** / **Turn off** | Enables or disables the schedule. |
-| **Stop** | Shown while **● active**. Releases the force this schedule started; the schedule stays enabled. See [Run now and Stop](outcomes.md#run-now-and-stop). |
+| **⋮ → Stop** | First in the menu while **● active**. Releases the force this schedule started; the schedule stays enabled. See [Run now and Stop](outcomes.md#run-now-and-stop). |
+| **⋮ → Turn on** / **Turn off** | Enables or disables the schedule. |
 | **⋮ → Test against live** | Evaluates the schedule against live values, without acting. |
 | **⋮ → Run now** | Runs the actions now, ignoring the window and the entry conditions. Asks first. |
 | **⋮ → Duplicate** | Opens a copy in the form, named "Copy of …", with **Enabled** unticked. It is saved as a new schedule. |

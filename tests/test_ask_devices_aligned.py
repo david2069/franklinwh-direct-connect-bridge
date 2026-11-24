@@ -153,7 +153,8 @@ def test_the_editor_shows_what_else_this_schedule_sends():
 
 
 def test_the_list_and_explain_name_the_asked_devices():
-    row = HTML[HTML.index("No gateway action"):][:600]
-    assert "askedNames(askOf(s))" in row
+    assert "actionText(s)" in HTML                       # the list's action line
+    row = JS[JS.index("actionText(s) {"):][:600]
+    assert "this.askedNames(ask)" in row and "this.askOf(s)" in row
     explain = JS[JS.index("explain(s, level)"):][:3000]
     assert "this.askedNames(ask)" in explain and "this.askOf(s)" in explain

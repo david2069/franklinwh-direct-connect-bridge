@@ -46,6 +46,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Changed
 
+- **Scheduler: smaller cards, and Compact and Table views** (owner 2026-11-24). Each schedule
+  shows only **Explain**, **Edit** and **⋮** on one line; **Turn on/off**, **Stop** (while
+  running), **Test against live**, **Run now**, **Duplicate** and **Delete** are in **⋮**.
+  **Cards / Compact / Table** picks the view, remembered by the browser. A schedule that is off
+  is dimmed without dimming its menu ([guide](docs/guide/scheduler/index.md#the-entry-list)).
+
 - **HEMS: Device type is a drop-down** (owner 2026-11-24). Heavy loads, in the setup wizard
   and the Settings HEMS card, pick the device type from hems 0.2.1's list (EV charger, hot
   water, pool pump, …) instead of typing it; a typed value no longer silently loses the EV

@@ -217,7 +217,7 @@ reconcile notifies your enabled notification devices ("FranklinWH — scheduled 
 | Control | Shown | What it does |
 |---|---|---|
 | **⋮ → Run now** | always (asks first) | Runs the battery action and the on-entry HA actions now. `POST /api/schedules/{id}/run` |
-| **Stop** | while the card shows **● active** | Releases the force this schedule started. `POST /api/schedules/{id}/stop` |
+| **⋮ → Stop** | while the schedule shows **● active** (first in the menu) | Releases the force this schedule started. `POST /api/schedules/{id}/stop` |
 | **Pause**, **Resume** | API only | See [Pause and Resume](#pause-and-resume-direct-connect-only). |
 
 **● active** (and so **Stop**) shows when the schedule is enabled, its window is open on
@@ -228,7 +228,7 @@ the **container's** clock, and it has already fired in this occurrence
 
 ### Run now
 
-1. Open the card's **⋮** menu and choose **Run now**. Confirm.
+1. Open the schedule's **⋮** menu and choose **Run now**. Confirm.
 2. The bridge runs the action now. It ignores the window, the calendar **and the entry
    conditions**; each HA action's own guard still applies, and only **On entry** and
    **Entry & exit** HA actions run. It logs *manual* with what each step returned.
