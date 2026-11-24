@@ -9,7 +9,8 @@ questions, pre-filled answers "please confirm"). The 24-hour plan is worked out 
 - the battery: SoC and off grid from the last poll, capacity and power from System setup or
   the user's constants, wear per kWh and round trip from Battery warranty & wear.
 
-Nothing here controls anything: no device write, no schedule. Auto comes in a later phase.
+Phase 2, step 1 (#612): the plan as draft schedules, ``drafts``. They are only shown; nothing
+here creates a schedule or writes to the gateway.
 """
 from __future__ import annotations
 
@@ -34,6 +35,11 @@ STEPS, STEP_S = 48, 1800
 CACHE_S = 900
 #: Round trip used until hems has measured one.
 ROUND_TRIP = 0.9
+
+#: Below this (kW) a step's battery is idle: a Hold is a force standby.
+IDLE_KW = 0.2
+#: Each action's name in the tab.
+LABELS = {"charge": "Charge from grid", "discharge": "Export from battery", "hold": "Hold"}
 
 _cache: dict[str, tuple[float, str, dict]] = {}   # gateway -> (monotonic, inputs key, view)
 
@@ -151,6 +157,87 @@ def _demand_peak(store, gateway_id: str) -> float:
         return 0.0
 
 
+def _direction(step: dict) -> str | None:
+    """The force a step needs: charge, discharge, standby, or None (self-consumption, or a
+    Hold that still charges from solar: forcing that charge could take it from the grid)."""
+    a, kw = step["action"], float(step["battery_kw"])
+    if a == "charge":
+        return "charge"
+    if a == "discharge":
+        return "discharge"
+    if a == "hold":
+        if abs(kw) <= IDLE_KW:
+            return "standby"
+        return "discharge" if kw < 0 else None
+    return None
+
+
+def drafts(result: dict, gateway_id: str, tz, *, existing: list | None = None,
+           mode: str | None = None, force: tuple[bool, str] = (True, "")) -> dict:
+    """The plan as one-off scheduler tasks: each run of the same action and force is one
+    task, split at midnight (site time ``tz``), at the run's highest kW and aiming for the
+    plan's SoC at its end. ``clashes`` names the enabled schedules on this gateway that drive
+    the battery in the same window. Nothing is created."""
+    runs: list[list[dict]] = []
+    for s in result.get("steps") or []:
+        d = _direction(s)
+        if d is None:
+            continue
+        day = dt.datetime.fromtimestamp(s["start"], tz).date()
+        last = runs[-1][-1] if runs else None
+        if (last is not None and last["action"] == s["action"] and _direction(last) == d
+                and last["start"] + last["duration_s"] == s["start"]
+                and dt.datetime.fromtimestamp(last["start"], tz).date() == day):
+            runs[-1].append(s)
+        else:
+            runs.append([s])
+    tasks = []
+    for run in runs:
+        d = _direction(run[0])
+        start = dt.datetime.fromtimestamp(run[0]["start"], tz)
+        end = dt.datetime.fromtimestamp(run[-1]["start"] + run[-1]["duration_s"], tz)
+        action: dict = {"kind": "force", "direction": d, "unit": "kw"}
+        if d != "standby":
+            action["power"] = round(max(abs(float(s["battery_kw"])) for s in run), 1)
+            action["target_soc"] = int(round(run[-1]["soc_pct"]))
+        label = LABELS[run[0]["action"]]
+        spec = {"trigger_type": "once", "start_date": start.date().isoformat(),
+                "end_date": start.date().isoformat(), "fire_at": start.strftime("%H:%M"),
+                "duration_min": int((end - start).total_seconds() // 60),
+                "gateway_id": gateway_id, "action": action}
+        tasks.append({"name": f"Smart Dispatch: {label} {start:%H:%M}–{end:%H:%M}",
+                      "action": run[0]["action"], "label": label, "start": run[0]["start"],
+                      "end": run[-1]["start"] + run[-1]["duration_s"],
+                      "reason": run[0]["reason"], "spec": spec,
+                      "clashes": _clashes(spec, existing or [], start, tz)})
+    notes = []
+    if tasks and mode == "Time-of-Use":
+        notes.append("The gateway is in Time-of-Use: outside these windows its schedule in "
+                     "the FranklinWH app still charges and discharges")
+    if tasks and not force[0]:
+        notes.append(f"Force charge and discharge need the Modbus client: {force[1]}")
+    return {"tasks": tasks, "notes": notes}
+
+
+def _clashes(spec: dict, existing: list, start: dt.datetime, tz) -> list[str]:
+    """Names of the enabled schedules on the gateway that drive the battery while ``spec``
+    runs, from the scheduler's own day timeline."""
+    from . import scheduler
+    gw = spec["gateway_id"]
+    mine = scheduler.resource_for(spec["action"], gw)
+    others = [e for e in existing
+              if scheduler.resources_contend(mine, scheduler.resource_for(e.get("action"), gw))]
+    midnight = start.replace(hour=0, minute=0, second=0, microsecond=0)
+    tl = scheduler.timeline_segments(others, midnight, gw)
+    lo = start.hour * 60 + start.minute
+    hi = lo + spec["duration_min"]
+    names = []
+    for seg in tl["segments"] + tl.get("site", []):
+        if any(b0 < hi and lo < b1 for b0, b1 in seg["blocks"]) and seg["name"] not in names:
+            names.append(seg["name"])
+    return names
+
+
 def view(store, settings, gateway_id: str, now: float | None = None, *,
          answers: dict | None = None, force: bool = False) -> dict:
     """The tab: the questions (with the user's answers or pre-fills), what is missing, and,
@@ -191,7 +278,7 @@ def view(store, settings, gateway_id: str, now: float | None = None, *,
            "facts": hdispatch.plan_facts(plan), "plan_name": (plan or {}).get("name"),
            "timezone": (plan or {}).get("timezone") or str(tz), "sources": sources,
            "mode": power.get("mode"), "off_grid": bool(power.get("off_grid")),
-           "controls": False, "result": None, "decision": None}
+           "controls": False, "result": None, "decision": None, "drafts": None}
     if missing or issues:
         return out
 
@@ -199,7 +286,8 @@ def view(store, settings, gateway_id: str, now: float | None = None, *,
     key = json.dumps([start, values, plan.get("id"), battery], sort_keys=True, default=str)
     hit = _cache.get(gateway_id)
     if hit and not force and answers is None and hit[1] == key and time.monotonic() - hit[0] < CACHE_S:
-        return {**out, **hit[2], "decision": hdispatch.decide(hit[2]["result"], now)}
+        return {**out, **hit[2], "decision": hdispatch.decide(hit[2]["result"], now),
+                "drafts": _drafts(store, gateway_id, hit[2]["result"], power)}
 
     load, method = _load(store, settings, gateway_id, fc, now)
     steps = hdispatch.step_prices(plan, start, STEPS, STEP_S)
@@ -228,4 +316,11 @@ def view(store, settings, gateway_id: str, now: float | None = None, *,
     planned = {"result": result, "planned_at": int(now), "currency": plan.get("currency")}
     if answers is None:
         _cache[gateway_id] = (time.monotonic(), key, planned)
-    return {**out, **planned, "decision": hdispatch.decide(result, now)}
+    return {**out, **planned, "decision": hdispatch.decide(result, now),
+            "drafts": _drafts(store, gateway_id, result, power)}
+
+
+def _drafts(store, gateway_id: str, result: dict, power: dict) -> dict:
+    from . import battery_control, load_forecast
+    return drafts(result, gateway_id, load_forecast._zone(store), existing=store.schedules(),
+                  mode=power.get("mode"), force=battery_control.available())
