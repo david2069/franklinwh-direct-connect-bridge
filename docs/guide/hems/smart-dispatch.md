@@ -8,8 +8,8 @@ battery's charge. It shows what it would do now and why.
 
 **The tab itself never controls the battery.** Nothing it does writes to the aGate or the
 FranklinWH cloud. With **Create schedules** it adds the plan to the **Scheduler** as one-off
-tasks, and the Scheduler runs them (see [Draft schedules](#draft-schedules)). Running the plan
-on its own comes in a later phase.
+tasks, and the Scheduler runs them (see [Draft schedules](#draft-schedules)). With
+[Auto](#auto) On, it does that every hour on its own.
 
 ## What it needs
 
@@ -90,11 +90,12 @@ A forced task ends at its window's end, as any force schedule does.
 ### Create schedules
 
 **Create schedules** adds the drafts to the Scheduler as one-off tasks named
-*Smart Dispatch: …*, enabled, on this gateway. It needs writes allowed (`allow_writes`) and an
-admin or user account (custom roles: the **Schedules** action).
+*Smart Dispatch: …*, enabled, on this gateway. It needs an admin or user account (custom
+roles: the **Schedules** action).
 
-- **Creating again** replaces the Smart Dispatch tasks that haven't started yet. A task already
-  running is left to finish, and a draft over it is not created.
+- **Creating again** keeps the Smart Dispatch tasks that haven't started and are still in the
+  plan, and replaces the rest. A task already running is left to finish, and a draft over it
+  is not created.
 - **Your own schedules are never changed.** A draft that clashes with one is not created; the
   card says which and why.
 - **Edit a task in the Scheduler and it is yours:** Smart Dispatch no longer replaces it.
@@ -102,6 +103,25 @@ admin or user account (custom roles: the **Schedules** action).
 
 The card shows how many Smart Dispatch tasks are in the Scheduler, with **Open** to go there.
 The Scheduler's log records each task created or replaced.
+
+### Auto
+
+**Auto** works the plan out again about every hour, while the gateway's readings are fresh:
+
+| Auto | Every hour |
+|---|---|
+| Off | Nothing (the default) |
+| Shadow | Logs what **Create schedules** would do: create, replace, keep, skip. Nothing is created |
+| On | Does it: the same rules as **Create schedules** |
+
+- **On needs a week of Shadow first.** The card shows when Shadow started and from when On is
+  allowed. Turning Auto off keeps the week already done.
+- **An unchanged plan changes nothing:** tasks still in the plan are kept, so the Scheduler isn't
+  rewritten every hour.
+- **The log** under the selector shows the last 24 runs, and any reason a run did nothing (no
+  plan yet, Modbus client off). A week and a day of runs are kept.
+- **Turning Auto off** leaves the tasks already created; delete them in the Scheduler if you
+  don't want them.
 
 ## How it plans
 

@@ -26,8 +26,8 @@ that planning can work from. It is built on **hems**, the shared energy engine t
 ## What it does not do (yet)
 
 - **No automatic control.** The planner, [Smart Dispatch](smart-dispatch.md), shows a plan
-  and adds it to the Scheduler only when you click **Create schedules**; acting on it by
-  itself, and switching loads, are later phases of #612. The forecasts
+  and adds it to the Scheduler when you click **Create schedules**, or every hour with **Auto**
+  On (after a week of Shadow). Switching loads is a later phase of #612. The forecasts
   also feed sensors and schedules you write yourself.
 - **It never writes to the aGate or to the FranklinWH cloud.** Everything here reads.
 

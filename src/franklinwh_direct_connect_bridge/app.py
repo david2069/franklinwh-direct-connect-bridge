@@ -4531,6 +4531,24 @@ def create_app() -> FastAPI:
         except ValueError as e:
             raise HTTPException(409, str(e))
 
+    @app.put("/api/schedules/smart-dispatch/auto")
+    def api_smart_dispatch_auto(body: dict, gateway: str = Depends(_gateway_q)):
+        """Smart Dispatch's Auto (#612 phase 2): off | shadow (log what it would create) | on
+        (create its Scheduler tasks hourly; only after 7 days of Shadow, else 409)."""
+        from . import smart_dispatch
+        _gw_or_404(gateway)
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        mode = body.get("mode")
+        if mode not in smart_dispatch.AUTO_MODES:
+            raise HTTPException(422, f"mode is one of {', '.join(smart_dispatch.AUTO_MODES)}")
+        try:
+            smart_dispatch.set_auto(st, gateway, mode)
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+        return smart_dispatch.view(st, get_settings(), gateway)
+
     _install_modes: dict[str, tuple] = {}   # host -> (expires_monotonic, mode labels)
     _install_history: dict[str, tuple] = {}  # gateway id -> (expires_monotonic, history)
 

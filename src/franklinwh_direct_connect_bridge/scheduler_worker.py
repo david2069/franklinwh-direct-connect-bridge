@@ -207,6 +207,22 @@ def bms_schedule_tick(settings: Settings, *, now=None) -> list[dict]:
     return started
 
 
+def smart_dispatch_tick(settings: Settings, *, now: float | None = None) -> None:
+    """Smart Dispatch's Auto (#612 phase 2), about hourly per gateway whose readings are
+    fresh: Shadow logs, On creates its Scheduler tasks. Never raises."""
+    from . import smart_dispatch
+    store = get_store(settings)
+    if store is None:
+        return
+    for gw in get_gateways():
+        if not eligible(gw, settings, now)[0]:
+            continue
+        try:
+            smart_dispatch.auto_tick(store, settings, gw.id, now)
+        except Exception as e:  # noqa: BLE001
+            log.warning("[%s] Smart Dispatch Auto failed: %s", gw.id, e)
+
+
 def tick_once(settings: Settings, *, client, now: float | None = None) -> list[dict]:
     """Evaluate every eligible gateway once. Never raises: one gateway's failure must
     not stop the others, which was the whole problem with the coupled version."""
@@ -215,6 +231,7 @@ def tick_once(settings: Settings, *, client, now: float | None = None) -> list[d
         return []
     sweep(settings, now=now)
     bms_schedule_tick(settings)
+    smart_dispatch_tick(settings, now=now)
     fired: list[dict] = []
     for gw in get_gateways():
         ok, why = eligible(gw, settings, now)

@@ -9,9 +9,10 @@ questions, pre-filled answers "please confirm"). The 24-hour plan is worked out 
 - the battery: SoC and off grid from the last poll, capacity and power from System setup or
   the user's constants, wear per kWh and round trip from Battery warranty & wear.
 
-Phase 2 (#612): the plan as draft schedules (``drafts``), and ``create``, which adds them to
-the Scheduler as one-off tasks tagged ``ORIGIN``. Nothing here writes to the gateway: the
-Scheduler runs the tasks.
+Phase 2 (#612): the plan as draft schedules (``drafts``); ``create``, which adds them to the
+Scheduler as one-off tasks tagged ``ORIGIN``; and Auto (``auto_tick``, hourly from the
+scheduler worker), Shadow (log only) or On. Nothing here writes to the gateway: the Scheduler
+runs the tasks.
 """
 from __future__ import annotations
 
@@ -282,7 +283,8 @@ def view(store, settings, gateway_id: str, now: float | None = None, *,
            "facts": hdispatch.plan_facts(plan), "plan_name": (plan or {}).get("name"),
            "timezone": (plan or {}).get("timezone") or str(tz), "sources": sources,
            "mode": power.get("mode"), "off_grid": bool(power.get("off_grid")),
-           "controls": False, "result": None, "decision": None, "drafts": None}
+           "controls": False, "result": None, "decision": None, "drafts": None,
+           "auto": _auto_view(store, gateway_id)}
     if missing or issues:
         return out
 
@@ -351,11 +353,19 @@ def _window(entry: dict, tz) -> tuple[float, float]:
     return start, start + int(entry.get("duration_min") or 0) * 60
 
 
-def create(store, settings, gateway_id: str, now: float | None = None) -> dict:
+def _same(spec: dict) -> str:
+    """What makes two one-off tasks the same task."""
+    return json.dumps([spec.get(k) for k in ("start_date", "fire_at", "duration_min", "action")],
+                      sort_keys=True)
+
+
+def create(store, settings, gateway_id: str, now: float | None = None, *,
+           dry_run: bool = False) -> dict:
     """Add the drafts to the Scheduler as one-off tasks tagged ``ORIGIN``. Its own tasks that
-    haven't started are replaced; one running is left be (a draft over it is skipped), and
-    so is every schedule of the user's (a draft that clashes with one is skipped). ValueError
-    when there is no plan or force can't run. The caller checks that writes are allowed."""
+    haven't started are kept when the plan still has them and replaced when it doesn't; one
+    running is left be (a draft over it is skipped), and so is every schedule of the user's (a
+    draft that clashes with one is skipped). ``dry_run``: what it would do, nothing changed
+    (Auto's Shadow). ValueError when there is no plan or force can't run."""
     import uuid
 
     from . import battery_control, scheduler
@@ -368,39 +378,133 @@ def create(store, settings, gateway_id: str, now: float | None = None) -> dict:
     if not ok:
         raise ValueError(f"Force charge and discharge need the Modbus client: {why}")
     tz = _site_zone(store)
-    replaced, running = [], []
+    wanted = {_same(t["spec"]) for t in v["drafts"]["tasks"] if t["end"] > now}
+    replaced, running, kept = [], [], set()
     for e in _ours(store.schedules(), gateway_id):
         try:
             w = _window(e, tz)
         except (KeyError, ValueError):
             continue
         if w[0] > now:
-            store.delete_schedule(e["id"])
+            if _same(e) in wanted and _same(e) not in kept:
+                kept.add(_same(e))
+                continue
             replaced.append(e["name"])
-            _log(store, e["id"], e["name"], "deleted", "replaced by Smart Dispatch", gateway_id)
+            if not dry_run:
+                store.delete_schedule(e["id"])
+                _log(store, e["id"], e["name"], "deleted", "replaced by Smart Dispatch",
+                     gateway_id)
         elif now < w[1]:
             running.append(w)
     created, skipped = [], []
     for t in v["drafts"]["tasks"]:
-        if t["end"] <= now:
+        if t["end"] <= now or _same(t["spec"]) in kept:
             continue
         if t["clashes"]:
             skipped.append({"name": t["name"], "why": "clashes with " + ", ".join(t["clashes"])})
             continue
         if any(t["start"] < r1 and r0 < t["end"] for r0, r1 in running):
-            skipped.append({"name": t["name"], "why": "a Smart Dispatch task is already running then"})
+            skipped.append({"name": t["name"],
+                            "why": "a Smart Dispatch task is already running then"})
             continue
         spec = {**t["spec"], "origin": ORIGIN}
         errors = scheduler.validate_spec(spec)
         if errors:
             skipped.append({"name": t["name"], "why": "; ".join(errors)})
             continue
-        sid = uuid.uuid4().hex[:12]
-        store.create_schedule(sid=sid, name=t["name"], spec=spec, enabled=True)
-        _log(store, sid, t["name"], "created", "created by Smart Dispatch", gateway_id)
+        if not dry_run:
+            sid = uuid.uuid4().hex[:12]
+            store.create_schedule(sid=sid, name=t["name"], spec=spec, enabled=True)
+            _log(store, sid, t["name"], "created", "created by Smart Dispatch", gateway_id)
         created.append(t["name"])
-    _cache.pop(gateway_id, None)
-    return {"created": created, "replaced": replaced, "skipped": skipped}
+    if not dry_run:
+        _cache.pop(gateway_id, None)
+    return {"created": created, "replaced": replaced, "kept": len(kept), "skipped": skipped}
+
+
+# ── Auto (#612 phase 2, step 3) ──────────────────────────────────────────────────────────
+#: app_config: Auto's mode and when Shadow started, per gateway.
+AUTO_KEY = "smart_dispatch_auto:{gw}"
+#: app_config: Auto's runs, newest first.
+AUTO_LOG_KEY = "smart_dispatch_auto_log:{gw}"
+AUTO_MODES = ("off", "shadow", "on")
+#: How often Auto works the plan out again (s), and Shadow's run before On is allowed.
+AUTO_S, SHADOW_S = 3600, 7 * 86400
+#: Runs kept in the log: a week and a day of hourly runs.
+AUTO_LOG_KEEP = 8 * 24
+
+_last_auto: dict[str, float] = {}   # gateway -> when Auto last ran (this process)
+
+
+def _json(store, key: str, default):
+    try:
+        v = store.get_config(key)
+        return json.loads(v) if v else default
+    except Exception:                                            # noqa: BLE001
+        return default
+
+
+def auto(store, gateway_id: str) -> dict:
+    """Auto's mode, when Shadow started, when On is allowed, and its log (newest first)."""
+    a = _json(store, AUTO_KEY.format(gw=gateway_id), {})
+    since = a.get("shadow_since")
+    return {"mode": a.get("mode") or "off", "shadow_since": since,
+            "on_allowed_at": since + SHADOW_S if since is not None else None,
+            "log": _json(store, AUTO_LOG_KEY.format(gw=gateway_id), [])}
+
+
+def _auto_view(store, gateway_id: str) -> dict:
+    a = auto(store, gateway_id)
+    return {**a, "log": a["log"][:24]}
+
+
+def set_auto(store, gateway_id: str, mode: str, now: float | None = None) -> dict:
+    """Set Auto's mode. On only after a week of Shadow (kept when Auto is turned off).
+    ValueError otherwise."""
+    now = time.time() if now is None else now
+    if mode not in AUTO_MODES:
+        raise ValueError(f"Auto is one of {', '.join(AUTO_MODES)}, not '{mode}'")
+    a = _json(store, AUTO_KEY.format(gw=gateway_id), {})
+    since = a.get("shadow_since")
+    if mode == "shadow" and since is None:
+        since = now
+    if mode == "on":
+        if since is None:
+            raise ValueError("Run Auto in Shadow for 7 days before turning it On")
+        left = since + SHADOW_S - now
+        if left > 0:
+            raise ValueError(f"Auto can be On after 7 days of Shadow: "
+                             f"{left / 86400:.1f} day(s) left")
+    store.set_config(AUTO_KEY.format(gw=gateway_id),
+                     json.dumps({"mode": mode, "shadow_since": since}))
+    _last_auto.pop(gateway_id, None)                 # the next tick runs it
+    return auto(store, gateway_id)
+
+
+def auto_tick(store, settings, gateway_id: str, now: float | None = None) -> dict | None:
+    """About hourly, Auto's run: Shadow logs what Create schedules would do, On does it.
+    Returns the log entry, or None when it didn't run (Off, or not an hour yet)."""
+    now = time.time() if now is None else now
+    mode = auto(store, gateway_id)["mode"]
+    if mode == "off":
+        return None
+    last = _last_auto.get(gateway_id)
+    if last is not None and now - last < AUTO_S:
+        return None
+    _last_auto[gateway_id] = now
+    entry: dict = {"ts": now, "mode": mode}
+    try:
+        out = create(store, settings, gateway_id, now, dry_run=mode == "shadow")
+        entry.update(create=out["created"], replace=out["replaced"], kept=out["kept"],
+                     skipped=out["skipped"])
+    except ValueError as e:
+        entry["error"] = str(e)
+    except Exception as e:                                       # noqa: BLE001
+        log.warning("Smart Dispatch Auto [%s] failed: %s", gateway_id, e)
+        entry["error"] = f"{type(e).__name__}: {e}"
+    key = AUTO_LOG_KEY.format(gw=gateway_id)
+    store.set_config(key, json.dumps([entry, *_json(store, key, [])][:AUTO_LOG_KEEP]))
+    return entry
 
 
 def _log(store, sid: str, name: str, status: str, result: str, gateway_id: str) -> None:

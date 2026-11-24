@@ -271,7 +271,7 @@ protocol documentation.
 | **Generator** | Generator status, metrics and configuration. **Hidden entirely unless a genset is present** — the bridge would otherwise show a permanent 0 W. |
 | **Analytics** | Longer-horizon charts from the bridge's own SQLite history. |
 | **Billing & Utilities** | Billing: setup steps, this period so far, the bill's lines, closed periods, and your sites, meters, retailers and tariffs (Plans & meters). See [Billing & Utilities](energy-and-costs.md#billing-utilities). |
-| **Smart Dispatch** | A 24-hour battery plan for your target and your utility's limits, with the action now and why. **Create schedules** adds the plan to the Scheduler as one-off tasks; the tab itself never controls the battery. See [Smart Dispatch](hems/smart-dispatch.md). |
+| **Smart Dispatch** | A 24-hour battery plan for your target and your utility's limits, with the action now and why. **Create schedules** adds the plan to the Scheduler as one-off tasks, and **Auto** can do it every hour (Shadow first); the tab itself never controls the battery. See [Smart Dispatch](hems/smart-dispatch.md). |
 | **Scheduler** | Time-based automation. See [Scheduler](scheduler/index.md). |
 | **Control** | Everything you can *do* to the selected gateway, in one place. Its audit trail is under Logs. See [Control](control.md). |
 | **Grid & Inverter** | The grid power-plane limits (import/export enables, soft and hard limits). Advanced, and the write is **unverified** — see [Control](control.md). |

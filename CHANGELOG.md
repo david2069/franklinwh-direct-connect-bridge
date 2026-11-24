@@ -12,10 +12,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Smart Dispatch: Auto (#612 phase 2, step 3).** Off, Shadow or On per gateway, about hourly
+  from the scheduler worker while readings are fresh. Shadow logs what Create schedules would
+  do; On does it, and is allowed only after 7 days of Shadow. Tasks still in the plan are kept,
+  so an unchanged plan doesn't rewrite the Scheduler. The card shows the last 24 runs
+  ([guide](docs/guide/hems/smart-dispatch.md#auto)).
 - **Smart Dispatch: Create schedules (#612 phase 2, step 2).** The draft schedules card gets
-  **Create schedules**: the drafts become one-off Scheduler tasks tagged Smart Dispatch (writes
-  allowed; admin, user or a role with the Schedules action). Creating again replaces its own
-  tasks that haven't started; a running one is left to finish; your own schedules are never
+  **Create schedules**: the drafts become one-off Scheduler tasks tagged Smart Dispatch (admin,
+  user or a role with the Schedules action). Creating again keeps its own tasks still in the
+  plan and replaces the rest that haven't started; a running one is left to finish; your own schedules are never
   changed, and a draft that clashes with one is skipped and said. Nothing is created while the
   Modbus client is off ([guide](docs/guide/hems/smart-dispatch.md#create-schedules)).
 - **Smart Dispatch: draft schedules (#612 phase 2, step 1).** The tab shows the plan as one-off
