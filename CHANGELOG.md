@@ -12,6 +12,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Smart Dispatch: draft schedules (#612 phase 2, step 1).** The tab shows the plan as one-off
+  Scheduler tasks: force charge, discharge or standby per run of the same action, split at
+  midnight, with clashes with your battery schedules, a gateway in Time-of-Use and an
+  unavailable Modbus client noted. Preview only: nothing is created
+  ([guide](docs/guide/hems/smart-dispatch.md#draft-schedules)).
 
 - **Smart Dispatch tab, plan only** (owner 2026-11-24, #612 §7 phase 1, hems 0.3.0). A
   24-hour battery plan, half hour by half hour, from your utility plan's prices, the solar

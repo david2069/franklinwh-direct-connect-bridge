@@ -7,7 +7,8 @@ from your utility plan's prices, the solar forecast, your home's load forecast a
 battery's charge. It shows what it would do now and why.
 
 **It is a plan only.** It doesn't charge, discharge or change the mode: nothing is written to
-the aGate or the FranklinWH cloud. Acting on the plan comes in a later phase.
+the aGate or the FranklinWH cloud, and no schedule is created. Acting on the plan comes in a
+later phase.
 
 ## What it needs
 
@@ -61,6 +62,30 @@ your plan and site are asked.
 Below the table are the assumptions behind the plan: battery size, power, round trip, wear
 cost, and which forecasts were used. The plan is worked out again every 15 minutes when the
 tab is open, or straight away with **Re-evaluate**.
+
+## Draft schedules
+
+Below the plan, **Draft schedules** shows the plan as one-off **Scheduler** tasks: each run
+of the same action is one task, split at midnight. **Preview only:** the tasks are not
+created.
+
+| Plan action | Task |
+|---|---|
+| Charge from grid | Force charge at the run's highest kW, to the SoC the plan reaches at its end |
+| Export from battery | Force discharge at the run's highest kW, to the SoC the plan reaches at its end |
+| Hold, battery idle | Force standby |
+| Hold, battery discharging less | Force discharge at the run's highest kW (for example to keep a demand peak down) |
+| Hold, battery still charging from solar | No task: self-consumption stores the solar as it comes, earlier than planned (forcing a charge could take it from the grid) |
+| Self-consumption | No task |
+
+A forced task ends at its window's end, as any force schedule does.
+
+- **Clashes with:** names your enabled schedules on this gateway that drive the battery
+  (force, mode or reserve) in the same window.
+- **The gateway is in Time-of-Use:** outside the tasks' windows, its schedule in the
+  FranklinWH app still charges and discharges.
+- **Force charge and discharge need the Modbus client:** shown when this bridge's Modbus
+  client is off (**Control → Modbus client**).
 
 ## How it plans
 

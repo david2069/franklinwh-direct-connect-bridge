@@ -1,8 +1,8 @@
 /**
  * Smart Dispatch, plan only (#612 §7 phase 1, hems.dispatch). /api/smart-dispatch gives the
  * target and limit questions (pre-filled answers to confirm), what is missing, the 24-hour
- * plan and the action now. Check plans unsaved answers; Save keeps them. Nothing here writes
- * to the gateway.
+ * plan, the action now and the plan as draft schedules (shown only). Check plans unsaved
+ * answers; Save keeps them. Nothing here writes to the gateway or creates a schedule.
  */
 function smartDispatchTab() {
   return {
@@ -82,6 +82,10 @@ function smartDispatchTab() {
     },
     actionLabel(a) {
       return { self: 'Self-consumption', charge: 'Charge from grid', discharge: 'Export from battery', hold: 'Hold' }[a] || a;
+    },
+    forceText(a) {
+      if (a.direction === 'standby') return 'Standby';
+      return (a.direction === 'charge' ? 'Charge ' : 'Discharge ') + a.power + ' kW to ' + a.target_soc + '%';
     },
     actionClass(a) {
       return { charge: 'text-sky-300', discharge: 'text-amber-300', hold: 'text-violet-300' }[a] || 'text-slate-300';

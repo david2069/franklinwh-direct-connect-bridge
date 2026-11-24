@@ -79,6 +79,31 @@
     </ul>
   </div>
 
+  <!-- The plan as draft schedules (#612 phase 2, step 1): shown only, nothing is created. -->
+  <div class="card overflow-x-auto" x-show="v && v.drafts" data-testid="sd-drafts">
+    <div class="card-label">Draft schedules</div>
+    <p class="text-xs mb-2" style="color:var(--text-faint)">The plan as one-off Scheduler tasks. Preview only: they are not created.</p>
+    <p class="text-sm" style="color:var(--text-secondary)" x-show="v && v.drafts && !v.drafts.tasks.length">Self-consumption all day: no tasks needed.</p>
+    <table class="w-full text-xs" x-show="v && v.drafts && v.drafts.tasks.length">
+      <thead><tr style="color:var(--text-faint)" class="text-left">
+        <th class="py-1 pr-2">When</th><th class="pr-2">Task</th><th class="pr-2">Force</th><th class="pr-2">Why</th><th>Clashes with</th></tr></thead>
+      <tbody>
+        <template x-for="t in (v && v.drafts ? v.drafts.tasks : [])" :key="t.start">
+          <tr class="border-t" style="border-color:var(--border)">
+            <td class="py-1 pr-2 whitespace-nowrap" x-text="hhmm(t.start) + '–' + hhmm(t.end)"></td>
+            <td class="pr-2" :class="actionClass(t.action)" x-text="t.label"></td>
+            <td class="pr-2 whitespace-nowrap" x-text="forceText(t.spec.action)"></td>
+            <td class="pr-2" style="color:var(--text-secondary)" x-text="t.reason"></td>
+            <td :class="t.clashes.length ? 'text-amber-300' : ''" :style="t.clashes.length ? '' : 'color:var(--text-faint)'" x-text="t.clashes.length ? t.clashes.join(', ') : '—'"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <ul class="mt-2 text-xs list-disc pl-5 text-amber-300" x-show="v && v.drafts && v.drafts.notes.length">
+      <template x-for="n in (v && v.drafts ? v.drafts.notes : [])"><li x-text="n"></li></template>
+    </ul>
+  </div>
+
   <!-- The user's target and the utility's limits (hems's questions). -->
   <div class="card space-y-3" x-show="v" data-testid="sd-questions">
     <div class="card-label" style="margin-bottom:0">Your target and your utility's limits</div>
