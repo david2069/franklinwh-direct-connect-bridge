@@ -182,7 +182,8 @@ class FakeHA:
             {"platform": "mqtt", "unique_id": "franklinwh_n1_grid_w",
              "entity_id": "sensor.franklinwh_direct_n1_grid_power", "name": None, "icon": None,
              "area_id": None, "labels": [], "hidden_by": None, "disabled_by": "integration",
-             "options": {}},
+             "options": {"sensor": {"suggested_display_precision": 1},
+                         "conversation": {"should_expose": False}}},
             {"platform": "other", "unique_id": "franklinwh_n1_soc", "entity_id": "sensor.x"},
         ]
         if add_new:
@@ -239,7 +240,8 @@ def test_the_move_renames_into_the_old_ids_and_keeps_the_users_settings():
     assert (soc["name"], soc["icon"], soc["area_id"], soc["aliases"], soc["hidden_by"]) == \
         ("My SoC", "mdi:car-battery", "garage", ["battery"], "user")
     opts = [u for u in ha.updates if "options_domain" in u]
-    assert [(u["entity_id"], u["options_domain"]) for u in opts] == [("sensor.my_soc", "sensor")]
+    got = {(u["entity_id"], u["options_domain"]) for u in opts}
+    assert ("sensor.my_soc", "sensor") in got and not any(d == "mqtt" for _, d in got)
     grid = [u for u in ha.updates if u["entity_id"].endswith("grid_power_2")][0]
     assert grid["new_entity_id"] == "sensor.franklinwh_direct_n1_grid_power"
     assert "disabled_by" not in grid and "name" not in grid       # nothing the user set

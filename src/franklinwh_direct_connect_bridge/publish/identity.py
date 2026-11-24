@@ -415,7 +415,10 @@ def move_node(settings, store, node: str, new_keys: set[str], old: dict[str, byt
                     if opts and dom not in ("mqtt", "cloud.alexa", "cloud.google_assistant"):
                         ws.call({"type": "config/entity_registry/update", "entity_id": eid,
                                  "options_domain": dom, "options": opts})
-                        if opts != (n.get("options") or {}).get(dom):
+                        # Home Assistant's own defaults (suggested_*, not exposed to Assist)
+                        # aren't the user's.
+                        if any(not k.startswith("suggested_") and (k, v) != ("should_expose", False)
+                               for k, v in opts.items()):
                             kept.append(f"options.{dom}")
                 res["renamed"] += 1 if "new_entity_id" in upd else 0
                 res["kept"] += 1 if kept else 0
