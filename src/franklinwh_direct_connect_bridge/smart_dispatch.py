@@ -9,8 +9,9 @@ questions, pre-filled answers "please confirm"). The 24-hour plan is worked out 
 - the battery: SoC and off grid from the last poll, capacity and power from System setup or
   the user's constants, wear per kWh and round trip from Battery warranty & wear.
 
-Phase 2, step 1 (#612): the plan as draft schedules, ``drafts``. They are only shown; nothing
-here creates a schedule or writes to the gateway.
+Phase 2 (#612): the plan as draft schedules (``drafts``), and ``create``, which adds them to
+the Scheduler as one-off tasks tagged ``ORIGIN``. Nothing here writes to the gateway: the
+Scheduler runs the tasks.
 """
 from __future__ import annotations
 
@@ -38,6 +39,9 @@ ROUND_TRIP = 0.9
 
 #: Below this (kW) a step's battery is idle: a Hold is a force standby.
 IDLE_KW = 0.2
+#: The tag on the Scheduler tasks Smart Dispatch creates (an edit in the Scheduler drops it:
+#: the task is then the user's).
+ORIGIN = "smart_dispatch"
 #: Each action's name in the tab.
 LABELS = {"charge": "Charge from grid", "discharge": "Export from battery", "hold": "Hold"}
 
@@ -320,7 +324,87 @@ def view(store, settings, gateway_id: str, now: float | None = None, *,
             "drafts": _drafts(store, gateway_id, result, power)}
 
 
+def _site_zone(store):
+    from . import load_forecast
+    return load_forecast._zone(store)
+
+
 def _drafts(store, gateway_id: str, result: dict, power: dict) -> dict:
-    from . import battery_control, load_forecast
-    return drafts(result, gateway_id, load_forecast._zone(store), existing=store.schedules(),
-                  mode=power.get("mode"), force=battery_control.available())
+    from . import battery_control
+    rows = store.schedules()
+    out = drafts(result, gateway_id, _site_zone(store),
+                 existing=[e for e in rows if e.get("origin") != ORIGIN],
+                 mode=power.get("mode"), force=battery_control.available())
+    out["in_scheduler"] = len(_ours(rows, gateway_id))
+    return out
+
+
+def _ours(rows: list, gateway_id: str) -> list[dict]:
+    return [e for e in rows if e.get("origin") == ORIGIN and e.get("gateway_id") == gateway_id]
+
+
+def _window(entry: dict, tz) -> tuple[float, float]:
+    """A one-off task's (start, end) timestamps in site time ``tz``."""
+    h, m = map(int, str(entry.get("fire_at") or "00:00").split(":"))
+    start = dt.datetime.combine(dt.date.fromisoformat(entry["start_date"]), dt.time(h, m),
+                                tzinfo=tz).timestamp()
+    return start, start + int(entry.get("duration_min") or 0) * 60
+
+
+def create(store, settings, gateway_id: str, now: float | None = None) -> dict:
+    """Add the drafts to the Scheduler as one-off tasks tagged ``ORIGIN``. Its own tasks that
+    haven't started are replaced; one running is left be (a draft over it is skipped), and
+    so is every schedule of the user's (a draft that clashes with one is skipped). ValueError
+    when there is no plan or force can't run. The caller checks that writes are allowed."""
+    import uuid
+
+    from . import battery_control, scheduler
+    now = time.time() if now is None else now
+    v = view(store, settings, gateway_id, now)
+    if v["drafts"] is None:
+        raise ValueError("No plan yet: " + "; ".join(
+            [m["todo"] for m in v["missing"]] + v["issues"]))
+    ok, why = battery_control.available()
+    if not ok:
+        raise ValueError(f"Force charge and discharge need the Modbus client: {why}")
+    tz = _site_zone(store)
+    replaced, running = [], []
+    for e in _ours(store.schedules(), gateway_id):
+        try:
+            w = _window(e, tz)
+        except (KeyError, ValueError):
+            continue
+        if w[0] > now:
+            store.delete_schedule(e["id"])
+            replaced.append(e["name"])
+            _log(store, e["id"], e["name"], "deleted", "replaced by Smart Dispatch", gateway_id)
+        elif now < w[1]:
+            running.append(w)
+    created, skipped = [], []
+    for t in v["drafts"]["tasks"]:
+        if t["end"] <= now:
+            continue
+        if t["clashes"]:
+            skipped.append({"name": t["name"], "why": "clashes with " + ", ".join(t["clashes"])})
+            continue
+        if any(t["start"] < r1 and r0 < t["end"] for r0, r1 in running):
+            skipped.append({"name": t["name"], "why": "a Smart Dispatch task is already running then"})
+            continue
+        spec = {**t["spec"], "origin": ORIGIN}
+        errors = scheduler.validate_spec(spec)
+        if errors:
+            skipped.append({"name": t["name"], "why": "; ".join(errors)})
+            continue
+        sid = uuid.uuid4().hex[:12]
+        store.create_schedule(sid=sid, name=t["name"], spec=spec, enabled=True)
+        _log(store, sid, t["name"], "created", "created by Smart Dispatch", gateway_id)
+        created.append(t["name"])
+    _cache.pop(gateway_id, None)
+    return {"created": created, "replaced": replaced, "skipped": skipped}
+
+
+def _log(store, sid: str, name: str, status: str, result: str, gateway_id: str) -> None:
+    try:
+        store.log_schedule_event(sid, name, status, result, gateway_id=gateway_id)
+    except Exception:                                            # noqa: BLE001
+        pass

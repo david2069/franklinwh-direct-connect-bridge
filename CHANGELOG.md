@@ -12,6 +12,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 ## [Unreleased]
 
 ### Added
+- **Smart Dispatch: Create schedules (#612 phase 2, step 2).** The draft schedules card gets
+  **Create schedules**: the drafts become one-off Scheduler tasks tagged Smart Dispatch (writes
+  allowed; admin, user or a role with the Schedules action). Creating again replaces its own
+  tasks that haven't started; a running one is left to finish; your own schedules are never
+  changed, and a draft that clashes with one is skipped and said. Nothing is created while the
+  Modbus client is off ([guide](docs/guide/hems/smart-dispatch.md#create-schedules)).
 - **Smart Dispatch: draft schedules (#612 phase 2, step 1).** The tab shows the plan as one-off
   Scheduler tasks: force charge, discharge or standby per run of the same action, split at
   midnight, with clashes with your battery schedules, a gateway in Time-of-Use and an
