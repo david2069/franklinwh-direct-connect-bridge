@@ -45,17 +45,17 @@ def test_the_modbus_bridges_entities():
 
 def test_discovery_carries_each_numbers_range_and_unit():
     cfgs = dict(entities.discovery_configs("n", {}, "p", "d", ["controls"])[0])
-    pw = cfgs["d/number/n/battery_command_power/config"]
+    pw = cfgs["d/number/fwh_dc_n/battery_command_power/config"]
     assert (pw["min"], pw["max"], pw["step"], pw["unit_of_measurement"]) == (0, 5000, 100, "W")
     assert pw["device_class"] == "power"
-    du = cfgs["d/number/n/battery_command_duration/config"]
+    du = cfgs["d/number/fwh_dc_n/battery_command_duration/config"]
     assert (du["max"], du["step"], du["unit_of_measurement"], du["device_class"]) == \
         (7200, 60, "s", "duration")
-    sel = cfgs["d/select/n/battery_command/config"]
+    sel = cfgs["d/select/fwh_dc_n/battery_command/config"]
     assert sel["options"][0] == "Not Active"
     assert sel["command_topic"] == "p/n/control/battery_command/set"
     # the reserve numbers keep their 0-100 % in steps of 1
-    rs = cfgs["d/number/n/reserve_soc_tou/config"]
+    rs = cfgs["d/number/fwh_dc_n/reserve_soc_tou/config"]
     assert (rs["min"], rs["max"], rs["step"], rs["unit_of_measurement"]) == (0, 100, 1, "%")
     # nothing without the Controls group
     none = dict(entities.discovery_configs("n", {}, "p", "d", ["core"])[0])

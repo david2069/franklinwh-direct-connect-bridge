@@ -42,10 +42,12 @@ def _s():
 def test_topic_list_covers_every_group_state_and_availability():
     s = _s()
     t = purge.topics_for("n1", s)
-    assert f"{s.mqtt_prefix}/n1/state" in t and f"{s.mqtt_prefix}/n1/availability" in t
-    assert any("/sensor/n1/latency_ms/config" in x for x in t)      # diagnostic group
-    assert any("/select/n1/operating_mode/config" in x for x in t)  # controls
-    assert all("/n1/" in x for x in t)                              # nothing that isn't ours
+    for pfx in ("fwh_dc", "franklinwh-local"):                      # both identities (#252)
+        assert f"{pfx}/n1/state" in t and f"{pfx}/n1/availability" in t
+    for seg in ("fwh_dc_n1", "n1"):
+        assert any(f"/sensor/{seg}/latency_ms/config" in x for x in t)      # diagnostic group
+        assert any(f"/select/{seg}/operating_mode/config" in x for x in t)  # controls
+    assert all("/n1/" in x or "/fwh_dc_n1/" in x for x in t)        # nothing that isn't ours
 
 
 def test_purge_removes_ours_verifies_and_leaves_others_alone():

@@ -38,6 +38,24 @@
     </div>
   </div>
 
+  <!-- The Home Assistant ids (#252): fwh_dc, or the old ones and why. -->
+  <div x-show="identity && identity.mode" x-cloak class="text-xs space-y-1" data-testid="mqtt-identity"
+       style="color:var(--text-secondary)">
+    <div x-show="identity && identity.mode === 'fwh_dc'">
+      Home Assistant ids: <span class="font-mono" x-text="'fwh_dc_' + (identity && identity.node || '<serial>')"></span>.
+      <span x-show="identity && identity.move">
+        Moved from the old ids on <span x-text="identity && identity.move ? new Date(identity.move.at * 1000).toLocaleDateString() : ''"></span>:
+        <span x-text="identity && identity.move ? identity.move.moved : 0"></span> entities kept their ids and history,
+        <span x-text="identity && identity.move ? identity.move.kept : 0"></span> with your own settings.
+      </span>
+    </div>
+    <div x-show="identity && identity.mode === 'legacy'" class="text-amber-300">
+      Home Assistant ids: still the old <span class="font-mono" x-text="'franklinwh_' + (identity && identity.node || '<serial>')"></span>.
+      <span x-text="identity && identity.reason"></span>
+    </div>
+    <template x-for="p in (identity && identity.move ? identity.move.problems : [])"><div class="text-amber-300" x-text="p"></div></template>
+  </div>
+
   <!-- Broker discovery result -->
   <div x-show="detectMsg" x-cloak class="text-xs flex items-center gap-2"
        :class="detectFound ? 'text-emerald-400' : 'text-slate-500'">

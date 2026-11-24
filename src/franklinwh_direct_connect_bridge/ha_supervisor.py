@@ -152,45 +152,84 @@ class _WsReader:
                 return json.loads(b"".join(parts).decode())
 
 
-def ws_call(payload: dict, *, timeout: float = 5.0) -> object:
-    """One command on Home Assistant's websocket API through the Supervisor proxy
-    (``ws://supervisor/core/websocket``, authenticated with ``SUPERVISOR_TOKEN``); its
-    ``result``. There is no websocket client in the image, so this is the protocol's small
-    part this needs. Raises on any failure."""
-    import base64
-    import socket
-    token = os.environ.get("SUPERVISOR_TOKEN")
-    if not token:
-        raise PermissionError("SUPERVISOR_TOKEN not set")
-    key = base64.b64encode(os.urandom(16)).decode()
-    with socket.create_connection(("supervisor", 80), timeout=timeout) as sock:
-        sock.settimeout(timeout)
-        sock.sendall((f"GET /core/websocket HTTP/1.1\r\nHost: supervisor\r\n"
+class WsSession:
+    """Home Assistant's websocket API, several commands on one connection. Through the
+    Supervisor proxy (``ws://supervisor/core/websocket``, ``SUPERVISOR_TOKEN``) by default,
+    or to ``url`` (``http(s)://host:port``) with ``token`` (an HA instance, #252). There is
+    no websocket client in the image, so this is the protocol's small part this needs.
+    Raises on any failure."""
+
+    def __init__(self, *, url: str | None = None, token: str | None = None,
+                 timeout: float = 5.0):
+        self.url, self.token, self.timeout = url, token, timeout
+        self.sock = self.rd = None
+        self.n = 0
+
+    def __enter__(self):
+        import base64
+        import socket
+        import ssl
+        from urllib.parse import urlparse
+        if self.url:
+            u = urlparse(self.url)
+            tls = u.scheme in ("https", "wss")
+            host, port = u.hostname or "", u.port or (443 if tls else 80)
+            path = (u.path.rstrip("/") or "") + "/api/websocket"
+            token = self.token
+        else:
+            tls, host, port, path = False, "supervisor", 80, "/core/websocket"
+            token = os.environ.get("SUPERVISOR_TOKEN")
+        if not token:
+            raise PermissionError("no Home Assistant token")
+        sock = socket.create_connection((host, port), timeout=self.timeout)
+        if tls:
+            sock = ssl.create_default_context().wrap_socket(sock, server_hostname=host)
+        sock.settimeout(self.timeout)
+        self.sock = sock
+        key = base64.b64encode(os.urandom(16)).decode()
+        sock.sendall((f"GET {path} HTTP/1.1\r\nHost: {host}\r\n"
                       f"Upgrade: websocket\r\nConnection: Upgrade\r\n"
                       f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n").encode())
         buf = b""
         while b"\r\n\r\n" not in buf:
             chunk = sock.recv(4096)
             if not chunk:
-                raise ConnectionError("the Supervisor closed the websocket handshake")
+                raise ConnectionError("Home Assistant closed the websocket handshake")
             buf += chunk
         head, buf = buf.split(b"\r\n\r\n", 1)
         status = head.split(b"\r\n", 1)[0].decode(errors="replace")
         if " 101 " not in status + " ":
             raise ConnectionError(f"websocket refused: {status}")
-        rd = _WsReader(sock, buf)
-        rd.message()                                             # auth_required
+        self.rd = _WsReader(sock, buf)
+        self.rd.message()                                        # auth_required
         sock.sendall(_ws_frame(json.dumps({"type": "auth", "access_token": token}).encode()))
-        auth = rd.message()
+        auth = self.rd.message()
         if auth.get("type") != "auth_ok":
             raise PermissionError(f"websocket auth: {auth.get('message') or auth.get('type')}")
-        sock.sendall(_ws_frame(json.dumps({"id": 1, **payload}).encode()))
+        return self
+
+    def __exit__(self, *exc):
+        try:
+            self.sock.close()
+        except Exception:                                        # noqa: BLE001
+            pass
+
+    def call(self, payload: dict) -> object:
+        self.n += 1
+        self.sock.sendall(_ws_frame(json.dumps({"id": self.n, **payload}).encode()))
         while True:
-            msg = rd.message()
-            if msg.get("id") == 1 and msg.get("type") == "result":
+            msg = self.rd.message()
+            if msg.get("id") == self.n and msg.get("type") == "result":
                 if not msg.get("success"):
                     raise RuntimeError(f"websocket: {(msg.get('error') or {}).get('message')}")
                 return msg.get("result")
+
+
+def ws_call(payload: dict, *, timeout: float = 5.0) -> object:
+    """One command on Home Assistant's websocket API through the Supervisor proxy; its
+    ``result``. Raises on any failure."""
+    with WsSession(timeout=timeout) as ws:
+        return ws.call(payload)
 
 
 def mqtt_flow_id() -> str | None:

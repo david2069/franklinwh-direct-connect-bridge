@@ -18,7 +18,7 @@ class _Client:
 
 def test_the_switch_is_published_with_a_command_topic():
     cfgs, state_topic, _ = entities.discovery_configs("abc", {}, "p", "homeassistant")
-    sw = dict(cfgs)["homeassistant/switch/abc/off_grid/config"]
+    sw = dict(cfgs)["homeassistant/switch/fwh_dc_abc/off_grid/config"]
     assert sw["name"] == "Go Off-Grid"
     assert sw["command_topic"] == "p/abc/control/off_grid/set"
     assert sw["state_topic"] == state_topic

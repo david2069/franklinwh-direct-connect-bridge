@@ -26,7 +26,7 @@ def test_each_modes_reserve_comes_from_the_poll():
 def test_reserve_numbers_are_published_unless_skipped():
     cfgs, _, _ = entities.discovery_configs("n", {}, "p", "d", ["controls"])
     by_topic = dict(cfgs)
-    tou = by_topic["d/number/n/reserve_soc_tou/config"]
+    tou = by_topic["d/number/fwh_dc_n/reserve_soc_tou/config"]
     assert (tou["min"], tou["max"], tou["step"], tou["unit_of_measurement"]) == (0, 100, 1, "%")
     assert tou["command_topic"] == "p/n/control/reserve_soc_tou/set"
     assert tou["value_template"] == "{{ value_json.reserve_tou_pct }}"

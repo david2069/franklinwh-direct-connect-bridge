@@ -90,10 +90,10 @@ def test_nothing_read_publishes_nothing():
 def test_binary_sensors_and_categories_in_discovery():
     cfgs, _, _ = entities.discovery_configs("n", {}, "p", "d", list(entities.GROUPS))
     by_topic = dict(cfgs)
-    assert "d/binary_sensor/n/status_vpp/config" in by_topic
-    assert "d/binary_sensor/n/generator_enabled/config" in by_topic
-    assert by_topic["d/sensor/n/active_alarms/config"]["entity_category"] == "diagnostic"
-    assert by_topic["d/sensor/n/circuit_2_power_w/config"]["unit_of_measurement"] == "W"
+    assert "d/binary_sensor/fwh_dc_n/status_vpp/config" in by_topic
+    assert "d/binary_sensor/fwh_dc_n/generator_enabled/config" in by_topic
+    assert by_topic["d/sensor/fwh_dc_n/active_alarms/config"]["entity_category"] == "diagnostic"
+    assert by_topic["d/sensor/fwh_dc_n/circuit_2_power_w/config"]["unit_of_measurement"] == "W"
 
 
 def test_the_poller_publishes_them():

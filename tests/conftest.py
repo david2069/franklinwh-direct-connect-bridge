@@ -24,6 +24,17 @@ def pytest_configure(config):  # noqa: ARG001 — pytest hook
 
 
 @pytest.fixture(autouse=True)
+def _identity_decided():
+    """The HA identity (#252) is decided once per process against the broker. Tests run
+    as already decided (fwh_dc), so none reaches for a broker or leaks a mode to the next;
+    tests of the decision reset it themselves."""
+    from franklinwh_direct_connect_bridge.publish import identity
+    identity.set_mode(identity.CURRENT)
+    yield
+    identity.set_mode(identity.CURRENT)
+
+
+@pytest.fixture(autouse=True)
 def _isolate_data_dir(request, tmp_path, monkeypatch):
     if request.node.get_closest_marker("real_data_dir"):
         yield

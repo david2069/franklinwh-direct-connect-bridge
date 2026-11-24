@@ -24,14 +24,14 @@ def test_discovery_configs_shape():
                             + len(entities.BRIDGE_ENTITIES)), \
         "sensors, the writable controls and the bridge-health pair (#271)"
     by_topic = dict(configs)
-    soc_topic = "homeassistant/sensor/sn123/soc/config"
+    soc_topic = "homeassistant/sensor/fwh_dc_sn123/soc/config"
     assert soc_topic in by_topic
     soc = by_topic[soc_topic]
     assert soc["value_template"] == "{{ value_json.soc }}"
     assert soc["unit_of_measurement"] == "%" and soc["device_class"] == "battery"
     assert soc["state_topic"] == state_topic
     assert soc["availability_topic"] == avail_topic
-    assert soc["device"]["identifiers"] == ["franklinwh_sn123"]
+    assert soc["device"]["identifiers"] == ["fwh_dc_sn123"]
     # sw_version names THIS integration; the aGate firmware is the hardware version
     # (laid out as the Modbus Bridge does, #140)
     assert soc["device"]["sw_version"].startswith("Direct Connect Bridge v")

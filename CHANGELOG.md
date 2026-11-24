@@ -45,6 +45,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   aGate or the cloud ([guide](docs/guide/hems/smart-dispatch.md)).
 
 ### Changed
+- **Home Assistant: the gateway devices move to the `fwh_dc` ids** (#252, #92). Device
+  `fwh_dc_<serial>`, entities `fwh_dc_<serial>_<key>`, topics under `fwh_dc/` (were
+  `franklinwh_` and `franklinwh-local/`, names other FranklinWH software uses too). Entity
+  ids, device names and history stay: on the first start each gateway's new entities join
+  the same device, the old ones are removed (read back), and each new entity is renamed
+  into the old id with your name, icon, area, labels, aliases and display options. The MQTT
+  tab shows what moved. Without Home Assistant's API (Docker: add your Home Assistant with
+  an administrator's token), or while another bridge still publishes the old topics,
+  nothing moves and the tab says why. If you read the MQTT topics yourself, change
+  `franklinwh-local/` to `fwh_dc/`; a prefix you set yourself is kept
+  ([guide](docs/guide/home-assistant.md#the-fwh_dc-ids-252)).
 - **Settings: the Allow writes switch is gone** (owner 2026-11-25). It has done nothing since
   0.5.2; the `allow_writes` option is still accepted so older setups keep working
   ([Control](docs/guide/control.md#1-allow_writes-no-longer-blocks-writes)).

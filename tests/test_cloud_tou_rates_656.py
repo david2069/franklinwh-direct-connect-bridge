@@ -127,7 +127,7 @@ def test_the_tou_entities_are_cloud_sourced_on_their_own_topic():
     assert not set(TOU_KEYS) & entities.source_skip(cloud=True, modbus=True)
     cfgs, _, _ = entities.discovery_configs("n", {}, "fwh", "homeassistant")
     topics = {c["unique_id"]: c["state_topic"] for _, c in cfgs}
-    assert topics["franklinwh_n_tou_tariff_now"] == "fwh/n/tou"
+    assert topics["fwh_dc_n_tou_tariff_now"] == "fwh/n/tou"
 
 
 def test_the_ha_payload_is_worked_out_from_the_copy():

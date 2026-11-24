@@ -96,7 +96,7 @@ def test_load_forecast_is_a_ha_sensor_on_its_own_topic_with_the_forecast_attribu
     e = next(x for x in entities.ENTITIES if x["key"] == "load_forecast")
     assert e["source"] == "local" and e["group"] == "power"
     cfgs, _, _ = entities.discovery_configs("n1", {}, "fwh", "homeassistant")
-    cfg = dict(cfgs)["homeassistant/sensor/n1/load_forecast/config"]
+    cfg = dict(cfgs)["homeassistant/sensor/fwh_dc_n1/load_forecast/config"]
     assert cfg["state_topic"] == "fwh/n1/load_forecast" == entities.load_forecast_topic("n1", "fwh")
     assert cfg["unit_of_measurement"] == "kW" and "state_class" not in cfg
     assert "forecast" in cfg["json_attributes_template"]

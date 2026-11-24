@@ -69,7 +69,8 @@ class Settings(BaseSettings):
     mqtt_port: int = 1883
     mqtt_username: str = ""
     mqtt_password: str = ""
-    mqtt_prefix: str = "franklinwh-local"
+    # "" = the identity's own: fwh_dc, or franklinwh-local until the move (#252).
+    mqtt_prefix: str = ""
     ha_discovery_prefix: str = "homeassistant"
 
     # Metrics / history (local SQLite). Tri-state: None = auto (see ``metrics_active``);
