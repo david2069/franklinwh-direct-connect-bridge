@@ -21,11 +21,17 @@ from .environment import IS_HA_ADDON
 
 log = logging.getLogger("franklinwh_direct_connect_bridge.ha_supervisor")
 
-#: The Mosquitto broker app's page in Home Assistant (#785), opened in Home Assistant's top
-#: frame from the sidebar panel; outside the panel, the My Home Assistant link to it.
-MOSQUITTO_URL = "/hassio/addon/core_mosquitto/info"
+#: The Mosquitto broker app's page in Home Assistant (#785), opened in a new tab from the
+#: sidebar panel; outside the panel, the My Home Assistant link to it. Home Assistant's own
+#: My redirect, not a page path: the path moved when add-ons became apps
+#: (``/hassio/addon/…`` is a 404 on 2026.11, measured), and the redirect knows each
+#: version's.
+MOSQUITTO_URL = "/_my_redirect/supervisor_addon?addon=core_mosquitto"
 MOSQUITTO_MY_URL = "https://my.home-assistant.io/redirect/supervisor_addon/?addon=core_mosquitto"
 NO_BROKER_ERROR = "No MQTT service registered — install the Mosquitto add-on"
+#: "No MQTT broker yet" is logged when it becomes true, not on each check (the wizard
+#: checks every 5 s).
+_no_broker_logged = False
 
 # Broker hosts that mean "nothing configured yet" (schema default / add-on default).
 _UNSET_HOSTS = {"core-mosquitto", ""}
@@ -46,6 +52,7 @@ def discover_mqtt() -> dict:
         return {"found": False,
                 "error": "SUPERVISOR_TOKEN not set — is hassio_api enabled?"}
 
+    global _no_broker_logged
     try:
         req = urllib.request.Request(
             "http://supervisor/services/mqtt",
@@ -57,6 +64,7 @@ def discover_mqtt() -> dict:
         data = payload.get("data") or {}
         if not data:
             return {"found": False, "no_broker": True, "error": NO_BROKER_ERROR}
+        _no_broker_logged = False
         return {
             "found": True,
             "host": data.get("host", ""),
@@ -74,8 +82,10 @@ def discover_mqtt() -> dict:
         except Exception:  # noqa: BLE001
             body = ""
         if e.code == 400 and "Service not enabled" in body:
-            log.info("No MQTT broker yet: install the Mosquitto broker app; the Bridge "
-                     "connects on its own once it is running")
+            (log.debug if _no_broker_logged else log.info)(
+                "No MQTT broker yet: install the Mosquitto broker app; the Bridge connects "
+                "on its own once it is running")
+            _no_broker_logged = True
             return {"found": False, "no_broker": True, "error": NO_BROKER_ERROR}
         log.warning("MQTT discovery via Supervisor failed: %s", e)
         return {"found": False, "error": str(e)}

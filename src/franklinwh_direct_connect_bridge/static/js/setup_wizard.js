@@ -700,16 +700,17 @@ window.setupWizard = function setupWizard() {
       finally { this.ha.confirming = false; }
     },
 
-    // The Mosquitto broker app's page: in Home Assistant's top frame from the sidebar panel,
-    // else the My Home Assistant link in a new tab.
+    // The Mosquitto broker app's page in a new tab, so this step stays open and keeps
+    // checking: Home Assistant's own page from the sidebar panel, else the My Home
+    // Assistant link.
     openMosquitto(c) {
+      let url = c.install_my_url;
       try {
         if (window.top !== window.self && window.top.location.origin === window.location.origin) {
-          window.top.location.href = c.install_url;
-          return;
+          url = window.top.location.origin + c.install_url;
         }
-      } catch (e) { /* another origin: use the My link */ }
-      window.open(c.install_my_url, '_blank', 'noopener');
+      } catch (e) { /* another origin: the My link */ }
+      window.open(url, '_blank', 'noopener');
     },
 
     // "Yes" is the only thing that turns publishing on. Entities appear in someone's Home

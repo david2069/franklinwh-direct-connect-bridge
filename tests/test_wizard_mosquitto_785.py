@@ -109,6 +109,7 @@ def test_nothing_waits_once_the_earlier_steps_pass(ctx, monkeypatch):
 # ── 6. the boot log ─────────────────────────────────────────────────────────────────────
 def test_service_not_enabled_is_no_broker_yet_at_info(monkeypatch, caplog):
     monkeypatch.setattr(ha_supervisor, "IS_HA_ADDON", True)
+    monkeypatch.setattr(ha_supervisor, "_no_broker_logged", False)
     monkeypatch.setenv("SUPERVISOR_TOKEN", "t")
     def refused(*a, **k):
         raise urllib.error.HTTPError("http://supervisor/services/mqtt", 400, "Bad Request", {},
@@ -120,6 +121,22 @@ def test_service_not_enabled_is_no_broker_yet_at_info(monkeypatch, caplog):
     recs = [x for x in caplog.records if "MQTT" in x.getMessage()]
     assert recs and all(x.levelno == logging.INFO for x in recs)
     assert any("No MQTT broker yet" in x.getMessage() for x in recs)
+
+
+def test_no_broker_is_logged_once_not_on_every_check(monkeypatch, caplog):
+    # The wizard re-checks every 5 s: the INFO line is for the change, not each check.
+    monkeypatch.setattr(ha_supervisor, "IS_HA_ADDON", True)
+    monkeypatch.setenv("SUPERVISOR_TOKEN", "t")
+    monkeypatch.setattr(ha_supervisor, "_no_broker_logged", False)
+    def refused(*a, **k):
+        raise urllib.error.HTTPError("u", 400, "Bad Request", {},
+                                     io.BytesIO(b'{"message":"Service not enabled"}'))
+    monkeypatch.setattr(ha_supervisor.urllib.request, "urlopen", refused)
+    with caplog.at_level(logging.INFO, logger="franklinwh_direct_connect_bridge.ha_supervisor"):
+        for _ in range(3):
+            ha_supervisor.discover_mqtt()
+    assert sum("No MQTT broker yet" in x.getMessage() for x in caplog.records
+               if x.levelno == logging.INFO) == 1
 
 
 def test_other_supervisor_failures_still_warn(monkeypatch, caplog):
