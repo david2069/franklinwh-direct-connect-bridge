@@ -134,6 +134,14 @@ function smartDispatchTab() {
     get steps() { return (this.v && this.v.result && this.v.result.steps) || []; },
     get currency() { return (this.v && this.v.currency) || ''; },
     money(x) { return x == null ? '—' : (x < 0 ? '−' : '') + Math.abs(x).toFixed(2) + (this.currency ? ' ' + this.currency : ''); },
+    /** The plan's zone, short ("AEDT"), for the chart's time axis (#50). */
+    get zoneShort() {
+      try {
+        return new Intl.DateTimeFormat('en-AU', { timeZoneName: 'short',
+          timeZone: (this.v && this.v.timezone) || undefined }).formatToParts(new Date())
+          .find(p => p.type === 'timeZoneName').value;
+      } catch (e) { return (this.v && this.v.timezone) || ''; }
+    },
     hhmm(ts) {
       return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hour12: false,
         timeZone: (this.v && this.v.timezone) || undefined }).format(new Date(ts * 1000));
@@ -172,7 +180,7 @@ function smartDispatchTab() {
           interaction: { mode: 'index', intersect: false },
           plugins: { legend: { labels: { color: '#94a3b8', font: { size: 10 } } } },
           scales: {
-            x: { ticks: { color: '#64748b', font: { size: 10 }, maxTicksLimit: 12 }, grid: { color: 'rgba(148,163,184,.08)' } },
+            x: { title: { display: true, text: 'Time (' + this.zoneShort + ')', color: '#64748b' }, ticks: { color: '#64748b', font: { size: 10 }, maxTicksLimit: 12 }, grid: { color: 'rgba(148,163,184,.08)' } },
             y: { position: 'left', title: { display: true, text: 'kW', color: '#64748b' }, ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(148,163,184,.08)' } },
             y1: { position: 'right', min: 0, max: 100, title: { display: true, text: 'SoC %', color: '#34d399' }, ticks: { color: '#34d399', font: { size: 10 } }, grid: { drawOnChartArea: false } },
             y2: { position: 'right', title: { display: true, text: 'price', color: '#f87171' }, ticks: { color: '#f87171', font: { size: 10 } }, grid: { drawOnChartArea: false } },

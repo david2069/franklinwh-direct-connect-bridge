@@ -60,6 +60,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Which clock, and whose value** (#50, #161, #148). The top bar shows the gateway's time
+  with its zone and, when your browser is in another zone, yours (`23:48 AEDT · your time
+  01:48 NZDT`). Charts' time axes (Dashboard history, Battery, Analytics, Smart Dispatch) say
+  their zone. In the Scheduler, **Next:** is on the schedule's gateway clock with its zone
+  (it was in the browser's zone), the form and the timeline name the zone, History names its
+  clock, and a note warns when gateways are in different zones. The Battery tab's *updated*
+  time no longer stays in browser time when read before the site zone loads. The Dashboard's
+  Modbus card is now **Modbus client (this bridge)**: On / Off first, the aGate's :502
+  second, beside **Modbus TCP Server (aGate setting)**
+  ([guide](docs/guide/tour.md#the-top-bar)).
+
 - **Billing on the gateway's clock, not the bridge's** (#360). The billing overview (days
   into the period), **Close period now**, the plan in force on the Billing & Utilities page,
   the scheduler's read-only billing values (Test, Run now) and a smart circuit's schedule day

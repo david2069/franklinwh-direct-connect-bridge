@@ -16,7 +16,7 @@ function batteryTab() {
     data: null,
     loading: false,
     error: '',
-    lastAt: '',
+    lastAtTs: null,       // when the last reading came; shown on the site clock (#50)
     // ── card show/hide (declutter; per browser) ──
     bmsCardsOpen: false,
     bmsCardDefaults: { header: true, metrics: true, cells: true, inverter: true },
@@ -61,6 +61,13 @@ function batteryTab() {
     unitRows: [],         // per-aPower summary rows for the multi-battery table
     maxSamples: 720,      // ~1h at 5s; bounded so a long watch cannot grow forever
     // `samples` = the primary aPower's series (drawLive / Export CSV / header count read it).
+    /** "01:48:35", on the site clock with its zone when it isn't this browser's. Worked out
+     *  when shown, so a reading taken before the site zone loaded isn't left in browser time. */
+    get lastAt() {
+      if (this.lastAtTs == null) return '';
+      const a = this.$store.app;
+      return a._fmtSiteTime(this.lastAtTs) + a.siteTzTag(this.lastAtTs);
+    },
     get samples() { return this.samplesByUnit[this.unitId] || []; },
     // Every aPower to chart, primary first, de-duplicated.
     get selectedUnits() { return [...new Set([this.unitId, ...this.chartUnits])]; },
@@ -141,7 +148,7 @@ function batteryTab() {
         this.data = d;
         // Site time, like the chart's axis (#317): the browser's own zone put the header and
         // the chart hours apart for a viewer in another time zone.
-        this.lastAt = this.$store.app._fmtSiteTime(Date.now() / 1000);
+        this.lastAtTs = Date.now() / 1000;
         this.record(d);                                  // primary aPower
         // Multi-battery site: gather every aPower once — build the per-aPower table
         // row from each, and record the charted ones for the overlay. Sequential:
@@ -418,7 +425,8 @@ function batteryTab() {
           options: {
             responsive: true, maintainAspectRatio: false, animation: false,
             interaction: { mode: 'index', intersect: false },
-            scales: { y: { title: { display: true, text: yText } } },
+            scales: { x: { title: { display: true, text: this.$store.app.timeAxisTitle() } },
+                      y: { title: { display: true, text: yText } } },
             plugins: { legend: { display: false } },   // 16 cells × N units — legend off
           },
         };
@@ -479,7 +487,8 @@ function batteryTab() {
           tension: 0.2, pointRadius: 0, borderWidth: 2,
         }));
         const yText = soc ? 'SoC (%)' : (temp ? 'Temperature (°C)' : 'Voltage (V)');
-        this._renderTrend(el, labels, datasets, { y: { title: { display: true, text: yText } } });
+        this._renderTrend(el, labels, datasets, { x: { title: { display: true, text: this.$store.app.timeAxisTitle() } },
+                                                  y: { title: { display: true, text: yText } } });
         return;
       }
 
@@ -589,6 +598,7 @@ function batteryTab() {
             responsive: true, maintainAspectRatio: false, animation: false,
             interaction: { mode: 'index', intersect: false },
             scales: {
+              x:  { title: { display: true, text: this.$store.app.timeAxisTitle() } },
               y:  { position: 'left',  title: { display: true, text: 'mV' } },
               y2: { position: 'right', grid: { drawOnChartArea: false },
                     title: { display: true, text: '% / °C' } },

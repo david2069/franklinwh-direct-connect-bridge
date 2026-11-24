@@ -30,4 +30,6 @@ def test_in_place_chart_updates_never_go_through_the_reactive_proxy():
 
 def test_header_time_uses_the_site_zone_like_the_chart():
     assert "this.lastAt = new Date().toLocaleTimeString()" not in JS
-    assert "this.lastAt = this.$store.app._fmtSiteTime(" in JS
+    # Formatted when shown (#50): a reading taken before the site zone loaded was left in
+    # browser time.
+    assert "a._fmtSiteTime(this.lastAtTs) + a.siteTzTag(this.lastAtTs)" in JS

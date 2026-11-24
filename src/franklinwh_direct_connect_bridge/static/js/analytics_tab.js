@@ -331,6 +331,12 @@ function analyticsTab() {
     get zoneLabel() {
       return this.$store.app.siteTzLabel || 'browser time';
     },
+    /** The time axis's zone (#50): the site's short name, else this browser's. */
+    get zoneShort() {
+      const a = this.$store.app;
+      return a.siteTzOffsetMin != null && a.siteTzShort ? a.siteTzShort
+        : 'your time' + (a._viewerTzShort() ? ' ' + a._viewerTzShort() : '');
+    },
     /** Site wall-clock fields of an epoch-seconds ts (read with getUTC*). */
     siteDate(ts) { return new Date((ts + this.offMin * 60) * 1000); },
     /** 'YYYY-MM-DDTHH:MM' in site wall-clock → epoch seconds, or NaN. */
@@ -770,6 +776,7 @@ function analyticsTab() {
             },
             scales: {
               x: {
+                title: { display: true, text: 'Time (' + self.zoneShort + ')', color: '#64748b', font: { size: 10 } },
                 type: 'linear', min: w.start, max: w.end, stacked: stack,
                 offset: false,     // bars inside the period's edges, as the Cloud view draws them
                 afterBuildTicks: (axis) => { axis.ticks = ticks.map(v => ({ value: v })); },
