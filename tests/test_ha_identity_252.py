@@ -359,3 +359,31 @@ def test_kept_counts_only_what_the_user_set():
     ha = FakeHA()
     res, _ = _move(ha)
     assert res["kept"] == 1                       # soc; grid_w has HA's defaults only
+
+
+def test_automations_that_name_a_moved_row_are_named():
+    """G1: a device condition names the entity by its registry row; that row is new after
+    the move, so Home Assistant turns the automation off on the next reload."""
+    class WithAutos(FakeHA):
+        def __init__(self):
+            super().__init__()
+            self.rows[0]["id"] = "row-soc"
+            self.rows += [{"platform": "automation", "entity_id": "automation.by_device"},
+                          {"platform": "automation", "entity_id": "automation.by_id"}]
+
+        def call(self, p):
+            if p["type"] == "automation/config":
+                c = {"automation.by_device": {"conditions": [{"entity_id": "row-soc"}]},
+                     "automation.by_id": {"triggers": [{"entity_id": "sensor.my_soc"}]}}
+                return {"config": c[p["entity_id"]]}
+            return super().call(p)
+    res, _ = _move(WithAutos())
+    assert res["refs"] == ["automation.by_device"] and res["problems"] == []
+    assert "automation.by_device" in res["notes"][0]
+
+
+def test_a_finished_retry_adds_to_the_first_run(st):
+    identity.record(st, "n1", {"moved": 62, "renamed": 62, "kept": 5, "problems": ["x"]})
+    identity.record(st, "n1", {"moved": 1, "renamed": 1, "kept": 1, "problems": []})
+    n = identity.view(st)["nodes"]["n1"]
+    assert (n["moved"], n["kept"], n["problems"]) == (63, 6, [])

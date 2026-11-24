@@ -53,7 +53,7 @@
       Home Assistant ids: still the old <span class="font-mono" x-text="'franklinwh_' + (identity && identity.node || '<serial>')"></span>.
       <span x-text="identity && identity.reason"></span>
     </div>
-    <template x-for="p in (identity && identity.move ? identity.move.problems : [])"><div class="text-amber-300" x-text="p"></div></template>
+    <template x-for="p in (identity && identity.move ? [...(identity.move.problems || []), ...(identity.move.notes || [])] : [])"><div class="text-amber-300" x-text="p"></div></template>
   </div>
 
   <!-- Broker discovery result -->

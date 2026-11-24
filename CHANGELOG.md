@@ -51,7 +51,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   ids, device names and history stay: on the first start each gateway's new entities join
   the same device, the old ones are removed (read back), and each new entity is renamed
   into the old id with your name, icon, area, labels, aliases and display options. The MQTT
-  tab shows what moved. Without Home Assistant's API (Docker: add your Home Assistant with
+  tab shows what moved, and names any automation that picks one of these entities
+  through its device: those need the entity chosen again. Without Home Assistant's API (Docker: add your Home Assistant with
   an administrator's token), or while another bridge still publishes the old topics,
   nothing moves and the tab says why. If you read the MQTT topics yourself, change
   `franklinwh-local/` to `fwh_dc/`; a prefix you set yourself is kept

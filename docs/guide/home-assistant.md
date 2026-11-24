@@ -104,6 +104,12 @@ The **MQTT** tab shows the ids and what the move did (entities moved, how many k
 settings, and any problem). The values published while the move runs (about a minute)
 land under the `_2` ids, not in the main history.
 
+**Automations that pick an entity through its device** (a *Device* trigger, condition or
+action, which names the entity by its registry row) don't follow: the rows are new, and
+Home Assistant turns those automations off on its next restart ("Unknown entity").
+The MQTT tab and the log name each one; open it and choose the entity again. Automations
+that use the entity id (*Entity* or *State* triggers, templates) keep working.
+
 It needs Home Assistant's API to rename entities: the add-on has it; in Docker, add your
 Home Assistant under **Settings → Home Assistant** with an administrator's token. **Without
 it, or while another bridge still publishes the old topics, nothing moves**: the old ids

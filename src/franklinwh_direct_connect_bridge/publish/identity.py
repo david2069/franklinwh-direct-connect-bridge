@@ -320,6 +320,25 @@ def _wait(ws, test: Callable[[list[dict]], bool], wait_s: float, sleep=time.slee
         sleep(1.0)
 
 
+def _row_refs(ws, row_ids: set[str]) -> list[str]:
+    """Automations and scripts whose configuration names one of ``row_ids``."""
+    if not row_ids:
+        return []
+    out = []
+    for e in ws.call({"type": "config/entity_registry/list"}) or []:
+        dom = e.get("entity_id", "").split(".", 1)[0]
+        if e.get("platform") != dom or dom not in ("automation", "script"):
+            continue
+        try:
+            cfg = ws.call({"type": f"{dom}/config", "entity_id": e["entity_id"]}) or {}
+        except Exception:                                        # noqa: BLE001
+            continue
+        text = json.dumps(cfg.get("config", cfg))
+        if any(r in text for r in row_ids):
+            out.append(e["entity_id"])
+    return sorted(out)
+
+
 def move_node(settings, store, node: str, new_keys: set[str], old: dict[str, bytes],
               session, *, remove: Callable | None = None, wait_s: float = HA_WAIT_S,
               sleep=time.sleep) -> dict:
@@ -405,6 +424,17 @@ def move_node(settings, store, node: str, new_keys: set[str], old: dict[str, byt
         for key in sorted(still & want):
             res["problems"].append(f"{old_rows[key]['entity_id']}: Home Assistant kept the old "
                                    "entity, so the new one has its own id")
+        # Automations and scripts that pick a moved entity through its device (a device
+        # trigger, condition or action) name it by its registry row, which is new now:
+        # Home Assistant disables them on the next reload (measured, G1). Named here.
+        refs = _row_refs(ws, {o["id"] for o in old_rows.values() if o.get("id")})
+        if refs:
+            res["refs"] = refs
+            # A note, not a problem: moving again wouldn't change it.
+            res.setdefault("notes", []).append(
+                "These pick a moved entity through its device, and Home Assistant will turn "
+                "them off on the next restart; open each and choose the entity again: "
+                + ", ".join(refs))
     # 4. The old state topics.
     pfx = (getattr(settings, "mqtt_prefix", "") or "").strip()
     if not pfx:
@@ -415,10 +445,16 @@ def move_node(settings, store, node: str, new_keys: set[str], old: dict[str, byt
 def record(store, node: str, res: dict) -> None:
     with _lock:
         st = load(store)
+        prev = (st.get("nodes") or {}).get(node) or {}
+        if prev.get("problems"):                         # a finished retry adds to the first run
+            res = {**res, **{k: int(prev.get(k) or 0) + int(res.get(k) or 0)
+                             for k in ("moved", "renamed", "kept")}}
         st.setdefault("nodes", {})[node] = res
         _save(store, st)
     msg = (f"Home Assistant identity: {node} moved to fwh_dc — {res['moved']} entities, "
            f"{res['renamed']} renamed back to their ids, {res['kept']} with your settings kept")
+    for n in res.get("notes") or []:
+        log.warning("Home Assistant identity: %s", n)
     if res["problems"]:
         log.warning("%s; problems: %s", msg, "; ".join(res["problems"]))
     else:
