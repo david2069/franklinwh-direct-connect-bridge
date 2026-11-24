@@ -1353,6 +1353,24 @@ class MetricsStore:
         if "gateway_id" not in cols:
             self._conn.execute(
                 "ALTER TABLE schedule_log ADD COLUMN gateway_id TEXT NOT NULL DEFAULT ''")
+        # Where the schedule came from (owner 2026-11-24): its ``origin`` tag
+        # (``smart_dispatch``) or ``user``, set when the row is written so a run stays told
+        # apart after its schedule is gone. Rows from before: from the schedules still
+        # there, and Smart Dispatch's own created/replaced rows.
+        if "source" not in cols:
+            self._conn.execute(
+                "ALTER TABLE schedule_log ADD COLUMN source TEXT NOT NULL DEFAULT 'user'")
+            for sid, raw in self._conn.execute("SELECT id, spec FROM schedules").fetchall():
+                try:
+                    origin = json.loads(raw or "{}").get("origin")
+                except (ValueError, TypeError, AttributeError):
+                    continue
+                if origin:
+                    self._conn.execute("UPDATE schedule_log SET source=? WHERE schedule_id=?",
+                                       (origin, sid))
+            self._conn.execute(
+                "UPDATE schedule_log SET source='smart_dispatch' WHERE result IN "
+                "('created by Smart Dispatch', 'replaced by Smart Dispatch')")
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS ix_sched_log ON schedule_log(ts DESC)")
         self._conn.execute(
@@ -1384,11 +1402,17 @@ class MetricsStore:
         if sev not in self.LOG_CAP:
             sev = "event"
         with self._lock:
+            row = self._conn.execute("SELECT spec FROM schedules WHERE id=?",
+                                     (schedule_id,)).fetchone()
+            try:
+                source = (json.loads(row[0] or "{}").get("origin") if row else None) or "user"
+            except (ValueError, TypeError, AttributeError):
+                source = "user"
             self._conn.execute(
                 "INSERT INTO schedule_log(ts, schedule_id, name, status, result, severity,"
-                " gateway_id) VALUES (?,?,?,?,?,?,?)",
+                " gateway_id, source) VALUES (?,?,?,?,?,?,?,?)",
                 (float(now if now is not None else time.time()),
-                 schedule_id, name, status, result, sev, gateway_id or ""))
+                 schedule_id, name, status, result, sev, gateway_id or "", source))
             # Per-class cap: pruning only within the class that just grew means routine
             # chatter cannot evict an error, which a single shared cap guaranteed.
             self._conn.execute(
@@ -1399,8 +1423,9 @@ class MetricsStore:
 
     def schedule_log(self, *, limit: int = 100, schedule_id: str | None = None,
                      status: str | None = None,
-                     severity: str | None = None) -> list[dict]:
-        q = ("SELECT ts, schedule_id, name, status, result, severity, gateway_id "
+                     severity: str | None = None,
+                     source: str | None = None) -> list[dict]:
+        q = ("SELECT ts, schedule_id, name, status, result, severity, gateway_id, source "
              "FROM schedule_log")
         clauses, args = [], []
         if schedule_id:
@@ -1409,6 +1434,8 @@ class MetricsStore:
             clauses.append("status=?"); args.append(status)
         if severity:
             clauses.append("severity=?"); args.append(severity)
+        if source:
+            clauses.append("source=?"); args.append(source)
         if clauses:
             q += " WHERE " + " AND ".join(clauses)
         q += " ORDER BY ts DESC LIMIT ?"

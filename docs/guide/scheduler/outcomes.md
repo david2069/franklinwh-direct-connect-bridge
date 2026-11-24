@@ -16,10 +16,10 @@ record and notifications. Also the controls that act outside the schedule: **Run
 | **Run queue** (`GET /api/schedules/runs`, `GET /api/schedules/stats`) | one row per run the scheduler expected: pending, running, ok, failed, missed, skipped, unknown, paused, stopped. No view in the UI. |
 | **Card** on the Schedules view | the last result with its date, **Next:**, **● active** |
 | **Logs** tab | the application log: each fired schedule (info) and each missed run (warning) |
-| **Control-log** (`GET /api/control-log`) | Pause and Resume calls |
+| **Logs → Audit trail** (`GET /api/control-log`) | each consequential control, its source and result; for the scheduler, Pause and Resume |
 
-**Not in this bridge:** a per-command control log with requester and hardware state
-before and after, and a dispatch-outcomes record (see [below](#the-dispatch-record)).
+**Not in this bridge:** hardware state before and after each command, and a
+dispatch-outcomes record (see [below](#the-dispatch-record)).
 
 ## Monitor
 
@@ -50,6 +50,11 @@ The **History** view is this bridge's activity log. It loads the latest 200 rows
 are in bridge-host time, shown short on the left ("18 Nov 18:01"); hover or tap a time
 for the full date and seconds. The chips at the top filter by status (one chip per status
 present); **battery** shows the rows written by the force path and the VPP monitor.
+Once Smart Dispatch has created a task, **Yours** and **Smart Dispatch** chips filter by
+where the schedule came from. Each row records its source when it is written, so a Smart
+Dispatch task's runs stay marked after the task is gone; rows from before this was added are
+marked from the tasks still there. `GET /api/schedules/log?source=user|smart_dispatch` filters
+the same way.
 <!-- @b OUT-03 ;; src: static/js/scheduler_tab.js:71-100 ;; untested ;; write: no ;; b: The History view fetches 200 rows, offers one chip per status present plus a battery chip for _batt and _vpp rows ;; test: browser: load History with mixed rows, assert the chips and the battery filter -->
 
 | Status | Meaning |
@@ -151,7 +156,7 @@ scheduler closes runs still pending, running or failed whose window ended more t
 is no catch-up: a missed run is never fired late.
 <!-- @b OUT-29 ;; src: scheduler_worker.py:39, scheduler_worker.py:119-145, db.py:2102-2131 ;; tested: tests/test_occurrences.py::test_grace_lets_a_late_run_still_catch_up ;; write: no ;; b: Runs whose window ended more than 120 s ago while pending/running/failed are swept to missed and logged missed (store level; the worker's log row is untested) -->
 
-**Not in this bridge:** failure and recovery notifications for retries (see
+Each failed attempt updates one `SCHEDULE_FAILED` alert for the window (see
 [Notifications](#notifications)).
 
 ## Supervision of a running command
@@ -195,12 +200,11 @@ requested. Tracked in
 
 ## Notifications
 
-**Not in this bridge** for scheduled actions. A failed, missed or unknown scheduled action
-sends **no** notification: the scheduler passes no notifier to its retry helper
-([#172](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/172)). To be
-told, add a **Notify** HA action to the schedule; note it runs after the battery action on
-every attempt, whatever the outcome (see [Actions](actions.md#home-assistant-actions)).
-<!-- @b OUT-18 ;; src: scheduler.py:2409-2413, resilience.py:243-249 ;; unclear ;; write: no ;; b: run_action_outcome is called without a notifier, so failures and unknowns of scheduled actions notify nobody ;; test: unit: a failing force with a notifier in place; assert one 'action failed' notification (fails today, #172) -->
+A failed run raises the `SCHEDULE_FAILED` alert and its **Run failed** push; a missed run
+sends **Run missed** (#172, #581). Set them under **Settings → Integrations →
+Notifications → Auto-notify triggers** (Scheduler group). See
+[Notifications](../ha-setup-and-notifications.md#scheduler).
+<!-- @b OUT-18 ;; src: scheduler.py (SCHEDULE_FAILED), notify_engine.py (schedule_failed, schedule_missed) ;; unclear ;; write: no ;; b: A failed run raises SCHEDULE_FAILED with the Run failed push; a missed run sends Run missed ;; test: — -->
 
 **Direct Connect only.** After a restart that interrupted a scheduled force, the boot
 reconcile notifies your enabled notification devices ("FranklinWH — scheduled dispatch
@@ -213,7 +217,7 @@ reconcile notifies your enabled notification devices ("FranklinWH — scheduled 
 | Control | Shown | What it does |
 |---|---|---|
 | **⋮ → Run now** | always (asks first) | Runs the battery action and the on-entry HA actions now. `POST /api/schedules/{id}/run` |
-| **Stop** | while the card shows **● active** | Releases the force this schedule started. `POST /api/schedules/{id}/stop` |
+| **⋮ → Stop** | while the schedule shows **● active** (first in the menu) | Releases the force this schedule started. `POST /api/schedules/{id}/stop` |
 | **Pause**, **Resume** | API only | See [Pause and Resume](#pause-and-resume-direct-connect-only). |
 
 **● active** (and so **Stop**) shows when the schedule is enabled, its window is open on
@@ -224,7 +228,7 @@ the **container's** clock, and it has already fired in this occurrence
 
 ### Run now
 
-1. Open the card's **⋮** menu and choose **Run now**. Confirm.
+1. Open the schedule's **⋮** menu and choose **Run now**. Confirm.
 2. The bridge runs the action now. It ignores the window, the calendar **and the entry
    conditions**; each HA action's own guard still applies, and only **On entry** and
    **Entry & exit** HA actions run. It logs *manual* with what each step returned.

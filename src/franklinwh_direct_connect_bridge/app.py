@@ -67,6 +67,7 @@ from . import workers as _workers
 from . import alerts
 from . import troubleshoot
 from .config import get_settings, gateway_list, metrics_active, save_override
+from . import ha_supervisor
 from .ha_supervisor import apply_host_timezone, apply_supervisor_mqtt, discover_mqtt
 from . import notify
 from .notify import Notifier
@@ -1079,6 +1080,20 @@ def _modbus_client_enabled(store) -> bool:
         log.info("Modbus client (this bridge): %s by default (%s install)",
                  "on" if val == "1" else "off", "existing" if existing else "new")
     return val != "0"
+
+
+def _site_today(store) -> _dt.date:
+    """Today at the site (its timezone from setup), not the container's (#360). The
+    container's date when no site timezone is set."""
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+    from . import setup_wizard
+    try:
+        name = setup_wizard.site_timezone(store) if store is not None else None
+        if name:
+            return _dt.datetime.now(ZoneInfo(name)).date()
+    except (ZoneInfoNotFoundError, ValueError):
+        pass
+    return _dt.date.today()
 
 
 def create_app() -> FastAPI:
@@ -3084,7 +3099,7 @@ def create_app() -> FastAPI:
         st = _ha_store()
         if st is None:
             return {"meters": [], "meter": None, "steps": [], "complete": False}
-        return billing_page.page(st, meter, _dt.date.today())
+        return billing_page.page(st, meter, _site_today(st))
 
     @app.get("/api/billing/overview")
     def api_billing_overview(gateway: str = Depends(_gateway_q)):
@@ -3095,12 +3110,13 @@ def create_app() -> FastAPI:
         st = _ha_store()
         if st is None:
             return {"configured": False}
-        read = billing.billing_read(st, gateway)
-        fixed = billing.fixed_snapshot(st, gateway)
+        # The gateway's site clock, as the tick that accrues it (#360).
+        now = _site_now(gateway)
+        read = billing.billing_read(st, gateway, now=now)
+        fixed = billing.fixed_snapshot(st, gateway, now=now)
         if not read and not fixed:
             return {"configured": False}
         cfg = billing._billing_cfg(st, gateway)
-        now = _dt.datetime.now()
         days = period_days = None
         if cfg:
             ps = billing._period_start(now, int(cfg.get("cycle_day", 1) or 1))
@@ -3132,7 +3148,8 @@ def create_app() -> FastAPI:
         if fmt == "csv":
             cols = ["period_start", "period_end", "retailer", "network", "tariff_name",
                     "import_kwh", "import_cost", "export_credit", "demand_peak_kw",
-                    "demand_charge", "bonus_credit", "export_charge", "fixed_total", "net_total"]
+                    "demand_charge", "bonus_credit", "export_charge", "fixed_total", "net_total",
+                    "gateway_id"]          # a meter's history can hold several gateways' rows (#360)
 
             def _row(r):
                 return ",".join("" if r.get(c) is None else str(r.get(c)) for c in cols)
@@ -3151,7 +3168,7 @@ def create_app() -> FastAPI:
         st = _ha_store()
         if st is None:
             return {"ok": False, "reason": "metrics store is disabled"}
-        return billing.force_close_current(st, gateway)
+        return billing.force_close_current(st, gateway, now=_site_now(gateway))
 
     @app.post("/api/billing/import")
     def api_billing_import(req: BillingImportReq, gateway: str | None = Depends(_gateway_opt)):
@@ -3483,7 +3500,7 @@ def create_app() -> FastAPI:
         """
         _guard_writes()
         host = _gw_host(gateway)
-        today = _dt.datetime.now().strftime("%Y-%m-%d")
+        today = _site_now(gateway).strftime("%Y-%m-%d")      # the aGate's day, not ours
         try:
             return client.set_circuit_schedule(
                 get_settings(), circuit,
@@ -4293,16 +4310,24 @@ def create_app() -> FastAPI:
         # discover_mqtt() already answers "not an add-on" by itself; a second gate here
         # only created a path where the two disagreed.
         sup = discover_mqtt()
-        if not s.mqtt_enabled:
+        # The add-on with no broker app: installing Mosquitto comes first (#785). The
+        # Bridge finds it on its own once it runs.
+        no_broker = bool(environment.IS_HA_ADDON and not sup.get("found"))
+        if no_broker:
+            remedy = ("Install the Mosquitto broker app. The Bridge connects on its own "
+                      "once it is running.")
+        elif not s.mqtt_enabled:
             remedy = ("Home Assistant's broker is available — turn publishing on from the "
                       "MQTT tab." if sup.get("found") else
-                      "Publishing is off. Install the Mosquitto broker add-on, then turn it "
-                      "on from the MQTT tab.")
+                      "Publishing is off. Set your MQTT broker on the MQTT tab and turn "
+                      "publishing on; without a broker, run one (Mosquitto) first.")
         elif no_publisher:
             remedy = ("The connection is made per gateway — add a gateway with "
                       "Publish to Home Assistant on, then check again.")
         else:
-            remedy = "" if broker_ok else "Publishing is on but the broker is not connected — check the MQTT tab."
+            remedy = ("" if broker_ok else
+                      "Publishing is on but the broker is not connected — check the broker "
+                      "settings on the MQTT tab, and that the broker is running.")
         checks.append({
             "id": "mqtt_broker", "title": "MQTT broker connected",
             "detail": "Carries this bridge's entities into Home Assistant.",
@@ -4314,6 +4339,8 @@ def create_app() -> FastAPI:
                       else "Connected" if broker_ok else "Not connected"),
             "remedy": remedy,
             "can_enable": bool(sup.get("found") and not s.mqtt_enabled),
+            "install_url": ha_supervisor.MOSQUITTO_URL if no_broker else "",
+            "install_my_url": ha_supervisor.MOSQUITTO_MY_URL if no_broker else "",
         })
 
         # 2. OUR link INTO Home Assistant — the opposite direction, and a different fix.
@@ -4341,7 +4368,10 @@ def create_app() -> FastAPI:
             "ok": mqtt_comp,
             "state": ("Set up" if mqtt_comp else
                       "Not set up" if mqtt_comp is False else "Could not be checked"),
+            # With the broker app running, Home Assistant discovers MQTT itself (#785).
             "remedy": ("" if mqtt_comp else
+                       "Home Assistant → Settings → Devices & services → Discovered → MQTT → Add."
+                       if sup.get("found") else
                        "Home Assistant → Settings → Devices & services → Add integration → MQTT."),
         })
 
@@ -4374,8 +4404,50 @@ def create_app() -> FastAPI:
                        "services → MQTT, or use the MQTT tab's orphan purge."
                        if leftovers else ""),
         })
+        # Ordered steps (#785): below the first failing check the others are ``waiting``;
+        # the wizard shows them as "Waiting for the step above", neither ✓ nor ✗. Their
+        # own result is kept for the API.
+        failed = False
+        for c in checks:
+            c["waiting"] = failed
+            failed = failed or c["ok"] is False
         return {"checks": checks, "publishing": bool(s.mqtt_enabled),
                 "addon": environment.IS_HA_ADDON}
+
+    @app.post("/api/setup/ha-mqtt/confirm")
+    def api_setup_ha_mqtt_confirm():
+        """After Yes, on the add-on (#785, path B): confirm the MQTT integration Home
+        Assistant discovered for the Mosquitto broker app (handler mqtt, source hassio),
+        only while Home Assistant has no MQTT integration. Audited. When it can't, the
+        remedy is the manual step."""
+        s = get_settings()
+        if not environment.IS_HA_ADDON:
+            raise HTTPException(409, "only the Home Assistant add-on can confirm it")
+        if not s.mqtt_enabled:
+            raise HTTPException(409, "answer Yes to publishing first")
+        manual = "Home Assistant → Settings → Devices & services → Discovered → MQTT → Add."
+        st = db.get_store(s)
+        inst = next((i for i in (st.ha_instances() if st else []) if i.get("enabled", 1)
+                     and str(i.get("base_url", "")).startswith("http://supervisor")), None)
+        if inst and "mqtt" in ha_instances.components(inst["base_url"], inst.get("token")):
+            return {"ok": True, "already": True, "message": "Home Assistant's MQTT integration is set up."}
+        try:
+            flow_id = ha_supervisor.mqtt_flow_id()
+        except Exception as e:  # noqa: BLE001
+            log.info("MQTT integration: could not list Home Assistant's discovered flows: %s", e)
+            return {"ok": False, "remedy": manual, "error": str(e)}
+        if not flow_id:
+            return {"ok": False, "remedy": manual, "error": "Home Assistant has not discovered MQTT yet"}
+        try:
+            out = ha_supervisor.confirm_flow(flow_id)
+        except Exception as e:  # noqa: BLE001
+            _audit("ha_mqtt_confirm", detail=f"flow {flow_id}", result=str(e), ok=False)
+            return {"ok": False, "remedy": manual, "error": str(e)}
+        ok = out.get("type") == "create_entry"
+        _audit("ha_mqtt_confirm", detail=f"flow {flow_id}", result=str(out.get("type")), ok=ok)
+        return ({"ok": True, "already": False,
+                 "message": "Added Home Assistant's MQTT integration for the Mosquitto broker."}
+                if ok else {"ok": False, "remedy": manual, "error": f"flow ended: {out.get('type')}"})
 
     @app.get("/api/setup/capabilities")
     def api_setup_capabilities(gateway: str = Depends(_gateway_q)):
@@ -4476,6 +4548,78 @@ def create_app() -> FastAPI:
         except ValueError as e:
             raise HTTPException(422, str(e))
         return hems_setup.view(st, get_settings(), gateway)
+
+    @app.get("/api/smart-dispatch")
+    def api_smart_dispatch(refresh: bool = Query(False), gateway: str = Depends(_gateway_q)):
+        """Smart Dispatch, plan only (#612 §7, hems.dispatch): the target and limit questions,
+        what is missing, the 24-hour plan and the action now. No device read or write;
+        ``refresh`` works the plan out again (Re-evaluate)."""
+        from . import smart_dispatch
+        _gw_or_404(gateway)
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        return smart_dispatch.view(st, get_settings(), gateway, force=refresh)
+
+    @app.post("/api/smart-dispatch/check")
+    def api_smart_dispatch_check(body: dict, gateway: str = Depends(_gateway_q)):
+        """The answers given, checked and planned without saving them."""
+        from . import smart_dispatch
+        _gw_or_404(gateway)
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        bad = [k for k in body if k not in smart_dispatch.FIELDS]
+        if bad:
+            raise HTTPException(422, f"unknown Smart Dispatch field(s): {', '.join(bad)}")
+        return smart_dispatch.view(st, get_settings(), gateway, answers=body)
+
+    @app.put("/api/smart-dispatch")
+    def api_smart_dispatch_put(body: dict, gateway: str = Depends(_gateway_q)):
+        """Save Smart Dispatch answers (null clears one back to its pre-fill). No device write."""
+        from . import smart_dispatch
+        _gw_or_404(gateway)
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        try:
+            smart_dispatch.save(st, gateway, body)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+        return smart_dispatch.view(st, get_settings(), gateway)
+
+    @app.post("/api/schedules/smart-dispatch")
+    def api_smart_dispatch_create(gateway: str = Depends(_gateway_q)):
+        """Smart Dispatch's drafts added to the Scheduler as one-off tagged tasks (#612 phase
+        2): its own tasks not yet started are replaced; the user's are never touched."""
+        from . import smart_dispatch
+        _guard_writes()
+        _gw_or_404(gateway)
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        try:
+            return smart_dispatch.create(st, get_settings(), gateway)
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+
+    @app.put("/api/schedules/smart-dispatch/auto")
+    def api_smart_dispatch_auto(body: dict, gateway: str = Depends(_gateway_q)):
+        """Smart Dispatch's Auto (#612 phase 2): off | shadow (log what it would create) | on
+        (create its Scheduler tasks hourly; only after 7 days of Shadow, else 409)."""
+        from . import smart_dispatch
+        _gw_or_404(gateway)
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        mode = body.get("mode")
+        if mode not in smart_dispatch.AUTO_MODES:
+            raise HTTPException(422, f"mode is one of {', '.join(smart_dispatch.AUTO_MODES)}")
+        try:
+            smart_dispatch.set_auto(st, gateway, mode)
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+        return smart_dispatch.view(st, get_settings(), gateway)
 
     _install_modes: dict[str, tuple] = {}   # host -> (expires_monotonic, mode labels)
     _install_history: dict[str, tuple] = {}  # gateway id -> (expires_monotonic, history)
@@ -5025,7 +5169,8 @@ def create_app() -> FastAPI:
     def api_schedule_log(limit: int = Query(100, ge=1, le=500),
                          schedule_id: str | None = Query(None),
                          status: str | None = Query(None),
-                         severity: str | None = Query(None)):
+                         severity: str | None = Query(None),
+                         source: str | None = Query(None, pattern="^(user|smart_dispatch)$")):
         """Recent schedule events, newest first — the history view.
 
         Filter by ``schedule_id`` (one entry's runs), ``status`` (fired/error), or
@@ -5033,9 +5178,12 @@ def create_app() -> FastAPI:
         what it said) or ``exception`` (the bridge itself misbehaved — a bug, not a
         condition). Each class is capped separately, so routine chatter cannot evict
         a failure. A schedule that fired and did nothing still appears, with the reason.
+        ``source``: ``user`` or ``smart_dispatch`` (the schedule's origin when the row was
+        written).
         """
         return {"events": _ha_store().schedule_log(
-            limit=limit, schedule_id=schedule_id, status=status, severity=severity)}
+            limit=limit, schedule_id=schedule_id, status=status, severity=severity,
+            source=source)}
 
     @app.get("/api/scheduler/monitor")
     def api_scheduler_monitor(entry_id: str | None = Query(None), since: int = Query(0, ge=0)):
@@ -8168,7 +8316,7 @@ def create_app() -> FastAPI:
             "cloud_configured": bool(settings.fwh_cloud_email and settings.fwh_cloud_password),
             "nem_region": settings.nem_region or None,
             "dynamic_price_entity_set": bool(settings.tariff_price_entity),
-            "writes_enabled": bool(settings.allow_writes),
+            "writes_enabled": client.writes_enabled(settings),
         }
 
         # Billing (redacted: presence + kind only, no site/meter/utility names or addresses)

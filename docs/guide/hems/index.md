@@ -19,14 +19,16 @@ that planning can work from. It is built on **hems**, the shared energy engine t
 | [Load forecast](load-forecast.md) | Your home's load for the next 48 hours, learnt from its own history, with an accuracy check | Home Assistant **Load Forecast**; Health → weekly report |
 | [Battery warranty and wear](battery-wear.md) | Wear cost per kWh, warranted throughput used and left, the pace that lasts the warranty, state of health, round-trip efficiency | Settings → Gateways → *Battery warranty & wear* |
 | [Loads and controllability](loads.md) | Your always-on load, usage periods and heavy loads, each checked against what this bridge can control | Settings → Gateways → *HEMS setup* |
+| [Smart Dispatch](smart-dispatch.md) | A 24-hour battery plan for your target (backup, TOU, lowest cost, self-consumption, export earnings) within your utility's limits, with the action now and why, and the plan as Scheduler tasks on request | Smart Dispatch tab |
 | [Scheduler](scheduler.md) | Forecast sensors to use in schedule conditions | Scheduler |
 | [Home Assistant](home-assistant.md) | The HEMS entities | MQTT discovery |
 
 ## What it does not do (yet)
 
-- **No automatic planning or control.** The planner that would charge, discharge or switch
-  loads from these forecasts and answers is a later phase of #612. Today the answers are only
-  recorded, and the forecasts feed sensors and schedules you write yourself.
+- **No automatic control.** The planner, [Smart Dispatch](smart-dispatch.md), shows a plan
+  and adds it to the Scheduler when you click **Create schedules**, or every hour with **Auto**
+  On (after a week of Shadow). Switching loads is a later phase of #612. The forecasts
+  also feed sensors and schedules you write yourself.
 - **It never writes to the aGate or to the FranklinWH cloud.** Everything here reads.
 
 ## Local, cloud and outside services

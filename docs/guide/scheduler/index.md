@@ -88,33 +88,42 @@ What happens once it is enabled:
   and the force is released. The schedule does not fire again until tomorrow's window.
 - At 20:00 the window closes and the bridge sends a release.
 
-!!! warning "For a force action, use a trigger with Fire at and Duration"
-    A force stops after the schedule's **Duration (min)** (#160). A **Recurring windows**
-    schedule still has that value, although the form hides it, and a new schedule starts
-    with 90. So a force in a three-hour recurring window stops after 90 minutes. Use **Daily
-    at time** or **Weekly at time** for force actions.
+!!! note "A force runs until its window closes"
+    In every trigger type, a force runs until the window closes (#160), unless its target
+    SoC or an exit condition ends it first. **Run now** uses the schedule's **Duration
+    (min)** as the time limit.
 
 To check it before the window opens, open the card's **⋮** menu and choose **Test against
 live**. It says *Would fire* or *Would not fire*, with the reason and each row's live value.
 
 ## The entry list
 
-![The Schedules view: a schedule card with Explain, Edit, Turn on and the ⋮ menu](../../images/scheduler/18-using-schedules-from-ha.png)
+Pick how the list looks with **Cards / Compact / Table**; the browser remembers it.
 
-Each schedule is a card. It shows the name; the Fire at time and duration, the recurrence
-in words and the number of top-level conditions; **Next:** (see
-[Triggers → Next fire](triggers.md#next-fire)); **● active** while its window is open and it
-has fired; **On** or **Off**; the battery action (or *No gateway action*) and the number of
-HA actions; and the last result with its occurrence.
+| View | Shows |
+|---|---|
+| **Cards** | One card per schedule: the name; the Fire at time and duration, the recurrence in words and the action (battery action or *No gateway action*, the gateway, HA actions, who is asked); **Next:** (see [Triggers → Next fire](triggers.md#next-fire)) and the last result. |
+| **Compact** | One line per schedule: name, time, action and **Next:**. On a phone the buttons go on a second line. |
+| **Table** | Columns Name, When, Action, Next and Status. On a phone only Name, Status and the buttons; Action and Next from tablet width. |
+
+Schedule times are on each schedule's gateway clock: hover a Fire at time for its zone, and
+the form says it under **Fire at** and the windows ("On the gateway's clock: AEDT"). When your
+gateways are in different time zones, a note above the list names each gateway's zone.
+
+Every view shows **● active** while a schedule's window is open and it has fired,
+**Smart Dispatch** on a task that [Smart Dispatch](../hems/smart-dispatch.md#create-schedules)
+created, and **On** or **Off**. A schedule that is off is dimmed. Each has only **Explain**,
+**Edit** and **⋮** as buttons; everything else is in **⋮**.
 
 | Control | What it does |
 |---|---|
 | **N active now** | Counts the cards showing **● active**. |
-| **All / Enabled / Disabled** | Filters the cards. A note says how many are hidden. |
+| **All / Enabled / Disabled** | Filters the list. A note says how many are hidden. |
+| **All sources / Yours / Smart Dispatch** | Shown once Smart Dispatch has created a task. Filters the list by where they came from. A Smart Dispatch task you edit becomes yours. |
 | **Explain** | A plain-language summary of the schedule, at three levels: **min**, **medium** and **full**. A Home Assistant action that runs on exit reads "… when it ends". The browser remembers the level you last chose. |
 | **Edit** | Opens the form. If the schedule is **● active**, saving asks first. |
-| **Turn on** / **Turn off** | Enables or disables the schedule. |
-| **Stop** | Shown while **● active**. Releases the force this schedule started; the schedule stays enabled. See [Run now and Stop](outcomes.md#run-now-and-stop). |
+| **⋮ → Stop** | First in the menu while **● active**. Releases the force this schedule started; the schedule stays enabled. See [Run now and Stop](outcomes.md#run-now-and-stop). |
+| **⋮ → Turn on** / **Turn off** | Enables or disables the schedule. |
 | **⋮ → Test against live** | Evaluates the schedule against live values, without acting. |
 | **⋮ → Run now** | Runs the actions now, ignoring the window and the entry conditions. Asks first. |
 | **⋮ → Duplicate** | Opens a copy in the form, named "Copy of …", with **Enabled** unticked. It is saved as a new schedule. |
@@ -137,11 +146,8 @@ direction or target SoC takes effect at the next window.
 the stored schedule, so nothing else changes (#157).
 <!-- @b IDX-08 ;; src: static/js/scheduler_tab.js:578-592, app.py:3105-3134 ;; tested: tests/test_schedule_update_merge.py::test_the_toggle_body_changes_only_enabled ;; write: yes ;; b: The toggle's partial PUT changes only enabled; every other stored field is kept ;; test: -->
 
-!!! warning "A PUT without `enabled` turns the schedule on"
-    The form and the toggle always send `enabled`. An API call that does not, for example one
-    that only renames a disabled schedule, turns it back **on**: `enabled` defaults to true
-    in the request model. Issue #168.
-<!-- @b IDX-09 ;; src: app.py:631, app.py:3124-3132 ;; unclear ;; write: yes ;; b: PUT without enabled re-enables a disabled schedule (request default True) ;; test: unit (API): PUT {name} on a disabled schedule; assert still disabled (fails today) -->
+A `PUT` without `enabled` leaves it as it was (#168).
+<!-- @b IDX-09 ;; src: app.py (update_schedule, model_fields_set) ;; unclear ;; write: yes ;; b: PUT without enabled keeps the stored enabled state (#168) ;; test: unit (API): PUT {name} on a disabled schedule; assert still disabled -->
 
 ### Templates, export and import
 
@@ -298,7 +304,8 @@ see it, add conditions to it or notify on it, and a bridge schedule can work aga
 
 ## Activity Log
 
-Every decision the scheduler makes is written to **History**, newest first: created,
+Every decision the scheduler makes is written to **History**, newest first (in the bridge
+host's zone, named above the list): created,
 *fired*, *gated*, *waiting*, *deferred*, *exit*, *error*, *missed* and more. The status list
 and filter chips are on [Outcomes and audit](outcomes.md#activity-log-results). Times are in
 the bridge host's zone.
@@ -316,9 +323,10 @@ schedules. Home Assistant entities for run, pause and state over MQTT are planne
 add-on's **Info** page shows it (for example `4a12892f-franklinwh-local-bridge`). Use
 `http://<that hostname>:8101`. A Docker install uses its own host and port.
 
-> The bridge's HTTP API has no login, and writes are not gated (`writes_enabled` always
-> returns true). Anything that can reach it can do all of the below. Keep it on a trusted
-> network.
+> With Security off, the HTTP API has no login: anything that can reach it can do all of
+> the below. Keep it on a trusted network. With Security on, call `https://<hostname>:8102`
+> with an API token for an account whose role can edit schedules
+> ([Security](../security.md#api-access-tokens)).
 
 ```yaml
 # configuration.yaml
@@ -328,7 +336,7 @@ rest_command:
     method: POST
     content_type: "application/json"
     payload: "{{ schedule | tojson }}"
-  fwh_schedule_update:          # merges what you send (#157); always send name and enabled (#168)
+  fwh_schedule_update:          # merges what you send (#157); always send name
     url: "http://<hostname>:8101/api/schedules/{{ id }}"
     method: PUT
     content_type: "application/json"
@@ -345,8 +353,7 @@ rest_command:
 ```
 
 **Update merges.** `PUT` changes only the fields you send (since 0.5.2, #157), but always
-send `name` (required) and `enabled`: without `enabled` the schedule is switched **on**
-(#168).
+send `name` (required). Left out, `enabled` keeps its value (#168).
 
 **Reading.** A `rest` sensor on `GET /api/schedules` lists every schedule with `enabled`,
 `next_fire` and `active_now` (container clock, #161). `GET /api/schedules/runs` and

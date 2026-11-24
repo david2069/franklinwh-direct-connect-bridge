@@ -94,9 +94,9 @@ How it behaves:
 - Without a region the gate fails. **With a region, the last good price is kept however old
   it is** if the bridge cannot reach AEMO; the Modbus Bridge drops a price after 30 minutes.
 
-!!! note "Why not *Always (sensor-driven)*?"
-    An Always schedule fires once and then never again: its single occurrence is recorded
-    as done (#190). See [Triggers](triggers.md#always-evaluate).
+!!! note "Always (sensor-driven) works too"
+    An Always schedule fires on every rising edge (#190); the two thresholds above stop it
+    flapping. See [Triggers](triggers.md#always-evaluate).
 
 ## 4. Storm forecast: fill the battery
 
@@ -123,7 +123,8 @@ How it behaves:
 - The WMO weather code is in the snapshot as `weather.code` but **not in the picker**; through
   the API a row `weather.code in 95, 96, 99` works.
 - To keep the charge afterwards, add a second schedule with **Force standby** and the same
-  weather gate. **Set reserve SoC** does not help: it never runs (#129).
+  weather gate. Or raise the reserve with **Set reserve SoC**, which goes through the
+  FranklinWH cloud and needs cloud credentials ([Actions](actions.md)).
 
 ## 5. Peak-demand window: shave imports using the Demand-Charge Min SoC
 

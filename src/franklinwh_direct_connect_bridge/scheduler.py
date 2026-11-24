@@ -2971,7 +2971,7 @@ def build_snapshot(settings, store, state: dict, *, host: str | None, gateway_id
         snapshot.update(billing.billing_tick(store, gateway_id, snapshot.get("grid.power_w"),
                                              now, dynamic_rate=_dyn))   # demand/energy/bonus/charge
     else:
-        snapshot.update(billing.billing_read(store, gateway_id))    # read only: never accrues
+        snapshot.update(billing.billing_read(store, gateway_id, now))   # read only: never accrues
     snapshot.update(billing.fixed_snapshot(store, gateway_id, now))   # fixed.* (pure accrual)
     try:
         from . import system_setup
@@ -3147,7 +3147,8 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                 left = hold - int((now - started).total_seconds())
                 mon[entry["id"]] = ("holding", f"{left}s left of the {hold}s hold")
                 continue
-            _dwell_since.pop(dkey, None)
+            # Served: kept, so a retry after a failed attempt doesn't wait the hold again
+            # (#203). It resets above once the conditions stop holding or the run is done.
         # Ready to fire — but hold for priority resolution (a higher-priority entry on
         # the same target may pre-empt this one within this same tick).
         mon[entry["id"]] = ("ready", "conditions met")

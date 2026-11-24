@@ -172,11 +172,12 @@ of a **Set operating mode** schedule.
 
 A Release goes through the Modbus client (this bridge) to the Modbus TCP Server
 (aGate :502). The bridge calls the library's `reset_control_state()`, forgets the force it
-was holding in memory, and logs *dispatch-end* if it was holding one. It does not read the
-setpoint back: it reports "released" without checking
+was holding in memory, and logs *dispatch-end* if it was holding one. It then reads the
+setpoint back and reports *released*, *release sent; not confirmed*, or a failure if the
+aGate still has the force on
 ([#174](https://github.com/david2069/franklinwh-direct-connect-bridge/issues/174)). With the
 Modbus client (this bridge) switched off, a Release is refused.
-<!-- @b EXT-17 ;; src: battery_control.py:496-517 ;; untested ;; write: yes ;; b: Release calls reset_control_state, clears the in-memory dispatch, fires dispatch-end if one was held, never reads back, and is refused when the Modbus client is off ;; test: unit: fake controller; assert reset_control_state called and the result; available() false returns ok false (#174) -->
+<!-- @b EXT-17 ;; src: battery_control.py (execute, Release) ;; untested ;; write: yes ;; b: Release calls reset_control_state, reads wset_enabled back, clears the in-memory dispatch, fires dispatch-end if one was held, and is refused when the Modbus client is off ;; test: unit: fake controller; assert reset_control_state called and the result; available() false returns ok false (#174) -->
 
 ## Hold instead of release (API only)
 

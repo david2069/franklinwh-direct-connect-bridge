@@ -206,7 +206,7 @@ then choose *Force Charge*, *Force Discharge* or *Force Standby* in **Battery Co
 *Release* (or *Not Active*) ends the force. The numbers are the same staged values the
 Battery tab shows, and the force runs the same way: over the Modbus TCP Server (aGate
 :502), with the bridge's watchdog ending it at the duration or target, recorded like a
-Battery tab force. It needs **Allow writes**, and the controls are published only while the Modbus client is
+Battery tab force. The controls are published only while the Modbus client is
 switched on in Control → Modbus client (see *Source* below); a refusal is in the bridge's log. **Battery Command** shows the
 force this bridge holds on the gateway. Mock gateways don't have these controls: they
 have no Modbus TCP Server.
@@ -293,7 +293,7 @@ every gateway.
 
 Nothing outside this bridge is touched. The topic list comes from the bridge's own entities
 for that gateway, never from a wildcard, so other gateways and other FranklinWH software
-(Modbus Bridge, FWHAI) are left alone. Every Unpublish is recorded in Control → Audit trail.
+(Modbus Bridge, FWHAI) are left alone. Every Unpublish is recorded in **Logs → Audit trail**.
 
 Disabling or removing a gateway in Settings → Gateways removes its entities the same way
 ([Multiple gateways](multi-gateway.md)).
@@ -423,8 +423,8 @@ list and keeps the exposed ones.)
 
 ![Settings → Integrations → Notifications](../images/home-assistant/15-notification-devices.png)
 
-Register notification targets, test one, or broadcast to all of them. These are what the
-Scheduler's **Notify** action and the bridge's own alerts (an interrupted dispatch, for
+Register notification targets, test one, or broadcast to all of them. These are what a
+schedule's notify rows and the bridge's own alerts (an interrupted dispatch, for
 instance) send to.
 
 A separate set of **notification triggers** — the bridge's own standing alerts, as

@@ -226,23 +226,11 @@ When the conditions stop holding, the window closes: exit HA actions run and, fo
 action this schedule still holds, a Release is sent.
 <!-- @b TRG-30 ;; src: scheduler.py:2014-2033 ;; tested: tests/test_scheduler.py::test_trigger_always_fires_on_rising_edge ;; write: yes ;; b: When an always entry's conditions stop, the closing edge sends a force Release and runs exit HA actions ;; test: -->
 
-!!! danger "Always fires once, ever, and then only releases"
-    The run of an Always schedule is stored as one occurrence with the fixed key `always`.
-    After the first successful run that occurrence is finished, so **every later rising edge
-    sends nothing**. Probe, 2026-10-17, against this release's code: SoC 95 → 50 → 95 → 95 →
-    50 → 95 gave Force Discharge, Release, nothing, nothing, Release, nothing.
-
-    - A **falling** edge sends **Release** only while this schedule holds the force on that
-      gateway (see [Exit and release](exit-and-conflicts.md#how-a-run-ends)).
-    - The mark is kept in the database. A restart, an edit, or turning it off and on does
-      not clear it; nothing prunes old runs (the prune function exists but is never called).
-      Deleting the schedule and creating it again does.
-    - An Always schedule with **no battery action** sends its HA actions once, ever, too.
-
-    For "whenever the price is low" rules use a repeating trigger with a gap, for example
-    **Custom cron** `*/30 * * * *` with **Duration (min)** 29. Issue #190.
-<!-- @b TRG-28 ;; src: scheduler.py:378-379, scheduler.py:2147-2150, db.py:1935-1962 ;; unclear ;; write: yes ;; b: An always entry's occurrence key is the constant 'always'; once it finishes ok it is terminal, so the entry never fires again ;; test: unit: tick an always force entry through two rising edges; assert a second Force (fails today) -->
-<!-- @b TRG-29 ;; src: db.py:1935-1962, db.py:2202-2212 ;; unclear ;; write: yes ;; b: The fired-once mark for always is a stored occurrence row per schedule and gateway; it survives restart, edit and disable, and prune_occurrences is never called ;; test: unit: after restart (fresh in-memory state, same DB) the always entry still does not fire -->
+!!! note "Always fires on each rising edge"
+    Each time the conditions start to hold is a new run (#190). A **falling** edge sends
+    **Release** only while this schedule holds the force on that gateway (see
+    [Exit and release](exit-and-conflicts.md#how-a-run-ends)).
+<!-- @b TRG-28 ;; src: scheduler.py (tick, trigger_type always) ;; unclear ;; write: yes ;; b: Each activation of an always entry is its own occurrence (always:<ts>), so every rising edge fires (#190) ;; test: unit: tick an always force entry through two rising edges; assert a second Force -->
 
 ## Repeat patterns
 
@@ -277,13 +265,11 @@ Months, Day of month and Time windows first.
 occurrence. It is never shown for Always schedules.
 <!-- @b TRG-33 ;; src: scheduler.py:509-520 ;; tested: tests/test_scheduler.py::test_next_fire_and_active_now ;; write: no ;; b: active_now = enabled, inside the window and last_fired_day equals this occurrence; always is never active_now ;; test: -->
 
-!!! warning "Next and ● active use the container's clock"
-    `GET /api/schedules` computes `next_fire` and `active_now` with the bridge container's
-    clock, while the scheduler fires on the site's clock (see
-    [Restarts and the clock](restarts-and-clock.md#the-clock)). When the two zones differ,
-    **Next:**, **● active** and therefore the **Stop** button are off by the difference. The
-    browser then formats the time in **its** zone. Issue #161.
-<!-- @b TRG-52 ;; src: app.py:3033-3038, static/js/scheduler_tab.js:510-529 ;; unclear ;; write: no ;; b: next_fire and active_now are computed on the container's naive clock, not the site clock the tick uses ;; test: unit (API): container UTC, site UTC-5; assert next_fire matches the site window -->
+**Next:** is on the schedule's gateway clock, with its zone: `tomorrow 12:30 AEDT`. The
+bridge works it out on that gateway's site clock (the one the scheduler fires on), and the
+page shows it in that gateway's zone, not your browser's (#161). An **All gateways** schedule
+is shown on the selected gateway's clock.
+<!-- @b TRG-52 ;; src: app.py (_site_now), static/js/scheduler_tab.js (nextFireLabel, gwZone) ;; tested: tests/test_clocks_ui_50_161.py ;; write: no ;; b: next_fire is computed on the gateway's site clock and shown in that gateway's zone ;; test: -->
 
 ## Editing a trigger in the form
 

@@ -396,7 +396,7 @@
               <div class="rounded p-2 space-y-2" style="border:1px solid var(--border)" :data-testid="'hems-load-' + i">
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
                   <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Name</span><input class="form-control form-control-sm" x-model="l.name"></label>
-                  <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Device type</span><input class="form-control form-control-sm" x-model="l.device_type" placeholder="pool_pump, hot_water, ev_charger…"></label>
+                  <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Device type</span><select class="form-control form-control-sm" x-model="l.device_type" data-testid="hems-device-type"><option value="" :selected="!l.device_type">Choose…</option><template x-for="d in hems.choices.device_type" :key="d.value"><option :value="d.value" x-text="d.label" :selected="d.value === l.device_type"></option></template><template x-if="l.device_type && !hems.choices.device_type.some(d => d.value === l.device_type)"><option :value="l.device_type" selected x-text="'Other (' + l.device_type + ')'"></option></template></select></label>
                   <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Measured by</span>
                     <select class="form-control form-control-sm" x-model="l.measurement.kind"><template x-for="m in hems.choices.measurement" :key="m"><option :value="m" x-text="m" :selected="m === l.measurement.kind"></option></template></select></label>
                   <label class="flex flex-col gap-1" x-show="l.measurement.kind !== 'nameplate'"><span style="color:var(--text-faint)">HA entities (comma-separated)</span><input class="form-control form-control-sm" x-model="l._entities"></label>
@@ -1412,14 +1412,6 @@
     <div class="flex items-center justify-between text-sm">
       <span class="text-slate-500">Read only</span>
       <span class="chip" :class="cfg.control.read_only ? 'ok' : 'muted'" x-text="cfg.control.read_only ? 'on' : 'off'"></span>
-    </div>
-    <!-- Live-editable: allow_writes is a runtime kill-switch (applies immediately). -->
-    <div class="flex items-center justify-between text-sm">
-      <span class="text-slate-500">Allow writes</span>
-      <div class="flex items-center gap-2">
-        <span class="text-[10px] text-amber-400" x-show="form.allow_writes">writes enabled</span>
-        <button type="button" @click="form.allow_writes = !form.allow_writes; saveOne({allow_writes: form.allow_writes})" role="switch" :aria-checked="form.allow_writes" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="form.allow_writes ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="form.allow_writes ? 'translate-x-5' : 'translate-x-0.5'"></span></button>
-      </div>
     </div>
     <!-- Live-editable: log level applies immediately to the bridge logger. -->
     <div class="flex items-center justify-between text-sm">

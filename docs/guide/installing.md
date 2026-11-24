@@ -20,8 +20,8 @@ only**: no aGate, no MQTT broker, no cloud account. Each install started from sc
 ## Home Assistant add-on
 
 Taken on Home Assistant OS 18.3 (generic-aarch64) in a virtual machine. Home Assistant
-2026.10 calls add-ons **Apps**, so the menus read *Apps* and *App store* where INSTALL.md
-says *Add-ons* and *Add-on Store*. Full text:
+2026.10 calls add-ons **Apps**, so the menus read *Apps* and *App store*; earlier versions
+say *Add-ons* and *Add-on Store*. Full text:
 [INSTALL.md → Home Assistant add-on](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/INSTALL.md#1-home-assistant-add-on).
 
 1. Start from a Home Assistant OS install that has finished booting.
@@ -133,9 +133,9 @@ Taken on Debian 12 (arm64) with Docker Engine from Docker's own apt repository. 
 
     !!! note "Exploring with a mock instead of an aGate"
         With `FWH_HOST` set, the bridge registers that address as a real gateway, so the
-        setup wizard does not open on its own. `docker-compose.yml` also falls back to
-        `192.0.2.110` when `FWH_HOST` is empty. INSTALL.md does not yet describe a no-hardware
-        Docker run. To take the rest of these screenshots, the container was recreated
+        setup wizard does not open on its own. Leave `FWH_HOST` out and the setup wizard
+        opens: it finds your aGate, or adds a mock gateway
+        ([INSTALL.md → Docker](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/INSTALL.md#2-docker-standalone)). To take the rest of these screenshots, the container was recreated
         with a fresh `./data` and a `docker-compose.override.yml` that sets `FWH_HOST=`
         (empty) and `MQTT_ENABLED=false`.
 

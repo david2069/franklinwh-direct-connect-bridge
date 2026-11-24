@@ -24,11 +24,12 @@ library installs from PyPI like any other dependency.
 [![Add repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fdavid2069%2Ffranklinwh-direct-connect-bridge)
 
 Click the button above, or add the repository by hand:
-1. In Home Assistant: **Settings → Add-ons → Add-on Store**.
+1. In Home Assistant: **Settings → Apps → App store** (before Home Assistant 2026.10:
+   **Settings → Add-ons → Add-on Store**).
 2. **⋮** (top right) → **Repositories**, add
    `https://github.com/david2069/franklinwh-direct-connect-bridge`, then close.
 3. Find **FranklinWH Direct Connect Bridge** and click **Install**.
-4. On **Configuration**, set `fwh_host` to the aGate's IP. Set `mqtt_enabled: true` to
+4. On **Configuration**, set `fwh_host` to the aGate's IP. Leave `mqtt_enabled` on to
    publish the battery as Home Assistant entities. **Save.**
 5. **Start**, then **Open Web UI** (served over HA ingress). For a **Direct Connect** entry in
    the sidebar, turn on **Show in sidebar** on the same page: it was off after a fresh install
@@ -46,11 +47,13 @@ Click the button above, or add the repository by hand:
   costs) read it. `metrics_enabled: false` turns recording off.
 - A **watchdog** restarts the add-on if the web app stops serving. It probes `/api/live`,
   which does no gateway I/O, so an unreachable aGate never triggers a restart.
+  **Watchdog** is off after a fresh install: turn on **Watchdog** on the add-on's **Info**
+  page for it to act.
 - **A prebuilt image** is downloaded from GitHub's container registry
   (`ghcr.io/david2069/{arch}-franklinwh-direct-connect-bridge`); nothing is compiled on your
   machine. Supported: **aarch64** (Raspberry Pi 4/5, most ARM boards) and **amd64** (Intel/AMD).
-- **Control writes stay off** until you set `allow_writes`. You can flip it live from the
-  **Settings** tab.
+- **Mode and off-grid changes ask you to confirm first.** `allow_writes` no longer blocks
+  writes (since 0.5.2; see [Control](docs/guide/control.md#1-allow_writes-no-longer-blocks-writes)).
 
 > **Not verified by the maintainers on a live Supervisor.** The add-on build and the
 > Supervisor integration are exercised by tests against a faked Supervisor API, not on a real
@@ -202,7 +205,7 @@ bridge.
 
 ## Upgrading
 
-- **Add-on:** Home Assistant offers the update in the Add-on Store. Settings are preserved.
+- **Add-on:** Home Assistant offers the update in the App store (Add-on Store before 2026.10). Settings are preserved.
 - **Docker:** `git pull`, rebuild the image, `docker compose up -d --force-recreate`.
 - **Data** lives in `./data` (standalone) or the add-on's `/data`. The SQLite store migrates
   itself forward on start; there is no manual step.
@@ -293,8 +296,9 @@ are listed there but absent in HA, the broker the bridge publishes to is not the
 Assistant subscribes to — that is the usual cause, and the dashboard-card builder on that
 page names the prefix it used.
 
-**Mode or off-grid controls do nothing.** Writes are off unless `allow_writes` is set. The
-UI says so on the Settings tab rather than failing quietly.
+**Mode or off-grid controls do nothing.** They ask you to confirm first; a call without
+the confirmation is refused (HTTP 428). `allow_writes` no longer blocks writes. The reason
+for any other refusal is in the bridge's log.
 
 **"MODBUS :502 — Not probed".** Expected when the bridge's own Modbus client is switched off.
 It is a statement about this bridge, not about the gateway; the gateway's own SunSpec Modbus

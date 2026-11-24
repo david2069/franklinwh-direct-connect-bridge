@@ -182,7 +182,8 @@ History and schedules only run while the Bridge runs, so keep the computer awake
 6. **Optional**: install the **Mosquitto broker** App for Home Assistant entities. The
    Bridge picks it up on its own, even if you add it later.
 
-Home Assistant 2026.10 and later calls add-ons **Apps**; INSTALL.md still says *Add-ons*.
+Home Assistant 2026.10 and later calls add-ons **Apps**; earlier versions say *Add-ons* and
+*Add-on Store*.
 
 ## How this page was checked
 

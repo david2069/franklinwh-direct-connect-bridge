@@ -85,13 +85,11 @@ If the gateway cannot be read, the bridge falls back to the container's clock fo
   gateways, and clears the cached offsets; a real gateway's clock comes from the aGate.
   <!-- @b CLK-03 ;; src: site_time.py:110-113 ;; tested: tests/test_setup_timezone_api.py::test_setting_the_zone_drops_the_cached_offsets ;; write: no ;; b: Setting the site timezone drops the cached clock offsets ;; test: -->
 
-!!! warning "The pages and previews use the container's clock"
-    Only the tick uses the site clock. **Next:**, **● active**, the **Timeline** (its "now"
-    line and today's windows) and **Test against live** use the bridge container's clock, and
-    **History** shows times in the bridge host's zone. When the container's zone differs from
-    the site's, these are off by the difference. Issue #161. See
-    [docs/TIMEZONES.md](../../TIMEZONES.md).
-<!-- @b CLK-02 ;; src: app.py:3033-3038, app.py:3334, app.py:3386, static/js/scheduler_tab.js:81 ;; unclear ;; write: no ;; b: next_fire, active_now, the timeline and /test use the container's naive clock; History uses the host zone ;; test: unit (API): container and site zones apart; assert the timeline and next_fire follow the site -->
+**Next:**, **● active**, the **Timeline** (its "now" line and today's windows) and **Test
+against live** use each gateway's site clock, as the tick does; the page shows them in that
+gateway's zone and names it. **History** is in the bridge host's zone, named above it. See
+[docs/TIMEZONES.md](../../TIMEZONES.md).
+<!-- @b CLK-02 ;; src: app.py (_site_now), static/js/scheduler_tab.js (gwZone, nextFireLabel) ;; tested: tests/test_clocks_ui_50_161.py ;; write: no ;; b: next_fire, active_now, the timeline and /test use the gateway's site clock and are shown in its zone; History uses the host zone, labelled ;; test: -->
 
 **Not in this bridge:** `time.*` sensors (`time.hour`, `time.dow`, `time.utc_offset_h`,
 `time.tz_ok`) and a recorded-timezone check at start-up.

@@ -35,7 +35,8 @@ def test_choosing_a_battery_action_goes_back_to_one_gateway():
 
 
 def test_list_and_explain_say_all_gateways():
-    assert "gatewayLabel(s)" in HTML
+    assert "actionText(s)" in HTML                       # the list's action line (#578)
+    assert "this.gatewayLabel(s)" in JS[JS.index("actionText(s) {"):][:600]
     assert re.search(r"gatewayLabel\(s\) \{.*?'All gateways'", JS, re.S)
     assert "ON     ${this.gatewayLabel(s)}" in JS
 

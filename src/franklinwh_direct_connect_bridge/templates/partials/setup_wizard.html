@@ -245,7 +245,8 @@
             <div class="space-y-3">
               <p x-show="ha.addon" class="text-xs" style="color:var(--text-faint)">
                 Running inside Home Assistant: the connection to it is set up for you, and
-                so is the MQTT broker once the Mosquitto add-on is installed.</p>
+                so is the MQTT broker once the Mosquitto broker app is installed. These checks
+                run again every 5 seconds.</p>
 
               <div class="flex flex-wrap items-center gap-2">
                 <span>Publish this gateway's entities to Home Assistant?</span>
@@ -274,21 +275,27 @@
                 <template x-for="c in ha.checks" :key="c.id">
                   <div class="rounded px-2 py-1.5 text-xs" style="background:var(--surface-2)">
                     <div class="flex items-center gap-2">
-                      <!-- Three states, not two: unknown is not a failure. -->
-                      <svg x-show="c.ok === true" class="w-3.5 h-3.5 shrink-0" style="color:#34d399"
+                      <!-- Three states, not two: unknown is not a failure. Below the first
+                           failing step the others wait for it (#785). -->
+                      <svg x-show="c.ok === true && !c.waiting" class="w-3.5 h-3.5 shrink-0" style="color:#34d399"
                            fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-                      <svg x-show="c.ok === false" class="w-3.5 h-3.5 shrink-0" style="color:#fca5a5"
+                      <svg x-show="c.ok === false && !c.waiting" class="w-3.5 h-3.5 shrink-0" style="color:#fca5a5"
                            fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6L6 18"/></svg>
-                      <svg x-show="c.ok === null" class="w-3.5 h-3.5 shrink-0" style="color:var(--text-faint)"
+                      <svg x-show="c.ok === null || c.waiting" class="w-3.5 h-3.5 shrink-0" style="color:var(--text-faint)"
                            fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                         <circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 8v5"/></svg>
                       <span style="color:var(--text-primary)" x-text="c.title"></span>
-                      <span class="ml-auto" style="color:var(--text-faint)" x-text="c.state"></span>
+                      <span class="ml-auto" style="color:var(--text-faint)"
+                            x-text="c.waiting ? 'Waiting for the step above' : c.state"></span>
                     </div>
                     <div class="pl-5" style="color:var(--text-faint)" x-text="c.detail"></div>
-                    <div x-show="c.remedy" class="pl-5" style="color:#fbbf24" x-text="c.remedy"></div>
+                    <div x-show="c.remedy && !c.waiting" class="pl-5" style="color:#fbbf24" x-text="c.remedy"></div>
+                    <div x-show="c.install_url && !c.waiting" class="pl-5 pt-1">
+                      <button type="button" class="btn btn-primary btn-sm" data-testid="install-mosquitto"
+                              @click="openMosquitto(c)">Install Mosquitto</button>
+                    </div>
                   </div>
                 </template>
                 <p x-show="!ha.checks.length && !ha.busy" class="text-xs"
@@ -596,7 +603,7 @@
                     <template x-for="(l, i) in hems.form.loads" :key="i">
                       <div class="rounded p-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs" style="border:1px solid var(--border)">
                         <label class="flex flex-col gap-1">Name<input class="form-control form-control-sm" x-model="l.name"></label>
-                        <label class="flex flex-col gap-1">Device type<input class="form-control form-control-sm" x-model="l.device_type" placeholder="pool_pump, hot_water, ev_charger …"></label>
+                        <label class="flex flex-col gap-1">Device type<select class="form-control form-control-sm" x-model="l.device_type" data-testid="hems-device-type"><option value="" :selected="!l.device_type">Choose…</option><template x-for="d in hems.view.choices.device_type" :key="d.value"><option :value="d.value" x-text="d.label" :selected="d.value === l.device_type"></option></template><template x-if="l.device_type && !hems.view.choices.device_type.some(d => d.value === l.device_type)"><option :value="l.device_type" selected x-text="'Other (' + l.device_type + ')'"></option></template></select></label>
                         <label class="flex flex-col gap-1">Measured by
                           <select class="form-control form-control-sm" x-model="l.measurement.kind">
                             <template x-for="m in hems.view.choices.measurement" :key="m"><option :value="m" x-text="hemsLabel(m)" :selected="m === l.measurement.kind"></option></template></select></label>
