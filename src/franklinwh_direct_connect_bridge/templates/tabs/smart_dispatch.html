@@ -1,11 +1,11 @@
 <div x-data="smartDispatchTab()" class="space-y-4 max-w-5xl">
 
-  <!-- Smart Dispatch, plan only (#612 §7 phase 1, hems.dispatch): the plan and the action
+  <!-- Smart Dispatch (#612 §7, hems.dispatch): the plan and the action
        now, from prices, solar, home load and the battery. Nothing here controls the gateway. -->
   <div class="flex items-center justify-between gap-3 flex-wrap">
     <div>
       <h1 class="text-xl font-semibold" style="color:var(--text-primary)">Smart Dispatch <a :href="$store.app.guideUrl('hems/smart-dispatch/')" target="_blank" rel="noopener" class="text-xs underline normal-case tracking-normal font-normal ml-2" style="color:var(--text-secondary)" title="Opens the user guide at this topic">Guide</a></h1>
-      <p class="text-sm text-slate-500">A 24-hour battery plan for your target, from prices, solar, home load and SoC. Plan only: it doesn't control the battery.</p>
+      <p class="text-sm text-slate-500">A 24-hour battery plan for your target, from prices, solar, home load and SoC. The tab never controls the battery: Create schedules adds the plan to the Scheduler.</p>
     </div>
     <button class="btn btn-secondary btn-sm" data-testid="sd-reevaluate" @click="load(true)" :disabled="loading">
       <span x-text="loading ? '…' : 'Re-evaluate'"></span>
@@ -79,10 +79,11 @@
     </ul>
   </div>
 
-  <!-- The plan as draft schedules (#612 phase 2, step 1): shown only, nothing is created. -->
+  <!-- The plan as draft schedules (#612 phase 2): Create schedules adds them to the Scheduler as
+       one-off tasks tagged Smart Dispatch, replacing its own that haven't started. -->
   <div class="card overflow-x-auto" x-show="v && v.drafts" data-testid="sd-drafts">
     <div class="card-label">Draft schedules</div>
-    <p class="text-xs mb-2" style="color:var(--text-faint)">The plan as one-off Scheduler tasks. Preview only: they are not created.</p>
+    <p class="text-xs mb-2" style="color:var(--text-faint)">The plan as one-off Scheduler tasks. <b>Create schedules</b> adds them to the Scheduler; creating again replaces its own tasks that haven't started. Your own schedules are never changed.</p>
     <p class="text-sm" style="color:var(--text-secondary)" x-show="v && v.drafts && !v.drafts.tasks.length">Self-consumption all day: no tasks needed.</p>
     <table class="w-full text-xs" x-show="v && v.drafts && v.drafts.tasks.length">
       <thead><tr style="color:var(--text-faint)" class="text-left">
@@ -90,7 +91,7 @@
       <tbody>
         <template x-for="t in (v && v.drafts ? v.drafts.tasks : [])" :key="t.start">
           <tr class="border-t" style="border-color:var(--border)">
-            <td class="py-1 pr-2 whitespace-nowrap" x-text="hhmm(t.start) + '–' + hhmm(t.end)"></td>
+            <td class="py-1 pr-2 whitespace-nowrap" x-text="dayWord(t.start) + hhmm(t.start) + '–' + hhmm(t.end)"></td>
             <td class="pr-2" :class="actionClass(t.action)" x-text="t.label"></td>
             <td class="pr-2 whitespace-nowrap" x-text="forceText(t.spec.action)"></td>
             <td class="pr-2" style="color:var(--text-secondary)" x-text="t.reason"></td>
@@ -102,6 +103,19 @@
     <ul class="mt-2 text-xs list-disc pl-5 text-amber-300" x-show="v && v.drafts && v.drafts.notes.length">
       <template x-for="n in (v && v.drafts ? v.drafts.notes : [])"><li x-text="n"></li></template>
     </ul>
+    <div class="flex items-center gap-2 flex-wrap mt-3">
+      <button class="btn btn-primary btn-sm" data-testid="sd-create" @click="createSchedules()" :disabled="creating || !(v && v.drafts && v.drafts.tasks.length)">
+        <span x-text="creating ? '…' : 'Create schedules'"></span>
+      </button>
+      <span class="text-xs" style="color:var(--text-faint)" x-show="v && v.drafts && v.drafts.in_scheduler">
+        In the Scheduler: <span x-text="v && v.drafts && v.drafts.in_scheduler"></span> Smart Dispatch task(s)
+        <button class="underline ml-1" @click="$store.app.activeTab = 'scheduler'">Open</button>
+      </span>
+    </div>
+    <div class="mt-2 text-xs space-y-1" x-show="createMsg" data-testid="sd-create-msg">
+      <div :class="createMsg && createMsg.ok ? 'text-emerald-300' : 'text-amber-300'" x-text="createMsg && createMsg.text"></div>
+      <template x-for="k in (createMsg && createMsg.skipped || [])"><div class="text-amber-300" x-text="'Not created: ' + k.name + ' (' + k.why + ')'"></div></template>
+    </div>
   </div>
 
   <!-- The user's target and the utility's limits (hems's questions). -->

@@ -6,9 +6,10 @@ The **Smart Dispatch** tab plans the next 24 hours of your battery, half hour by
 from your utility plan's prices, the solar forecast, your home's load forecast and the
 battery's charge. It shows what it would do now and why.
 
-**It is a plan only.** It doesn't charge, discharge or change the mode: nothing is written to
-the aGate or the FranklinWH cloud, and no schedule is created. Acting on the plan comes in a
-later phase.
+**The tab itself never controls the battery.** Nothing it does writes to the aGate or the
+FranklinWH cloud. With **Create schedules** it adds the plan to the **Scheduler** as one-off
+tasks, and the Scheduler runs them (see [Draft schedules](#draft-schedules)). Running the plan
+on its own comes in a later phase.
 
 ## What it needs
 
@@ -66,8 +67,7 @@ tab is open, or straight away with **Re-evaluate**.
 ## Draft schedules
 
 Below the plan, **Draft schedules** shows the plan as one-off **Scheduler** tasks: each run
-of the same action is one task, split at midnight. **Preview only:** the tasks are not
-created.
+of the same action is one task, split at midnight.
 
 | Plan action | Task |
 |---|---|
@@ -86,6 +86,22 @@ A forced task ends at its window's end, as any force schedule does.
   FranklinWH app still charges and discharges.
 - **Force charge and discharge need the Modbus client:** shown when this bridge's Modbus
   client is off (**Control → Modbus client**).
+
+### Create schedules
+
+**Create schedules** adds the drafts to the Scheduler as one-off tasks named
+*Smart Dispatch: …*, enabled, on this gateway. It needs writes allowed (`allow_writes`) and an
+admin or user account (custom roles: the **Schedules** action).
+
+- **Creating again** replaces the Smart Dispatch tasks that haven't started yet. A task already
+  running is left to finish, and a draft over it is not created.
+- **Your own schedules are never changed.** A draft that clashes with one is not created; the
+  card says which and why.
+- **Edit a task in the Scheduler and it is yours:** Smart Dispatch no longer replaces it.
+- **Force unavailable:** with the Modbus client off, nothing is created.
+
+The card shows how many Smart Dispatch tasks are in the Scheduler, with **Open** to go there.
+The Scheduler's log records each task created or replaced.
 
 ## How it plans
 

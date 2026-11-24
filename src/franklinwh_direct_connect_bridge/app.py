@@ -4516,6 +4516,21 @@ def create_app() -> FastAPI:
             raise HTTPException(422, str(e))
         return smart_dispatch.view(st, get_settings(), gateway)
 
+    @app.post("/api/schedules/smart-dispatch")
+    def api_smart_dispatch_create(gateway: str = Depends(_gateway_q)):
+        """Smart Dispatch's drafts added to the Scheduler as one-off tagged tasks (#612 phase
+        2): its own tasks not yet started are replaced; the user's are never touched."""
+        from . import smart_dispatch
+        _guard_writes()
+        _gw_or_404(gateway)
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        try:
+            return smart_dispatch.create(st, get_settings(), gateway)
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+
     _install_modes: dict[str, tuple] = {}   # host -> (expires_monotonic, mode labels)
     _install_history: dict[str, tuple] = {}  # gateway id -> (expires_monotonic, history)
 

@@ -1,8 +1,9 @@
 /**
  * Smart Dispatch, plan only (#612 §7 phase 1, hems.dispatch). /api/smart-dispatch gives the
  * target and limit questions (pre-filled answers to confirm), what is missing, the 24-hour
- * plan, the action now and the plan as draft schedules (shown only). Check plans unsaved
- * answers; Save keeps them. Nothing here writes to the gateway or creates a schedule.
+ * plan, the action now and the plan as draft schedules. Check plans unsaved answers; Save
+ * keeps them; Create schedules adds the drafts to the Scheduler. Nothing here writes to the
+ * gateway: the Scheduler runs the tasks.
  */
 function smartDispatchTab() {
   return {
@@ -11,6 +12,8 @@ function smartDispatchTab() {
     loading: false,
     saving: false,
     msg: null,
+    creating: false,
+    createMsg: null,
     _chart: null,
 
     init() {
@@ -65,6 +68,23 @@ function smartDispatchTab() {
       } finally { this.saving = false; }
     },
 
+    async createSchedules() {
+      // Adds the drafts to the Scheduler (writes allowed only); the result stays in the card.
+      this.creating = true;
+      this.createMsg = null;
+      try {
+        const r = await fetch('api/schedules/smart-dispatch' + this.$store.app.gwQuery('?'), { method: 'POST' });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) { this.createMsg = { ok: false, text: j.detail || ('Failed (' + r.status + ')') }; return; }
+        const n = j.created.length, m = j.replaced.length;
+        this.createMsg = { ok: n > 0, skipped: j.skipped,
+          text: 'Created ' + n + ' task(s) in the Scheduler' + (m ? '; replaced ' + m + ' not yet started' : '') + '.' };
+        await this.load();
+      } catch (e) {
+        this.createMsg = { ok: false, text: e.message };
+      } finally { this.creating = false; }
+    },
+
     shown(q) {
       // Limited sizes only while their choice is "limited"; battery export only while export is allowed.
       if (q.key === 'grid_charge_kw') return this.form.grid_charge === 'limited';
@@ -79,6 +99,11 @@ function smartDispatchTab() {
     hhmm(ts) {
       return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hour12: false,
         timeZone: (this.v && this.v.timezone) || undefined }).format(new Date(ts * 1000));
+    },
+    dayWord(ts) {
+      // "Tomorrow " for a task that starts after today (site time); today's need no word.
+      const day = t => new Intl.DateTimeFormat('en-CA', { timeZone: (this.v && this.v.timezone) || undefined }).format(t);
+      return day(new Date(ts * 1000)) !== day(new Date()) ? 'Tomorrow ' : '';
     },
     actionLabel(a) {
       return { self: 'Self-consumption', charge: 'Charge from grid', discharge: 'Export from battery', hold: 'Hold' }[a] || a;
