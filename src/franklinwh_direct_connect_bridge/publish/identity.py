@@ -256,7 +256,8 @@ def decide(settings, store, *, nodes: Callable | None = None, session=None,
             log.warning("Home Assistant identity: keeping the old ids — %s", st["reason"])
         else:
             log.info("Home Assistant identity: fwh_dc%s",
-                     f" (moving {', '.join(st['from'])})" if st.get("from") else "")
+                     f" ({len(st['from'])} devices on the broker still have the old ids; each "
+                     "configured gateway moves as it starts)" if st.get("from") else "")
         return st["mode"]
 
 
@@ -290,18 +291,19 @@ def _remove(settings, topics: list[str], purge_mod) -> list[str]:
 
 # ── one gateway's move ────────────────────────────────────────────────────────────────
 def pending(node: str, settings, store=None, *,
-            retained: Callable | None = None) -> dict[str, bytes]:
-    """This node's old discovery configs still retained (empty: nothing to move). Only a
-    node found with old configs when the move was decided, and not moved cleanly since, is
-    read: a fresh install or a finished move costs nothing."""
+            retained: Callable | None = None) -> tuple[bool, dict[str, bytes]]:
+    """(this node still has to move, its old discovery configs still retained). Only a node
+    found with old configs when the move was decided, and not moved cleanly since, has to:
+    a fresh install or a finished move costs nothing. A move that left a problem runs again
+    even once its old configs are gone, to finish the Home Assistant side."""
     from . import purge
     st = load(store)
     done = (st.get("nodes") or {}).get(node) or {}
     if node not in (st.get("from") or []) or (done and not done.get("problems")):
-        return {}
+        return False, {}
     dp = settings.ha_discovery_prefix
     topics = [t for t in legacy_topics(node, settings) if t.startswith(f"{dp}/")]
-    return (retained or purge.retained)(settings, topics)
+    return True, (retained or purge.retained)(settings, topics)
 
 
 def _registry(ws) -> list[dict]:
@@ -358,6 +360,15 @@ def move_node(settings, store, node: str, new_keys: set[str], old: dict[str, byt
             return res
         reg = _wait(ws, lambda r: not any(str(e.get("unique_id") or "").startswith(old_pfx)
                                           for e in r), wait_s, sleep)
+        # Home Assistant keeps the row of an entity it hasn't loaded (one the user disabled)
+        # when its config goes: those are ours and their configs are gone, so remove them.
+        for e in reg:
+            if str(e.get("unique_id") or "").startswith(old_pfx):
+                try:
+                    ws.call({"type": "config/entity_registry/remove", "entity_id": e["entity_id"]})
+                except Exception as ex:                          # noqa: BLE001
+                    log.info("identity: could not remove %s: %s", e["entity_id"], ex)
+        reg = _registry(ws)
         still = {str(e["unique_id"])[len(old_pfx):] for e in reg
                  if str(e.get("unique_id") or "").startswith(old_pfx)}
         res["moved"] = len(old_rows) - len(still)
@@ -369,9 +380,11 @@ def move_node(settings, store, node: str, new_keys: set[str], old: dict[str, byt
                                    "entity_id": n["entity_id"]}
             if n["entity_id"] != o["entity_id"]:
                 upd["new_entity_id"] = o["entity_id"]
-            kept = [k for k in COPY if f.get(k) not in (None, [], "")]
-            for k in kept:
+            copy = [k for k in COPY if f.get(k) not in (None, [], "")]
+            for k in copy:
                 upd[k] = f[k]
+            # What the user set (aliases [None] is HA's default: the entity's own name).
+            kept = [k for k in copy if not (k == "aliases" and not [a for a in f[k] if a])]
             for k in ("hidden_by", "disabled_by"):
                 if f.get(k) == "user":
                     upd[k] = "user"
@@ -383,8 +396,10 @@ def move_node(settings, store, node: str, new_keys: set[str], old: dict[str, byt
                     if opts and dom not in ("mqtt", "cloud.alexa", "cloud.google_assistant"):
                         ws.call({"type": "config/entity_registry/update", "entity_id": eid,
                                  "options_domain": dom, "options": opts})
+                        if opts != (n.get("options") or {}).get(dom):
+                            kept.append(f"options.{dom}")
                 res["renamed"] += 1 if "new_entity_id" in upd else 0
-                res["kept"] += 1 if kept or f.get("options") else 0
+                res["kept"] += 1 if kept else 0
             except Exception as e:                               # noqa: BLE001
                 res["problems"].append(f"{o['entity_id']}: {e}")
         for key in sorted(still & want):

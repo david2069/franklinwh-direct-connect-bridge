@@ -156,13 +156,16 @@ def test_pending_reads_only_a_node_that_has_to_move(st):
     def retained(s, topics):
         seen.append(topics)
         return {topics[0]: b"x"}
-    assert identity.pending("n1", S, st, retained=retained) == {}          # fresh install
+    assert identity.pending("n1", S, st, retained=retained) == (False, {})  # fresh install
     st.set_config(identity.KEY, json.dumps({"mode": "fwh_dc", "from": ["n1"]}))
-    got = identity.pending("n1", S, st, retained=retained)
-    assert got and all(t.startswith("homeassistant/") and "/n1/" in t for t in seen[0])
+    move, got = identity.pending("n1", S, st, retained=retained)
+    assert move and got and all(t.startswith("homeassistant/") and "/n1/" in t for t in seen[0])
+    st.set_config(identity.KEY, json.dumps({"mode": "fwh_dc", "from": ["n1"],
+                                            "nodes": {"n1": {"problems": ["x"]}}}))
+    assert identity.pending("n1", S, st, retained=lambda s, t: {})[0]       # finish it
     st.set_config(identity.KEY, json.dumps({"mode": "fwh_dc", "from": ["n1"],
                                             "nodes": {"n1": {"problems": []}}}))
-    assert identity.pending("n1", S, st, retained=retained) == {}          # moved
+    assert identity.pending("n1", S, st, retained=retained) == (False, {})  # moved
 
 
 # ── one gateway's move ─────────────────────────────────────────────────────────────────
@@ -331,3 +334,28 @@ def test_the_mqtt_tab_shows_the_ids_and_the_move(st, monkeypatch):
     assert d["identity"]["mode"] == "fwh_dc" and d["identity"]["move"]["moved"] == 3
     html = (__import__("pathlib").Path(app_module.__file__).parent / "templates/tabs/mqtt.html").read_text()
     assert 'data-testid="mqtt-identity"' in html
+
+
+def test_an_old_entity_home_assistant_kept_is_removed_and_the_new_one_takes_its_id():
+    """Measured on the VM (G1): an entity the user disabled keeps its registry row when its
+    config goes, so the move removes it, renames the new one and disables it again."""
+    class Sticky(FakeHA):
+        def call(self, p):
+            if p["type"] == "config/entity_registry/remove":
+                self.rows = [r for r in self.rows if r["entity_id"] != p["entity_id"]]
+                return None
+            if p["type"] == "config/entity_registry/list" and self.removed:
+                return [r for r in self.rows if not (r["platform"] == "mqtt"
+                        and r["unique_id"] == "franklinwh_n1_soc")]       # grid_w stays
+            return super().call(p)
+    ha = Sticky()
+    res, _ = _move(ha)
+    assert res["problems"] == [] and res["moved"] == 2
+    grid = [u for u in ha.updates if u["entity_id"].endswith("grid_power_2")][0]
+    assert grid["new_entity_id"] == "sensor.franklinwh_direct_n1_grid_power"
+
+
+def test_kept_counts_only_what_the_user_set():
+    ha = FakeHA()
+    res, _ = _move(ha)
+    assert res["kept"] == 1                       # soc; grid_w has HA's defaults only

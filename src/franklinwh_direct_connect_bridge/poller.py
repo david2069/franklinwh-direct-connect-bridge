@@ -235,15 +235,15 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
         # The fwh_dc ids (#252): decided once per process; this gateway moves now if its
         # old discovery configs are still on the broker.
         _store = get_store(settings)
-        _old = {}
+        _move, _old = False, {}
         if _identity.decide(settings, _store) == _identity.CURRENT:
             try:
-                _old = _identity.pending(node, settings, _store)
+                _move, _old = _identity.pending(node, settings, _store)
             except Exception as e:  # noqa: BLE001 — then it moves on a later start
                 log.info("[%s] identity: old topics not readable (%s)", gw.id, e)
         device = entities.device_info(node, serial, fw, model=_model,
                                       is_mock=bool(getattr(gw, "is_mock", False)),
-                                      moving=bool(_old))
+                                      moving=_move)
         def _on_control(key: str, payload: str) -> None:
             """Inbound HA control. Runs on the MQTT network thread, so it is kept
             short and every outcome is logged — a control that silently fails is
@@ -269,7 +269,7 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                             groups=entities.enabled_from_store(get_store(settings)),
                             skip=ha_skip(settings, gw))
         pub.start()
-        if _old:
+        if _move:
             _session = _identity.ha_session(_store)
             if _session is not None:
                 try:
