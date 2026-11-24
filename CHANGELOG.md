@@ -62,6 +62,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   ([guide](docs/guide/hems/loads.md)).
 
 ### Fixed
+- **Network: the CloudFront PoPs map showed "Access blocked" tiles** (owner 2026-11-25).
+  OpenStreetMap's tile servers refuse requests without a Referer, and Home Assistant's pages
+  send none. The map now sends the page's origin and uses `tile.openstreetmap.org` as its
+  tile usage policy asks ([guide](docs/guide/tour.md)).
 - **Scheduler: a retry no longer waits for the Hold again** (#203). After a failed attempt the
   schedule is retried on the usual backoff while its conditions still hold, instead of
   serving the whole **Hold** a second time; the hold starts again only if the conditions stop
