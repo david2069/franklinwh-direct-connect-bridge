@@ -292,13 +292,16 @@ which one.
   the demand peak so far and this demand interval, the free export left, and any energy
   with no rate. The Summary's figures come from the same bill. With no site timezone set
   (Settings → Setup), the page says that time-of-use windows and the period's days are in UTC.
+  The period's days, **Close period now** and the plan in force are worked out on the
+  gateway's own clock (site time), the one schedules run on, not the bridge's.
 - **History.** **Bills**: each closed period's bill, worked out by hems when the period
   ends and kept, newest first. Each opens to its lines and formulas, with **Export bill**
   (an OUTUS `outus/bill` file) and **Export usage** (the period's 5-minute intervals as
   `outus/usage`). **Recalculate** works a bill out again with today's plan, for example after
   you correct a tariff: the new bill supersedes the old one, which is kept (tick **Show
   superseded** to see it). Below, **Recorded periods** are the running tracker's periods and
-  any imported from a Modbus Bridge, with **Export history CSV** and **Import from Modbus**.
+  any imported from a Modbus Bridge, with **Export history CSV** (its last column,
+  `gateway_id`, says which gateway each period was recorded for) and **Import from Modbus**.
 - **Plans & meters.** Sites, meters, retailers and tariffs (below). The same editors are
   also in **Settings → Billing & Utilities**. A tariff's **Export** also gives it as an OUTUS plan
   (`/api/tariffs/<id>/export?format=outus`).

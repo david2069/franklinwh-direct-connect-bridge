@@ -1082,6 +1082,20 @@ def _modbus_client_enabled(store) -> bool:
     return val != "0"
 
 
+def _site_today(store) -> _dt.date:
+    """Today at the site (its timezone from setup), not the container's (#360). The
+    container's date when no site timezone is set."""
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+    from . import setup_wizard
+    try:
+        name = setup_wizard.site_timezone(store) if store is not None else None
+        if name:
+            return _dt.datetime.now(ZoneInfo(name)).date()
+    except (ZoneInfoNotFoundError, ValueError):
+        pass
+    return _dt.date.today()
+
+
 def create_app() -> FastAPI:
     # Capture the bridge logger's INFO+ records into an in-memory ring buffer so the
     # Logs tab / GET /api/logs can serve them (idempotent — safe across create_app calls).
@@ -3085,7 +3099,7 @@ def create_app() -> FastAPI:
         st = _ha_store()
         if st is None:
             return {"meters": [], "meter": None, "steps": [], "complete": False}
-        return billing_page.page(st, meter, _dt.date.today())
+        return billing_page.page(st, meter, _site_today(st))
 
     @app.get("/api/billing/overview")
     def api_billing_overview(gateway: str = Depends(_gateway_q)):
@@ -3096,12 +3110,13 @@ def create_app() -> FastAPI:
         st = _ha_store()
         if st is None:
             return {"configured": False}
-        read = billing.billing_read(st, gateway)
-        fixed = billing.fixed_snapshot(st, gateway)
+        # The gateway's site clock, as the tick that accrues it (#360).
+        now = _site_now(gateway)
+        read = billing.billing_read(st, gateway, now=now)
+        fixed = billing.fixed_snapshot(st, gateway, now=now)
         if not read and not fixed:
             return {"configured": False}
         cfg = billing._billing_cfg(st, gateway)
-        now = _dt.datetime.now()
         days = period_days = None
         if cfg:
             ps = billing._period_start(now, int(cfg.get("cycle_day", 1) or 1))
@@ -3133,7 +3148,8 @@ def create_app() -> FastAPI:
         if fmt == "csv":
             cols = ["period_start", "period_end", "retailer", "network", "tariff_name",
                     "import_kwh", "import_cost", "export_credit", "demand_peak_kw",
-                    "demand_charge", "bonus_credit", "export_charge", "fixed_total", "net_total"]
+                    "demand_charge", "bonus_credit", "export_charge", "fixed_total", "net_total",
+                    "gateway_id"]          # a meter's history can hold several gateways' rows (#360)
 
             def _row(r):
                 return ",".join("" if r.get(c) is None else str(r.get(c)) for c in cols)
@@ -3152,7 +3168,7 @@ def create_app() -> FastAPI:
         st = _ha_store()
         if st is None:
             return {"ok": False, "reason": "metrics store is disabled"}
-        return billing.force_close_current(st, gateway)
+        return billing.force_close_current(st, gateway, now=_site_now(gateway))
 
     @app.post("/api/billing/import")
     def api_billing_import(req: BillingImportReq, gateway: str | None = Depends(_gateway_opt)):
@@ -3484,7 +3500,7 @@ def create_app() -> FastAPI:
         """
         _guard_writes()
         host = _gw_host(gateway)
-        today = _dt.datetime.now().strftime("%Y-%m-%d")
+        today = _site_now(gateway).strftime("%Y-%m-%d")      # the aGate's day, not ours
         try:
             return client.set_circuit_schedule(
                 get_settings(), circuit,

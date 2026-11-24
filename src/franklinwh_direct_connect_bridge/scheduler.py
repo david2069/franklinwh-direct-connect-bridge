@@ -2971,7 +2971,7 @@ def build_snapshot(settings, store, state: dict, *, host: str | None, gateway_id
         snapshot.update(billing.billing_tick(store, gateway_id, snapshot.get("grid.power_w"),
                                              now, dynamic_rate=_dyn))   # demand/energy/bonus/charge
     else:
-        snapshot.update(billing.billing_read(store, gateway_id))    # read only: never accrues
+        snapshot.update(billing.billing_read(store, gateway_id, now))   # read only: never accrues
     snapshot.update(billing.fixed_snapshot(store, gateway_id, now))   # fixed.* (pure accrual)
     try:
         from . import system_setup
