@@ -2,7 +2,7 @@
  * FranklinWH Local Bridge — Settings tab.
  * Fetches the effective (masked) config from GET /api/settings and displays it. Most
  * settings come from env / add-on options and take effect on restart (read-only here).
- * A small whitelist — allow_writes / log_level / ha_notify — is live-editable and PUT
+ * A small whitelist — log_level / ha_notify — is live-editable and PUT
  * back to /api/settings, where it applies immediately and persists to DATA_DIR (P7).
  */
 // ``embedded``: the same editors on the Billing & Utilities page's Plans & meters (#613),
@@ -23,7 +23,7 @@ function settingsTab(opts = {}) {
     // read — which is NOT the same as "no solar", so the hint simply does not appear.
     derivedPvKwp: null,
 
-    form: { allow_writes: false, log_level: 'info', ha_notify: true, ha_url: '', ha_token: '',
+    form: { log_level: 'info', ha_notify: true, ha_url: '', ha_token: '',
             fwh_cloud_email: '', fwh_cloud_password: '', fwh_cloud_gateway: '',
             pv_latitude: '', pv_longitude: '', pv_kwp: '', pv_tilt: '', pv_azimuth: '',
             nem_region: '', tariff_price_entity: '', tariff_feedin_entity: '',
@@ -1574,7 +1574,6 @@ function settingsTab(opts = {}) {
 
     // Copy the current effective values into the editable form.
     syncForm() {
-      this.form.allow_writes = !!(this.cfg.control && this.cfg.control.allow_writes);
       this.form.log_level = (this.cfg.control && this.cfg.control.log_level) || 'info';
       this.form.ha_notify = !!(this.cfg.notifications && this.cfg.notifications.ha_notify);
       this.form.ha_url = (this.cfg.notifications && this.cfg.notifications.ha_url) || '';
@@ -1683,7 +1682,6 @@ function settingsTab(opts = {}) {
       this.saving = true;
       try {
         const body = {
-          allow_writes: this.form.allow_writes,
           log_level: this.form.log_level,
           ha_notify: this.form.ha_notify,
           ha_url: this.form.ha_url,

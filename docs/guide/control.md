@@ -69,8 +69,6 @@ changed.
 
 ## The three gates
 
-![Settings → Automation → Control: Read only, Allow writes, Log level](../images/control/02-allow-writes.png)
-
 These are separate mechanisms with separate failure messages. Knowing which one stopped
 you saves a lot of guessing.
 
@@ -80,9 +78,9 @@ you saves a lot of guessing.
 
 **As of 0.5.2, `allow_writes` does not stop anything.** The global write gate was dropped:
 the bridge always reports writes as enabled, and reversible writes (a force command, a
-smart circuit, a schedule) go through whatever the setting says. The **Allow writes**
-switch under **Settings → Automation → Control** is still there, and still saves, but
-has no effect. The physically consequential actions are guarded by `confirm` instead
+smart circuit, a schedule) go through whatever the setting says. The switch that
+was under **Settings → Automation → Control** was removed; the `allow_writes` option is still
+accepted, so older setups keep working, but has no effect. The physically consequential actions are guarded by `confirm` instead
 (below).
 
 So there is no read-only mode today. If you need the bridge not to write, do not give it
@@ -216,10 +214,8 @@ that block can stop export or discharge.
 
 ## There is no read-only mode today
 
-![Settings → Automation → Control: the Allow writes switch, which no longer blocks writes](../images/control/02-allow-writes.png)
-
-The **Allow writes** switch suggests a read-only mode. As of 0.5.2 there is none: the
-switch does nothing (see [the first gate](#1-allow_writes-no-longer-blocks-writes)).
+As of 0.5.2 there is no read-only mode: `allow_writes` does nothing (see
+[the first gate](#1-allow_writes-no-longer-blocks-writes)).
 
 What decides who can change the gateway is **Security** (from 0.5.32): with it on, each
 account's role does, and a **viewer** account, or a read-only Home Assistant user, can only

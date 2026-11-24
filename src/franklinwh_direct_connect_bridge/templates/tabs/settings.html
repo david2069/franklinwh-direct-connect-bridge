@@ -1413,14 +1413,6 @@
       <span class="text-slate-500">Read only</span>
       <span class="chip" :class="cfg.control.read_only ? 'ok' : 'muted'" x-text="cfg.control.read_only ? 'on' : 'off'"></span>
     </div>
-    <!-- Live-editable: allow_writes is a runtime kill-switch (applies immediately). -->
-    <div class="flex items-center justify-between text-sm">
-      <span class="text-slate-500">Allow writes</span>
-      <div class="flex items-center gap-2">
-        <span class="text-[10px] text-amber-400" x-show="form.allow_writes">writes enabled</span>
-        <button type="button" @click="form.allow_writes = !form.allow_writes; saveOne({allow_writes: form.allow_writes})" role="switch" :aria-checked="form.allow_writes" class="relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0" :class="form.allow_writes ? 'bg-emerald-500' : 'bg-slate-600'"><span class="inline-block h-5 w-5 rounded-full bg-white transition" :class="form.allow_writes ? 'translate-x-5' : 'translate-x-0.5'"></span></button>
-      </div>
-    </div>
     <!-- Live-editable: log level applies immediately to the bridge logger. -->
     <div class="flex items-center justify-between text-sm">
       <span class="text-slate-500">Log level</span>
