@@ -28,6 +28,11 @@ document.addEventListener('alpine:init', () => {
     advRepeat: false,
     exitTestResult: null,
     listFilter: 'all',   // all | enabled | disabled
+    // Cards | Compact | Table (owner 2026-11-24), this browser only.
+    listView: (() => {
+      try { const v = localStorage.getItem('fwh-sched-view'); return ['cards', 'compact', 'table'].includes(v) ? v : 'cards'; }
+      catch { return 'cards'; }
+    })(),
     sourceFilter: 'all', // all | user | smart_dispatch (the schedule's origin tag)
     logSource: '',       // '' | user | smart_dispatch
     trigger_types: [], cron_available: false, presetSel: '',
@@ -724,6 +729,20 @@ document.addEventListener('alpine:init', () => {
     },
 
     // ─── list: status filter, active-now, next-fire, per-entry stop ───
+    setListView(v) {
+      this.listView = v;
+      try { localStorage.setItem('fwh-sched-view', v); } catch { /* this browser only */ }
+    },
+    /** The action line: battery action (or none), gateway, HA actions, who is asked. */
+    actionText(s) {
+      const k = s.action && s.action.kind;
+      const parts = [k ? ((this.actions[k] || {}).label || k) : 'No gateway action'];
+      if (this.gateways.length > 1 || s.gateway_scope === 'all') parts.push(this.gatewayLabel(s));
+      if ((s.ha_actions || []).length) parts.push(s.ha_actions.length + ' HA action(s)');
+      const ask = this.askOf(s);
+      if (ask) parts.push('asks ' + (this.askedNames(ask) || 'no Companion app') + ' first');
+      return parts.join(' · ');
+    },
     get hasSmartDispatch() { return (this.schedules || []).some(s => s.origin === 'smart_dispatch'); },
     get filteredSchedules() {
       const src = this.sourceFilter;

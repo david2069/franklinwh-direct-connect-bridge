@@ -89,50 +89,62 @@
     </div>
     <span x-show="hiddenCount" class="text-[11px]" style="color:var(--text-faint)"
           x-text="hiddenCount + ' hidden'"></span>
+    <div class="inline-flex rounded-lg border overflow-hidden" style="border-color:var(--border)" data-testid="sched-view-toggle">
+      <template x-for="f in [['cards','Cards'],['compact','Compact'],['table','Table']]" :key="f[0]">
+        <button class="px-2.5 py-1 text-[11px]"
+                :class="listView === f[0] ? 'bg-emerald-500 text-white' : ''"
+                :style="listView === f[0] ? '' : 'color:var(--text-secondary)'"
+                @click="setListView(f[0])" x-text="f[1]"></button>
+      </template>
+    </div>
   </div>
 
-  <div x-show="view === 'schedules'" class="grid gap-3"
-       style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">
-    <template x-for="s in filteredSchedules" :key="s.id">
-      <div class="card p-4 space-y-2" :class="(s.enabled ? '' : 'opacity-60 ') + (s.active_now ? 'ring-1 ring-emerald-400/50' : '')">
-        <div class="flex items-start justify-between gap-2">
-          <div class="min-w-0">
-            <div class="font-semibold truncate" style="color:var(--text-primary)" x-text="s.name"></div>
-            <div class="text-xs" style="color:var(--text-secondary)">
-              <span x-text="s.fire_at"></span>
-              <span x-show="s.duration_min" x-text="` for ${s.duration_min} min`"></span>
-              · <span x-text="recurrenceLabel(s)"></span>
-              · <span x-text="(s.conditions || []).length"></span> condition(s)
+  {# Owner 2026-11-24: each schedule shows only Explain, Edit and ⋮ on one line; the rest
+     is in the menu. Cards, Compact or Table, remembered by the browser. #}
+  {% macro sched_actions(extra_class='') %}
+          <div class="sched-actions flex items-center gap-2 {{ extra_class }}">
+            <button class="btn btn-secondary btn-sm" @click="toggleExplain(s)"
+                    x-text="explainId === s.id ? 'Hide explanation' : 'Explain'"></button>
+            <button class="btn btn-secondary btn-sm" :disabled="!canWrite" @click="editEntry(s)">Edit</button>
+            <div class="relative ml-auto" x-data="{ menu: false }" @click.outside="menu = false"
+                 @keydown.escape.window="menu = false" data-testid="sched-menu">
+              <button class="btn btn-secondary btn-sm" @click="menu = !menu"
+                      title="More actions" aria-haspopup="true" :aria-expanded="menu">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+              </button>
+              <div x-show="menu" x-cloak x-transition.opacity.duration.100ms
+                   class="absolute right-0 mt-1 z-30 rounded-lg border shadow-xl py-1 min-w-[11rem] text-left"
+                   style="background:var(--surface-0,#0f172a);border-color:var(--border)">
+                <button x-show="s.active_now" class="w-full text-left px-3 py-1.5 text-sm hover:bg-rose-500/10 text-rose-400"
+                        :disabled="!canWrite" @click="stopEntry(s); menu = false"
+                        title="Release this schedule's running dispatch">Stop</button>
+                <button class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5"
+                        style="color:var(--text-primary)" :disabled="!canWrite"
+                        @click="toggle(s); menu = false" x-text="s.enabled ? 'Turn off' : 'Turn on'"></button>
+                <button class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5"
+                        style="color:var(--text-primary)" :disabled="busy" @click="verify(s); menu = false">Test against live</button>
+                <button class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5"
+                        style="color:var(--text-primary)" :disabled="!canWrite || busy" @click="runNow(s); menu = false">Run now</button>
+                <button class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5"
+                        style="color:var(--text-primary)" :disabled="!canWrite" @click="duplicate(s); menu = false">Duplicate</button>
+                <div class="my-1 border-t" style="border-color:var(--border)"></div>
+                <button class="w-full text-left px-3 py-1.5 text-sm text-rose-400 hover:bg-rose-500/10"
+                        :disabled="!canWrite" @click="remove(s); menu = false">Delete</button>
+              </div>
             </div>
-            <div class="text-[11px] mt-0.5" style="color:var(--text-faint)">
-              Next: <span x-text="nextFireLabel(s)"></span></div>
-          </div>
-          <span x-show="s.origin === 'smart_dispatch'" class="chip whitespace-nowrap shrink-0" data-testid="sched-source-badge"
-                style="font-size:.6rem;background:#a78bfa22;color:#a78bfa"
-                title="Created by Smart Dispatch. Edit it and it is yours.">Smart Dispatch</span>
-          <span x-show="s.active_now" class="chip" style="font-size:.6rem;background:#34d39922;color:#34d399"
-                title="Running now">● active</span>
-          <span class="chip" :class="s.enabled ? 'ok' : 'muted'" style="font-size:.6rem"
-                x-text="s.enabled ? 'On' : 'Off'"></span>
-        </div>
-
-        <div class="text-xs" style="color:var(--text-secondary)">
-          <span x-show="s.action && s.action.kind"
-                x-text="(actions[s.action.kind] || {}).label || s.action.kind"></span>
-          <span x-show="!(s.action && s.action.kind)">No gateway action</span>
-          <span x-show="gateways.length > 1 || s.gateway_scope === 'all'"
-                x-text="' · ' + gatewayLabel(s)"></span>
-          <span x-show="(s.ha_actions || []).length"
-                x-text="` · ${s.ha_actions.length} HA action(s)`"></span>
-          <span x-show="askOf(s)"
-                x-text="` · asks ${askedNames(askOf(s)) || 'no Companion app'} first`"></span>
-        </div>
-
-        <!-- Explain (min / medium / full) — plain-language "what will this do?" -->
-        <div>
-          <button class="btn btn-secondary btn-sm" style="padding:3px 10px;font-size:.72rem"
-                  @click="toggleExplain(s)"
-                  x-text="explainId === s.id ? 'Hide explanation' : 'Explain'"></button>
+          </div><!-- /sched-actions -->
+  {% endmacro %}
+  {% macro sched_chips() %}
+            <span x-show="s.origin === 'smart_dispatch'" class="chip whitespace-nowrap shrink-0" data-testid="sched-source-badge"
+                  style="font-size:.6rem;background:#a78bfa22;color:#a78bfa"
+                  title="Created by Smart Dispatch. Edit it and it is yours.">Smart Dispatch</span>
+            <span x-show="s.active_now" class="chip whitespace-nowrap shrink-0" style="font-size:.6rem;background:#34d39922;color:#34d399"
+                  title="Running now">● active</span>
+            <span class="chip shrink-0" :class="s.enabled ? 'ok' : 'muted'" style="font-size:.6rem"
+                  x-text="s.enabled ? 'On' : 'Off'"></span>
+  {% endmacro %}
+  {% macro sched_panels() %}
           <template x-if="explainId === s.id">
             <div class="mt-1.5 rounded-lg p-2.5" style="background:var(--surface-2);border:1px solid var(--border)">
               <div class="flex gap-1 mb-2">
@@ -146,13 +158,6 @@
                    x-text="explain(s, explainLevel)"></div>
             </div>
           </template>
-        </div>
-
-        <div x-show="s.last_result" class="text-xs rounded px-2 py-1"
-             style="background:var(--surface-2);color:var(--text-secondary)">
-          <span x-text="s.last_fired_day"></span>: <span x-text="s.last_result"></span>
-        </div>
-
         <template x-if="testResult && testResult.id === s.id">
           <div class="text-xs rounded px-2 py-1.5 space-y-1"
                :style="testResult.would_fire ? 'background:rgba(52,211,153,.12);color:#34d399'
@@ -173,39 +178,79 @@
             </template>
           </div>
         </template>
+  {% endmacro %}
 
-        <div class="flex items-center gap-2 pt-1">
-          <button class="btn btn-secondary btn-sm" :disabled="!canWrite" @click="editEntry(s)">Edit</button>
-          <button class="btn btn-secondary btn-sm" :disabled="!canWrite"
-                  @click="toggle(s)" x-text="s.enabled ? 'Turn off' : 'Turn on'"></button>
-          <button x-show="s.active_now" class="btn btn-sm" :disabled="!canWrite"
-                  style="background:#fb718522;color:#fb7185" @click="stopEntry(s)"
-                  title="Release this schedule's running dispatch">Stop</button>
-          <!-- less-frequent actions tucked into a ⋮ menu -->
-          <div class="relative ml-auto" x-data="{ menu: false }" @click.outside="menu = false"
-               @keydown.escape.window="menu = false">
-            <button class="btn btn-secondary btn-sm" @click="menu = !menu"
-                    title="More actions" aria-haspopup="true" :aria-expanded="menu">
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                <circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
-            </button>
-            <div x-show="menu" x-cloak x-transition.opacity.duration.100ms
-                 class="absolute right-0 mt-1 z-30 rounded-lg border shadow-xl py-1 min-w-[10rem]"
-                 style="background:var(--surface-0,#0f172a);border-color:var(--border)">
-              <button class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5"
-                      style="color:var(--text-primary)" :disabled="busy" @click="verify(s); menu = false">Test against live</button>
-              <button class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5"
-                      style="color:var(--text-primary)" :disabled="!canWrite || busy" @click="runNow(s); menu = false">Run now</button>
-              <button class="w-full text-left px-3 py-1.5 text-sm hover:bg-white/5"
-                      style="color:var(--text-primary)" :disabled="!canWrite" @click="duplicate(s); menu = false">Duplicate</button>
-              <div class="my-1 border-t" style="border-color:var(--border)"></div>
-              <button class="w-full text-left px-3 py-1.5 text-sm text-rose-400 hover:bg-rose-500/10"
-                      :disabled="!canWrite" @click="remove(s); menu = false">Delete</button>
-            </div>
-          </div>
+  <!-- Cards -->
+  <div x-show="view === 'schedules' && listView === 'cards'" class="grid gap-3" data-testid="sched-cards"
+       style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">
+    <template x-for="s in filteredSchedules" :key="s.id">
+      <div class="card p-3 space-y-1.5" :class="s.active_now ? 'ring-1 ring-emerald-400/50' : ''">
+        <div class="space-y-1.5" :class="s.enabled ? '' : 'opacity-60'">
+        <div class="flex items-start justify-between gap-2">
+          <div class="font-semibold truncate min-w-0" style="color:var(--text-primary)" :title="s.name" x-text="s.name"></div>
+          <div class="flex items-center gap-1">{{ sched_chips() }}</div>
         </div>
+        <div class="text-xs" style="color:var(--text-secondary)">
+          <span x-text="s.fire_at"></span><span x-show="s.duration_min" x-text="` for ${s.duration_min} min`"></span>
+          · <span x-text="recurrenceLabel(s)"></span>
+          · <span x-text="actionText(s)"></span>
+        </div>
+        <div class="text-[11px] truncate" style="color:var(--text-faint)" :title="s.last_result ? s.last_fired_day + ': ' + s.last_result : ''">
+          Next: <span x-text="nextFireLabel(s)"></span><span x-show="s.last_result" x-text="' · last: ' + s.last_result"></span>
+        </div>
+        </div>
+        {{ sched_actions('pt-1') }}
+        {{ sched_panels() }}
       </div>
     </template>
+  </div>
+
+  <!-- Compact: one line per schedule -->
+  <div x-show="view === 'schedules' && listView === 'compact'" class="card divide-y" style="--tw-divide-opacity:1" data-testid="sched-compact">
+    <template x-for="s in filteredSchedules" :key="s.id">
+      <div class="px-3 py-2" style="border-color:var(--border)">
+        <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          <div class="min-w-0 flex-1 basis-full sm:basis-0" :class="s.enabled ? '' : 'opacity-60'">
+            <div class="text-sm font-medium truncate" style="color:var(--text-primary)" :title="s.name" x-text="s.name"></div>
+            <div class="text-[11px] truncate" style="color:var(--text-faint)">
+              <span x-text="s.fire_at"></span><span x-show="s.duration_min" x-text="` · ${s.duration_min} min`"></span>
+              · <span x-text="actionText(s)"></span> · Next: <span x-text="nextFireLabel(s)"></span>
+            </div>
+          </div>
+          <div class="flex items-center gap-1" :class="s.enabled ? '' : 'opacity-60'">{{ sched_chips() }}</div>
+          {{ sched_actions('shrink-0 ml-auto') }}
+        </div>
+        {{ sched_panels() }}
+      </div>
+    </template>
+  </div>
+
+  <!-- Table -->
+  <div x-show="view === 'schedules' && listView === 'table'" class="card" data-testid="sched-table">
+    <table class="w-full text-xs">
+      <thead><tr class="text-left" style="color:var(--text-faint)">
+        <th class="px-3 py-2">Name</th><th class="pr-2 hidden sm:table-cell">When</th>
+        <th class="pr-2 hidden md:table-cell">Action</th><th class="pr-2 hidden md:table-cell">Next</th>
+        <th class="pr-2">Status</th><th class="pr-3"></th></tr></thead>
+      <tbody>
+        <template x-for="s in filteredSchedules" :key="s.id">
+          <tr class="border-t align-top" style="border-color:var(--border)">
+            <td class="px-3 py-2" :class="s.enabled ? '' : 'opacity-60'">
+              <div class="font-medium" style="color:var(--text-primary)" x-text="s.name"></div>
+              {{ sched_panels() }}
+            </td>
+            <td :class="s.enabled ? '' : 'opacity-60'" class="pr-2 py-2 hidden sm:table-cell whitespace-nowrap" style="color:var(--text-secondary)">
+              <span x-text="s.fire_at"></span><span x-show="s.duration_min" x-text="` · ${s.duration_min} min`"></span>
+              <div style="color:var(--text-faint)" x-text="recurrenceLabel(s)"></div>
+            </td>
+            <td :class="s.enabled ? '' : 'opacity-60'" class="pr-2 py-2 hidden md:table-cell" style="color:var(--text-secondary)" x-text="actionText(s)"></td>
+            <td :class="s.enabled ? '' : 'opacity-60'" class="pr-2 py-2 hidden md:table-cell whitespace-nowrap" style="color:var(--text-faint)" x-text="nextFireLabel(s)"></td>
+            <td :class="s.enabled ? '' : 'opacity-60'" class="pr-2 py-2"><div class="flex flex-wrap gap-1">{{ sched_chips() }}</div></td>
+            <td class="pr-3 py-2">{{ sched_actions('justify-end') }}</td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
   </div>
 
   <!-- Timeline (#579): a lane per gateway, as the Modbus Bridge: its SoC line, work-mode
