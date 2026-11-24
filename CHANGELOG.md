@@ -59,6 +59,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
   ([guide](docs/guide/hems/loads.md)).
 
 ### Fixed
+- **Scheduler: a retry no longer waits for the Hold again** (#203). After a failed attempt the
+  schedule is retried on the usual backoff while its conditions still hold, instead of
+  serving the whole **Hold** a second time; the hold starts again only if the conditions stop
+  holding ([guide](docs/guide/scheduler/conditions.md#hold-for-dwell)).
 - **No screen says "Enable writes (ALLOW_WRITES)" any more** (#87). `allow_writes` stopped
   blocking writes in 0.5.2, so those messages could only show while a page was still loading;
   they now say so. The support bundle (`/api/support-info`) reports writes as the bridge applies

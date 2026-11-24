@@ -3147,7 +3147,8 @@ def tick(*, settings, client, store, state: dict, host: str | None = None,
                 left = hold - int((now - started).total_seconds())
                 mon[entry["id"]] = ("holding", f"{left}s left of the {hold}s hold")
                 continue
-            _dwell_since.pop(dkey, None)
+            # Served: kept, so a retry after a failed attempt doesn't wait the hold again
+            # (#203). It resets above once the conditions stop holding or the run is done.
         # Ready to fire — but hold for priority resolution (a higher-priority entry on
         # the same target may pre-empt this one within this same tick).
         mon[entry["id"]] = ("ready", "conditions met")

@@ -187,9 +187,10 @@ on one while it fails on another (see [Targets](targets.md)).
   firing" — each time the timer starts.
 - The timer lives in memory, per gateway and schedule. After a restart it starts again, so it
   never fires early.
-- **A retry after a failed action waits for the whole hold again**, and logs *waiting* again:
-  the timer is cleared when the schedule fires, and starts afresh on the retry.
-  <!-- @b CND-27 ;; src: scheduler.py:2065-2073, scheduler.py:2459-2466 ;; untested ;; write: yes ;; b: the dwell timer is popped when the entry becomes ready; a failed run is not marked fired, so the next due tick starts a new hold (differs from the Modbus Bridge, which skips the hold on a retry) ;; test: unit: hold 60, failing action; assert the second attempt is at least 60 s after it is due again -->
+- **A retry after a failed action doesn't wait for the hold again** (#203). Once the hold
+  has been served, a failed attempt is retried on the usual backoff while the schedule stays
+  due; the timer starts again only if it stops being due.
+  <!-- @b CND-27 ;; src: scheduler.py (tick, _dwell_since) ;; tested: tests/test_entry_hold_retry_203.py ;; write: yes ;; b: the dwell timer is kept once served, so a retry fires on the backoff without a second hold; it is reset when the entry stops being due (as the Modbus Bridge, which skips the hold on a retry) -->
 
 Use it to ride through a brief price spike or a passing cloud. It applies to every action,
 including notify-only schedules.
