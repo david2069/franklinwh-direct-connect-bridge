@@ -322,6 +322,8 @@ def view(store, settings, gateway_id: str, now: float | None = None, *,
     # The tariff under each step, for the tab's shading and bands (owner 2026-11-25).
     for s, p in zip(result["steps"], steps):
         s["band"], s["demand_rate"] = p.get("band"), float(p.get("demand_rate") or 0.0)
+        s["solar_kw"], s["load_kw"] = float(p.get("solar_kw") or 0.0), float(p.get("load_kw") or 0.0)
+    result["energy"] = _energy(result["steps"])
     planned = {"result": result, "planned_at": int(now), "currency": plan.get("currency")}
     if answers is None:
         _cache[gateway_id] = (time.monotonic(), key, planned)
@@ -517,6 +519,22 @@ def _log(store, sid: str, name: str, status: str, result: str, gateway_id: str) 
         store.log_schedule_event(sid, name, status, result, gateway_id=gateway_id)
     except Exception:                                            # noqa: BLE001
         pass
+
+
+def _energy(steps: list[dict]) -> dict:
+    """The plan's 24 hours in kWh (owner 2026-11-25): sources (solar, grid import, battery
+    discharge), loads (home, battery charge) and exports (to the grid, from the battery,
+    and solar curtailed)."""
+    def total(f):
+        return round(sum(f(s) * (s.get("duration_s") or STEP_S) / 3600.0 for s in steps), 2)
+    return {"solar_kwh": total(lambda s: s.get("solar_kw") or 0.0),
+            "import_kwh": round(sum(s.get("grid_import_kwh") or 0.0 for s in steps), 2),
+            "battery_discharge_kwh": total(lambda s: max(-(s.get("battery_kw") or 0.0), 0.0)),
+            "load_kwh": total(lambda s: s.get("load_kw") or 0.0),
+            "battery_charge_kwh": total(lambda s: max(s.get("battery_kw") or 0.0, 0.0)),
+            "export_kwh": round(sum(s.get("grid_export_kwh") or 0.0 for s in steps), 2),
+            "battery_export_kwh": total(lambda s: s.get("battery_export_kw") or 0.0),
+            "curtailed_kwh": round(sum(s.get("curtailed_kwh") or 0.0 for s in steps), 2)}
 
 
 def actuals(store, gateway_id: str, now: float | None = None) -> dict:

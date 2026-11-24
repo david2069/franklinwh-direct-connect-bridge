@@ -50,6 +50,9 @@ your plan and site are asked.
 - **Planned cost** against **self-consumption alone** (what the aGate does without a plan),
   the **saving** (counting the value of the energy left in the battery at the end), and the
   **value of 10 % charge**.
+- **The plan's next 24 hours, in kWh** (owner 2026-11-25): the sources (solar, grid import,
+  battery discharge), the loads (home, battery charge) and the exports (to the grid, how much
+  of it from the battery, and solar curtailed), from the forecasts and the plan.
 - **Next 24 hours:** planned SoC, battery kW, and import and export prices.
   - **Tariff shading** (owner 2026-11-25): the chart shades your tariff's windows, each with
     its own filter, shown only when your plan has it: **TOU bands** (off-peak green, shoulder
@@ -64,7 +67,7 @@ your plan and site are asked.
     own history: actual SoC and battery kW (+ charging) on the chart, and earlier half hours
     above the plan in the table, with **Actual kW** and **Actual SoC** columns. The half hour
     under way shows both.
-- **Each half hour:** the action, the tariff band (and *demand* inside a demand-charge
+- **Each half hour** (folded; open it with the arrow): the action, the tariff band (and *demand* inside a demand-charge
   window), the prices and why. The actions are relative to self-consumption:
 
 | Action | Means |

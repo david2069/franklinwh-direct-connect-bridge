@@ -19,6 +19,7 @@ function smartDispatchTab() {
     _chart: null,
     // Owner 2026-11-25: Actuals from the site's midnight to now beside the plan; the tariff
     // shaded on the chart (each kind a filter) or as bands (the Tariff view). Remembered here.
+    stepsOpen: false,        // the half-hour table, folded by default (owner 2026-11-25)
     showActuals: (() => { try { return localStorage.getItem('fwh-sd-actuals') === '1'; } catch (e) { return false; } })(),
     actuals: null,
     sdView: (() => { try { return localStorage.getItem('fwh-sd-view') || 'chart'; } catch (e) { return 'chart'; } })(),
@@ -79,8 +80,13 @@ function smartDispatchTab() {
 
     async createSchedules() {
       // Adds the drafts to the Scheduler (writes allowed only); the result stays in the card.
-      this.creating = true;
       this.createMsg = null;
+      // #831: a click always answers here, even when there is nothing to create.
+      if (!(this.v && this.v.drafts && this.v.drafts.tasks.length)) {
+        this.createMsg = { ok: false, text: 'Nothing to create: the plan has no forced battery action (it is self-consumption, or solar charging the battery by itself), so the Scheduler needs no tasks. Re-evaluate after changing your target or limits.' };
+        return;
+      }
+      this.creating = true;
       try {
         const r = await fetch('api/schedules/smart-dispatch' + this.$store.app.gwQuery('?'), { method: 'POST' });
         const j = await r.json().catch(() => ({}));
@@ -140,6 +146,7 @@ function smartDispatchTab() {
 
     get steps() { return (this.v && this.v.result && this.v.result.steps) || []; },
     get currency() { return (this.v && this.v.currency) || ''; },
+    kwh(x) { return x == null ? '—' : x.toFixed(1) + ' kWh'; },
     money(x) { return x == null ? '—' : (x < 0 ? '−' : '') + Math.abs(x).toFixed(2) + (this.currency ? ' ' + this.currency : ''); },
     /** The plan's zone, short ("AEDT"), for the chart's time axis (#50). */
     get zoneShort() {

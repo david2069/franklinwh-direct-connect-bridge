@@ -57,3 +57,40 @@ def test_the_tab_has_actuals_tariff_filters_and_bands():
         assert f'data-testid="{tid}"' in html, tid
     assert "api/smart-dispatch/actuals" in js
     assert "tariffShade" in js                     # the chart plugin that shades the windows
+
+
+def test_the_plan_sums_sources_loads_and_exports(st):  # noqa: F811
+    """Owner 2026-11-25: a summary at the top of the plan's energy: sources, loads, exports."""
+    tariff(st)
+    seed_load(st)
+    smart_dispatch.save(st, "gw1", {"objective": "lowest_cost", "grid_charge": "allowed"})
+    r = smart_dispatch.view(st, None, "gw1", NOW)["result"]
+    steps, e = r["steps"], r["energy"]
+    h = 0.5
+    load = round(sum(s["load_kw"] * h for s in steps), 2)
+    imp = round(sum(s["grid_import_kwh"] for s in steps), 2)
+    chg = round(sum(max(s["battery_kw"], 0) * h for s in steps), 2)
+    dis = round(sum(max(-s["battery_kw"], 0) * h for s in steps), 2)
+    assert e["load_kwh"] == load and e["import_kwh"] == imp
+    assert e["battery_charge_kwh"] == chg and e["battery_discharge_kwh"] == dis
+    assert set(e) >= {"solar_kwh", "export_kwh", "battery_export_kwh", "curtailed_kwh"}
+    assert load > 0
+
+
+def test_the_table_is_folded_and_the_summary_is_at_the_top():
+    html = (PKG / "templates/tabs/smart_dispatch.html").read_text()
+    assert 'data-testid="sd-energy"' in html and 'data-testid="sd-steps-toggle"' in html
+    assert html.index('data-testid="sd-energy"') < html.index('data-testid="sd-chart"')
+    js = (PKG / "static/js/smart_dispatch_tab.js").read_text()
+    assert "stepsOpen: false" in js
+
+
+def test_create_always_answers_831():
+    """#831: with nothing to create the button was disabled, so a click said nothing."""
+    html = (PKG / "templates/tabs/smart_dispatch.html").read_text()
+    i = html.index('data-testid="sd-create"')
+    btn = html[i:html.index("</button>", i)]
+    assert "drafts.tasks.length" not in btn             # not disabled for an empty plan
+    js = (PKG / "static/js/smart_dispatch_tab.js").read_text()
+    c = js[js.index("async createSchedules()"):js.index("async setAuto(")]
+    assert "Nothing to create" in c
