@@ -60,6 +60,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **Billing on the gateway's clock, not the bridge's** (#360). The billing overview (days
+  into the period), **Close period now**, the plan in force on the Billing & Utilities page,
+  the scheduler's read-only billing values (Test, Run now) and a smart circuit's schedule day
+  now use the site clock the scheduler ticks on. Before, they used the bridge container's
+  clock, so with a container in another zone (Docker in UTC, say) a period could close on
+  the wrong day. The history CSV gets a `gateway_id` column
+  ([guide](docs/guide/energy-and-costs.md)).
+
 - **README: open the add-on with Open Web UI** (#784). It said to open the sidebar panel after
   **Start**, but **Show in sidebar** is off after a fresh install; it now says **Open Web UI**,
   and to turn on **Show in sidebar** for a sidebar entry, as INSTALL.md and the guide already do.
