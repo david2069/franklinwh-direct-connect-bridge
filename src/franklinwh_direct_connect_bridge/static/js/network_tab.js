@@ -118,8 +118,12 @@ function networkTab() {
         const el = document.getElementById('pop-map');
         if (!map) {
           map = L.map(el, { worldCopyJump: true }).setView([0, 150], 2);
-          const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          // OpenStreetMap's tile usage policy: a Referer is required (Home Assistant's
+          // pages send none, Referrer-Policy: no-referrer, so tiles came back "Access
+          // blocked"), and the a/b/c subdomains are retired.
+          const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 8,
+            referrerPolicy: 'strict-origin-when-cross-origin',
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
           });
           let bad = 0;
