@@ -11,125 +11,22 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
-### Added
-- **Scheduler: where each schedule came from** (owner 2026-11-24). Tasks Smart Dispatch
-  created carry a **Smart Dispatch** badge; the list filters by **All sources / Yours / Smart
-  Dispatch**, and History by **Yours / Smart Dispatch**. Each History row records its source
-  when written (earlier rows are backfilled); `GET /api/schedules/log?source=`
-  ([guide](docs/guide/scheduler/index.md#the-entry-list)).
-- **Smart Dispatch: Auto (#612 phase 2, step 3).** Off, Shadow or On per gateway, about hourly
-  from the scheduler worker while readings are fresh. Shadow logs what Create schedules would
-  do; On does it, and is allowed only after 7 days of Shadow. Tasks still in the plan are kept,
-  so an unchanged plan doesn't rewrite the Scheduler. The card shows the last 24 runs
-  ([guide](docs/guide/hems/smart-dispatch.md#auto)).
-- **Smart Dispatch: Create schedules (#612 phase 2, step 2).** The draft schedules card gets
-  **Create schedules**: the drafts become one-off Scheduler tasks tagged Smart Dispatch (admin,
-  user or a role with the Schedules action). Creating again keeps its own tasks still in the
-  plan and replaces the rest that haven't started; a running one is left to finish; your own schedules are never
-  changed, and a draft that clashes with one is skipped and said. Nothing is created while the
-  Modbus client is off ([guide](docs/guide/hems/smart-dispatch.md#create-schedules)).
-- **Smart Dispatch: draft schedules (#612 phase 2, step 1).** The tab shows the plan as one-off
-  Scheduler tasks: force charge, discharge or standby per run of the same action, split at
-  midnight, with clashes with your battery schedules, a gateway in Time-of-Use and an
-  unavailable Modbus client noted. Preview only: nothing is created
-  ([guide](docs/guide/hems/smart-dispatch.md#draft-schedules)).
-
-- **Smart Dispatch tab, plan only** (owner 2026-11-24, #612 §7 phase 1, hems 0.3.0). A
-  24-hour battery plan, half hour by half hour, from your utility plan's prices, the solar
-  and load forecasts and the battery's charge, with the action now, why, and the saving
-  against self-consumption. Once a utility plan is entered it asks your target (Emergency
-  Backup only, TOU, lowest bill including demand charges, self-consumption, most export
-  earnings), the SoC range, and what your utility allows: grid charging and export each
-  allowed, limited to a kW size, or prohibited; battery export; demand-peak shaving; and it
-  notes export penalties. Pre-filled answers are *Please confirm*. It never writes to the
-  aGate or the cloud ([guide](docs/guide/hems/smart-dispatch.md)).
-
-### Changed
-- **Settings: the Allow writes switch is gone** (owner 2026-11-25). It has done nothing since
-  0.5.2; the `allow_writes` option is still accepted so older setups keep working
-  ([Control](docs/guide/control.md#1-allow_writes-no-longer-blocks-writes)).
-
-- **Scheduler: smaller cards, and Compact and Table views** (owner 2026-11-24). Each schedule
-  shows only **Explain**, **Edit** and **⋮** on one line; **Turn on/off**, **Stop** (while
-  running), **Test against live**, **Run now**, **Duplicate** and **Delete** are in **⋮**.
-  **Cards / Compact / Table** picks the view, remembered by the browser. A schedule that is off
-  is dimmed without dimming its menu ([guide](docs/guide/scheduler/index.md#the-entry-list)).
-
-- **HEMS: Device type is a drop-down** (owner 2026-11-24). Heavy loads, in the setup wizard
-  and the Settings HEMS card, pick the device type from hems 0.2.1's list (EV charger, hot
-  water, pool pump, …) instead of typing it; a typed value no longer silently loses the EV
-  charger fields. One typed earlier shows as *Other (…)* and is flagged until changed
-  ([guide](docs/guide/hems/loads.md)).
-
-### Fixed
-- **Network: the CloudFront PoPs map showed "Access blocked" tiles** (owner 2026-11-25).
-  OpenStreetMap's tile servers refuse requests without a Referer, and Home Assistant's pages
-  send none. The map now sends the page's origin and uses `tile.openstreetmap.org` as its
-  tile usage policy asks ([guide](docs/guide/tour.md)).
-- **Scheduler: a retry no longer waits for the Hold again** (#203). After a failed attempt the
-  schedule is retried on the usual backoff while its conditions still hold, instead of
-  serving the whole **Hold** a second time; the hold starts again only if the conditions stop
-  holding ([guide](docs/guide/scheduler/conditions.md#hold-for-dwell)).
-- **No screen says "Enable writes (ALLOW_WRITES)" any more** (#87). `allow_writes` stopped
-  blocking writes in 0.5.2, so those messages could only show while a page was still loading;
-  they now say so. The support bundle (`/api/support-info`) reports writes as the bridge applies
-  them, not the old option.
-- **Install docs brought up to date** (#155). The steps use Home Assistant 2026.10's
-  **Settings → Apps → App store** (the old Add-on Store path is kept as a note), say to leave
-  `mqtt_enabled` on and to turn on the add-on's **Watchdog** switch (off after a fresh
-  install), and the README no longer says local history is off or that writes are gated off
-  ([install](INSTALL.md#1-home-assistant-add-on)).
-
-- **Which clock, and whose value** (#50, #161, #148). The top bar shows the gateway's time
-  with its zone and, when your browser is in another zone, yours (`23:48 AEDT · your time
-  01:48 NZDT`). Charts' time axes (Dashboard history, Battery, Analytics, Smart Dispatch) say
-  their zone. In the Scheduler, **Next:** is on the schedule's gateway clock with its zone
-  (it was in the browser's zone), the form and the timeline name the zone, History names its
-  clock, and a note warns when gateways are in different zones. The Battery tab's *updated*
-  time no longer stays in browser time when read before the site zone loads. The Dashboard's
-  Modbus card is now **Modbus client (this bridge)**: On / Off first, the aGate's :502
-  second, beside **Modbus TCP Server (aGate setting)**
-  ([guide](docs/guide/tour.md#the-top-bar)).
-
-- **Billing on the gateway's clock, not the bridge's** (#360). The billing overview (days
-  into the period), **Close period now**, the plan in force on the Billing & Utilities page,
-  the scheduler's read-only billing values (Test, Run now) and a smart circuit's schedule day
-  now use the site clock the scheduler ticks on. Before, they used the bridge container's
-  clock, so with a container in another zone (Docker in UTC, say) a period could close on
-  the wrong day. The history CSV gets a `gateway_id` column
-  ([guide](docs/guide/energy-and-costs.md)).
-
-- **README: open the add-on with Open Web UI** (#784). It said to open the sidebar panel after
-  **Start**, but **Show in sidebar** is off after a fresh install; it now says **Open Web UI**,
-  and to turn on **Show in sidebar** for a sidebar entry, as INSTALL.md and the guide already do.
-
-- **Setup wizard, Home Assistant step: install Mosquitto first** (#785, path B). On the add-on
-  with no MQTT broker, the broker check says "Install the Mosquitto broker app. The Bridge
-  connects on its own once it is running." with an **Install Mosquitto** button to its page in
-  Home Assistant. The checks are ordered steps (below the first failing one: *Waiting for the
-  step above*) and run again every 5 s. After **Yes**, the Bridge confirms the MQTT integration
-  Home Assistant discovered for the broker (only while it has none; audited). A Supervisor
-  "Service not enabled" at boot is now *No MQTT broker yet* at INFO, not a WARNING
-  ([guide](docs/guide/ha-setup-and-notifications.md#the-four-setup-checks)).
-
-- **Docs that said otherwise than the bridge does** (owner 2026-11-23). README, INSTALL.md,
-  DOCS.md and the generator and Home Assistant pages no longer say writes need
-  `allow_writes` (it stopped blocking writes in 0.5.2). Battery dispatch's Known issues
-  drops #122 (done by #705), #160 and #129, and the Scheduler pages describe
-  **Set reserve SoC** through the cloud (#129) and a force running until its window closes
-  (#160) ([Control](docs/guide/control.md#1-allow_writes-no-longer-blocks-writes)).
-- **The guide brought in line with the bridge** (docs audit). `read_only` and
-  `allow_writes` do not block writes (mode and off-grid ask you to confirm); `mqtt_enabled`
-  defaults to on and `fwh_host` may be left empty for the setup wizard; sign-in and the
-  HTTPS port follow Security; an Always schedule fires on each rising edge (#190); a `PUT`
-  without `enabled` keeps it (#168); failed and missed runs notify (#172, #581) and the
-  Push notifications switch stops every push (#171); a Release is read back (#174);
-  History names the gateway (#205); the Audit trail is under Logs
-  ([Outcomes and audit](docs/guide/scheduler/outcomes.md#notifications)).
-
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
+
+## 2026-11-25
+
+### [0.5.57](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.57.md)
+
+Added 5 · Changed 3 · Fixed 10
+
+- Scheduler: where each schedule came from
+- Smart Dispatch: Auto (#612 phase 2, step 3)
+- Smart Dispatch: Create schedules (#612 phase 2, step 2)
+- Smart Dispatch: draft schedules (#612 phase 2, step 1)
+- Smart Dispatch tab, plan only
+- Network: the CloudFront PoPs map showed "Access blocked" tiles
 
 ## 2026-11-23
 
