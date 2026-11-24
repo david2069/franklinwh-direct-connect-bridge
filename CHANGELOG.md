@@ -60,6 +60,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ### Fixed
 
+- **README: open the add-on with Open Web UI** (#784). It said to open the sidebar panel after
+  **Start**, but **Show in sidebar** is off after a fresh install; it now says **Open Web UI**,
+  and to turn on **Show in sidebar** for a sidebar entry, as INSTALL.md and the guide already do.
+
 - **Setup wizard, Home Assistant step: install Mosquitto first** (#785, path B). On the add-on
   with no MQTT broker, the broker check says "Install the Mosquitto broker app. The Bridge
   connects on its own once it is running." with an **Install Mosquitto** button to its page in
