@@ -14,11 +14,18 @@ import json
 import logging
 import os
 import time
+import urllib.error
 import urllib.request
 
 from .environment import IS_HA_ADDON
 
 log = logging.getLogger("franklinwh_direct_connect_bridge.ha_supervisor")
+
+#: The Mosquitto broker app's page in Home Assistant (#785), opened in Home Assistant's top
+#: frame from the sidebar panel; outside the panel, the My Home Assistant link to it.
+MOSQUITTO_URL = "/hassio/addon/core_mosquitto/info"
+MOSQUITTO_MY_URL = "https://my.home-assistant.io/redirect/supervisor_addon/?addon=core_mosquitto"
+NO_BROKER_ERROR = "No MQTT service registered — install the Mosquitto add-on"
 
 # Broker hosts that mean "nothing configured yet" (schema default / add-on default).
 _UNSET_HOSTS = {"core-mosquitto", ""}
@@ -49,8 +56,7 @@ def discover_mqtt() -> dict:
             payload = json.loads(resp.read().decode())
         data = payload.get("data") or {}
         if not data:
-            return {"found": False,
-                    "error": "No MQTT service registered — install the Mosquitto add-on"}
+            return {"found": False, "no_broker": True, "error": NO_BROKER_ERROR}
         return {
             "found": True,
             "host": data.get("host", ""),
@@ -60,9 +66,141 @@ def discover_mqtt() -> dict:
             "ssl": bool(data.get("ssl", False)),
             "source": "supervisor",
         }
+    except urllib.error.HTTPError as e:
+        # 400 "Service not enabled": no broker app yet. An expected state on a new install,
+        # not a failure (#785).
+        try:
+            body = e.read().decode(errors="replace")
+        except Exception:  # noqa: BLE001
+            body = ""
+        if e.code == 400 and "Service not enabled" in body:
+            log.info("No MQTT broker yet: install the Mosquitto broker app; the Bridge "
+                     "connects on its own once it is running")
+            return {"found": False, "no_broker": True, "error": NO_BROKER_ERROR}
+        log.warning("MQTT discovery via Supervisor failed: %s", e)
+        return {"found": False, "error": str(e)}
     except Exception as e:  # noqa: BLE001 — discovery must never raise
         log.warning("MQTT discovery via Supervisor failed: %s", e)
         return {"found": False, "error": str(e)}
+
+
+# ── Home Assistant's discovered MQTT integration (#785, path B) ───────────────────────────
+def _ws_frame(data: bytes, opcode: int = 0x1) -> bytes:
+    """One client frame: FIN, masked (a client must mask)."""
+    import struct
+    n = len(data)
+    head = bytes([0x80 | opcode])
+    if n < 126:
+        head += bytes([0x80 | n])
+    elif n < 1 << 16:
+        head += bytes([0x80 | 126]) + struct.pack("!H", n)
+    else:
+        head += bytes([0x80 | 127]) + struct.pack("!Q", n)
+    mask = os.urandom(4)
+    return head + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data))
+
+
+class _WsReader:
+    """Reads a server's (unmasked) frames from a socket, answering pings."""
+
+    def __init__(self, sock, buf: bytes = b""):
+        self.sock, self.buf = sock, buf
+
+    def _take(self, n: int) -> bytes:
+        while len(self.buf) < n:
+            chunk = self.sock.recv(65536)
+            if not chunk:
+                raise ConnectionError("Home Assistant closed the websocket")
+            self.buf += chunk
+        out, self.buf = self.buf[:n], self.buf[n:]
+        return out
+
+    def message(self) -> dict:
+        import struct
+        parts: list[bytes] = []
+        while True:
+            b0, b1 = self._take(2)
+            n = b1 & 0x7F
+            if n == 126:
+                n = struct.unpack("!H", self._take(2))[0]
+            elif n == 127:
+                n = struct.unpack("!Q", self._take(8))[0]
+            mask = self._take(4) if b1 & 0x80 else b""
+            data = self._take(n)
+            if mask:
+                data = bytes(b ^ mask[i % 4] for i, b in enumerate(data))
+            op = b0 & 0x0F
+            if op == 0x8:
+                raise ConnectionError("Home Assistant closed the websocket")
+            if op == 0x9:
+                self.sock.sendall(_ws_frame(data, 0xA))
+                continue
+            if op == 0xA:
+                continue
+            parts.append(data)
+            if b0 & 0x80:
+                return json.loads(b"".join(parts).decode())
+
+
+def ws_call(payload: dict, *, timeout: float = 5.0) -> object:
+    """One command on Home Assistant's websocket API through the Supervisor proxy
+    (``ws://supervisor/core/websocket``, authenticated with ``SUPERVISOR_TOKEN``); its
+    ``result``. There is no websocket client in the image, so this is the protocol's small
+    part this needs. Raises on any failure."""
+    import base64
+    import socket
+    token = os.environ.get("SUPERVISOR_TOKEN")
+    if not token:
+        raise PermissionError("SUPERVISOR_TOKEN not set")
+    key = base64.b64encode(os.urandom(16)).decode()
+    with socket.create_connection(("supervisor", 80), timeout=timeout) as sock:
+        sock.settimeout(timeout)
+        sock.sendall((f"GET /core/websocket HTTP/1.1\r\nHost: supervisor\r\n"
+                      f"Upgrade: websocket\r\nConnection: Upgrade\r\n"
+                      f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n").encode())
+        buf = b""
+        while b"\r\n\r\n" not in buf:
+            chunk = sock.recv(4096)
+            if not chunk:
+                raise ConnectionError("the Supervisor closed the websocket handshake")
+            buf += chunk
+        head, buf = buf.split(b"\r\n\r\n", 1)
+        status = head.split(b"\r\n", 1)[0].decode(errors="replace")
+        if " 101 " not in status + " ":
+            raise ConnectionError(f"websocket refused: {status}")
+        rd = _WsReader(sock, buf)
+        rd.message()                                             # auth_required
+        sock.sendall(_ws_frame(json.dumps({"type": "auth", "access_token": token}).encode()))
+        auth = rd.message()
+        if auth.get("type") != "auth_ok":
+            raise PermissionError(f"websocket auth: {auth.get('message') or auth.get('type')}")
+        sock.sendall(_ws_frame(json.dumps({"id": 1, **payload}).encode()))
+        while True:
+            msg = rd.message()
+            if msg.get("id") == 1 and msg.get("type") == "result":
+                if not msg.get("success"):
+                    raise RuntimeError(f"websocket: {(msg.get('error') or {}).get('message')}")
+                return msg.get("result")
+
+
+def mqtt_flow_id() -> str | None:
+    """The flow Home Assistant opened when it discovered the Mosquitto broker: handler
+    ``mqtt``, source ``hassio``. None when there is none."""
+    for f in ws_call({"type": "config_entries/flow/progress"}) or []:
+        if f.get("handler") == "mqtt" and (f.get("context") or {}).get("source") == "hassio":
+            return f.get("flow_id")
+    return None
+
+
+def confirm_flow(flow_id: str) -> dict:
+    """Confirm a discovered flow (its ``hassio_confirm`` step takes no input)."""
+    token = os.environ.get("SUPERVISOR_TOKEN") or ""
+    req = urllib.request.Request(
+        f"http://supervisor/core/api/config/config_entries/flow/{flow_id}",
+        data=b"{}", method="POST",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read().decode() or "{}")
 
 
 #: The Supervisor's proxy to Home Assistant's own REST API. An add-on reaches HA here
