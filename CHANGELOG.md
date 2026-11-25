@@ -11,6 +11,22 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+- **Smart Dispatch: Actuals and the tariff on the plan** (owner 2026-11-25). **Actuals** adds
+  what the battery did from midnight to now beside the plan (chart lines, and earlier half
+  hours with Actual kW and Actual SoC columns in the table). The chart shades the tariff's
+  TOU bands, demand-charge windows, export bonus and export penalty, each a filter; **Tariff**
+  shows them as bands, like the emulator's TOU schedule; the table names each step's band.
+  `GET /api/smart-dispatch/actuals` ([guide](docs/guide/hems/smart-dispatch.md#the-plan)).
+- **Smart Dispatch: the plan's energy at the top** (owner 2026-11-25): the next 24 hours'
+  sources, loads and exports in kWh. The half-hour table is folded until opened
+  ([guide](docs/guide/hems/smart-dispatch.md#the-plan)).
+
+### Fixed
+- **Smart Dispatch: Create schedules always answers** (#831). With nothing to create (a plan
+  with no forced battery action) the button was disabled, so a click said nothing; it now
+  says why in the card ([guide](docs/guide/hems/smart-dispatch.md#create-schedules)).
+
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
