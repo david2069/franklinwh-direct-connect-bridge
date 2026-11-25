@@ -124,15 +124,23 @@ def model(store, gateway_id: str, loc: dict, now: float, *, fetch=None) -> dict:
     return m
 
 
+def history_days(store, gateway_id: str, now: float, days: int = HISTORY_DAYS) -> int:
+    """Site days with home load in the last ``days`` (what the forecast can learn from)."""
+    tz = _zone(store)
+    return len({dt.datetime.fromtimestamp(h["start"], tz).date()
+                for h in hourly_load(store, gateway_id, int(now) - days * 86400, int(now))})
+
+
 def predict(store, gateway_id: str, loc: dict, fc: dict | None, now: float, *,
-            fetch=None) -> list[dict]:
-    """``[{start, kwh, method}]`` for the next ``HORIZON_H`` hours from this hour."""
+            fetch=None, baseline_kwh: float | None = None) -> list[dict]:
+    """``[{start, kwh, method}]`` for the next ``HORIZON_H`` hours from this hour. An hour
+    with no history at all is ``baseline_kwh`` (the always-on load) when given."""
     m = model(store, gateway_id, loc, now, fetch=fetch)
     temps = _forecast_temps(fc or {})
     first = int(now) // 3600 * 3600
     hours = [{"start": first + i * 3600, "temp_c": temps.get(first + i * 3600)}
              for i in range(HORIZON_H)]
-    return hforecast.predict_load(m, hours)
+    return hforecast.predict_load(m, hours, baseline_kwh=baseline_kwh)
 
 
 def ha_payload(store, settings, gateway_id: str, now: float | None = None, *,

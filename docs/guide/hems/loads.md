@@ -9,6 +9,8 @@ optional and off until you switch it on. *Planning is only as accurate as your a
 
 - **Always-on load** (kW): filled in from the quietest overnight hours of your own history
   (00:00–06:00), marked **Please confirm**. Change it if it is wrong; saving confirms it.
+  Smart Dispatch uses it for hours with no history at all, so a typical figure is fine. The
+  wizard's Usage step shows how many days of local history there are.
 - **Usage periods:** your high, medium and low hours on a weekday and on a weekend day, from
   the last four weeks of history. Tick **These look right** when they do.
 - **Heavy loads:** each large appliance you want planned around: what it is (**Device

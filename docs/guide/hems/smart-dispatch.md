@@ -19,10 +19,34 @@ tasks, and the Scheduler runs them (see [Draft schedules](#draft-schedules)). Wi
 | Battery capacity | **Settings → Gateways → System setup** (aPower model), or your constants |
 | A first reading from the gateway | Automatic |
 | Solar forecast (optional) | **Settings → Location & Prices → Location & Solar** (location and solar size) |
-| Load forecast (automatic) | Learnt from the bridge's history; with less than a few days it plans with what it has and says so |
+| Load forecast (automatic) | Learnt from the bridge's history (see [Home load](#home-load)) |
 
 While something is missing, the tab lists it under **Needed for a plan**, with **Open** to go
 there.
+
+### Plan inputs
+
+The **Plan inputs** card at the top says what the plan is using, each with a dot (green:
+complete, amber: partial, red: missing) and a button to where it is set:
+
+- **Home load:** the days of local history, the always-on load from HEMS setup, and that the
+  FranklinWH cloud's history isn't used yet. **Re-run HEMS setup** opens the setup wizard at
+  its Usage step, which shows how many days of history there are.
+- **Solar:** the solar size, or that the plan has no solar.
+- **Battery:** the capacity and the SoC now.
+- **Tariff:** the utility plan.
+
+### Home load
+
+Each hour of the plan takes the home load from the first of these that has a value, and the
+plan's notes say how many steps came from each:
+
+1. the load model (with 28 days of history or more);
+2. the weekday-hour average (the same weekday and hour in the last 11 weeks);
+3. the hour-of-day average (that hour on any day: one day of history is enough);
+4. your always-on load from **HEMS setup**, a guide for hours with no history at all.
+
+Without any of these, the hour is planned at 0 kW and the notes say so.
 
 ## Your target and your utility's limits
 

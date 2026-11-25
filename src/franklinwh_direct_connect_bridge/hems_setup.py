@@ -115,8 +115,9 @@ def view(store, settings, gateway_id: str, now: float | None = None, *,
             exp = None
         loads.append({**ld, "problems": hloads.check(ld, caps),
                       "expected_kwh_today": round(sum(exp.values()), 3) if exp else None})
+    days = len({dt.datetime.fromtimestamp(h["start"], tz).date() for h in hist})
     return {"opted_in": bool(a.get("opted_in")), "notice": hloads.NOTICE,
-            "always_on": always, "periods": periods, "capabilities": sorted(caps),
+            "always_on": always, "history_days": days, "periods": periods, "capabilities": sorted(caps),
             "loads": loads, "choices": {"device_type": [{"value": k, "label": v} for k, v
                                                         in hloads.DEVICE_TYPES.items()],
                                         "measurement": list(hloads.MEASUREMENTS),

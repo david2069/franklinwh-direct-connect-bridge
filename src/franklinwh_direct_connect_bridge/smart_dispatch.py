@@ -5,7 +5,8 @@ questions, pre-filled answers "please confirm"). The 24-hour plan is worked out 
 
 - prices: the meter's OUTUS plan in force (``billing_page``), per 30 minutes;
 - solar: the site's solar forecast (``solar_forecast``), when the location and size are set;
-- home load: the load forecast (``load_forecast.predict``);
+- home load: the load forecast (``load_forecast.predict``); an hour it has no history for
+  is the hour-of-day average, else the always-on load from HEMS setup (owner 2026-11-25);
 - the battery: SoC and off grid from the last poll, capacity and power from System setup or
   the user's constants, wear per kWh and round trip from Battery warranty & wear.
 
@@ -108,18 +109,76 @@ def _solar(store, settings, gateway_id: str) -> tuple[dict | None, dict[int, flo
     return fc, out, float(loc["kwp"])
 
 
+#: How each load-forecast method reads in the plan's assumptions.
+LOAD_METHODS = {"model": "the load model", "cold_start": "the weekday-hour average",
+                "hour_of_day": "the hour-of-day average",
+                "baseline": "your always-on load (HEMS setup)"}
+
+
+def _always_on(store, gateway_id: str) -> float | None:
+    """The always-on load (kW) the user gave in HEMS setup; None when not given."""
+    from . import hems_setup
+    v = hems_setup._answers(store, gateway_id).get("always_on_kw")
+    try:
+        return float(v) if v not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _load(store, settings, gateway_id: str, fc: dict | None, now: float
-          ) -> tuple[dict[int, float], str | None]:
-    """({hour start: kW}, method) from the load forecast; empty when it can't predict."""
+          ) -> dict[int, tuple[float, str]]:
+    """{hour start: (kW, method)} from the load forecast; empty when it can't predict. An
+    hour with no history is the always-on load from HEMS setup, when given."""
     from . import load_forecast, site_location
     try:
         loc = site_location.for_gateway(settings, store, gateway_id)
-        pts = load_forecast.predict(store, gateway_id, loc, fc, now)
+        pts = load_forecast.predict(store, gateway_id, loc, fc, now,
+                                    baseline_kwh=_always_on(store, gateway_id))
     except Exception as e:                                       # noqa: BLE001
         log.debug("Smart Dispatch: no load forecast: %s", e)
-        return {}, None
-    return ({p["start"]: float(p["kwh"]) for p in pts if p.get("kwh") is not None},
-            (pts[0].get("method") if pts else None))
+        return {}
+    return {p["start"]: (float(p["kwh"]), p["method"]) for p in pts if p.get("kwh") is not None}
+
+
+def _inputs(store, settings, gateway_id: str, now: float, plan: dict | None,
+            kwp: float | None, battery: dict) -> list[dict]:
+    """What the plan is using, each ``{key, label, value, status (ok, partial, missing),
+    action}``: home load, solar, battery and tariff (owner 2026-11-25)."""
+    from . import load_forecast
+    from hems import forecast as hforecast
+    try:
+        days = load_forecast.history_days(store, gateway_id, now)
+    except Exception:                                            # noqa: BLE001
+        days = 0
+    always = _always_on(store, gateway_id)
+    full = hforecast.MIN_HISTORY_DAYS
+    if days:
+        value = f"{days} day{'s' if days != 1 else ''} of local history"
+        value += "" if days >= full else f" (the full load model needs {full})"
+    else:
+        value = "No local history yet"
+    value += (f"; always-on load {always:g} kW from HEMS setup for hours with no history"
+              if always is not None else "; no always-on load in HEMS setup")
+    value += "; FranklinWH cloud history isn't used yet"
+    home = {"key": "home_load", "label": "Home load", "value": value,
+            "status": "ok" if days >= full else "partial" if days or always is not None
+            else "missing",
+            "action": {"label": "Re-run HEMS setup", "wizard": "hems", "step": "usage"}}
+    solar = {"key": "solar", "label": "Solar", "value": f"{kwp:g} kWp, forecast for your location"
+             if kwp else "No solar size or location: planned without solar",
+             "status": "ok" if kwp else "missing",
+             "action": {"label": "Open Location & Solar", "tab": "settings"}}
+    cap = battery.get("capacity_kwh")
+    bat = {"key": "battery", "label": "Battery",
+           "value": f"{cap:g} kWh, SoC {battery['soc_pct']:g}%" if cap and battery.get(
+               "soc_pct") is not None else f"{cap:g} kWh" if cap else "Capacity not known",
+           "status": "ok" if cap and battery.get("soc_pct") is not None else "partial" if cap
+           else "missing", "action": {"label": "Open System setup", "tab": "settings"}}
+    tariff = {"key": "tariff", "label": "Tariff",
+              "value": (plan.get("name") or "Utility plan") if plan else "No utility plan",
+              "status": "ok" if plan else "missing",
+              "action": {"label": "Open Billing & Utilities", "tab": "energy_costs"}}
+    return [home, solar, bat, tariff]
 
 
 def _battery(store, gateway_id: str, now: float) -> tuple[dict, list[str]]:
@@ -284,7 +343,8 @@ def view(store, settings, gateway_id: str, now: float | None = None, *,
            "timezone": (plan or {}).get("timezone") or str(tz), "sources": sources,
            "mode": power.get("mode"), "off_grid": bool(power.get("off_grid")),
            "controls": False, "result": None, "decision": None, "drafts": None,
-           "auto": _auto_view(store, gateway_id)}
+           "auto": _auto_view(store, gateway_id),
+           "inputs": _inputs(store, settings, gateway_id, now, plan, kwp, battery)}
     if missing or issues:
         return out
 
@@ -295,14 +355,15 @@ def view(store, settings, gateway_id: str, now: float | None = None, *,
         return {**out, **hit[2], "decision": hdispatch.decide(hit[2]["result"], now),
                 "drafts": _drafts(store, gateway_id, hit[2]["result"], power)}
 
-    load, method = _load(store, settings, gateway_id, fc, now)
+    load = _load(store, settings, gateway_id, fc, now)
     steps = hdispatch.step_prices(plan, start, STEPS, STEP_S)
-    no_load = 0
+    no_load, methods = 0, {}
     for s in steps:
         hour = s["start"] // 3600 * 3600
         s["solar_kw"] = solar.get(hour, 0.0)
         if hour in load:
-            s["load_kw"] = load[hour]
+            s["load_kw"], m = load[hour]
+            methods[m] = methods.get(m, 0) + 1
         else:
             s["load_kw"], no_load = 0.0, no_load + 1
     result = hdispatch.plan_24h(steps, battery, values, state={
@@ -313,8 +374,9 @@ def view(store, settings, gateway_id: str, now: float | None = None, *,
         notes.append("No solar forecast: set your location and solar size in Settings")
     if no_load:
         notes.append(f"No load forecast for {no_load} of {STEPS} steps: planned with 0 kW")
-    if method:
-        notes.append(f"Home load from the load forecast ({method})")
+    if methods:
+        notes.append("Home load: " + ", ".join(
+            f"{n} of {STEPS} steps from {LOAD_METHODS.get(m, m)}" for m, n in methods.items()))
     if power.get("mode") == "Emergency Backup" and values.get("objective") != "backup":
         notes.append("The gateway is in Emergency Backup: on its own it keeps the battery "
                      "charged; the comparison is with Self-Consumption")

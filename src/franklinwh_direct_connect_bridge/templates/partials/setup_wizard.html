@@ -565,6 +565,8 @@
               <template x-if="hems.form && hems.step === 'usage'">
                 <div class="space-y-2" data-testid="hems-wiz-usage">
                   <p>From the last four weeks of this gateway's home load.</p>
+                  <p class="text-xs" style="color:var(--text-secondary)" data-testid="hems-wiz-history"
+                     x-text="hems.view.history_days ? `Local history: ${hems.view.history_days} day${hems.view.history_days === 1 ? '' : 's'} of home load. Smart Dispatch plans each hour from it, and uses the always-on load below only for hours with no history.` : 'No local home-load history yet. Smart Dispatch uses the always-on load below for every hour until there is: it is a guide, so a typical figure is fine.'"></p>
                   <label class="flex flex-col gap-1 text-xs sm:w-1/2">
                     <span>Always-on load (kW)
                       <span x-show="hems.view.always_on && hems.view.always_on.confirm" class="text-[9px] uppercase tracking-wide ml-1" style="color:var(--warning)">Please confirm</span></span>

@@ -11,6 +11,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+- Smart Dispatch: a **Plan inputs** card says what the plan is using (home load history and
+  always-on load, solar, battery, tariff), with **Re-run HEMS setup**, which opens the setup
+  wizard at its Usage step. The Usage step shows the days of local history.
+
+### Fixed
+- Smart Dispatch planned the home at 0 kWh with little history: an hour with no history now
+  uses the hour-of-day average (one day is enough), then the always-on load from HEMS setup,
+  and the plan's notes say how many steps came from each (hems 0.3.1).
+
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
