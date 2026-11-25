@@ -48,6 +48,9 @@ plan's notes say how many steps came from each:
 
 Without any of these, the hour is planned at 0 kW and the notes say so.
 
+The heavy loads in **HEMS setup** (with run times and a power) are added on their own days
+and hours; the **Plan inputs** card counts them.
+
 ## Your target and your utility's limits
 
 Once a utility plan is entered, the tab asks what you want the battery to do and what your

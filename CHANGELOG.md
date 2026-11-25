@@ -15,6 +15,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - Smart Dispatch: a **Plan inputs** card says what the plan is using (home load history and
   always-on load, solar, battery, tariff), with **Re-run HEMS setup**, which opens the setup
   wizard at its Usage step. The Usage step shows the days of local history.
+- HEMS setup: each heavy load's run times can be limited to days of the week (**Days**, with
+  Every day, Weekdays and Weekends), in the setup wizard and on the HEMS setup card.
+- The load forecast (the Load Forecast sensor and Smart Dispatch) uses the heavy loads from
+  HEMS setup: each is taken out of the learnt home load and added back on its own days and
+  hours (hems 0.3.2).
 
 ### Fixed
 - Smart Dispatch planned the home at 0 kWh with little history: an hour with no history now

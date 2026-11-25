@@ -18,7 +18,8 @@ optional and off until you switch it on. *Planning is only as accurate as your a
   pump, spa, well pump, clothes dryer, washing machine, dishwasher, oven, or Other; a type
   typed in before 0.5.57 shows as *Other (…)* and is flagged until you pick one), how it is
   measured (a Home Assistant power entity, an energy entity, or its nameplate kW), its power
-  and/or how long it runs, when it runs (times, or that it follows the weather), its circuit,
+  and/or how long it runs, when it runs (times, or that it follows the weather), on which
+  **Days** (each day of the week, or **Every day**, **Weekdays**, **Weekends**), its circuit,
   and how it may be controlled:
   - *deferrable*: the energy it needs and the time it needs it by;
   - *sheddable*: how long it may be off, how long it must stay on, and its priority;
@@ -33,6 +34,10 @@ mode always; battery power and target SoC while the Modbus client is on; smart c
 the gateway has them. A problem is listed under the load, such as a smart-circuit switch on a
 gateway with none. The checks and pre-fills come from hems, the shared energy engine. The
 answers are only recorded: nothing is switched or scheduled from them yet.
+
+Heavy loads with run times and a power feed the load forecast while HEMS setup is on: each
+is taken out of the learnt home load and added back on its own days and hours, so a load
+that runs on Tuesdays is forecast on Tuesdays, not spread over every weekday.
 
 ## What this bridge can control
 

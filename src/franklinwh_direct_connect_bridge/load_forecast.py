@@ -19,6 +19,7 @@ import time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from hems import forecast as hforecast
+from hems import loads as hloads
 from hems.adapters import open_meteo
 
 log = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ TEMPS_KEY = "load_forecast_temps:{lat},{lon}"
 #: The archive lags real time by a few days; ask for up to this many days back.
 ARCHIVE_LAG_DAYS = 2
 
-_models: dict[str, tuple[str, dict, int]] = {}  # gateway -> (site day, model, hour fitted)
+_models: dict[str, tuple[str, dict, int, str]] = {}  # gateway -> (site day, model, hour, loads)
 
 
 def _zone(store) -> ZoneInfo:
@@ -117,17 +118,54 @@ def _forecast_temps(fc: dict) -> dict[int, float]:
     return out
 
 
+def heavy_loads(store, gateway_id: str) -> list[dict]:
+    """The heavy loads declared in HEMS setup with run times and power, while it is on."""
+    from . import hems_setup
+    a = hems_setup._answers(store, gateway_id)
+    if not a.get("opted_in"):
+        return []
+    return [ld for ld in a.get("loads") or []
+            if isinstance(ld, dict) and isinstance(ld.get("runs"), list) and ld.get("power_kw")]
+
+
+def declared(loads: list[dict], tz: ZoneInfo, start: int, end: int) -> list[dict[int, float]]:
+    """Each load's expected kWh per hour start between ``start`` and ``end``, from its run
+    times and days (``hems.loads.expected_hourly``)."""
+    first = dt.datetime.fromtimestamp(start, tz).date() - dt.timedelta(days=1)
+    last = dt.datetime.fromtimestamp(end, tz).date()
+    out = []
+    for ld in loads:
+        series: dict[int, float] = {}
+        d = first
+        while d <= last:
+            try:
+                for k, v in (hloads.expected_hourly(ld, d, tz=tz) or {}).items():
+                    if start <= k <= end:
+                        series[k] = series.get(k, 0.0) + v
+            except Exception:                                    # noqa: BLE001 — bad times
+                break
+            d += dt.timedelta(days=1)
+        if series:
+            out.append(series)
+    return out
+
+
 def model(store, gateway_id: str, loc: dict, now: float, *, fetch=None) -> dict:
     """The gateway's load model, fitted once a site day; while it is still degraded (too
-    little history for the model), once an hour, so a new install picks up its first days."""
+    little history for the model), once an hour, so a new install picks up its first days.
+    The heavy loads from HEMS setup are taken out of the base (a change to them refits)."""
     tz = _zone(store)
     local = dt.datetime.fromtimestamp(now, tz)
+    loads = heavy_loads(store, gateway_id)
+    sig = json.dumps(loads, sort_keys=True, default=str)
     hit = _models.get(gateway_id)
-    if hit and hit[0] == local.date().isoformat() and not (
+    if hit and hit[0] == local.date().isoformat() and hit[3] == sig and not (
             hit[1].get("degraded") and hit[2] != local.hour):
         return hit[1]
-    m = hforecast.fit_load(history(store, gateway_id, loc, tz, now, fetch=fetch), tz=tz)
-    _models[gateway_id] = (local.date().isoformat(), m, local.hour)
+    rows = history(store, gateway_id, loc, tz, now, fetch=fetch)
+    m = hforecast.fit_load(rows, tz=tz, declared=declared(
+        loads, tz, int(now) - HISTORY_DAYS * 86400, int(now)) if loads else None)
+    _models[gateway_id] = (local.date().isoformat(), m, local.hour, sig)
     return m
 
 
@@ -141,13 +179,24 @@ def history_days(store, gateway_id: str, now: float, days: int = HISTORY_DAYS) -
 def predict(store, gateway_id: str, loc: dict, fc: dict | None, now: float, *,
             fetch=None, baseline_kwh: float | None = None) -> list[dict]:
     """``[{start, kwh, method}]`` for the next ``HORIZON_H`` hours from this hour. An hour
-    with no history at all is ``baseline_kwh`` (the always-on load) when given."""
+    with no history at all is ``baseline_kwh`` (the always-on load) when given. The heavy
+    loads from HEMS setup are added on their own days and hours."""
     m = model(store, gateway_id, loc, now, fetch=fetch)
     temps = _forecast_temps(fc or {})
     first = int(now) // 3600 * 3600
     hours = [{"start": first + i * 3600, "temp_c": temps.get(first + i * 3600)}
              for i in range(HORIZON_H)]
-    return hforecast.predict_load(m, hours, baseline_kwh=baseline_kwh)
+    pts = hforecast.predict_load(m, hours, baseline_kwh=baseline_kwh)
+    loads = heavy_loads(store, gateway_id)
+    if loads:
+        add: dict[int, float] = {}
+        for series in declared(loads, _zone(store), first, first + HORIZON_H * 3600):
+            for k, v in series.items():
+                add[k] = add.get(k, 0.0) + v
+        for p in pts:
+            if p["kwh"] is not None and add.get(p["start"]):
+                p["kwh"] = round(p["kwh"] + add[p["start"]], 4)
+    return pts
 
 
 def ha_payload(store, settings, gateway_id: str, now: float | None = None, *,

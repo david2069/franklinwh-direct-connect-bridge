@@ -613,6 +613,19 @@
                         <label class="flex flex-col gap-1">Power (kW)<input type="number" step="0.1" min="0" class="form-control form-control-sm" x-model="l.power_kw"></label>
                         <label class="flex flex-col gap-1">Runs (HH:MM-HH:MM, …)<input class="form-control form-control-sm" x-model="l._runsText" :disabled="l._weather"></label>
                         <label class="inline-flex items-center gap-2"><input type="checkbox" x-model="l._weather"> Follows the weather</label>
+                        <div class="flex flex-col gap-1 sm:col-span-2" data-testid="hems-wiz-days" x-show="!l._weather">
+                    <span>Days</span>
+                    <div class="flex flex-wrap items-center gap-1">
+                      <template x-for="(dn, d) in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="d">
+                        <button type="button" class="px-2 py-0.5 rounded text-xs border" style="border-color:var(--border)"
+                                :class="l._days.includes(d) ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400'"
+                                :aria-pressed="l._days.includes(d)" @click="toggleDay(l, d)" x-text="dn"></button>
+                      </template>
+                      <button type="button" class="text-xs underline ml-1" style="color:var(--text-secondary)" @click="setDays(l, [0,1,2,3,4,5,6])">Every day</button>
+                      <button type="button" class="text-xs underline" style="color:var(--text-secondary)" @click="setDays(l, [0,1,2,3,4])">Weekdays</button>
+                      <button type="button" class="text-xs underline" style="color:var(--text-secondary)" @click="setDays(l, [5,6])">Weekends</button>
+                    </div>
+                  </div>
                         <label class="flex flex-col gap-1">Circuit
                           <select class="form-control form-control-sm" x-model="l.circuit"><option value="">—</option>
                             <template x-for="c in hems.view.choices.circuit" :key="c"><option :value="c" x-text="hemsLabel(c)" :selected="c === l.circuit"></option></template></select></label>

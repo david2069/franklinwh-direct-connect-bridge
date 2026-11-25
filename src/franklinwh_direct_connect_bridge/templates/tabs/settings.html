@@ -404,6 +404,19 @@
                   <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Duration (h)</span><input type="number" step="0.25" min="0" class="form-control form-control-sm" x-model="l.duration_h"></label>
                   <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Runs (HH:MM-HH:MM, …)</span><input class="form-control form-control-sm" x-model="l._runsText" :disabled="l._weather" placeholder="10:00-16:00"></label>
                   <label class="inline-flex items-center gap-2 self-end"><input type="checkbox" x-model="l._weather"> Follows the weather</label>
+                  <div class="flex flex-col gap-1 sm:col-span-2" data-testid="hems-days" x-show="!l._weather">
+                    <span style="color:var(--text-faint)">Days</span>
+                    <div class="flex flex-wrap items-center gap-1">
+                      <template x-for="(dn, d) in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="d">
+                        <button type="button" class="px-2 py-0.5 rounded text-xs border" style="border-color:var(--border)"
+                                :class="l._days.includes(d) ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400'"
+                                :aria-pressed="l._days.includes(d)" @click="toggleDay(l, d)" x-text="dn"></button>
+                      </template>
+                      <button type="button" class="text-xs underline ml-1" style="color:var(--text-secondary)" @click="setDays(l, [0,1,2,3,4,5,6])">Every day</button>
+                      <button type="button" class="text-xs underline" style="color:var(--text-secondary)" @click="setDays(l, [0,1,2,3,4])">Weekdays</button>
+                      <button type="button" class="text-xs underline" style="color:var(--text-secondary)" @click="setDays(l, [5,6])">Weekends</button>
+                    </div>
+                  </div>
                   <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Circuit</span>
                     <select class="form-control form-control-sm" x-model="l.circuit"><option value="">—</option><template x-for="c in hems.choices.circuit" :key="c"><option :value="c" x-text="c" :selected="c === l.circuit"></option></template></select></label>
                   <label class="flex flex-col gap-1"><span style="color:var(--text-faint)">Control</span>
