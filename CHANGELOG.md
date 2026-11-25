@@ -17,16 +17,24 @@ Full notes for each release are on the [docs site](https://david2069.github.io/f
 
 ## 2026-11-25
 
+### [0.5.58](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.58.md)
+
+Added 2 · Fixed 1
+
+- Smart Dispatch: Actuals and the tariff on the plan
+- Smart Dispatch: the plan's energy at the top
+- Smart Dispatch: Create schedules always answers
+
 ### [0.5.57](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.57.md)
 
 Added 5 · Changed 3 · Fixed 10
 
-- Scheduler: where each schedule came from
-- Smart Dispatch: Auto (#612 phase 2, step 3)
-- Smart Dispatch: Create schedules (#612 phase 2, step 2)
-- Smart Dispatch: draft schedules (#612 phase 2, step 1)
-- Smart Dispatch tab, plan only
-- Network: the CloudFront PoPs map showed "Access blocked" tiles
+- Smart Dispatch: the 24-hour plan, draft schedules, Create schedules and Auto (Shadow…
+- Scheduler: where each schedule came from, smaller cards with Compact and Table views, and…
+- Clocks: billing and schedules on the gateway's clock
+- Setup: the Home Assistant step installs Mosquitto first
+- Settings: the Allow writes switch is gone, and no screen asks for it
+- Network: the PoPs map's tiles follow OpenStreetMap's tile policy
 
 ## 2026-11-23
 
