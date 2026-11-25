@@ -71,3 +71,17 @@ def test_the_tab_and_wizard_carry_plan_inputs_and_rerun():
     assert "t.step" in wiz_js                    # opens the HEMS steps at the asked step
     wiz = (PKG / "templates/partials/setup_wizard.html").read_text()
     assert 'data-testid="hems-wiz-history"' in wiz
+
+
+def test_history_is_found_under_the_gateway_serial(st):  # noqa: F811
+    """A real aGate's metrics rows carry its serial (poller: gw.serial or gw.id), not the
+    gateway id: the load forecast, HEMS setup and Actuals found no history on real installs."""
+    from franklinwh_direct_connect_bridge import state
+    state.get_gateway("gw1").serial = "SER-TEST-1"
+    start = int(NOW) // 3600 * 3600 - 3 * 86400
+    for t in range(start, int(NOW), 900):
+        st.insert({"load_w": 1000, "soc": 50, "battery_w": 0}, t, gateway_id="SER-TEST-1")
+    assert hems_setup.view(st, None, "gw1", NOW)["history_days"] == 4
+    r = _plan(st)["result"]
+    assert all(s["load_kw"] > 0 for s in r["steps"])
+    assert smart_dispatch.actuals(st, "gw1", NOW)["steps"]

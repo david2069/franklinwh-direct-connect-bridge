@@ -46,9 +46,16 @@ def _zone(store) -> ZoneInfo:
         return ZoneInfo("UTC")
 
 
+def metrics_key(gateway_id: str) -> str:
+    """The gateway's tag on metrics rows: its serial, else its id (as the poller writes)."""
+    from . import state
+    gw = state.get_gateway(gateway_id)
+    return (gw.serial if gw is not None and gw.serial else None) or gateway_id
+
+
 def hourly_load(store, gateway_id: str, start: int, end: int) -> list[dict]:
     """``[{start, kwh}]`` per hour: the hour's mean home load (W) ÷ 1000."""
-    rows = store.query(start, end, 3600, gateway=gateway_id)
+    rows = store.query(start, end, 3600, gateway=metrics_key(gateway_id))
     return [{"start": r["ts"], "kwh": round(r["load_w"] / 1000, 4)}
             for r in rows if r.get("load_w") is not None]
 

@@ -608,7 +608,8 @@ def actuals(store, gateway_id: str, now: float | None = None) -> dict:
     tz = load_forecast._zone(store)
     local = dt.datetime.fromtimestamp(now, tz)
     start = int(local.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
-    rows = store.query(start, int(now), STEP_S, gateway=gateway_id) if store is not None else []
+    rows = (store.query(start, int(now), STEP_S, gateway=load_forecast.metrics_key(gateway_id))
+            if store is not None else [])
 
     def kw(w, sign=1.0):
         return None if w is None else round(sign * w / 1000.0, 2)

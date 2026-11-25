@@ -20,6 +20,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - Smart Dispatch planned the home at 0 kWh with little history: an hour with no history now
   uses the hour-of-day average (one day is enough), then the always-on load from HEMS setup,
   and the plan's notes say how many steps came from each (hems 0.3.1).
+- On a real aGate, the load forecast (the Load Forecast sensor and Smart Dispatch), the HEMS
+  setup pre-fills ("Not enough history yet") and Smart Dispatch Actuals found no history:
+  they looked it up by the gateway's id, but history is stored under its serial.
 
 ## Releases
 
