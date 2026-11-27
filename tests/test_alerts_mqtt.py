@@ -26,12 +26,12 @@ def _cfgs(groups=None):
 @pytest.mark.parametrize("groups", [None, ["core"], ["power"]])
 def test_bridge_problem_is_always_discovered_and_the_heartbeat_is_not_per_gateway(groups):
     cfgs, avail = _cfgs(groups)
-    prob = cfgs["homeassistant/binary_sensor/n1/bridge_problem/config"]
+    prob = cfgs["homeassistant/binary_sensor/fwh_dc_n1/bridge_problem/config"]
     assert prob["name"] == "Bridge problem" and prob["device_class"] == "problem"
     assert prob["state_topic"] == "franklinwh-local/n1/alerts"
     # Must stay readable while the aGate is unreachable — that IS a bridge problem.
     assert "availability_topic" not in prob
-    assert prob["device"]["identifiers"] == ["franklinwh_n1"]
+    assert prob["device"]["identifiers"] == ["fwh_dc_n1"]
     assert prob["json_attributes_topic"] == "franklinwh-local/n1/alerts"
     assert not any("heartbeat" in t for t in cfgs)
 

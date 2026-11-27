@@ -229,10 +229,21 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
         """Create + start an MqttPublisher (blocking connect). Raises on failure."""
         # Each gateway is a distinct serial node → distinct HA device (collision-free).
         from . import devicedb as _ddb
+        from .publish import identity as _identity
         _hw = getattr(gw, "sy_hd_version", None)
         _model = ((_ddb.gateway(_hw) or {}).get("model") if _hw is not None else None)
+        # The fwh_dc ids (#252): decided once per process; this gateway moves now if its
+        # old discovery configs are still on the broker.
+        _store = get_store(settings)
+        _move, _old = False, {}
+        if _identity.decide(settings, _store) == _identity.CURRENT:
+            try:
+                _move, _old = _identity.pending(node, settings, _store)
+            except Exception as e:  # noqa: BLE001 — then it moves on a later start
+                log.info("[%s] identity: old topics not readable (%s)", gw.id, e)
         device = entities.device_info(node, serial, fw, model=_model,
-                                      is_mock=bool(getattr(gw, "is_mock", False)))
+                                      is_mock=bool(getattr(gw, "is_mock", False)),
+                                      moving=_move)
         def _on_control(key: str, payload: str) -> None:
             """Inbound HA control. Runs on the MQTT network thread, so it is kept
             short and every outcome is logged — a control that silently fails is
@@ -258,6 +269,18 @@ async def run_gateway(settings: Settings, gw: GatewayState, stop: asyncio.Event)
                             groups=entities.enabled_from_store(get_store(settings)),
                             skip=ha_skip(settings, gw))
         pub.start()
+        if _move:
+            _session = _identity.ha_session(_store)
+            if _session is not None:
+                try:
+                    keys = {c["unique_id"].split(f"{_identity.CURRENT}_{node}_", 1)[1]
+                            for _t, c in pub.configs}
+                    res = _identity.move_node(settings, _store, node, keys, _old, _session)
+                    _identity.record(_store, node, res)
+                except Exception as e:  # noqa: BLE001 — publishing goes on; retried next start
+                    log.warning("[%s] identity: moving to fwh_dc failed: %s", gw.id, e)
+            else:
+                log.warning("[%s] identity: %s", gw.id, _identity.NO_HA)
         return pub
 
     pub = None

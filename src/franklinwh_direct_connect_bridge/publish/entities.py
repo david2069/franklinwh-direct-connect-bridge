@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from . import identity
+
 # The manufacturer as the Modbus Bridge publishes it, so the two bridges' HA devices
 # read the same (#140). Display only — not part of any identifier.
 MANUFACTURER = "FranklinWH Technologies Co., Ltd"
@@ -535,11 +537,14 @@ def device_name(serial: str) -> str:
 
 
 def device_info(node: str, serial: str, firmware: str | None = None, *,
-                model: str | None = None, is_mock: bool = False) -> dict[str, Any]:
+                model: str | None = None, is_mock: bool = False,
+                moving: bool = False) -> dict[str, Any]:
     from .. import __version__
-    # DO NOT change `identifiers`. They are Home Assistant's device IDENTITY: a new value
-    # creates a SECOND device and orphans every entity already discovered. The `name`
-    # beside it is only a label and is safe to change — see device_name().
+    # DO NOT change `identifiers` outside publish/identity.py. They are Home Assistant's
+    # device IDENTITY: a new value creates a SECOND device and orphans every entity already
+    # discovered. While a gateway moves to the fwh_dc ids (#252) the device carries the old
+    # identifier too, so Home Assistant keeps the same device. The `name` beside it is only
+    # a label and is safe to change — see device_name().
     #
     # The other fields are labels too, laid out as the Modbus Bridge does (#140): the
     # BRIDGE's version as "Firmware" (sw_version) and the aGate's firmware as "Hardware"
@@ -547,7 +552,9 @@ def device_info(node: str, serial: str, firmware: str | None = None, *,
     # the Modbus bridge and FWHAI — mqtt_scan and the setup checks decide ownership from
     # its "Direct Connect Bridge" prefix — so the prefix must stay.
     d = {
-        "identifiers": [f"franklinwh_{node}"],
+        "identifiers": ([identity.device_ident(node)]
+                        + ([f"{identity.LEGACY}_{node}"] if moving and identity.ns() != identity.LEGACY
+                           else [])),
         "name": device_name(serial),
         "manufacturer": MANUFACTURER,
         "model": "aGate (mock)" if is_mock else (model or "aGate"),
@@ -579,6 +586,7 @@ OFF_GRID_ONLY_KEYS = frozenset({"offgrid_reason", "offgrid_min"})
 def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: str, groups=None,
                       *, skip: frozenset | set = frozenset()):
     """Return (list[(config_topic, config_payload)], state_topic, availability_topic)."""
+    tnode = identity.topic_node(node)
     state_topic = f"{prefix}/{node}/state"
     avail_topic = f"{prefix}/{node}/availability"
     configs = []
@@ -588,7 +596,7 @@ def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: st
             continue
         cfg = {
             "name": e["name"],
-            "unique_id": f"franklinwh_{node}_{e['key']}",
+            "unique_id": identity.unique_id(node, e["key"]),
             "object_id": f"franklinwh_{node}_{e['key']}",
             "state_topic": state_topic,
             "value_template": "{{ value_json.%s }}" % e["key"],
@@ -617,7 +625,7 @@ def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: st
             # Display only: HA keeps the full value in history and statistics (#114).
             cfg["suggested_display_precision"] = prec
         ha_type = e.get("ha_type", "sensor")
-        configs.append((f"{discovery_prefix}/{ha_type}/{node}/{e['key']}/config", cfg))
+        configs.append((f"{discovery_prefix}/{ha_type}/{tnode}/{e['key']}/config", cfg))
 
     # Controls. Each gets its own command topic; the publisher subscribes to
     # `<prefix>/<node>/control/+/set` and routes by the key in the topic.
@@ -627,7 +635,7 @@ def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: st
         cmd_topic = f"{prefix}/{node}/control/{c['key']}/set"
         cfg = {
             "name": c["name"],
-            "unique_id": f"franklinwh_{node}_{c['key']}",
+            "unique_id": identity.unique_id(node, c["key"]),
             "object_id": f"franklinwh_{node}_{c['key']}",
             "state_topic": state_topic,
             "value_template": "{{ value_json.%s }}" % c["state_key"],
@@ -651,7 +659,7 @@ def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: st
             cfg["state_on"] = "True"
             cfg["state_off"] = "False"
         configs.append(
-            (f"{discovery_prefix}/{c['ha_type']}/{node}/{c['key']}/config", cfg))
+            (f"{discovery_prefix}/{c['ha_type']}/{tnode}/{c['key']}/config", cfg))
 
     a_topic = alerts_topic(node, prefix)
     for b in BRIDGE_ENTITIES:
@@ -659,7 +667,7 @@ def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: st
             continue
         cfg = {
             "name": b["name"],
-            "unique_id": f"franklinwh_{node}_{b['key']}",
+            "unique_id": identity.unique_id(node, b["key"]),
             "object_id": f"franklinwh_{node}_{b['key']}",
             "state_topic": a_topic,
             "device_class": b["device_class"],
@@ -672,7 +680,7 @@ def discovery_configs(node: str, device: dict, prefix: str, discovery_prefix: st
             "{{ {'level': value_json.level, 'open': value_json.open,"
             " 'alerts': value_json.alerts} | tojson }}")
         configs.append(
-            (f"{discovery_prefix}/{b['ha_type']}/{node}/{b['key']}/config", cfg))
+            (f"{discovery_prefix}/{b['ha_type']}/{tnode}/{b['key']}/config", cfg))
 
     return configs, state_topic, avail_topic
 

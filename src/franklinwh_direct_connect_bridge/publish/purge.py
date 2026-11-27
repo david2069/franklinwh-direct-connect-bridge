@@ -18,15 +18,19 @@ from typing import Any, Callable
 import paho.mqtt.client as mqtt
 
 from ..config import Settings
-from . import entities
+from . import entities, identity
 
 
 def topics_for(node: str, settings: Settings) -> list[str]:
-    """Every retained topic this bridge can publish for ``node``, whatever groups are on."""
+    """Every retained topic this bridge can publish for ``node``, whatever groups are on,
+    under the fwh_dc ids and the old ones (#252), so nothing of either is left behind."""
     configs, state_topic, avail_topic = entities.discovery_configs(
-        node, entities.device_info(node, node), settings.mqtt_prefix,
+        node, entities.device_info(node, node), identity.prefix(settings),
         settings.ha_discovery_prefix, list(entities.GROUPS))
-    return [t for t, _ in configs] + [state_topic, avail_topic]
+    pfx = identity.prefix(settings)
+    own = [t for t, _ in configs] + [state_topic, avail_topic] + [
+        f"{pfx}/{node}/{t}" for t in ("tou", "alerts", "load_forecast")]
+    return list(dict.fromkeys(own + identity.legacy_topics(node, settings)))
 
 
 def _client(settings: Settings, suffix: str) -> mqtt.Client:

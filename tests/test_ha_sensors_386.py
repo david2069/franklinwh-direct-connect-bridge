@@ -58,12 +58,12 @@ def test_relays_absent_when_not_read():
 def test_discovery_types_and_enum_options():
     cfgs, _, _ = entities.discovery_configs("n", {}, "p", "d", ["core", "diagnostic"])
     by_topic = dict(cfgs)
-    relay = by_topic["d/binary_sensor/n/relay_main1/config"]
+    relay = by_topic["d/binary_sensor/fwh_dc_n/relay_main1/config"]
     assert relay["device_class"] == "power" and relay["entity_category"] == "diagnostic"
-    grid = by_topic["d/sensor/n/status_grid_status/config"]
+    grid = by_topic["d/sensor/fwh_dc_n/status_grid_status/config"]
     assert grid["device_class"] == "enum" and grid["options"][0] == "Connected"
-    assert "d/sensor/n/active_reserve_pct/config" in by_topic
-    assert "d/sensor/n/device_firmware/config" in by_topic
+    assert "d/sensor/fwh_dc_n/active_reserve_pct/config" in by_topic
+    assert "d/sensor/fwh_dc_n/device_firmware/config" in by_topic
 
 
 def test_a_mock_gateway_publishes_no_relays():
@@ -78,7 +78,7 @@ def test_grid_voltage_and_frequency_from_the_poll():
     assert (st["grid_voltage_v"], st["grid_frequency_hz"]) == (247.4, 49.96)
     cfgs, _, _ = entities.discovery_configs("n", {}, "p", "d", ["power"])
     by_topic = dict(cfgs)
-    v = by_topic["d/sensor/n/grid_voltage_v/config"]
-    f = by_topic["d/sensor/n/grid_frequency_hz/config"]
+    v = by_topic["d/sensor/fwh_dc_n/grid_voltage_v/config"]
+    f = by_topic["d/sensor/fwh_dc_n/grid_frequency_hz/config"]
     assert (v["device_class"], v["unit_of_measurement"]) == ("voltage", "V")
     assert (f["device_class"], f["unit_of_measurement"]) == ("frequency", "Hz")

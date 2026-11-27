@@ -28,6 +28,7 @@ from franklinwh_direct_connect_api.transport import TransportError
 from . import __version__, client, db
 from . import environment
 from . import install_identity
+from .publish import identity as _identity
 from . import auth
 from . import security
 from . import tls
@@ -4386,8 +4387,8 @@ def create_app() -> FastAPI:
                 # One row per device with its count, so HA's 256 KiB template limit is
                 # not reached however many leftovers there are (#445).
                 rows = ha_instances.bridge_entity_counts(inst["base_url"], inst.get("token"))
-                current = {f"franklinwh_{(g.serial or '').lower()}"
-                           for g in (get_gateways() or []) if g.serial}
+                current = {i for g in (get_gateways() or []) if g.serial
+                           for i in _identity.own_idents((g.serial or '').lower())}
                 if current:
                     ours = sum(n for idents, n in rows if current & set(idents))
                     leftovers = sum(n for _i, n in rows) - ours
@@ -5462,7 +5463,7 @@ def create_app() -> FastAPI:
         from .publish import entities as pub
         s = get_settings()
         return {
-            "prefix": s.mqtt_prefix,
+            "prefix": _identity.prefix(s),
             "discovery_prefix": s.ha_discovery_prefix,
             "mqtt_enabled": s.mqtt_enabled,
             "entities": [
@@ -6664,7 +6665,7 @@ def create_app() -> FastAPI:
                 # The ids HA gave this gateway's device (#689): it names entities after
                 # the device and entity name, not after the object_id we publish.
                 device_ids.update(ha_instances.device_entity_ids(
-                    inst["base_url"], inst.get("token"), f"franklinwh_{node}"))
+                    inst["base_url"], inst.get("token"), _identity.device_ident(node)))
             except Exception:  # noqa: BLE001 — then object_id ids are all we can confirm
                 pass
 
@@ -7564,6 +7565,10 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=f"dispatch provider unreachable: {e}")
 
     # -- MQTT tab -------------------------------------------------------------
+    def _identity_view(gw) -> dict:
+        v = _identity.view(db.get_store(get_settings()))
+        return {**v, "node": gw.node, "move": (v.get("nodes") or {}).get(gw.node)}
+
     @app.get("/api/mqtt/config")
     def api_mqtt_config(gateway: str = Depends(_gateway_q)):
         s = get_settings()
@@ -7573,8 +7578,10 @@ def create_app() -> FastAPI:
             "enabled": s.mqtt_enabled,
             "host": s.mqtt_host,
             "port": s.mqtt_port,
-            "prefix": s.mqtt_prefix,
+            "prefix": _identity.prefix(s),
             "discovery_prefix": s.ha_discovery_prefix,
+            # The HA ids (#252): which, why, and what this gateway's move did.
+            "identity": _identity_view(gw),
         }
 
     @app.get("/api/mqtt/conflicts")
@@ -7859,7 +7866,7 @@ def create_app() -> FastAPI:
         s = get_settings()
         gw = _gw_or_404(gateway)
         node = gw.node or "agate"
-        prefix = s.mqtt_prefix
+        prefix = _identity.prefix(s)
         state_topic = f"{prefix}/{node}/state"
         enabled = set(_mqtt_groups(_gw_store()))
         st = gw.last_state or {}
@@ -8001,7 +8008,7 @@ def create_app() -> FastAPI:
                 "port": s.mqtt_port,
                 "username": s.mqtt_username or "",
                 "password_set": bool(s.mqtt_password),
-                "prefix": s.mqtt_prefix,
+                "prefix": _identity.prefix(s),
                 "discovery_prefix": s.ha_discovery_prefix,
                 "connected": (gw.mqtt_connected if gw else
                               any(g.mqtt_connected for g in get_gateways())),

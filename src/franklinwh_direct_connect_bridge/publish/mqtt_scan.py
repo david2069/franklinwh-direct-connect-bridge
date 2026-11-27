@@ -64,7 +64,8 @@ def scan_conflicts(settings, own_node: str, *, timeout: float = 2.5) -> dict[str
     msgs, err = _collect(settings, prefix, timeout=timeout, tag=f"scan-{own_node}")
     if err:
         return {"ok": False, "error": err}
-    return analyze(msgs, f"franklinwh_{own_node}", prefix, own_node)
+    from . import identity
+    return analyze(msgs, identity.device_ident(own_node), prefix, own_node)
 
 
 def analyze(msgs: dict[str, bytes], own_ident: str, prefix: str, own_node: str) -> dict[str, Any]:
@@ -157,7 +158,8 @@ def find_orphans(msgs: dict[str, bytes], live_nodes, prefix: str) -> dict[str, A
         sw = dev.get("sw_version") or ""
         # The node comes from the device identifier, not the topic: the identifier is
         # what HA keys the device on, and the 3-segment topic form carries no node.
-        node = ident[len("franklinwh_"):] if ident.startswith("franklinwh_") else ""
+        from . import identity
+        node = identity.node_of(ident)
         # Both spellings: a purge that stopped recognising entities published by an older
         # version would leave its own leftovers behind for ever.
         ours = _is_ours(sw)
