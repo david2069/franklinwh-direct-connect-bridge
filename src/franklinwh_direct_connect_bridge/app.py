@@ -4562,6 +4562,17 @@ def create_app() -> FastAPI:
             raise HTTPException(503, "metrics store is disabled")
         return smart_dispatch.view(st, get_settings(), gateway, force=refresh)
 
+    @app.get("/api/smart-dispatch/actuals")
+    def api_smart_dispatch_actuals(gateway: str = Depends(_gateway_q)):
+        """Each half hour from the site's midnight to now: battery kW (+ charging), SoC, grid
+        import and export, solar and home load, from the bridge's own history."""
+        from . import smart_dispatch
+        _gw_or_404(gateway)
+        st = _gw_store()
+        if st is None:
+            raise HTTPException(503, "metrics store is disabled")
+        return smart_dispatch.actuals(st, gateway)
+
     @app.post("/api/smart-dispatch/check")
     def api_smart_dispatch_check(body: dict, gateway: str = Depends(_gateway_q)):
         """The answers given, checked and planned without saving them."""
