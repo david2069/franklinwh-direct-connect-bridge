@@ -11,23 +11,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
-### Changed
-- **Home Assistant: the gateway devices move to the `fwh_dc` ids** (#252, #92). Device
-  `fwh_dc_<serial>`, entities `fwh_dc_<serial>_<key>`, topics under `fwh_dc/` (were
-  `franklinwh_` and `franklinwh-local/`, names other FranklinWH software uses too). Entity
-  ids, device names and history stay: on the first start each gateway's new entities join
-  the same device, the old ones are removed (read back), and each new entity is renamed
-  into the old id with your name, icon, area, labels, aliases and display options. The MQTT
-  tab shows what moved, and names any automation that picks one of these entities
-  through its device: those need the entity chosen again. Without Home Assistant's API (Docker: add your Home Assistant with
-  an administrator's token), or while another bridge still publishes the old topics,
-  nothing moves and the tab says why. If you read the MQTT topics yourself, change
-  `franklinwh-local/` to `fwh_dc/`; a prefix you set yourself is kept
-  ([guide](docs/guide/home-assistant.md#the-fwh_dc-ids-252)).
-
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
+
+## 2026-11-27
+
+### [0.5.59](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.59.md)
+
+Changed 1
+
+- Home Assistant: the gateway devices move to the `fwh_dc` ids
 
 ## 2026-11-25
 
@@ -35,9 +29,7 @@ Full notes for each release are on the [docs site](https://david2069.github.io/f
 
 Added 2 · Fixed 1
 
-- Smart Dispatch: Actuals and the tariff on the plan
-- Smart Dispatch: the plan's energy at the top
-- Smart Dispatch: Create schedules always answers
+- Smart Dispatch: Create schedules always answers (#831)
 
 ### [0.5.57](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.57.md)
 
