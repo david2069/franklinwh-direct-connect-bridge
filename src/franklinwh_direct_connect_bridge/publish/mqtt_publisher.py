@@ -8,7 +8,7 @@ import logging
 import paho.mqtt.client as mqtt
 
 from ..config import Settings
-from . import entities
+from . import entities, identity
 
 log = logging.getLogger("franklinwh_direct_connect_bridge.publish.mqtt_publisher")
 
@@ -28,7 +28,7 @@ class MqttPublisher:
         #: off the entities leave HA, and the topics must stop working too.
         self.controls_on = "controls" in entities._enabled(groups)
         self.configs, self.state_topic, self.avail_topic = entities.discovery_configs(
-            node, device, settings.mqtt_prefix, settings.ha_discovery_prefix, groups,
+            node, device, identity.prefix(settings), settings.ha_discovery_prefix, groups,
             skip=self.skip,
         )
         self.client = mqtt.Client(
@@ -38,7 +38,7 @@ class MqttPublisher:
             self.client.username_pw_set(settings.mqtt_username, settings.mqtt_password)
         # Last-will: mark offline if the bridge drops.
         self.client.will_set(self.avail_topic, "offline", retain=True)
-        self.cmd_filter = entities.command_topic_filter(node, settings.mqtt_prefix)
+        self.cmd_filter = entities.command_topic_filter(node, identity.prefix(settings))
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
 
@@ -86,7 +86,7 @@ class MqttPublisher:
         self.clear_discovery()
         self.groups = groups
         self.configs, self.state_topic, self.avail_topic = entities.discovery_configs(
-            self.node, self.device, self.s.mqtt_prefix, self.s.ha_discovery_prefix, groups,
+            self.node, self.device, identity.prefix(self.s), self.s.ha_discovery_prefix, groups,
             skip=self.skip)
         self.publish_discovery()
         was, self.controls_on = self.controls_on, "controls" in entities._enabled(groups)
@@ -106,7 +106,7 @@ class MqttPublisher:
         self.skip = skip
         old = dict(self.configs)
         self.configs, self.state_topic, self.avail_topic = entities.discovery_configs(
-            self.node, self.device, self.s.mqtt_prefix, self.s.ha_discovery_prefix,
+            self.node, self.device, identity.prefix(self.s), self.s.ha_discovery_prefix,
             self.groups, skip=self.skip)
         new = dict(self.configs)
         for topic in old.keys() - new.keys():
@@ -133,17 +133,17 @@ class MqttPublisher:
 
     def publish_alerts(self, payload: dict) -> None:
         """Bridge problem (#271). Retained, so HA has it at once after a restart."""
-        self.client.publish(entities.alerts_topic(self.node, self.s.mqtt_prefix),
+        self.client.publish(entities.alerts_topic(self.node, identity.prefix(self.s)),
                             json.dumps(payload), retain=True)
 
     def publish_load_forecast(self, payload: dict) -> None:
         """Load Forecast (#713): this hour's kW and HAEO's series. Retained."""
-        self.client.publish(entities.load_forecast_topic(self.node, self.s.mqtt_prefix),
+        self.client.publish(entities.load_forecast_topic(self.node, identity.prefix(self.s)),
                             json.dumps(payload), retain=True)
 
     def publish_tou(self, payload: dict) -> None:
         """The TOU entities (#421): worked out from the copy of the schedule. Retained."""
-        self.client.publish(entities.tou_topic(self.node, self.s.mqtt_prefix),
+        self.client.publish(entities.tou_topic(self.node, identity.prefix(self.s)),
                             json.dumps(payload), retain=True)
 
     def publish_availability(self, online: bool) -> None:
@@ -168,12 +168,17 @@ class BridgeHeartbeat:
 
     def __init__(self, settings: Settings):
         self.s = settings
+        try:                     # the prefix depends on the identity (#252)
+            from ..db import get_store
+            identity.decide(settings, get_store(settings))
+        except Exception as e:  # noqa: BLE001
+            log.debug("identity not decided: %s", e)
         self.config_topic, self.config = entities.heartbeat_config(
-            settings.mqtt_prefix, settings.ha_discovery_prefix)
+            identity.prefix(settings), settings.ha_discovery_prefix)
         self.problem_topic, self.problem_config = entities.bridge_problem_config(
-            settings.mqtt_prefix, settings.ha_discovery_prefix)
+            identity.prefix(settings), settings.ha_discovery_prefix)
         self.version_topic, self.version_config = entities.bridge_version_config(
-            settings.mqtt_prefix, settings.ha_discovery_prefix)
+            identity.prefix(settings), settings.ha_discovery_prefix)
         self.client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
             client_id=f"franklinwh-direct-connect-bridge-{entities.BRIDGE_NODE}")
@@ -198,17 +203,17 @@ class BridgeHeartbeat:
 
     def beat(self, now: float) -> None:
         # Retained: if the bridge stops, the last heartbeat stays readable, and visibly old.
-        self.client.publish(entities.heartbeat_topic(self.s.mqtt_prefix),
+        self.client.publish(entities.heartbeat_topic(identity.prefix(self.s)),
                             entities.heartbeat_payload(now), retain=True)
 
     def publish_problem(self, payload: dict) -> None:
         """The bridge-level "Bridge problem" (#286). Retained, like the per-gateway one."""
-        self.client.publish(entities.alerts_topic(entities.BRIDGE_NODE, self.s.mqtt_prefix),
+        self.client.publish(entities.alerts_topic(entities.BRIDGE_NODE, identity.prefix(self.s)),
                             json.dumps(payload), retain=True)
 
     def publish_version(self, payload: dict) -> None:
         """The bridge-level "Bridge Version" (#706). Retained, so HA has it after a restart."""
-        self.client.publish(entities.version_topic(self.s.mqtt_prefix),
+        self.client.publish(entities.version_topic(identity.prefix(self.s)),
                             json.dumps(payload), retain=True)
 
     def stop(self) -> None:

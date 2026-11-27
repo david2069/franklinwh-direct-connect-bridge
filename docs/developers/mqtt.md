@@ -26,7 +26,7 @@ case.
 | `MQTT_ENABLED` | `false` | The add-on's `config.yaml` defaults it to `true` for new installs. |
 | `MQTT_HOST`, `MQTT_PORT` | `core-mosquitto`, `1883` | As an add-on, `ha_supervisor.apply_supervisor_mqtt()` fills unset broker details from the Supervisor. |
 | `MQTT_USERNAME`, `MQTT_PASSWORD` | empty | |
-| `MQTT_PREFIX` | `franklinwh-local` | The base of the state, availability and command topics. Needs a restart to change. |
+| `MQTT_PREFIX` | `fwh_dc` (`franklinwh-local` until the move, #252) | The base of the state, availability and command topics. Needs a restart to change. A value you set is kept. |
 | `HA_DISCOVERY_PREFIX` | `homeassistant` | Needs a restart to change. |
 
 **`publish_ha` is per gateway.** It is a field of the gateway (`state.py`, stored with a
@@ -53,11 +53,11 @@ All topics come from `discovery_configs()` and `command_topic_filter()` in
 
 | Purpose | Topic | Retained | Payload |
 |---|---|---|---|
-| Discovery, sensors | `homeassistant/sensor/<node>/<key>/config` | yes | JSON config |
-| Discovery, controls | `homeassistant/<select\|switch>/<node>/<key>/config` | yes | JSON config |
-| State | `franklinwh-local/<node>/state` | yes | One JSON object, every entity's value |
-| Availability | `franklinwh-local/<node>/availability` | yes | `online` or `offline` |
-| Commands in | `franklinwh-local/<node>/control/<key>/set` | — | `ON`/`OFF`, or a mode name |
+| Discovery, sensors | `homeassistant/sensor/fwh_dc_<node>/<key>/config` | yes | JSON config |
+| Discovery, controls | `homeassistant/<select\|switch>/fwh_dc_<node>/<key>/config` | yes | JSON config |
+| State | `fwh_dc/<node>/state` | yes | One JSON object, every entity's value |
+| Availability | `fwh_dc/<node>/availability` | yes | `online` or `offline` |
+| Commands in | `fwh_dc/<node>/control/<key>/set` | — | `ON`/`OFF`, or a mode name |
 
 There is **one state topic per gateway**. Each entity's discovery config picks its own
 field out with `value_template: "{{ value_json.<key> }}"`.
@@ -89,8 +89,9 @@ From the node id:
 
 | Field | Value | Source |
 |---|---|---|
-| `unique_id`, `object_id` | `franklinwh_<node>_<key>` | `discovery_configs()` |
-| `device.identifiers` | `["franklinwh_<node>"]` | `device_info()` |
+| `unique_id` | `fwh_dc_<node>_<key>` | `discovery_configs()`, `identity.unique_id()` |
+| `object_id` | `franklinwh_<node>_<key>` (unchanged: entity ids don't move) | `discovery_configs()` |
+| `device.identifiers` | `["fwh_dc_<node>"]`; also `franklinwh_<node>` while it moves | `device_info()`, `identity.device_ident()` |
 | `device.name` | `FranklinWH Direct <last 8 characters of the serial>` | `device_name()` |
 | `device.manufacturer` | `FranklinWH Technologies Co., Ltd` | `MANUFACTURER` |
 | `device.model` | the model from the device database, else `aGate`; `aGate (mock)` for a mock | `device_info()` |
@@ -104,10 +105,15 @@ a label and is safe to change. The `Direct Connect Bridge` prefix of `sw_version
 the bridge recognises its own entities on a broker it shares with other FranklinWH
 software (`mqtt_scan.py`, and the setup checks).
 
-!!! note "Planned: `fwh_dc` identity (#92)"
-    Moving the MQTT prefix, device identifiers and `unique_id`s to an `fwh_dc` prefix is
-    decided but not built (#92, open). It will ship as its own release with a migration.
-    Until then, the `franklinwh_` and `franklinwh-local` forms above are current.
+!!! note "The `fwh_dc` identity (#92, #252)"
+    The ids above replaced `franklinwh_<node>` and `franklinwh-local/` in this release.
+    `publish/identity.py` decides once per start: `fwh_dc` for a fresh install or one that
+    has moved, else it moves each gateway (new configs on the same device, old configs
+    removed and read back, each new entity renamed into the old entity id with the user's
+    registry settings copied, over Home Assistant's websocket API). Without that API, or
+    while another bridge publishes the old state topics, the old ids are kept
+    (`identity.mode() == "legacy"`) and the reason is shown on the MQTT tab. User guide:
+    [the `fwh_dc` ids](../guide/home-assistant.md#the-fwh_dc-ids-252).
 
 ---
 
@@ -119,13 +125,13 @@ Discovery config for State of Charge, on
 ```json
 {
   "name": "State of Charge",
-  "unique_id": "franklinwh_<serial>_soc",
+  "unique_id": "fwh_dc_<serial>_soc",
   "object_id": "franklinwh_<serial>_soc",
-  "state_topic": "franklinwh-local/<serial>/state",
+  "state_topic": "fwh_dc/<serial>/state",
   "value_template": "{{ value_json.soc }}",
-  "availability_topic": "franklinwh-local/<serial>/availability",
+  "availability_topic": "fwh_dc/<serial>/availability",
   "device": {
-    "identifiers": ["franklinwh_<serial>"],
+    "identifiers": ["fwh_dc_<serial>"],
     "name": "FranklinWH Direct <SERIAL_LAST8>",
     "manufacturer": "FranklinWH Technologies Co., Ltd",
     "model": "aGate",
@@ -147,18 +153,18 @@ above:
 ```json
 {
   "name": "Operating Mode",
-  "unique_id": "franklinwh_<serial>_operating_mode",
+  "unique_id": "fwh_dc_<serial>_operating_mode",
   "object_id": "franklinwh_<serial>_operating_mode",
-  "state_topic": "franklinwh-local/<serial>/state",
+  "state_topic": "fwh_dc/<serial>/state",
   "value_template": "{{ value_json.mode }}",
-  "command_topic": "franklinwh-local/<serial>/control/operating_mode/set",
-  "availability_topic": "franklinwh-local/<serial>/availability",
+  "command_topic": "fwh_dc/<serial>/control/operating_mode/set",
+  "availability_topic": "fwh_dc/<serial>/availability",
   "device": { "...": "as above" },
   "options": ["Time-of-Use", "Self-Consumption", "Emergency Backup"]
 }
 ```
 
-State, on `franklinwh-local/<serial>/state`. This is from the mock gateway; the values
+State, on `fwh_dc/<serial>/state`. This is from the mock gateway; the values
 are synthetic, and some keys are left out for length:
 
 ```json
@@ -233,7 +239,7 @@ Entities in the `diagnostic` group carry `entity_category: diagnostic`.
 
 ## Command topics
 
-The publisher subscribes to `franklinwh-local/<node>/control/+/set` on **every**
+The publisher subscribes to `fwh_dc/<node>/control/+/set` on **every**
 connect, not only the first (`_on_connect` in `mqtt_publisher.py`). The key is the
 second-to-last topic segment (`key_from_command_topic()`).
 

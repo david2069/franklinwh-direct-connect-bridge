@@ -15,15 +15,21 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
 
+## 2026-11-27
+
+### [0.5.59](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.59.md)
+
+Changed 1
+
+- Home Assistant: the gateway devices move to the `fwh_dc` ids
+
 ## 2026-11-25
 
 ### [0.5.58](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.58.md)
 
 Added 2 · Fixed 1
 
-- Smart Dispatch: Actuals and the tariff on the plan
-- Smart Dispatch: the plan's energy at the top
-- Smart Dispatch: Create schedules always answers
+- Smart Dispatch: Create schedules always answers (#831)
 
 ### [0.5.57](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.57.md)
 

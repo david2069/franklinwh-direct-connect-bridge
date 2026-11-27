@@ -231,8 +231,12 @@ your broker allows.
 ### Step 1: see what is published
 
 ```bash
-mosquitto_sub -h <broker> -u <user> -P <password> -v -t 'homeassistant/#' -t 'franklinwh-local/#'
+mosquitto_sub -h <broker> -u <user> -P <password> -v -t 'homeassistant/#' -t 'fwh_dc/#'
 ```
+
+This run was captured before the `fwh_dc` ids (#252). Read `franklinwh-local/` as `fwh_dc/`,
+`franklinwh_<node>` (identifiers, unique_ids) as `fwh_dc_<node>`, and the discovery
+topics' `<node>` as `fwh_dc_<node>`.
 
 In the run, the broker held **66 discovery configs** (53 sensors, 8 binary sensors, 1
 select, 4 switches) and these other topics. `<node>` is the gateway's serial, lower-cased:

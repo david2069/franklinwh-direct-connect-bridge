@@ -120,7 +120,7 @@ def test_the_card_uses_the_ids_ha_gave(ctx, monkeypatch):
     monkeypatch.setattr(ha_instances, "device_entity_ids",
                         lambda u, t, ident: asked.setdefault("ident", ident) and full)
     d = TestClient(app_module.create_app()).get("/api/ha/dashboard-yaml?gateway=g1").json()
-    assert asked["ident"] == f"franklinwh_{node}"
+    assert asked["ident"] == f"fwh_dc_{node}"
     assert f"sensor.franklinwh_direct_{TAIL}_state_of_charge" in d["yaml"]
     assert d["found"] >= 4 and d["hint"] == ""
 

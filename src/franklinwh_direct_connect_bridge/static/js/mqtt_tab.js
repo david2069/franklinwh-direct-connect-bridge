@@ -8,6 +8,7 @@ function mqttTab() {
     entities: [],
     loading: false,
     connected: false,
+    identity: null,
     detecting: false,
     detectMsg: '',
     detectFound: false,
@@ -120,6 +121,7 @@ function mqttTab() {
         if (cfgR.ok) {
           const cfg = await cfgR.json();
           this.connected = !!cfg.connected;
+          this.identity = cfg.identity || null;
         }
       } catch (e) {
         console.warn('[Bridge] mqtt load failed:', e.message);

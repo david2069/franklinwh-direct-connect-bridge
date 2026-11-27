@@ -43,7 +43,7 @@ def test_sw_version_reports_the_real_version():
 # ── the identity contract these fixes protect ─────────────────────────────────
 def test_device_identity_keys_off_the_node_not_the_package_name():
     d = entities.device_info("abc123", "abc123", None)
-    assert d["identifiers"] == ["franklinwh_abc123"]
+    assert d["identifiers"] == ["fwh_dc_abc123"]
     # The package was renamed to franklinwh_direct_connect_bridge; none of the
     # identity may follow it, or every existing HA entity orphans.
     blob = repr(d)
@@ -65,17 +65,17 @@ def test_unique_ids_and_topics_are_namespaced_by_node():
     cfgs, state_topic, avail_topic = entities.discovery_configs(
         "nodeA", dev, "franklinwh-local", "homeassistant")
     assert cfgs, "expected some discovery configs"
-    assert all(c["unique_id"].startswith("franklinwh_nodeA_") for _, c in cfgs)
+    assert all(c["unique_id"].startswith("fwh_dc_nodeA_") for _, c in cfgs)
     # the node is in every topic, so another gateway cannot collide
-    assert all("/nodeA/" in t for t, _ in cfgs)
+    assert all("/fwh_dc_nodeA/" in t for t, _ in cfgs)
     assert state_topic == "franklinwh-local/nodeA/state"
     assert avail_topic == "franklinwh-local/nodeA/availability"
 
 
 def test_state_prefix_keeps_the_pre_rename_spelling():
-    # `mqtt_prefix` defaults to "franklinwh-local". It is NOT cosmetic: changing it
-    # moves every state topic, so already-discovered entities go unavailable and the
-    # old topics linger retained. Renaming it needs a migration, not an edit.
+    # The prefix is NOT cosmetic: changing it moves every state topic, so already-
+    # discovered entities go unavailable and the old topics linger retained. The move to
+    # fwh_dc (#252) is publish/identity.py's migration; the builder takes what it is given.
     _, state_topic, _ = entities.discovery_configs(
         "nodeA", entities.device_info("nodeA", "nodeA", None),
         "franklinwh-local", "homeassistant")
@@ -115,7 +115,7 @@ def test_device_info_matches_the_modbus_bridge_layout():
     assert d["model"] == "aGate X-01-AU"
     assert d["sw_version"] == f"Direct Connect Bridge v{__version__}"     # bridge only
     assert d["hw_version"] == "aGate V12R02B30D06_260304"                  # aGate firmware
-    assert d["identifiers"] == ["franklinwh_sn1"]                           # identity unchanged
+    assert d["identifiers"] == ["fwh_dc_sn1"]                           # identity unchanged
     assert mqtt_scan._is_ours(d["sw_version"])
 
 
