@@ -15,13 +15,20 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
 
-## 2026-11-27
+## 2026-11-28
+
+### [0.5.60](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.60.md)
+
+Changed 1 · Fixed 1
+
+- Home Assistant: the bridge no longer moves your devices to the `fwh_dc` ids on its own
+- 0.5.59 pulled from the Home Assistant add-on store
 
 ### [0.5.59](https://github.com/david2069/franklinwh-direct-connect-bridge/blob/main/docs/changelog/0.5.59.md)
 
 Changed 1
 
-- Home Assistant: the gateway devices move to the `fwh_dc` ids
+- Home Assistant: the gateway devices move to the `fwh_dc` ids (#252, #92)
 
 ## 2026-11-25
 

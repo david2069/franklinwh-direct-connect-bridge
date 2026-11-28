@@ -26,7 +26,7 @@ case.
 | `MQTT_ENABLED` | `false` | The add-on's `config.yaml` defaults it to `true` for new installs. |
 | `MQTT_HOST`, `MQTT_PORT` | `core-mosquitto`, `1883` | As an add-on, `ha_supervisor.apply_supervisor_mqtt()` fills unset broker details from the Supervisor. |
 | `MQTT_USERNAME`, `MQTT_PASSWORD` | empty | |
-| `MQTT_PREFIX` | `fwh_dc` (`franklinwh-local` until the move, #252) | The base of the state, availability and command topics. Needs a restart to change. A value you set is kept. |
+| `MQTT_PREFIX` | `franklinwh-local` (`fwh_dc` on an install 0.5.59 moved, #855) | The base of the state, availability and command topics. Needs a restart to change. A value you set is kept. |
 | `HA_DISCOVERY_PREFIX` | `homeassistant` | Needs a restart to change. |
 
 **`publish_ha` is per gateway.** It is a field of the gateway (`state.py`, stored with a
@@ -49,7 +49,9 @@ client id `franklinwh-direct-connect-bridge-<node>`.
 ## Topic layout
 
 All topics come from `discovery_configs()` and `command_topic_filter()` in
-`publish/entities.py`. `<node>` is the node id (next section).
+`publish/entities.py`. `<node>` is the node id (next section). The tables show the `fwh_dc`
+ids of a moved install; this release keeps `franklinwh_` / `franklinwh-local/` unless the
+install was already moved (see the note below).
 
 | Purpose | Topic | Retained | Payload |
 |---|---|---|---|
@@ -106,9 +108,11 @@ the bridge recognises its own entities on a broker it shares with other Franklin
 software (`mqtt_scan.py`, and the setup checks).
 
 !!! note "The `fwh_dc` identity (#92, #252)"
-    The ids above replaced `franklinwh_<node>` and `franklinwh-local/` in this release.
-    `publish/identity.py` decides once per start: `fwh_dc` for a fresh install or one that
-    has moved, else it moves each gateway (new configs on the same device, old configs
+    **Field test only (#855).** `identity.MOVE` is `False` in releases: `decide()` keeps
+    `legacy` (`franklinwh_<node>`, `franklinwh-local/`) for every install, fresh ones too,
+    unless the store records an earlier move (0.5.59 moved automatically; those stay
+    `fwh_dc`). With `MOVE` on (the field-test build), `decide()` returns `fwh_dc` for a fresh
+    install or one that has moved, else it moves each gateway (new configs on the same device, old configs
     removed and read back, each new entity renamed into the old entity id with the user's
     registry settings copied, over Home Assistant's websocket API). Without that API, or
     while another bridge publishes the old state topics, the old ids are kept

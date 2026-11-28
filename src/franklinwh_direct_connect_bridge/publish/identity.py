@@ -34,6 +34,12 @@ KEY = "ha_identity"
 NO_HA = ("Home Assistant's API isn't reachable, so the entities can't be moved without "
          "losing your names and renamed ids. Add your Home Assistant under Settings → "
          "Home Assistant (with a token) and restart the bridge.")
+#: The move is in a field-test build only (owner 2026-11-28, #855): it changes ids other
+#: software and the user's automations rely on, so this release never moves on its own.
+#: An install that 0.5.59 already moved stays moved.
+MOVE = False
+HELD = ("This release keeps the original ids. The move to the fwh_dc ids is in a "
+        "field-test build only, after a Home Assistant backup (#855).")
 OLD_LIVE = ("Another bridge is still publishing the old topics on this broker. Stop it and "
             "restart this bridge.")
 #: How long to listen for another bridge on the old topics (one poll is 10 s).
@@ -116,7 +122,8 @@ def view(store) -> dict:
     """For the UI: the mode, why, and what each gateway's move did."""
     st = load(store)
     return {"mode": mode() if _mode else (st.get("mode") or None), "reason": st.get("reason"),
-            "at": st.get("at"), "nodes": st.get("nodes") or {}}
+            "at": st.get("at"), "nodes": st.get("nodes") or {},
+            "held": st.get("mode") == "legacy" and st.get("reason") == HELD}
 
 
 # ── what is on the broker ─────────────────────────────────────────────────────────────
@@ -218,7 +225,8 @@ def _ha_ok(session) -> bool:
 
 # ── the decision, once per process ────────────────────────────────────────────────────
 def decide(settings, store, *, nodes: Callable | None = None, session=None,
-           live: Callable | None = None, clear: Callable | None = None) -> str:
+           live: Callable | None = None, clear: Callable | None = None,
+           move: bool | None = None) -> str:
     """The identity for this run: ``fwh_dc`` (fresh, already moved, or moving now) or
     ``legacy`` (can't move yet; the reason is recorded for the UI)."""
     with _lock:
@@ -228,6 +236,11 @@ def decide(settings, store, *, nodes: Callable | None = None, session=None,
         if st.get("mode") == CURRENT:
             set_mode(CURRENT)
             return CURRENT
+        if not (MOVE if move is None else move):
+            _save(store, {"mode": "legacy", "reason": HELD, "at": time.time()})
+            set_mode("legacy")
+            log.info("Home Assistant identity: keeping the original ids (#855)")
+            return "legacy"
         try:
             found = (nodes or legacy_nodes)(settings)
         except Exception as e:                                   # noqa: BLE001

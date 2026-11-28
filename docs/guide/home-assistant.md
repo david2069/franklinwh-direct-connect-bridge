@@ -31,7 +31,7 @@ Settings → Integrations → MQTT shows them read-only, with a Connected chip.
 | `MQTT_HOST` | `core-mosquitto` |
 | `MQTT_PORT` | `1883` |
 | `MQTT_USERNAME` / `MQTT_PASSWORD` | empty |
-| `MQTT_PREFIX` | `fwh_dc` (`franklinwh-local` before the move, #252) |
+| `MQTT_PREFIX` | `franklinwh-local` (`fwh_dc` on an install 0.5.59 moved, #855) |
 | `HA_DISCOVERY_PREFIX` | `homeassistant` |
 
 As a Home Assistant add-on, set these in the add-on's configuration; the default host
@@ -54,15 +54,16 @@ charts read only the local store, so they went empty; since #136 an unset value 
 ![The MQTT tab with an entity's topics expanded](../images/home-assistant/03-topics.png)
 
 The bridge uses one JSON state topic per device. With the defaults, and writing `<node>`
-for the node id:
+for the node id (an install that 0.5.59 moved uses `fwh_dc/` and `fwh_dc_<node>` instead; see
+[below](#the-fwh_dc-ids-252)):
 
 | Purpose | Topic |
 |---|---|
-| State (all values, one JSON object) | `fwh_dc/<node>/state` |
-| Availability | `fwh_dc/<node>/availability` |
-| TOU entities (#421) | `fwh_dc/<node>/tou` |
-| Commands in | `fwh_dc/<node>/control/<key>/set` |
-| Discovery configs | `homeassistant/<sensor\|binary_sensor\|select\|switch>/fwh_dc_<node>/<key>/config` |
+| State (all values, one JSON object) | `franklinwh-local/<node>/state` |
+| Availability | `franklinwh-local/<node>/availability` |
+| TOU entities (#421) | `franklinwh-local/<node>/tou` |
+| Commands in | `franklinwh-local/<node>/control/<key>/set` |
+| Discovery configs | `homeassistant/<sensor\|binary_sensor\|select\|switch>/franklinwh_<node>/<key>/config` |
 
 **The node id is your gateway's serial number, lower-cased.** Each discovery config pulls
 its own field out of the shared state JSON with a `value_template`, and availability is a
@@ -74,8 +75,8 @@ succeeds (#176).
 In Home Assistant the device appears as **"FranklinWH Direct &lt;last 8 characters of the
 serial&gt;"**, so several gateways are told apart (`device_name()` in
 `publish/entities.py`). The name is only a label. The device's identity is its
-`identifiers`, `fwh_dc_<node>`; changing those would create a second device and
-orphan every entity already discovered (the move below is the one planned change). `sw_version` reads "Direct Connect Bridge v" and
+`identifiers`, `franklinwh_<node>` (`fwh_dc_<node>` once moved); changing those would create a
+second device and orphan every entity already discovered (the move below is the one planned change). `sw_version` reads "Direct Connect Bridge v" and
 this bridge's version, and that prefix is how the bridge recognises its *own* entities
 on a broker shared with other FranklinWH publishers. The aGate's firmware is shown as
 the hardware version when known. Developer detail:
@@ -84,12 +85,18 @@ the hardware version when known. Developer detail:
 
 ### The `fwh_dc` ids (#252)
 
-The gateway devices use **`fwh_dc`** ids: device `fwh_dc_<node>`, entities
-`fwh_dc_<node>_<key>`, topics under `fwh_dc/`. Before this release they were
-`franklinwh_<node>` and `franklinwh-local/`, names the Modbus Bridge and FWHAI use too.
-**Entity ids and device names don't change.**
+!!! warning "Field test only (#855)"
+    **This release keeps the original ids** (`franklinwh_<node>`, `franklinwh-local/`) and never
+    moves on its own. 0.5.59 moved existing installs automatically on their first start; it
+    has been withdrawn, and an install it already moved **stays on `fwh_dc`** (moving back
+    would break it again). The move described here is being field-tested in a separate
+    pre-release, run only after a Home Assistant backup and your confirmation.
 
-An existing install moves once, on the first start after the update, per gateway:
+The `fwh_dc` ids are device `fwh_dc_<node>`, entities `fwh_dc_<node>_<key>` and topics under
+`fwh_dc/`, replacing `franklinwh_<node>` and `franklinwh-local/`, names the Modbus Bridge and
+FWHAI use too. **Entity ids and device names don't change.**
+
+Where the move runs (0.5.59, or the field-test build), it runs once per gateway:
 
 1. The new entities are published on the **same device** (it carries both identifiers
    while it moves), so Home Assistant adds them with `_2` ids.
@@ -115,8 +122,8 @@ Home Assistant under **Settings → Home Assistant** with an administrator's tok
 it, or while another bridge still publishes the old topics, nothing moves**: the old ids
 stay, the MQTT tab says why, and the move is tried again on the next start.
 
-If you read the topics yourself (Node-RED, your own MQTT automations), change
-`franklinwh-local/` to `fwh_dc/`. A prefix you set yourself (`MQTT_PREFIX`) is kept.
+On a moved install, if you read the topics yourself (Node-RED, your own MQTT automations),
+change `franklinwh-local/` to `fwh_dc/`. A prefix you set yourself (`MQTT_PREFIX`) is kept.
 
 ---
 
