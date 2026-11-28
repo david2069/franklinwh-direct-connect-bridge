@@ -156,6 +156,18 @@ function smartDispatchTab() {
           .find(p => p.type === 'timeZoneName').value;
       } catch (e) { return (this.v && this.v.timezone) || ''; }
     },
+    // A Plan inputs row's button: Re-run HEMS setup opens the wizard at its step; the others
+    // open the tab where the input is set.
+    openInput(i) {
+      const a = i.action || {};
+      if (a.wizard) {
+        window.dispatchEvent(new CustomEvent('fwh:open-setup-task',
+          { detail: { id: a.wizard, inline: a.wizard, step: a.step } }));
+        return;
+      }
+      if (a.tab) this.$store.app.activeTab = a.tab;
+    },
+
     hhmm(ts) {
       return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hour12: false,
         timeZone: (this.v && this.v.timezone) || undefined }).format(new Date(ts * 1000));

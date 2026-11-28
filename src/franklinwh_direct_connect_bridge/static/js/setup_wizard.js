@@ -176,7 +176,8 @@ window.setupWizard = function setupWizard() {
         this.fromHub = true;
         if (t.inline === 'mode') this.loadModes();
         if (t.inline === 'modbus') this.loadModbus();
-        if (t.inline === 'hems') this.loadHems();
+        // Smart Dispatch's Re-run HEMS setup opens at the step it names (owner 2026-11-25).
+        if (t.inline === 'hems') this.loadHems().then(() => { if (t.step) this.hems.step = t.step; });
         if (t.inline === 'emulator') this.emu.msg = '';
         if (t.inline === 'haentities') this.loadHaInventory();
         this.go(t.inline);
