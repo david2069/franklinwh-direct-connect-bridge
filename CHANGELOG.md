@@ -11,6 +11,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Changed
+- **0.5.59 pulled from the Home Assistant add-on store** (#855, owner 2026-11-28): the add-on
+  offers 0.5.58 again until the next release. 0.5.59 moved Home Assistant ids on its own.
+
 ### Fixed
 - **Home Assistant: the bridge no longer moves your devices to the `fwh_dc` ids on its own**
   (#855, owner 2026-11-28). 0.5.59 did this automatically on the first start: a breaking
