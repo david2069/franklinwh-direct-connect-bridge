@@ -23,6 +23,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 - On a real aGate, the load forecast (the Load Forecast sensor and Smart Dispatch), the HEMS
   setup pre-fills ("Not enough history yet") and Smart Dispatch Actuals found no history:
   they looked it up by the gateway's id, but history is stored under its serial.
+- Smart Dispatch on a phone: the questions' dropdowns (what to optimise for, grid charging,
+  export) ran past the card's edge; they now fit the card.
 
 ## Releases
 

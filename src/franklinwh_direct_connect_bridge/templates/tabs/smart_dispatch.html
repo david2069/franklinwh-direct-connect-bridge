@@ -263,7 +263,7 @@
         </div>
         <div class="text-xs" style="color:var(--text-faint)" x-text="q.why"></div>
         <template x-if="q.kind === 'choice'">
-          <select class="form-control form-control-sm w-auto" :data-testid="'sd-q-' + q.key" x-model="form[q.key]">
+          <select class="form-control form-control-sm w-full max-w-full sm:w-auto" :data-testid="'sd-q-' + q.key" x-model="form[q.key]">
             <template x-for="c in q.choices" :key="c.value"><option :value="c.value" x-text="c.label" :selected="c.value === form[q.key]"></option></template>
           </select>
         </template>
