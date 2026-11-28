@@ -49,7 +49,10 @@
         <span x-text="identity && identity.move ? identity.move.kept : 0"></span> with your own settings.
       </span>
     </div>
-    <div x-show="identity && identity.mode === 'legacy'" class="text-amber-300">
+    <div x-show="identity && identity.mode === 'legacy' && identity.held">
+      Home Assistant ids: <span class="font-mono" x-text="'franklinwh_' + (identity && identity.node || '<serial>')"></span> (the original ids, kept).
+    </div>
+    <div x-show="identity && identity.mode === 'legacy' && !identity.held" class="text-amber-300">
       Home Assistant ids: still the old <span class="font-mono" x-text="'franklinwh_' + (identity && identity.node || '<serial>')"></span>.
       <span x-text="identity && identity.reason"></span>
     </div>
