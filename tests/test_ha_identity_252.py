@@ -80,8 +80,8 @@ def test_node_of_reads_both_spellings():
 
 
 # ── the decision ───────────────────────────────────────────────────────────────────────
-def test_a_fresh_install_starts_on_fwh_dc(undecided, st):
-    assert identity.decide(S, st, nodes=lambda s: set(), session=_never, live=_never) == "fwh_dc"
+def test_field_test_a_fresh_install_starts_on_fwh_dc(undecided, st):
+    assert identity.decide(S, st, nodes=lambda s: set(), session=_never, live=_never, move=True) == "fwh_dc"
     assert identity.load(st)["mode"] == "fwh_dc"
 
 
@@ -91,19 +91,19 @@ def test_once_moved_the_broker_is_not_read_again(undecided, st):
 
 
 def test_without_home_assistant_the_old_ids_stay_and_it_says_why(undecided, st):
-    assert identity.decide(S, st, nodes=lambda s: {"n1"}, session=None, live=_never) == "legacy"
+    assert identity.decide(S, st, nodes=lambda s: {"n1"}, session=None, live=_never, move=True) == "legacy"
     assert identity.load(st)["reason"] == identity.NO_HA
     assert identity.prefix(S) == "franklinwh-local"
     identity.set_mode(None)                                      # next start: tried again
     calls = []
-    identity.decide(S, st, nodes=lambda s: calls.append(1) or {"n1"}, session=None)
+    identity.decide(S, st, nodes=lambda s: calls.append(1) or {"n1"}, session=None, move=True)
     assert calls
 
 
 def test_an_older_bridge_still_publishing_blocks_the_move(undecided, st, monkeypatch):
     monkeypatch.setattr(identity, "_ha_ok", lambda s: True)
     assert identity.decide(S, st, nodes=lambda s: {"n1"}, session=object(),
-                           live=lambda s: True) == "legacy"
+                           live=lambda s: True, move=True) == "legacy"
     assert identity.load(st)["reason"] == identity.OLD_LIVE
 
 
@@ -111,14 +111,14 @@ def test_with_home_assistant_it_moves(undecided, st, monkeypatch):
     monkeypatch.setattr(identity, "_ha_ok", lambda s: True)
     cleared = []
     assert identity.decide(S, st, nodes=lambda s: {"n1", "n2"}, session=object(),
-                           live=lambda s: False, clear=cleared.append) == "fwh_dc"
+                           live=lambda s: False, clear=cleared.append, move=True) == "fwh_dc"
     assert identity.load(st)["from"] == ["n1", "n2"] and cleared == [S]
 
 
 def test_an_unreadable_broker_keeps_the_old_ids_and_records_nothing(undecided, st):
     def boom(s):
         raise ConnectionError("down")
-    assert identity.decide(S, st, nodes=boom) == "legacy"
+    assert identity.decide(S, st, nodes=boom, move=True) == "legacy"
     assert identity.load(st) == {}
 
 
@@ -389,3 +389,33 @@ def test_a_finished_retry_adds_to_the_first_run(st):
     identity.record(st, "n1", {"moved": 1, "renamed": 1, "kept": 1, "problems": []})
     n = identity.view(st)["nodes"]["n1"]
     assert (n["moved"], n["kept"], n["problems"]) == (63, 6, [])
+
+
+# ── #855: the move is a field-test build only; this release never moves on its own ─────
+def test_the_move_is_off_in_this_release():
+    assert identity.MOVE is False
+
+
+def test_an_existing_install_keeps_the_old_ids_even_with_home_assistant(undecided, st, monkeypatch):
+    monkeypatch.setattr(identity, "_ha_ok", lambda s: True)
+    assert identity.decide(S, st, nodes=_never, session=object(), live=_never,
+                           clear=_never) == "legacy"
+    assert identity.load(st)["reason"] == identity.HELD
+    assert identity.prefix(S) == "franklinwh-local"
+
+
+def test_a_fresh_install_keeps_the_old_ids_too(undecided, st):
+    assert identity.decide(S, st, nodes=_never, session=_never, live=_never) == "legacy"
+
+
+def test_an_install_0_5_59_already_moved_stays_moved(undecided, st):
+    st.set_config(identity.KEY, json.dumps({"mode": "fwh_dc"}))
+    assert identity.decide(S, st, nodes=_never) == "fwh_dc"
+
+
+def test_the_mqtt_tab_says_the_original_ids_are_kept_not_a_problem(undecided, st):
+    identity.decide(S, st, nodes=_never)
+    assert identity.view(st)["held"] is True
+    html = open(__import__("pathlib").Path(__file__).resolve().parents[1]
+                / "src/franklinwh_direct_connect_bridge/templates/tabs/mqtt.html").read()
+    assert "identity.held" in html

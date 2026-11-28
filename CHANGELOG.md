@@ -11,6 +11,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Fixed
+- **Home Assistant: the bridge no longer moves your devices to the `fwh_dc` ids on its own**
+  (#855, owner 2026-11-28). 0.5.59 did this automatically on the first start: a breaking
+  change, shipped without a backup step or your confirmation, and it is withdrawn. This
+  release keeps the original ids (`franklinwh_<serial>`, topics under `franklinwh-local/`)
+  for every install, new ones too. An install 0.5.59 already moved **stays on `fwh_dc`**:
+  moving back would break it again. The move goes to a field-test pre-release, run only after
+  a Home Assistant backup and your confirmation
+  ([guide](docs/guide/home-assistant.md#the-fwh_dc-ids-252)).
+
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.
