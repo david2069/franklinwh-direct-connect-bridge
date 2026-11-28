@@ -159,6 +159,9 @@ def _inputs(store, settings, gateway_id: str, now: float, plan: dict | None,
         value = "No local history yet"
     value += (f"; always-on load {always:g} kW from HEMS setup for hours with no history"
               if always is not None else "; no always-on load in HEMS setup")
+    n = len(load_forecast.heavy_loads(store, gateway_id))
+    if n:
+        value += f"; {n} heavy load{'s' if n != 1 else ''} from HEMS setup on their own days"
     value += "; FranklinWH cloud history isn't used yet"
     home = {"key": "home_load", "label": "Home load", "value": value,
             "status": "ok" if days >= full else "partial" if days or always is not None

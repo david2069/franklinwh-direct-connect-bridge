@@ -763,23 +763,38 @@ function settingsTab(opts = {}) {
           const { problems, expected_kwh_today, ...ld } = l;
           return { ...ld, _weather: ld.runs === 'weather',
                    _runsText: Array.isArray(ld.runs) ? ld.runs.map(w => `${w.start}-${w.end}`).join(', ') : '',
+            _days: this.loadDays(ld),
                    _entities: ((ld.measurement || {}).entities || []).join(', '),
                    measurement: ld.measurement || { kind: 'nameplate' }, control: ld.control || null,
                    switch: ld.switch || {}, ev: ld.ev || {} };
         }),
       };
     },
+    // A load's run days (hems: Monday = 0; all seven = every day, saved without days).
+    loadDays(ld) {
+      const d = Array.isArray(ld.runs) && ld.runs[0] && Array.isArray(ld.runs[0].days) ? ld.runs[0].days : null;
+      return d && d.length ? [...d] : [0, 1, 2, 3, 4, 5, 6];
+    },
+    toggleDay(l, d) {
+      const i = l._days.indexOf(d);
+      if (i < 0) l._days = [...l._days, d].sort((a, b) => a - b);
+      else if (l._days.length > 1) l._days = l._days.filter(x => x !== d);   // at least one day
+    },
+    setDays(l, days) { l._days = [...days]; },
     hemsAddLoad() {
       this.hemsForm.loads.push({ name: '', device_type: '', measurement: { kind: 'nameplate' },
-        power_kw: null, duration_h: null, _runsText: '', _weather: false, circuit: '',
+        power_kw: null, duration_h: null, _runsText: '', _weather: false, _days: [0, 1, 2, 3, 4, 5, 6], circuit: '',
         control: null, switch: {}, ev: {}, _entities: '' });
     },
     /** A form load as hems.loads expects it. */
     _hemsLoad(l) {
-      const { _weather, _runsText, _entities, ...ld } = l;
+      const { _weather, _runsText, _entities, _days, ...ld } = l;
       ld.runs = _weather ? 'weather' : (_runsText || '').split(',').map(x => x.trim()).filter(Boolean)
         .map(x => { const [start, end] = x.split('-').map(y => y.trim()); return { start, end }; });
       if (!_weather && !ld.runs.length) ld.runs = null;
+      if (Array.isArray(ld.runs) && _days && _days.length && _days.length < 7) {
+        ld.runs = ld.runs.map(w => ({ ...w, days: [..._days] }));
+      }
       const m = { kind: (ld.measurement || {}).kind || 'nameplate' };
       if (m.kind !== 'nameplate') m.entities = (_entities || '').split(',').map(x => x.trim()).filter(Boolean);
       ld.measurement = m;
