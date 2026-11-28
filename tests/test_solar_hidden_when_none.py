@@ -28,5 +28,5 @@ def test_the_ui_drops_solar_only_when_it_is_known_to_be_absent():
     nav = JS[JS.index("get navAvailable()"):JS.index("navPrefs: [],")]
     assert "solar" in nav and "solarInstalled === false" in nav
     dash = (PKG / "templates" / "tabs" / "dashboard.html").read_text()
-    i = dash.index('x-data="solarForecastCard()"')
+    i = dash.index("solar_forecast_card('dashboard'")
     assert "$store.app.solarInstalled !== false" in dash[i:i + 300]

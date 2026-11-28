@@ -11,6 +11,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this pro
 
 ## [Unreleased]
 
+### Added
+- **Solar tab: the Solar Forecast card** (owner 2026-11-25), under the live figures: the same
+  card as the Dashboard's, refreshing while the Solar tab is open
+  ([guide](docs/guide/energy-and-costs.md#solar-forecast)).
+
 ## Releases
 
 Full notes for each release are on the [docs site](https://david2069.github.io/franklinwh-direct-connect-bridge) and in [`docs/changelog/`](https://github.com/david2069/franklinwh-direct-connect-bridge/tree/main/docs/changelog). One entry per release below: counts, then highlights.

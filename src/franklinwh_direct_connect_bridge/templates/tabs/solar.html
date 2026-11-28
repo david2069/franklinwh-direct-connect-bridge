@@ -1,3 +1,4 @@
+{% from "partials/solar_forecast_card.html" import solar_forecast_card %}
 <div x-data="solarTab" class="space-y-4">
 
   <!-- real-time auto-paused notice -->
@@ -65,6 +66,9 @@
                x-text="`1301 ${fmtW(data.live.power_w)} vs 1903 ${fmtW(data.live.power_w_from_1903)}`"></div>
         </div>
       </div>
+
+      <!-- The Solar Forecast, as on the Dashboard (owner 2026-11-25). -->
+      {{ solar_forecast_card('solar', "$store.app.solarInstalled !== false") }}
 
       <div class="grid gap-4" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">
 

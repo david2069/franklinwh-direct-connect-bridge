@@ -572,8 +572,8 @@ says **Please confirm** and there is no forecast: before 0.5.42 the bridge assum
 **Azimuth uses Open-Meteo's convention**, which is not the one most people assume:
 `0` is south, `-90` is east, `90` is west.
 
-With a location set you get the **Solar Forecast card on the Dashboard** (not on the
-Solar tab): hourly forecast bars for today and tomorrow, the current weather, actual PV
+With a location set you get the **Solar Forecast card**, on the Dashboard and on the
+Solar tab under the live figures (the same card): hourly forecast bars for today and tomorrow, the current weather, actual PV
 generated today against the forecast, and an ahead/behind figure versus the forecast to
 now. Hours are shown in the PV location's local time, aligned to now by the forecast's own
 offset, so it reads correctly from any timezone. The server caches the forecast for about

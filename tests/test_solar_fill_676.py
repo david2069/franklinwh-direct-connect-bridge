@@ -99,13 +99,13 @@ def test_the_poller_checks_it():
 
 
 # ── the card ─────────────────────────────────────────────────────────────────
-HTML = (PKG / "templates" / "tabs" / "dashboard.html").read_text()
+HTML = (PKG / "templates" / "partials" / "solar_forecast_card.html").read_text()   # both tabs
 JS = (PKG / "static" / "js" / "solar_forecast_card.js").read_text()
 
 
 def _card():
-    a = HTML.index('x-data="solarForecastCard()"')
-    return HTML[a:HTML.index("<!-- Power History", a)]
+    a = HTML.index('x-data="solarForecastCard(')
+    return HTML[a:HTML.index("{% endmacro %}", a)]
 
 
 def test_the_card_has_actual_and_temp_on_one_chart_with_both_axes():
